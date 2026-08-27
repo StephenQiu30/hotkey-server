@@ -12,7 +12,12 @@ import (
 	sharedclock "github.com/StephenQiu30/hotkey-server/backend/internal/shared/clock"
 )
 
-const degradedReasonModelUnavailable = AnalysisReasonModelUnavailable
+const (
+	degradedReasonModelUnavailable = AnalysisReasonModelUnavailable
+	DefaultWorkspaceKey            = "default"
+	StructuredRuntimeVersion       = "structured-provider-v1"
+	EmbeddingSkillID               = "content.embedding.v1"
+)
 
 type SleepFunc func(context.Context, time.Duration) error
 
@@ -50,7 +55,7 @@ func NewRunService(dependencies RunServiceDependencies) (*RunService, error) {
 type StructuredExecutionInput struct {
 	TaskType                                                            domain.TaskType
 	TargetType                                                          string
-	TargetID                                                            int64
+	TargetID, TargetVersion                                             int64
 	PromptVersion, InputSchemaVersion, SchemaVersion, ParametersVersion string
 	InputHash, EvidenceSetHash                                          string
 	Input                                                               json.RawMessage
@@ -65,7 +70,7 @@ type StructuredExecutionResult struct {
 
 func (service *RunService) ExecuteStructured(ctx context.Context, input StructuredExecutionInput) (StructuredExecutionResult, error) {
 	if service == nil || service.runs == nil || service.providers == nil || service.schemas == nil ||
-		!structuredExecutionTargetValid(input.TaskType, input.TargetType) || input.TargetID <= 0 {
+		!structuredExecutionTargetValid(input.TaskType, input.TargetType) || input.TargetID <= 0 || input.TargetVersion <= 0 {
 		return StructuredExecutionResult{}, domain.NewError(domain.CodeAIModelProfileInvalid)
 	}
 	if err := service.schemas.ValidateInput(input.TaskType, input.InputSchemaVersion, input.Input); err != nil {
@@ -86,7 +91,9 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 			continue
 		}
 		claim, err := service.runs.Claim(ctx, intelligencepostgres.ClaimInput{
-			TaskType: input.TaskType, TargetType: input.TargetType, TargetID: input.TargetID, ModelProfileID: profile.ID,
+			TaskType: input.TaskType, WorkspaceKey: DefaultWorkspaceKey, SkillID: contract.SkillID,
+			TargetType: input.TargetType, TargetID: input.TargetID, TargetVersion: input.TargetVersion,
+			RuntimeVersion: StructuredRuntimeVersion, ModelProfileID: profile.ID,
 			PromptVersion: input.PromptVersion, InputSchemaVersion: input.InputSchemaVersion, SchemaVersion: input.SchemaVersion,
 			ParametersVersion: input.ParametersVersion, InputHash: input.InputHash, EvidenceSetHash: input.EvidenceSetHash, Now: service.now(),
 		})

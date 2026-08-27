@@ -142,10 +142,10 @@ func seedPlan009Embedding(t *testing.T, runtime *database.Runtime, profileID, pr
 	var runID int64
 	if err := runtime.SQL.QueryRow(`
 INSERT INTO ai_runs (
- task_type,target_type,target_id,model_profile_id,prompt_version,schema_version,input_hash,status,
+ workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,prompt_version,schema_version,input_hash,status,
  model_profile_version,model_version,parameters_version,input_schema_version,evidence_set_hash,reuse_key,
  attempt,max_attempts,budget_day,cost
-) VALUES ('embedding',$1,$2,$3,'fixture','v1',$4,'succeeded',$5,'plan009-embedding-v1','fixture','v1',$6,$7,1,1,current_date,1)
+) VALUES ('default','content.embedding.v1','embedding',$1,$2,1,'structured-provider-v1',$3,'fixture','v1',$4,'succeeded',$5,'plan009-embedding-v1','fixture','v1',$6,$7,1,1,current_date,1)
 RETURNING id`, target, targetID, profileID, inputHash, profileVersion, strings.Repeat("d", 64), reuseKey).Scan(&runID); err != nil {
 		t.Fatalf("create embedding run: %v", err)
 	}

@@ -37,10 +37,11 @@ type EventIntelligenceEvidence struct {
 }
 
 type EventIntelligenceInput struct {
-	TaskType domain.TaskType
-	EventID  int64
-	EventKey string
-	Evidence []EventIntelligenceEvidence
+	TaskType     domain.TaskType
+	EventID      int64
+	EventVersion int64
+	EventKey     string
+	Evidence     []EventIntelligenceEvidence
 }
 
 type EventIntelligenceResult struct {
@@ -85,7 +86,7 @@ func (service *EventIntelligenceService) Execute(ctx context.Context, input Even
 }
 
 func (service *EventIntelligenceService) prepare(input EventIntelligenceInput) (StructuredExecutionInput, error) {
-	if !eventIntelligenceTask(input.TaskType) || input.EventID <= 0 || strings.TrimSpace(input.EventKey) == "" || len(input.EventKey) > 128 ||
+	if !eventIntelligenceTask(input.TaskType) || input.EventID <= 0 || input.EventVersion <= 0 || strings.TrimSpace(input.EventKey) == "" || len(input.EventKey) > 128 ||
 		len(input.Evidence) == 0 || len(input.Evidence) > 64 {
 		return StructuredExecutionInput{}, domain.NewError(domain.CodeAIModelProfileInvalid)
 	}
@@ -128,7 +129,7 @@ func (service *EventIntelligenceService) prepare(input EventIntelligenceInput) (
 		promptVersion, parametersVersion = entityClaimPromptVersion, entityClaimParametersVersion
 	}
 	return StructuredExecutionInput{
-		TaskType: input.TaskType, TargetType: "event", TargetID: input.EventID,
+		TaskType: input.TaskType, TargetType: "event", TargetID: input.EventID, TargetVersion: input.EventVersion,
 		PromptVersion: promptVersion, InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: parametersVersion,
 		InputHash: sha256Hex(encoded), EvidenceSetHash: sha256Hex(evidenceEncoded), Input: encoded,
 	}, nil

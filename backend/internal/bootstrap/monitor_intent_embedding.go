@@ -45,7 +45,7 @@ func (adapter *compiledIntentEmbeddingProducerAdapter) ProduceCompiledIntentEmbe
 	}
 	sink := &compiledIntentEmbeddingProjectionSink{command: command, projections: adapter.projections}
 	executed, err := adapter.executor.ExecuteProjectedEmbedding(ctx, intelligenceapplication.ProjectedEmbeddingExecutionInput{
-		TargetType: intelligenceapplication.ProjectedEmbeddingTargetMonitorCompiledProfile, TargetID: command.CompiledProfileID,
+		TargetType: intelligenceapplication.ProjectedEmbeddingTargetMonitorCompiledProfile, TargetID: command.CompiledProfileID, TargetVersion: 1,
 		PromptVersion: compiledIntentEmbeddingPromptVersion, InputSchemaVersion: compiledIntentEmbeddingInputSchema,
 		SchemaVersion: compiledIntentEmbeddingOutputSchema, ParametersVersion: compiledIntentEmbeddingParameters,
 		InputHash: command.InputHash, EvidenceSetHash: command.InputHash, Input: command.Input,

@@ -24,7 +24,7 @@ const (
 // text nor provider configuration; RunService still performs the static JSON
 // schema validation before any claim is made.
 type RelevanceReviewRequest struct {
-	TargetID                                int64
+	TargetID, TargetVersion                 int64
 	InputHash                               string
 	ContentExcerpt, ContentLanguage         string
 	MonitorIntent                           string
@@ -89,7 +89,7 @@ func (service *RelevanceReviewService) Review(ctx context.Context, request Relev
 		return RelevanceReviewResult{}, err
 	}
 	executed, err := service.runs.ExecuteStructured(ctx, StructuredExecutionInput{
-		TaskType: domain.TaskTypeRelevanceReview, TargetType: "monitor_match", TargetID: request.TargetID,
+		TaskType: domain.TaskTypeRelevanceReview, TargetType: "monitor_match", TargetID: request.TargetID, TargetVersion: request.TargetVersion,
 		PromptVersion: relevanceReviewPromptVersion, InputSchemaVersion: relevanceReviewInputSchemaVersion,
 		SchemaVersion: relevanceReviewSchemaVersion, ParametersVersion: relevanceReviewParametersVersion,
 		InputHash: request.InputHash, EvidenceSetHash: request.InputHash, Input: payload,
@@ -119,7 +119,7 @@ func (service *RelevanceReviewService) Review(ctx context.Context, request Relev
 }
 
 func (request RelevanceReviewRequest) valid() bool {
-	if request.TargetID <= 0 || !validSHA256(request.InputHash) || strings.TrimSpace(request.ContentExcerpt) == "" ||
+	if request.TargetID <= 0 || request.TargetVersion <= 0 || !validSHA256(request.InputHash) || strings.TrimSpace(request.ContentExcerpt) == "" ||
 		utf8.RuneCountInString(request.ContentExcerpt) > 1200 || strings.TrimSpace(request.MonitorIntent) == "" ||
 		utf8.RuneCountInString(request.MonitorIntent) > 500 || (request.ContentLanguage != "zh" && request.ContentLanguage != "en" && request.ContentLanguage != "und") ||
 		(request.ScoringVersion != "relevance-v1" && request.ScoringVersion != "relevance-v1-degraded") ||

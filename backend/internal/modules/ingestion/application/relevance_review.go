@@ -179,7 +179,7 @@ func buildRelevanceReviewInput(snapshot ingestiondomain.RelevanceSnapshot, reque
 		semantic = *request.Factors.Semantic
 	}
 	return intelligenceapplication.RelevanceReviewRequest{
-		TargetID: snapshot.ID, InputHash: snapshot.InputHash, ContentExcerpt: request.ContentExcerpt, ContentLanguage: request.ContentLanguage,
+		TargetID: snapshot.ID, TargetVersion: snapshot.Version, InputHash: snapshot.InputHash, ContentExcerpt: request.ContentExcerpt, ContentLanguage: request.ContentLanguage,
 		MonitorIntent: request.MonitorIntent, ScoringVersion: snapshot.ScoringVersion,
 		Scores: intelligenceapplication.RelevanceReviewScores{
 			Semantic: semantic, Lexical: request.Factors.Lexical, Entity: request.Factors.Entity, Title: request.Factors.Title, Preference: request.Factors.Preference,

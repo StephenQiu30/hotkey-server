@@ -128,7 +128,7 @@ func (processor *IntentAnalysisCompositeProcessor) GenerateExpansion(ctx context
 	evidenceHash := sha256.Sum256(encodedInput)
 	executed, err := processor.runner.ExecuteStructured(ctx, intelligenceapplication.StructuredExecutionInput{
 		TaskType:   intelligencedomain.TaskTypeTermExpansion,
-		TargetType: IntentExpansionTargetType, TargetID: task.Run.RunID,
+		TargetType: IntentExpansionTargetType, TargetID: task.Run.RunID, TargetVersion: task.Run.DraftResourceVersion,
 		PromptVersion: IntentExpansionPromptVersion, InputSchemaVersion: intentExpansionInputSchema,
 		SchemaVersion: intentExpansionOutputSchema, ParametersVersion: task.AnalysisProfile,
 		InputHash: task.Run.InputHash, EvidenceSetHash: hex.EncodeToString(evidenceHash[:]),

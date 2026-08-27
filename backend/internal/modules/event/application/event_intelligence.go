@@ -75,10 +75,11 @@ func (service *EventSummaryService) Generate(ctx context.Context, eventID int64)
 	}
 
 	executed, err := service.runner.Execute(ctx, intelligenceapplication.EventIntelligenceInput{
-		TaskType: intelligencedomain.TaskTypeEventSummary,
-		EventID:  source.Event.ID,
-		EventKey: source.Event.EventKey,
-		Evidence: eventIntelligenceEvidence(source.Evidence),
+		TaskType:     intelligencedomain.TaskTypeEventSummary,
+		EventID:      source.Event.ID,
+		EventVersion: source.Event.Version,
+		EventKey:     source.Event.EventKey,
+		Evidence:     eventIntelligenceEvidence(source.Evidence),
 	})
 	if err != nil {
 		if reason, safe := safeEventSummaryDegradation(err); safe {
@@ -144,7 +145,7 @@ func RenderEventSummary(summary domain.EventSummary) string {
 }
 
 func (source EventIntelligenceSource) validate(eventID int64) error {
-	if source.Event.ID != eventID || strings.TrimSpace(source.Event.EventKey) == "" || strings.TrimSpace(source.Event.TitleZH) == "" || len(source.Evidence) == 0 || len(source.Evidence) > 64 {
+	if source.Event.ID != eventID || source.Event.Version <= 0 || strings.TrimSpace(source.Event.EventKey) == "" || strings.TrimSpace(source.Event.TitleZH) == "" || len(source.Evidence) == 0 || len(source.Evidence) > 64 {
 		return fmt.Errorf("invalid event intelligence source")
 	}
 	seen := make(map[string]bool, len(source.Evidence))

@@ -210,7 +210,7 @@ func (service *AutomaticClaimEvidenceService) Extract(ctx context.Context, comma
 	inputDigest := sha256.Sum256(encoded)
 	evidenceDigest := sha256.Sum256([]byte(fmt.Sprintf("%d|%d|%s", target.MicroEventID, target.Artifact.DocumentVersionID, target.Artifact.PlaintextSHA256)))
 	executed, err := service.models.ExecuteStructured(ctx, intelligenceapplication.StructuredExecutionInput{
-		TaskType: intelligencedomain.TaskTypeEntityClaimExtraction, TargetType: "event", TargetID: target.MicroEventID,
+		TaskType: intelligencedomain.TaskTypeEntityClaimExtraction, TargetType: "event", TargetID: target.MicroEventID, TargetVersion: target.EventVersion,
 		PromptVersion: AtomicClaimEvidencePromptVersion, InputSchemaVersion: "v2", SchemaVersion: "v2",
 		ParametersVersion: AtomicClaimEvidenceParametersVersion, InputHash: hex.EncodeToString(inputDigest[:]),
 		EvidenceSetHash: hex.EncodeToString(evidenceDigest[:]), Input: encoded,

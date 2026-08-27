@@ -483,11 +483,12 @@ RETURNING id, version`, fmt.Sprintf("relevance-review-%d", time.Now().UnixNano()
 	}
 	if err := runtime.SQL.QueryRow(`
 INSERT INTO ai_runs (
-  task_type, target_type, target_id, model_profile_id, prompt_version, schema_version,
+  workspace_key, skill_id, task_type, target_type, target_id, target_version, runtime_version,
+  model_profile_id, prompt_version, schema_version,
   input_hash, structured_result, status, model_profile_version, model_version, parameters_version,
   input_schema_version, evidence_set_hash, reuse_key, attempt, max_attempts, budget_day
 ) VALUES (
-  'relevance_review', 'monitor_match', $1, $2, 'relevance-review-v1', 'v1',
+  'default', 'content.relevance.v1', 'relevance_review', 'monitor_match', $1, 1, 'structured-provider-v1', $2, 'relevance-review-v1', 'v1',
   $3, '{"decision":"review","score":72,"reason_codes":["ambiguous_context"]}'::jsonb,
   'succeeded', $4, $5, 'relevance-v1', 'v1', $6, $7, 1, 1, current_date
 ) RETURNING id`,

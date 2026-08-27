@@ -91,7 +91,7 @@ func eventIntelligenceSourceFixture() EventIntelligenceSource {
 	now := time.Now().UTC()
 	representative := int64(2)
 	return EventIntelligenceSource{
-		Event:    domain.Event{ID: 7, EventKey: "evt-7", TitleZH: "事件", TitleEN: "Event", RepresentativeContentID: &representative, FirstSeenAt: now, LastSeenAt: now},
+		Event:    domain.Event{ID: 7, Version: 1, EventKey: "evt-7", TitleZH: "事件", TitleEN: "Event", RepresentativeContentID: &representative, FirstSeenAt: now, LastSeenAt: now},
 		Evidence: []domain.EvidenceRef{{ContentID: 9, Locator: "title", Excerpt: "secondary evidence"}, {ContentID: 2, Locator: "excerpt", Excerpt: "trusted evidence"}},
 	}
 }

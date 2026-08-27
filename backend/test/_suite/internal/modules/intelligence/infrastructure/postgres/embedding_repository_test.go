@@ -144,7 +144,8 @@ func completeEmbedding(t *testing.T, repository *intelligencepostgres.Repository
 	t.Helper()
 	now := time.Date(2026, time.July, 17, 10, 0, 0, 0, time.UTC)
 	claimed, err := repository.Claim(context.Background(), intelligencepostgres.ClaimInput{
-		TaskType: intelligencedomain.TaskTypeEmbedding, TargetType: string(input.Target), TargetID: input.TargetID, ModelProfileID: profile.ID,
+		TaskType: intelligencedomain.TaskTypeEmbedding, WorkspaceKey: "default", SkillID: "content.embedding.v1",
+		TargetType: string(input.Target), TargetID: input.TargetID, TargetVersion: 1, RuntimeVersion: "structured-provider-v1", ModelProfileID: profile.ID,
 		PromptVersion: "embedding-prompt-v1", InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: "parameters-v1",
 		InputHash: input.InputHash, EvidenceSetHash: strings.Repeat("e", 64), Now: now,
 	})
@@ -169,10 +170,10 @@ func seedActiveEmbedding(t *testing.T, runtime interface{ QueryRow(string, ...an
 	var runID int64
 	if err := runtime.QueryRow(`
 INSERT INTO ai_runs (
- task_type,target_type,target_id,model_profile_id,prompt_version,schema_version,input_hash,status,
+ workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,prompt_version,schema_version,input_hash,status,
  model_profile_version,model_version,parameters_version,input_schema_version,evidence_set_hash,reuse_key,
  attempt,max_attempts,budget_day,cost
-) VALUES ('embedding',$1,$2,$3,'fixture','v1',$4,'succeeded',$5,$6,'fixture','v1',$7,$8,1,1,DATE '2026-07-17',1)
+) VALUES ('default','content.embedding.v1','embedding',$1,$2,1,'structured-provider-v1',$3,'fixture','v1',$4,'succeeded',$5,$6,'fixture','v1',$7,$8,1,1,DATE '2026-07-17',1)
 RETURNING id`, string(input.Target), input.TargetID, profile.ID, input.InputHash, profile.Version, profile.ModelVersion,
 		strings.Repeat("f", 64), fixtureReuseKey(input.Target, input.TargetID, input.InputHash),
 	).Scan(&runID); err != nil {

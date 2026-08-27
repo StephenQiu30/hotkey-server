@@ -194,10 +194,10 @@ func createCompiledIntentEmbeddingRun(t *testing.T, databaseExecutor interface {
 	var runID int64
 	if err := databaseExecutor.QueryRow(`
 INSERT INTO ai_runs (
-  task_type,target_type,target_id,model_profile_id,prompt_version,schema_version,input_hash,status,
+  workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,prompt_version,schema_version,input_hash,status,
   model_profile_version,model_version,parameters_version,input_schema_version,evidence_set_hash,reuse_key,
   attempt,max_attempts,budget_day,cost
-) VALUES ('embedding','monitor_compiled_profile',$1,$2,'compiled-intent-embedding-v1','embedding-output-v1',$3,'succeeded',
+) VALUES ('default','content.embedding.v1','embedding','monitor_compiled_profile',$1,1,'structured-provider-v1',$2,'compiled-intent-embedding-v1','embedding-output-v1',$3,'succeeded',
   $4,$5,'compiled-intent-nfc-1024-v1','compiled-intent-input-v1',$3,$6,1,1,current_date,0.0100)
 RETURNING id`, compiledProfileID, profileID, inputHash, profileVersion, modelVersion,
 		fmt.Sprintf("%064x", time.Now().UnixNano())).Scan(&runID); err != nil {

@@ -29,6 +29,18 @@ func TestRepositoryClaimsOneReusableRunAndReservesBudget(t *testing.T) {
 	if first.Reused || first.Run.Status != intelligencedomain.RunStatusQueued || first.Run.ReservedCost != "1.0000" || first.Run.LeaseExpiresAt == nil {
 		t.Fatalf("Claim() first = %#v, want a leased reserved queued run", first)
 	}
+	if first.Run.WorkspaceKey != claim.WorkspaceKey || first.Run.SkillID != claim.SkillID || first.Run.TargetVersion != claim.TargetVersion || first.Run.RuntimeVersion != claim.RuntimeVersion {
+		t.Fatalf("Claim() execution identity = %#v, want exact persisted identity", first.Run)
+	}
+	var workspaceKey, skillID, runtimeVersion string
+	var targetVersion int64
+	if err := runtime.SQL.QueryRow(`SELECT workspace_key,skill_id,target_version,runtime_version FROM ai_runs WHERE id=$1`, first.Run.ID).
+		Scan(&workspaceKey, &skillID, &targetVersion, &runtimeVersion); err != nil {
+		t.Fatalf("read persisted execution identity: %v", err)
+	}
+	if workspaceKey != claim.WorkspaceKey || skillID != claim.SkillID || targetVersion != claim.TargetVersion || runtimeVersion != claim.RuntimeVersion {
+		t.Fatalf("persisted execution identity = %q/%q/%d/%q", workspaceKey, skillID, targetVersion, runtimeVersion)
+	}
 	if _, err := repository.Claim(context.Background(), claim); err == nil {
 		t.Fatal("Claim() duplicate in-flight error = nil, want 70007")
 	} else if code, ok := intelligencedomain.CodeOf(err); !ok || code != intelligencedomain.CodeAIRunInProgress {
@@ -62,6 +74,12 @@ func TestRepositoryClaimsOneReusableRunAndReservesBudget(t *testing.T) {
 	}
 	if reserved != "0.0000" || settled != "0.7500" {
 		t.Fatalf("settled ledger reserved/settled = %s/%s, want 0.0000/0.7500", reserved, settled)
+	}
+	newTargetVersion := claim
+	newTargetVersion.TargetVersion++
+	versioned, err := repository.Claim(context.Background(), newTargetVersion)
+	if err != nil || versioned.Reused || versioned.Run.ID == first.Run.ID {
+		t.Fatalf("Claim(new target version) = %#v / %v, want a distinct run", versioned, err)
 	}
 }
 
@@ -145,8 +163,12 @@ func testEmbeddingProfile() intelligencedomain.ModelProfile {
 func testClaim(profile intelligencedomain.ModelProfile) intelligencepostgres.ClaimInput {
 	return intelligencepostgres.ClaimInput{
 		TaskType:           intelligencedomain.TaskTypeEmbedding,
+		WorkspaceKey:       "default",
+		SkillID:            "content.embedding.v1",
 		TargetType:         "content",
 		TargetID:           1,
+		TargetVersion:      1,
+		RuntimeVersion:     "structured-provider-v1",
 		ModelProfileID:     profile.ID,
 		PromptVersion:      "prompt-v1",
 		InputSchemaVersion: "v1",

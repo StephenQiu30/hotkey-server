@@ -24,15 +24,16 @@ const (
 // Run is the persistence-neutral execution fact returned by repository and
 // application contracts. It intentionally excludes provider SDK payloads.
 type Run struct {
-	ID, ModelProfileID, ModelProfileVersion, TargetID int64
-	TaskType                                          TaskType
-	TargetType, ModelVersion, ReuseKey                string
-	Status                                            RunStatus
-	ReservedCost, Cost                                string
-	StructuredResult                                  json.RawMessage
-	Tokens, LatencyMS                                 int64
-	ErrorCode                                         *int
-	LeaseExpiresAt                                    *time.Time
+	ID, ModelProfileID, ModelProfileVersion, TargetID, TargetVersion int64
+	TaskType                                                         TaskType
+	WorkspaceKey, SkillID, TargetType, RuntimeVersion                string
+	ModelVersion, ReuseKey                                           string
+	Status                                                           RunStatus
+	ReservedCost, Cost                                               string
+	StructuredResult                                                 json.RawMessage
+	Tokens, LatencyMS                                                int64
+	ErrorCode                                                        *int
+	LeaseExpiresAt                                                   *time.Time
 }
 
 func (status RunStatus) Valid() bool {
@@ -61,14 +62,16 @@ func CanTransition(from, to RunStatus) bool {
 
 type ReuseKeyInput struct {
 	TaskType                                                       TaskType
-	TargetType                                                     string
-	TargetID, ModelProfileID, ModelProfileVersion                  int64
+	WorkspaceKey, SkillID, TargetType, RuntimeVersion              string
+	TargetID, TargetVersion, ModelProfileID, ModelProfileVersion   int64
 	ModelVersion, PromptVersion, InputSchemaVersion, SchemaVersion string
 	ParametersVersion, InputHash, EvidenceSetHash                  string
 }
 
 func NewReuseKey(input ReuseKeyInput) (string, error) {
-	if !input.TaskType.Valid() || strings.TrimSpace(input.TargetType) == "" || input.TargetID <= 0 || input.ModelProfileID <= 0 || input.ModelProfileVersion <= 0 ||
+	if !input.TaskType.Valid() || strings.TrimSpace(input.WorkspaceKey) == "" || strings.TrimSpace(input.SkillID) == "" ||
+		strings.TrimSpace(input.TargetType) == "" || strings.TrimSpace(input.RuntimeVersion) == "" || input.TargetID <= 0 || input.TargetVersion <= 0 ||
+		input.ModelProfileID <= 0 || input.ModelProfileVersion <= 0 ||
 		strings.TrimSpace(input.ModelVersion) == "" || strings.TrimSpace(input.PromptVersion) == "" || strings.TrimSpace(input.InputSchemaVersion) == "" ||
 		strings.TrimSpace(input.SchemaVersion) == "" || strings.TrimSpace(input.ParametersVersion) == "" || !validSHA256(input.InputHash) || !validSHA256(input.EvidenceSetHash) {
 		return "", NewError(CodeAIModelProfileInvalid)
@@ -76,7 +79,8 @@ func NewReuseKey(input ReuseKeyInput) (string, error) {
 	// A fixed ordered array (not a map or delimiter-joined text) makes
 	// serialization deterministic and prevents ambiguous field boundaries.
 	payload := []any{
-		string(input.TaskType), input.TargetType, input.TargetID, input.ModelProfileID, input.ModelProfileVersion,
+		input.WorkspaceKey, input.SkillID, string(input.TaskType), input.TargetType, input.TargetID, input.TargetVersion,
+		input.RuntimeVersion, input.ModelProfileID, input.ModelProfileVersion,
 		input.ModelVersion, input.PromptVersion, input.InputSchemaVersion, input.SchemaVersion, input.ParametersVersion,
 		input.InputHash, input.EvidenceSetHash,
 	}

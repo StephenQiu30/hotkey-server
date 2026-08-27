@@ -281,10 +281,10 @@ func createDocumentEmbeddingRun(t *testing.T, runtime *database.Runtime, documen
 	var runID int64
 	if err := runtime.SQL.QueryRow(`
 INSERT INTO ai_runs (
-  task_type,target_type,target_id,model_profile_id,prompt_version,schema_version,input_hash,status,
+  workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,prompt_version,schema_version,input_hash,status,
   model_profile_version,model_version,parameters_version,input_schema_version,evidence_set_hash,reuse_key,
   attempt,max_attempts,budget_day,cost
-) VALUES ('embedding','document_version',$1,$2,'document-recall-v1','v1',$3,'succeeded',
+) VALUES ('default','content.embedding.v1','embedding','document_version',$1,1,'structured-provider-v1',$2,'document-recall-v1','v1',$3,'succeeded',
   $4,$5,'document-recall-v1','v1',repeat('e',64),$6,1,1,current_date,0.0100)
 RETURNING id`, documentVersionID, profileID, inputHash, profileVersion, modelVersion, reuseKey).Scan(&runID); err != nil {
 		t.Fatalf("create document embedding run: %v", err)

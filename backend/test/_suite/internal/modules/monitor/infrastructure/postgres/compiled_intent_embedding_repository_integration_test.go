@@ -51,7 +51,8 @@ func TestCompiledIntentEmbeddingCommitsWithItsExactSucceededAIRun(t *testing.T) 
 	inputHash := strings.Repeat("b", 64)
 	intelligenceRepository := intelligencepostgres.NewRepository(runtime)
 	claimed, err := intelligenceRepository.Claim(context.Background(), intelligencepostgres.ClaimInput{
-		TaskType: intelligencedomain.TaskTypeEmbedding, TargetType: "monitor_compiled_profile", TargetID: profile.CompiledProfileID,
+		TaskType: intelligencedomain.TaskTypeEmbedding, WorkspaceKey: "default", SkillID: "content.embedding.v1",
+		TargetType: "monitor_compiled_profile", TargetID: profile.CompiledProfileID, TargetVersion: 1, RuntimeVersion: "structured-provider-v1",
 		ModelProfileID: modelProfileID, PromptVersion: "compiled-intent-embedding-v1", InputSchemaVersion: "compiled-intent-input-v1",
 		SchemaVersion: "embedding-output-v1", ParametersVersion: "compiled-intent-nfc-1024-v1",
 		InputHash: inputHash, EvidenceSetHash: inputHash, Now: now.Add(2 * time.Second),

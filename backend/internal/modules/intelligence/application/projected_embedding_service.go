@@ -17,7 +17,7 @@ const (
 
 type ProjectedEmbeddingExecutionInput struct {
 	TargetType, PromptVersion, InputSchemaVersion, SchemaVersion, ParametersVersion string
-	TargetID                                                                        int64
+	TargetID, TargetVersion                                                         int64
 	InputHash, EvidenceSetHash, Input                                               string
 }
 
@@ -52,7 +52,7 @@ type ProjectedEmbeddingExecutionResult struct {
 // settles the AI run. No vector is returned after commit or written to a job.
 func (service *EmbeddingService) ExecuteProjectedEmbedding(ctx context.Context, input ProjectedEmbeddingExecutionInput, sink ProjectedEmbeddingSink) (ProjectedEmbeddingExecutionResult, error) {
 	if service == nil || service.runs == nil || service.providers == nil || service.runService == nil || sink == nil ||
-		(input.TargetType != ProjectedEmbeddingTargetDocumentVersion && input.TargetType != ProjectedEmbeddingTargetMonitorCompiledProfile) || input.TargetID <= 0 ||
+		(input.TargetType != ProjectedEmbeddingTargetDocumentVersion && input.TargetType != ProjectedEmbeddingTargetMonitorCompiledProfile) || input.TargetID <= 0 || input.TargetVersion <= 0 ||
 		strings.TrimSpace(input.Input) == "" || !validProjectedEmbeddingHash(input.InputHash) {
 		return ProjectedEmbeddingExecutionResult{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
 	}
@@ -67,7 +67,8 @@ func (service *EmbeddingService) ExecuteProjectedEmbedding(ctx context.Context, 
 			continue
 		}
 		claim, err := service.runs.Claim(ctx, intelligencepostgres.ClaimInput{
-			TaskType: intelligencedomain.TaskTypeEmbedding, TargetType: input.TargetType, TargetID: input.TargetID,
+			TaskType: intelligencedomain.TaskTypeEmbedding, WorkspaceKey: DefaultWorkspaceKey, SkillID: EmbeddingSkillID,
+			TargetType: input.TargetType, TargetID: input.TargetID, TargetVersion: input.TargetVersion, RuntimeVersion: StructuredRuntimeVersion,
 			ModelProfileID: profile.ID, PromptVersion: input.PromptVersion, InputSchemaVersion: input.InputSchemaVersion,
 			SchemaVersion: input.SchemaVersion, ParametersVersion: input.ParametersVersion,
 			InputHash: input.InputHash, EvidenceSetHash: input.EvidenceSetHash, Now: service.runService.now(),

@@ -133,7 +133,7 @@ func (fixture eventIntelligenceEvaluationFixture) eventSource(override []eventIn
 		values = append(values, domain.EvidenceRef{ContentID: item.ContentID, Locator: item.Locator, Excerpt: item.Excerpt})
 	}
 	representative := fixture.Source.RepresentativeContentID
-	return EventIntelligenceSource{Event: domain.Event{ID: fixture.Source.EventID, EventKey: fixture.Source.EventKey, TitleZH: fixture.Source.TitleZH, TitleEN: fixture.Source.TitleEN, RepresentativeContentID: &representative}, Evidence: values}
+	return EventIntelligenceSource{Event: domain.Event{ID: fixture.Source.EventID, Version: 1, EventKey: fixture.Source.EventKey, TitleZH: fixture.Source.TitleZH, TitleEN: fixture.Source.TitleEN, RepresentativeContentID: &representative}, Evidence: values}
 }
 
 func evaluationRunResult(testCase eventIntelligenceEvaluationCase) intelligenceapplication.EventIntelligenceResult {

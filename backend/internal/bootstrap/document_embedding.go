@@ -46,7 +46,7 @@ func (adapter *documentEmbeddingProducerAdapter) ProduceDocumentEmbedding(ctx co
 	}
 	sink := &documentEmbeddingProjectionSink{command: command, projections: adapter.projections}
 	executed, err := adapter.embeddings.ExecuteProjectedEmbedding(ctx, intelligenceapplication.ProjectedEmbeddingExecutionInput{
-		TargetType: "document_version", TargetID: command.DocumentVersionID,
+		TargetType: "document_version", TargetID: command.DocumentVersionID, TargetVersion: 1,
 		PromptVersion: documentEmbeddingPromptVersion, InputSchemaVersion: documentEmbeddingInputSchema,
 		SchemaVersion: documentEmbeddingOutputSchema, ParametersVersion: documentEmbeddingParameters,
 		InputHash: command.NormalizedTextSHA256, EvidenceSetHash: command.NormalizedTextSHA256, Input: command.Plaintext,

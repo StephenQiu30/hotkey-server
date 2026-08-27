@@ -96,10 +96,11 @@ func (service *EventClaimExtractionService) Extract(ctx context.Context, eventID
 		return EventClaimExtractionResult{}, err
 	}
 	executed, err := service.runner.Execute(ctx, intelligenceapplication.EventIntelligenceInput{
-		TaskType: intelligencedomain.TaskTypeEntityClaimExtraction,
-		EventID:  source.Event.ID,
-		EventKey: source.Event.EventKey,
-		Evidence: eventIntelligenceEvidence(source.Evidence),
+		TaskType:     intelligencedomain.TaskTypeEntityClaimExtraction,
+		EventID:      source.Event.ID,
+		EventVersion: source.Event.Version,
+		EventKey:     source.Event.EventKey,
+		Evidence:     eventIntelligenceEvidence(source.Evidence),
 	})
 	if err != nil {
 		return EventClaimExtractionResult{}, err

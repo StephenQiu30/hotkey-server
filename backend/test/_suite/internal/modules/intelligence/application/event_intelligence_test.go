@@ -15,7 +15,7 @@ func TestEventIntelligenceServiceBuildsStableEvidenceBoundRun(t *testing.T) {
 	}}
 	service := NewEventIntelligenceService(runner)
 	input := EventIntelligenceInput{
-		TaskType: domain.TaskTypeEventSummary, EventID: 7, EventKey: "evt_7",
+		TaskType: domain.TaskTypeEventSummary, EventID: 7, EventVersion: 1, EventKey: "evt_7",
 		Evidence: []EventIntelligenceEvidence{
 			{ContentID: 9, Locator: "body:1", Excerpt: "second"},
 			{ContentID: 2, Locator: "title", Excerpt: "first"},
@@ -45,7 +45,7 @@ func TestEventIntelligenceServiceBuildsStableEvidenceBoundRun(t *testing.T) {
 
 	runner.input = StructuredExecutionInput{}
 	_, err = service.Execute(context.Background(), EventIntelligenceInput{
-		TaskType: input.TaskType, EventID: input.EventID, EventKey: input.EventKey,
+		TaskType: input.TaskType, EventID: input.EventID, EventVersion: input.EventVersion, EventKey: input.EventKey,
 		Evidence: []EventIntelligenceEvidence{input.Evidence[1], input.Evidence[0]},
 	})
 	if err != nil {
@@ -60,13 +60,13 @@ func TestEventIntelligenceServiceKeepsSafeDegradationAndRejectsInvalidInput(t *t
 	runner := &eventIntelligenceRunnerStub{result: StructuredExecutionResult{Status: "degraded", ReasonCode: "ai_unavailable"}}
 	service := NewEventIntelligenceService(runner)
 	result, err := service.Execute(context.Background(), EventIntelligenceInput{
-		TaskType: domain.TaskTypeEntityClaimExtraction, EventID: 7, EventKey: "evt_7",
+		TaskType: domain.TaskTypeEntityClaimExtraction, EventID: 7, EventVersion: 1, EventKey: "evt_7",
 		Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "safe"}},
 	})
 	if err != nil || result.Status != AnalysisStatusPending || result.ReasonCode != "ai_unavailable" || len(result.Result) != 0 {
 		t.Fatalf("Execute(degraded) = %#v / %v, want safe degradation", result, err)
 	}
-	if _, err := service.Execute(context.Background(), EventIntelligenceInput{TaskType: domain.TaskTypeEventSummary, EventID: 7, EventKey: "evt_7"}); err == nil {
+	if _, err := service.Execute(context.Background(), EventIntelligenceInput{TaskType: domain.TaskTypeEventSummary, EventID: 7, EventVersion: 1, EventKey: "evt_7"}); err == nil {
 		t.Fatal("Execute(without evidence) error = nil, want rejection")
 	}
 }
@@ -86,7 +86,7 @@ func TestEventIntelligenceServiceMapsOperationalFailuresToPendingAnalysis(t *tes
 		t.Run(testCase.name, func(t *testing.T) {
 			runner := &eventIntelligenceRunnerStub{err: domain.NewError(testCase.code)}
 			result, err := NewEventIntelligenceService(runner).Execute(context.Background(), EventIntelligenceInput{
-				TaskType: domain.TaskTypeEventSummary, EventID: 7, EventKey: "evt_7",
+				TaskType: domain.TaskTypeEventSummary, EventID: 7, EventVersion: 1, EventKey: "evt_7",
 				Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "safe"}},
 			})
 			if err != nil || result.Status != AnalysisStatusPending || result.ReasonCode != testCase.reason || len(result.Result) != 0 {

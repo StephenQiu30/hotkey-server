@@ -111,12 +111,14 @@ VALUES ($1, current_date, 0, 0)`, profileID); err == nil {
 
 	const runSQL = `
 INSERT INTO ai_runs (
-    task_type, target_type, target_id, model_profile_id, prompt_version, schema_version,
+    workspace_key, skill_id, task_type, target_type, target_id, target_version, runtime_version,
+    model_profile_id, prompt_version, schema_version,
     input_hash, status, model_profile_version, model_version, parameters_version,
     input_schema_version, evidence_set_hash, reuse_key, attempt, max_attempts,
     budget_day, reserved_cost, lease_expires_at
 ) VALUES (
-    'embedding', 'content', 1, $1, 'prompt-v1', 'output-v1', $2, $3, 1,
+    'default', 'content.embedding.v1', 'embedding', 'content', 1, 1, 'structured-provider-v1',
+    $1, 'prompt-v1', 'output-v1', $2, $3, 1,
     'profile-v1', 'parameters-v1', 'input-v1', $4, $5, 1, 2, current_date, 0, $6
 )`
 	inputHash := strings.Repeat("a", 64)

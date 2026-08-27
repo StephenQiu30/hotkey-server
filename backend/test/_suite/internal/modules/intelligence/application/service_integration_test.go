@@ -109,7 +109,7 @@ func TestPlan012EventIntelligenceRunReusesOnlyExactEvidence(t *testing.T) {
 	}}
 	clock := &applicationClock{value: time.Date(2026, time.July, 17, 14, 0, 0, 0, time.UTC)}
 	service := NewEventIntelligenceService(newApplicationRunService(t, runs, provider, clock))
-	input := EventIntelligenceInput{TaskType: domain.TaskTypeEventSummary, EventID: 7, EventKey: "evt-7", Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "trusted"}}}
+	input := EventIntelligenceInput{TaskType: domain.TaskTypeEventSummary, EventID: 7, EventVersion: 1, EventKey: "evt-7", Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "trusted"}}}
 	first, err := service.Execute(context.Background(), input)
 	if err != nil || first.Status != "succeeded" || first.Reused || first.Run.ID <= 0 {
 		t.Fatalf("Execute(first) = %#v / %v", first, err)
@@ -140,7 +140,7 @@ func TestPlan012EventIntelligenceRunRepairsInvalidResult(t *testing.T) {
 	}}
 	clock := &applicationClock{value: time.Date(2026, time.July, 17, 14, 15, 0, 0, time.UTC)}
 	service := NewEventIntelligenceService(newApplicationRunService(t, runs, provider, clock))
-	result, err := service.Execute(context.Background(), EventIntelligenceInput{TaskType: domain.TaskTypeEventSummary, EventID: 7, EventKey: "evt-7", Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "trusted"}}})
+	result, err := service.Execute(context.Background(), EventIntelligenceInput{TaskType: domain.TaskTypeEventSummary, EventID: 7, EventVersion: 1, EventKey: "evt-7", Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "trusted"}}})
 	if err != nil || result.Status != "succeeded" || provider.structuredCalls() != 2 || result.Run.Tokens != 14 {
 		t.Fatalf("Execute(repair) = %#v / %v calls=%d", result, err, provider.structuredCalls())
 	}
@@ -172,7 +172,7 @@ func TestRunServiceNeverPersistsOrReusesForgedEvidenceAndRepairConsumesNewAttemp
 	clock := &applicationClock{value: time.Date(2026, time.August, 27, 16, 0, 0, 0, time.UTC)}
 	service := NewEventIntelligenceService(newApplicationRunService(t, runs, provider, clock))
 	input := EventIntelligenceInput{
-		TaskType: domain.TaskTypeEventSummary, EventID: 7, EventKey: "evt-7",
+		TaskType: domain.TaskTypeEventSummary, EventID: 7, EventVersion: 1, EventKey: "evt-7",
 		Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "trusted"}},
 	}
 
@@ -314,7 +314,8 @@ func TestPlan009RelevanceReviewFacadeDegradesWithoutProviderOrBudget(t *testing.
 		}
 		clock := &applicationClock{value: time.Date(2026, time.July, 17, 14, 0, 0, 0, time.UTC)}
 		if _, err := runs.Claim(context.Background(), intelligencepostgres.ClaimInput{
-			TaskType: domain.TaskTypeRelevanceReview, TargetType: "monitor_match", TargetID: 100, ModelProfileID: profile.ID,
+			TaskType: domain.TaskTypeRelevanceReview, WorkspaceKey: DefaultWorkspaceKey, SkillID: "content.relevance.v1",
+			TargetType: "monitor_match", TargetID: 100, TargetVersion: 1, RuntimeVersion: StructuredRuntimeVersion, ModelProfileID: profile.ID,
 			PromptVersion: relevanceReviewPromptVersion, InputSchemaVersion: relevanceReviewInputSchemaVersion, SchemaVersion: relevanceReviewSchemaVersion,
 			ParametersVersion: relevanceReviewParametersVersion, InputHash: strings.Repeat("1", 64), EvidenceSetHash: strings.Repeat("2", 64), Now: clock.Now(),
 		}); err != nil {
@@ -509,7 +510,8 @@ func TestRunServiceFallsBackAfterHigherPriorityBudgetIsUnavailable(t *testing.T)
 	}
 	clock := &applicationClock{value: time.Date(2026, time.July, 17, 13, 0, 0, 0, time.UTC)}
 	if _, err := runs.Claim(context.Background(), intelligencepostgres.ClaimInput{
-		TaskType: domain.TaskTypeTermExpansion, TargetType: "monitor", TargetID: 1, ModelProfileID: first.ID,
+		TaskType: domain.TaskTypeTermExpansion, WorkspaceKey: DefaultWorkspaceKey, SkillID: "monitor.compile.v1",
+		TargetType: "monitor", TargetID: 1, TargetVersion: 1, RuntimeVersion: StructuredRuntimeVersion, ModelProfileID: first.ID,
 		PromptVersion: "prompt-v1", InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: "params-v1",
 		InputHash: strings.Repeat("2", 64), EvidenceSetHash: strings.Repeat("3", 64), Now: clock.Now(),
 	}); err != nil {
@@ -602,7 +604,7 @@ func TestProjectedEmbeddingCommitsOwningProjectionWithSucceededRunAndReusesExact
 	}
 	sink := &projectedEmbeddingSinkProbe{runtime: runtime}
 	input := ProjectedEmbeddingExecutionInput{
-		TargetType: "document_version", TargetID: 101,
+		TargetType: "document_version", TargetID: 101, TargetVersion: 1,
 		PromptVersion: "document-embedding-v1", InputSchemaVersion: "canonical-plaintext-v1",
 		SchemaVersion: "embedding-1024-v1", ParametersVersion: "document-embedding-v1",
 		InputHash: strings.Repeat("f", 64), EvidenceSetHash: strings.Repeat("e", 64), Input: "canonical source document",
@@ -647,7 +649,7 @@ func TestProjectedEmbeddingRollsBackSucceededRunWhenOwningProjectionFails(t *tes
 	wantErr := errors.New("owning projection rejected")
 	sink := &projectedEmbeddingSinkProbe{runtime: runtime, commitError: wantErr}
 	_, err = service.ExecuteProjectedEmbedding(context.Background(), ProjectedEmbeddingExecutionInput{
-		TargetType: "document_version", TargetID: 202,
+		TargetType: "document_version", TargetID: 202, TargetVersion: 1,
 		PromptVersion: "document-embedding-v1", InputSchemaVersion: "canonical-plaintext-v1",
 		SchemaVersion: "embedding-1024-v1", ParametersVersion: "document-embedding-v1",
 		InputHash: strings.Repeat("1", 64), EvidenceSetHash: strings.Repeat("2", 64), Input: "projection must roll back",
@@ -759,26 +761,26 @@ func applicationEmbeddingProfile() domain.ModelProfile {
 }
 
 func applicationStructuredInput() StructuredExecutionInput {
-	return StructuredExecutionInput{TaskType: domain.TaskTypeTermExpansion, TargetType: "monitor", TargetID: 99,
+	return StructuredExecutionInput{TaskType: domain.TaskTypeTermExpansion, TargetType: "monitor", TargetID: 99, TargetVersion: 1,
 		PromptVersion: "prompt-v1", InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: "params-v1",
 		InputHash: strings.Repeat("a", 64), EvidenceSetHash: strings.Repeat("b", 64), Input: json.RawMessage(`{"objective":"hotkey","clauses":[{"operator":"must","field":"term","value":"hotkey"}],"entities":[],"examples":[],"existing_candidates":[],"output_languages":["en"]}`)}
 }
 
 func applicationRelevanceReviewInput() StructuredExecutionInput {
-	return StructuredExecutionInput{TaskType: domain.TaskTypeRelevanceReview, TargetType: "monitor_match", TargetID: 99,
+	return StructuredExecutionInput{TaskType: domain.TaskTypeRelevanceReview, TargetType: "monitor_match", TargetID: 99, TargetVersion: 1,
 		PromptVersion: "relevance-review-v1", InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: "relevance-v1",
 		InputHash: strings.Repeat("c", 64), EvidenceSetHash: strings.Repeat("d", 64), Input: json.RawMessage(`{"content_excerpt":"A verified OpenAI product announcement.","content_language":"en","monitor_intent":"Track OpenAI product releases.","scoring_version":"relevance-v1","scores":{"semantic":70,"lexical":80,"entity":60,"title":70,"preference":50},"recall_paths":["lexical","vector"],"reason_codes":["lexical_candidate"],"evidence_terms":["OpenAI"]}`)}
 }
 
 func applicationRelevanceReviewFacadeInput() RelevanceReviewRequest {
-	return RelevanceReviewRequest{TargetID: 99, InputHash: strings.Repeat("c", 64),
+	return RelevanceReviewRequest{TargetID: 99, TargetVersion: 1, InputHash: strings.Repeat("c", 64),
 		ContentExcerpt: "A verified OpenAI product announcement.", ContentLanguage: "en", MonitorIntent: "Track OpenAI product releases.", ScoringVersion: "relevance-v1",
 		Scores: RelevanceReviewScores{Semantic: 70, Lexical: 80, Entity: 60, Title: 70, Preference: 50}, RecallPaths: []string{"lexical", "vector"},
 		ReasonCodes: []string{"lexical_candidate", "vector_candidate", "low_confidence"}, EvidenceTerms: []string{"OpenAI"}}
 }
 
 func applicationEmbeddingInput(targetID int64) EmbeddingExecutionInput {
-	return EmbeddingExecutionInput{Target: intelligencepostgres.EmbeddingTargetMonitor, TargetID: targetID,
+	return EmbeddingExecutionInput{Target: intelligencepostgres.EmbeddingTargetMonitor, TargetID: targetID, TargetVersion: 1,
 		PromptVersion: "prompt-v1", InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: "params-v1",
 		InputHash: strings.Repeat("d", 64), EvidenceSetHash: strings.Repeat("e", 64), Input: "hotkey query", QueryText: "hotkey query"}
 }

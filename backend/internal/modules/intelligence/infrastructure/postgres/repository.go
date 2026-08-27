@@ -49,8 +49,8 @@ RETURNING id, version, created_at, updated_at`,
 // semantics and budget limits are always re-read under the transaction lock.
 type ClaimInput struct {
 	TaskType                                                            intelligencedomain.TaskType
-	TargetType                                                          string
-	TargetID, ModelProfileID                                            int64
+	WorkspaceKey, SkillID, TargetType, RuntimeVersion                   string
+	TargetID, TargetVersion, ModelProfileID                             int64
 	PromptVersion, InputSchemaVersion, SchemaVersion, ParametersVersion string
 	InputHash, EvidenceSetHash                                          string
 	Now                                                                 time.Time
@@ -65,7 +65,9 @@ func (repository *Repository) Claim(ctx context.Context, input ClaimInput) (Clai
 	if repository == nil || repository.runtime == nil {
 		return ClaimResult{}, fmt.Errorf("AI run repository is unavailable")
 	}
-	if !input.TaskType.Valid() || strings.TrimSpace(input.TargetType) == "" || input.TargetID <= 0 || input.ModelProfileID <= 0 {
+	if !input.TaskType.Valid() || strings.TrimSpace(input.WorkspaceKey) == "" || strings.TrimSpace(input.SkillID) == "" ||
+		strings.TrimSpace(input.TargetType) == "" || strings.TrimSpace(input.RuntimeVersion) == "" || input.TargetID <= 0 ||
+		input.TargetVersion <= 0 || input.ModelProfileID <= 0 {
 		return ClaimResult{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
 	}
 	if input.Now.IsZero() {
@@ -83,7 +85,8 @@ func (repository *Repository) Claim(ctx context.Context, input ClaimInput) (Clai
 			return intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)
 		}
 		reuseKey, err := intelligencedomain.NewReuseKey(intelligencedomain.ReuseKeyInput{
-			TaskType: input.TaskType, TargetType: input.TargetType, TargetID: input.TargetID, ModelProfileID: input.ModelProfileID,
+			TaskType: input.TaskType, WorkspaceKey: input.WorkspaceKey, SkillID: input.SkillID, TargetType: input.TargetType,
+			TargetID: input.TargetID, TargetVersion: input.TargetVersion, RuntimeVersion: input.RuntimeVersion, ModelProfileID: input.ModelProfileID,
 			ModelProfileVersion: profile.Version, ModelVersion: profile.ModelVersion, PromptVersion: input.PromptVersion,
 			InputSchemaVersion: input.InputSchemaVersion, SchemaVersion: input.SchemaVersion, ParametersVersion: input.ParametersVersion,
 			InputHash: input.InputHash, EvidenceSetHash: input.EvidenceSetHash,
@@ -120,18 +123,20 @@ func (repository *Repository) Claim(ctx context.Context, input ClaimInput) (Clai
 		}
 		lease := input.Now.Add(time.Duration(profile.TimeoutSeconds+30) * time.Second)
 		run := intelligencedomain.Run{
-			TaskType: input.TaskType, TargetType: input.TargetType, TargetID: input.TargetID, ModelProfileID: profile.ID,
+			TaskType: input.TaskType, WorkspaceKey: input.WorkspaceKey, SkillID: input.SkillID, TargetType: input.TargetType,
+			TargetID: input.TargetID, TargetVersion: input.TargetVersion, RuntimeVersion: input.RuntimeVersion, ModelProfileID: profile.ID,
 			ModelProfileVersion: profile.Version, ModelVersion: profile.ModelVersion, ReuseKey: reuseKey,
 			Status: intelligencedomain.RunStatusQueued, ReservedCost: profile.MaxCost, LeaseExpiresAt: &lease,
 		}
 		if err := transaction.SQL.QueryRowContext(ctx, `
 INSERT INTO ai_runs (
- task_type,target_type,target_id,model_profile_id,prompt_version,schema_version,input_hash,status,
+ workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,prompt_version,schema_version,input_hash,status,
  model_profile_version,model_version,parameters_version,input_schema_version,evidence_set_hash,reuse_key,
  attempt,max_attempts,budget_day,reserved_cost,lease_expires_at
-) VALUES ($1,$2,$3,$4,$5,$6,$7,'queued',$8,$9,$10,$11,$12,$13,1,$14,$15,$16,$17)
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'queued',$12,$13,$14,$15,$16,$17,1,$18,$19,$20,$21)
 RETURNING id`,
-			string(input.TaskType), input.TargetType, input.TargetID, profile.ID, input.PromptVersion, input.SchemaVersion, input.InputHash,
+			input.WorkspaceKey, input.SkillID, string(input.TaskType), input.TargetType, input.TargetID, input.TargetVersion, input.RuntimeVersion,
+			profile.ID, input.PromptVersion, input.SchemaVersion, input.InputHash,
 			profile.Version, profile.ModelVersion, input.ParametersVersion, input.InputSchemaVersion, input.EvidenceSetHash, reuseKey,
 			profile.MaxAttempts, budgetDay, profile.MaxCost, lease,
 		).Scan(&run.ID); err != nil {
@@ -177,7 +182,7 @@ func findReusableRun(ctx context.Context, queryer interface {
 }, reuseKey string) (intelligencedomain.Run, bool, error) {
 	var run intelligencedomain.Run
 	err := queryer.QueryRowContext(ctx, `
-SELECT id,task_type,target_type,target_id,model_profile_id,model_profile_version,model_version,reuse_key,status,
+SELECT id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
 	   structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at
 FROM ai_runs WHERE reuse_key = $1 AND status = 'succeeded'`, reuseKey).Scan(
 		runScanTargets(&run)...,
@@ -195,7 +200,8 @@ FROM ai_runs WHERE reuse_key = $1 AND status = 'succeeded'`, reuseKey).Scan(
 // value remains free of SQL types.
 func runScanTargets(run *intelligencedomain.Run) []any {
 	return []any{
-		&run.ID, &run.TaskType, &run.TargetType, &run.TargetID, &run.ModelProfileID, &run.ModelProfileVersion,
+		&run.ID, &run.WorkspaceKey, &run.SkillID, &run.TaskType, &run.TargetType, &run.TargetID, &run.TargetVersion, &run.RuntimeVersion,
+		&run.ModelProfileID, &run.ModelProfileVersion,
 		&run.ModelVersion, &run.ReuseKey, &run.Status, newRunStructuredResult(run), &run.Tokens, &run.LatencyMS, &run.ReservedCost, &run.Cost,
 		newRunErrorCode(run), newRunLease(run),
 	}
@@ -328,7 +334,7 @@ UPDATE ai_runs
 SET status = $1, cost = $2::numeric, reserved_cost = 0, error_code = $3,
     lease_expires_at = NULL, finished_at = $4
 WHERE id = $5
-RETURNING id,task_type,target_type,target_id,model_profile_id,model_profile_version,model_version,reuse_key,status,
+RETURNING id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
 		  structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at`,
 			string(status), actualCost, errorCode, now, runID,
 		).Scan(runScanTargets(&settled)...); err != nil {
@@ -394,7 +400,7 @@ UPDATE ai_runs
 SET status='succeeded',structured_result=$1::jsonb,tokens=$2,cost=$3::numeric,
     latency_ms=$4,reserved_cost=0,error_code=NULL,lease_expires_at=NULL,finished_at=$5
 WHERE id=$6
-RETURNING id,task_type,target_type,target_id,model_profile_id,model_profile_version,model_version,reuse_key,status,
+RETURNING id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
           structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at`,
 			completion.Result, tokens, locked.ReservedCost, completion.LatencyMS, completion.FinishedAt, completion.RunID,
 		).Scan(runScanTargets(&completed)...); err != nil {

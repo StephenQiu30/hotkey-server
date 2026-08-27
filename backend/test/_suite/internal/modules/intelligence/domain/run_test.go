@@ -8,8 +8,12 @@ import (
 func TestReuseKeyIsStableAndInvalidatedByEverySemanticVersion(t *testing.T) {
 	input := ReuseKeyInput{
 		TaskType:            TaskTypeEmbedding,
+		WorkspaceKey:        "default",
+		SkillID:             "content.embedding.v1",
 		TargetType:          "content",
 		TargetID:            1,
+		TargetVersion:       2,
+		RuntimeVersion:      "structured-provider-v1",
 		ModelProfileID:      7,
 		ModelProfileVersion: 3,
 		ModelVersion:        "2026-07",
@@ -33,6 +37,10 @@ func TestReuseKeyIsStableAndInvalidatedByEverySemanticVersion(t *testing.T) {
 	}
 
 	for _, mutate := range []func(*ReuseKeyInput){
+		func(input *ReuseKeyInput) { input.WorkspaceKey = "workspace-2" },
+		func(input *ReuseKeyInput) { input.SkillID = "content.embedding.v2" },
+		func(input *ReuseKeyInput) { input.TargetVersion = 3 },
+		func(input *ReuseKeyInput) { input.RuntimeVersion = "structured-provider-v2" },
 		func(input *ReuseKeyInput) { input.ModelVersion = "2026-08" },
 		func(input *ReuseKeyInput) { input.PromptVersion = "prompt-v2" },
 		func(input *ReuseKeyInput) { input.InputSchemaVersion = "v2" },
@@ -50,6 +58,30 @@ func TestReuseKeyIsStableAndInvalidatedByEverySemanticVersion(t *testing.T) {
 		if key == first {
 			t.Fatal("NewReuseKey() failed to invalidate changed semantic input")
 		}
+	}
+}
+
+func TestReuseKeyRejectsMissingExactExecutionIdentity(t *testing.T) {
+	base := ReuseKeyInput{
+		TaskType: TaskTypeEmbedding, WorkspaceKey: "default", SkillID: "content.embedding.v1",
+		TargetType: "content", TargetID: 1, TargetVersion: 1, RuntimeVersion: "structured-provider-v1",
+		ModelProfileID: 7, ModelProfileVersion: 3, ModelVersion: "2026-07", PromptVersion: "prompt-v1",
+		InputSchemaVersion: "v1", SchemaVersion: "v1", ParametersVersion: "parameters-v1",
+		InputHash: strings.Repeat("a", 64), EvidenceSetHash: strings.Repeat("b", 64),
+	}
+	for name, mutate := range map[string]func(*ReuseKeyInput){
+		"workspace":      func(input *ReuseKeyInput) { input.WorkspaceKey = "" },
+		"skill":          func(input *ReuseKeyInput) { input.SkillID = "" },
+		"runtime":        func(input *ReuseKeyInput) { input.RuntimeVersion = "" },
+		"target version": func(input *ReuseKeyInput) { input.TargetVersion = 0 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			input := base
+			mutate(&input)
+			if _, err := NewReuseKey(input); err == nil {
+				t.Fatal("NewReuseKey() accepted an incomplete execution identity")
+			}
+		})
 	}
 }
 

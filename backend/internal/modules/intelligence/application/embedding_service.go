@@ -32,7 +32,7 @@ func NewEmbeddingService(dependencies EmbeddingServiceDependencies) (*EmbeddingS
 
 type EmbeddingExecutionInput struct {
 	Target                                                              intelligencepostgres.EmbeddingTarget
-	TargetID                                                            int64
+	TargetID, TargetVersion                                             int64
 	PromptVersion, InputSchemaVersion, SchemaVersion, ParametersVersion string
 	InputHash, EvidenceSetHash                                          string
 	Input, QueryText                                                    string
@@ -47,7 +47,7 @@ type EmbeddingResult struct {
 
 func (service *EmbeddingService) Execute(ctx context.Context, input EmbeddingExecutionInput) (EmbeddingResult, error) {
 	if service == nil || service.runs == nil || service.providers == nil || service.runService == nil ||
-		!validEmbeddingTarget(input.Target) || input.TargetID <= 0 || strings.TrimSpace(input.Input) == "" {
+		!validEmbeddingTarget(input.Target) || input.TargetID <= 0 || input.TargetVersion <= 0 || strings.TrimSpace(input.Input) == "" {
 		return EmbeddingResult{}, domain.NewError(domain.CodeAIModelProfileInvalid)
 	}
 	profiles, err := service.runs.EligibleProfiles(ctx, domain.TaskTypeEmbedding)
@@ -61,7 +61,9 @@ func (service *EmbeddingService) Execute(ctx context.Context, input EmbeddingExe
 			continue
 		}
 		claim, err := service.runs.Claim(ctx, intelligencepostgres.ClaimInput{
-			TaskType: domain.TaskTypeEmbedding, TargetType: string(input.Target), TargetID: input.TargetID, ModelProfileID: profile.ID,
+			TaskType: domain.TaskTypeEmbedding, WorkspaceKey: DefaultWorkspaceKey, SkillID: EmbeddingSkillID,
+			TargetType: string(input.Target), TargetID: input.TargetID, TargetVersion: input.TargetVersion,
+			RuntimeVersion: StructuredRuntimeVersion, ModelProfileID: profile.ID,
 			PromptVersion: input.PromptVersion, InputSchemaVersion: input.InputSchemaVersion, SchemaVersion: input.SchemaVersion,
 			ParametersVersion: input.ParametersVersion, InputHash: input.InputHash, EvidenceSetHash: input.EvidenceSetHash, Now: service.runService.now(),
 		})

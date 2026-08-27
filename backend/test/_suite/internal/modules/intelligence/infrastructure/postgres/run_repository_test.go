@@ -158,6 +158,32 @@ func TestRunRepositoryCancellationReleasesBudgetReservation(t *testing.T) {
 	if reserved != "0.0000" {
 		t.Fatalf("cancelled ledger reservation = %s, want 0.0000", reserved)
 	}
+	replacement, err := repository.Claim(context.Background(), claim)
+	if err != nil || replacement.Reused || replacement.Run.ID == created.Run.ID {
+		t.Fatalf("Claim(after cancellation) = %#v / %v, want a new run", replacement, err)
+	}
+}
+
+func TestRunRepositoryNeverReusesFailedRun(t *testing.T) {
+	runtime := openIntelligenceRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := intelligencepostgres.NewRepository(runtime)
+	profile := testEmbeddingProfile()
+	if err := repository.CreateProfile(context.Background(), &profile); err != nil {
+		t.Fatalf("CreateProfile() error = %v", err)
+	}
+	claim := testClaim(profile)
+	created, err := repository.Claim(context.Background(), claim)
+	if err != nil {
+		t.Fatalf("Claim() error = %v", err)
+	}
+	if _, err := repository.Fail(context.Background(), created.Run.ID, intelligencedomain.CodeAIProviderTransient, claim.Now.Add(time.Second)); err != nil {
+		t.Fatalf("Fail() error = %v", err)
+	}
+	replacement, err := repository.Claim(context.Background(), claim)
+	if err != nil || replacement.Reused || replacement.Run.ID == created.Run.ID {
+		t.Fatalf("Claim(after failure) = %#v / %v, want a new run", replacement, err)
+	}
 }
 
 func TestRunRepositoryClaimReclaimsExpiredProfileDayReservationsBeforeReserving(t *testing.T) {
