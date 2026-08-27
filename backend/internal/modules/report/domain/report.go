@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -54,13 +55,32 @@ func PeriodFor(at time.Time, reportType ReportType, location *time.Location) (Pe
 }
 
 type Item struct {
-	EventID, EventUpdateID          int64
-	Rank                            int
-	Title, Summary, InclusionReason string
-	EvidenceSetHash                 string
-	ReasonCodes                     []string
-	HeatScore                       float64
+	// EventID/EventUpdateID retain read compatibility for reports frozen before
+	// Product Event v2. New drafts freeze the exact MicroEvent update and cited
+	// summary instead; legacy aggregates are never valid publication inputs.
+	EventID, EventUpdateID                              int64
+	MicroEventID, MicroEventVersion, MicroEventUpdateID int64
+	MicroEventSummaryID                                 int64
+	Rank                                                int
+	Title, Summary, InclusionReason                     string
+	EvidenceSetHash                                     string
+	ReasonCodes                                         []string
+	HeatScore                                           float64
+	Sentences                                           []Sentence
 }
+
+type Sentence struct {
+	SourceSummarySentenceID int64
+	Ordinal                 int
+	Text                    string
+	EditorialNote           bool
+	DecisionOrigin          string
+	ModelRunID, ActorUserID *int64
+	ClaimEvidenceVersionIDs []int64
+}
+
+var ErrEvidenceInvalid = errors.New("report evidence is invalid")
+
 type Report struct {
 	ID, Version, VersionNo int64
 	Type                   ReportType
@@ -111,9 +131,82 @@ func (report Report) Validate() error {
 		return fmt.Errorf("published report must be frozen")
 	}
 	for _, item := range report.Items {
-		if item.EventID <= 0 || item.EventUpdateID <= 0 || item.Rank <= 0 || strings.TrimSpace(item.Title) == "" || item.HeatScore < 0 || len(item.EvidenceSetHash) != 64 || len(item.ReasonCodes) == 0 {
-			return fmt.Errorf("invalid report item")
+		if err := item.validate(); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func (report Report) ValidatePublicationShape() error {
+	if err := report.Validate(); err != nil {
+		return fmt.Errorf("%w: %v", ErrEvidenceInvalid, err)
+	}
+	for _, item := range report.Items {
+		if !item.isMicroEventSnapshot() || len(item.Sentences) == 0 {
+			return fmt.Errorf("%w: publication requires cited Product Event snapshots", ErrEvidenceInvalid)
+		}
+		for _, sentence := range item.Sentences {
+			if err := sentence.validate(); err != nil {
+				return fmt.Errorf("%w: %v", ErrEvidenceInvalid, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (item Item) validate() error {
+	if item.Rank <= 0 || strings.TrimSpace(item.Title) == "" || item.HeatScore < 0 || len(item.EvidenceSetHash) != 64 || len(item.ReasonCodes) == 0 {
+		return fmt.Errorf("invalid report item")
+	}
+	legacy := item.EventID > 0 && item.EventUpdateID > 0 && item.MicroEventID == 0 && item.MicroEventVersion == 0 && item.MicroEventUpdateID == 0 && item.MicroEventSummaryID == 0
+	v2 := item.isMicroEventSnapshot() && item.EventID == 0 && item.EventUpdateID == 0
+	if !legacy && !v2 || legacy && len(item.Sentences) != 0 {
+		return fmt.Errorf("invalid report item identity")
+	}
+	for index, sentence := range item.Sentences {
+		if sentence.Ordinal != index {
+			return fmt.Errorf("invalid report sentence ordinal")
+		}
+		if err := sentence.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (item Item) isMicroEventSnapshot() bool {
+	return item.MicroEventID > 0 && item.MicroEventVersion > 0 && item.MicroEventUpdateID > 0 && item.MicroEventSummaryID > 0
+}
+
+func (sentence Sentence) validate() error {
+	if sentence.SourceSummarySentenceID <= 0 || sentence.Ordinal < 0 || strings.TrimSpace(sentence.Text) == "" || len(sentence.Text) > 8000 {
+		return fmt.Errorf("invalid report sentence")
+	}
+	switch sentence.DecisionOrigin {
+	case "automatic":
+		if sentence.EditorialNote || sentence.ModelRunID == nil || *sentence.ModelRunID <= 0 || sentence.ActorUserID != nil {
+			return fmt.Errorf("invalid automatic report sentence provenance")
+		}
+	case "manual":
+		if sentence.ModelRunID != nil || sentence.ActorUserID == nil || *sentence.ActorUserID <= 0 {
+			return fmt.Errorf("invalid manual report sentence provenance")
+		}
+	default:
+		return fmt.Errorf("invalid report sentence provenance")
+	}
+	if sentence.EditorialNote && len(sentence.ClaimEvidenceVersionIDs) != 0 || !sentence.EditorialNote && len(sentence.ClaimEvidenceVersionIDs) == 0 {
+		return fmt.Errorf("factual report sentence requires ClaimEvidence")
+	}
+	seen := make(map[int64]struct{}, len(sentence.ClaimEvidenceVersionIDs))
+	for _, evidenceID := range sentence.ClaimEvidenceVersionIDs {
+		if evidenceID <= 0 {
+			return fmt.Errorf("invalid report sentence citation")
+		}
+		if _, found := seen[evidenceID]; found {
+			return fmt.Errorf("duplicated report sentence citation")
+		}
+		seen[evidenceID] = struct{}{}
 	}
 	return nil
 }
@@ -133,7 +226,14 @@ func SortItems(items []Item) []Item {
 		if result[i].HeatScore != result[j].HeatScore {
 			return result[i].HeatScore > result[j].HeatScore
 		}
-		return result[i].EventID < result[j].EventID
+		leftID, rightID := result[i].EventID, result[j].EventID
+		if leftID == 0 {
+			leftID = result[i].MicroEventID
+		}
+		if rightID == 0 {
+			rightID = result[j].MicroEventID
+		}
+		return leftID < rightID
 	})
 	for index := range result {
 		result[index].Rank = index + 1

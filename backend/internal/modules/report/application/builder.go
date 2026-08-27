@@ -8,11 +8,16 @@ import (
 )
 
 type EventSnapshot struct {
-	EventID, EventUpdateID int64
-	Title, Summary         string
-	HeatScore              float64
-	EvidenceSetHash        string
-	ReasonCodes            []string
+	// EventID/EventUpdateID are retained for legacy report reads and tests.
+	// New report builds always receive the Product Event v2 identity below.
+	EventID, EventUpdateID                              int64
+	MicroEventID, MicroEventVersion, MicroEventUpdateID int64
+	MicroEventSummaryID                                 int64
+	Title, Summary                                      string
+	HeatScore                                           float64
+	EvidenceSetHash                                     string
+	ReasonCodes                                         []string
+	Sentences                                           []domain.Sentence
 }
 type Builder struct{}
 
@@ -28,7 +33,17 @@ func (builder *Builder) Build(id int64, reportType domain.ReportType, at time.Ti
 	}
 	items := make([]domain.Item, 0, len(events))
 	for _, event := range events {
-		items = append(items, domain.Item{EventID: event.EventID, EventUpdateID: event.EventUpdateID, Title: event.Title, Summary: event.Summary, InclusionReason: "period_latest_event_update", HeatScore: event.HeatScore, EvidenceSetHash: event.EvidenceSetHash, ReasonCodes: append([]string(nil), event.ReasonCodes...)})
+		item := domain.Item{EventID: event.EventID, EventUpdateID: event.EventUpdateID, Title: event.Title,
+			Summary: event.Summary, InclusionReason: "period_latest_event_update", HeatScore: event.HeatScore,
+			EvidenceSetHash: event.EvidenceSetHash, ReasonCodes: append([]string(nil), event.ReasonCodes...)}
+		if event.MicroEventID > 0 {
+			item.EventID, item.EventUpdateID = 0, 0
+			item.MicroEventID, item.MicroEventVersion = event.MicroEventID, event.MicroEventVersion
+			item.MicroEventUpdateID, item.MicroEventSummaryID = event.MicroEventUpdateID, event.MicroEventSummaryID
+			item.InclusionReason = "period_latest_product_event_update"
+			item.Sentences = cloneReportSentences(event.Sentences)
+		}
+		items = append(items, item)
 	}
 	items = domain.SortItems(items)
 	title := "日报"
@@ -42,8 +57,16 @@ func (builder *Builder) Build(id int64, reportType domain.ReportType, at time.Ti
 	return report, nil
 }
 
+func cloneReportSentences(sentences []domain.Sentence) []domain.Sentence {
+	result := append([]domain.Sentence(nil), sentences...)
+	for index := range result {
+		result[index].ClaimEvidenceVersionIDs = append([]int64(nil), sentences[index].ClaimEvidenceVersionIDs...)
+	}
+	return result
+}
+
 func (builder *Builder) Publish(report domain.Report) (domain.Report, error) {
-	if err := report.Validate(); err != nil {
+	if err := report.ValidatePublicationShape(); err != nil {
 		return domain.Report{}, err
 	}
 	report.Status = domain.ReportPublished

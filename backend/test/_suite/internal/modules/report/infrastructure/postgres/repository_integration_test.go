@@ -5,19 +5,16 @@ package postgres
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strings"
 	"testing"
 	"time"
 
 	reportapp "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
-	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
-func TestReportRepositoryPersistsItemsAndFreezesPublishedVersion(t *testing.T) {
+func TestReportRepositoryKeepsLegacyItemsReadableButRejectsNewPublication(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))
 	if err != nil {
@@ -54,24 +51,14 @@ func TestReportRepositoryPersistsItemsAndFreezesPublishedVersion(t *testing.T) {
 		t.Fatalf("report items = %d, want 1", items)
 	}
 
-	published, err := builder.Publish(report)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := repository.Save(ctx, published); err != nil {
-		t.Fatal(err)
-	}
-	if err := repository.Save(ctx, published); !errors.Is(err, sharedrepository.ErrImmutable) {
-		t.Fatalf("save published report error = %v, want ErrImmutable", err)
-	}
-	if err := repository.Save(ctx, report); !errors.Is(err, sharedrepository.ErrImmutable) {
-		t.Fatalf("save stale draft error = %v, want ErrImmutable", err)
+	if _, err := builder.Publish(report); !errors.Is(err, domain.ErrEvidenceInvalid) {
+		t.Fatalf("publish legacy report error = %v, want ErrEvidenceInvalid", err)
 	}
 	loaded, err := repository.Get(ctx, report.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Status != domain.ReportPublished || !loaded.Frozen || len(loaded.Items) != 1 || loaded.PublishedAt == nil {
+	if loaded.Status != domain.ReportDraft || loaded.Frozen || len(loaded.Items) != 1 || loaded.PublishedAt != nil {
 		t.Fatalf("loaded report = %#v", loaded)
 	}
 	if len(loaded.Items[0].ReasonCodes) != 1 || loaded.Items[0].ReasonCodes[0] != "first_snapshot" {
@@ -93,25 +80,15 @@ func TestCandidateReaderSelectsLatestUpdateInsidePeriod(t *testing.T) {
 	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
 		t.Fatal(err)
 	}
-	start := time.Date(2026, 8, 8, 0, 0, 0, 0, time.UTC)
-	var eventID, firstID, latestID int64
-	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO events (event_key,title_zh,summary,lifecycle_status,first_seen_at,last_seen_at) VALUES ('period-event','周期事件','projection','active',$1,$2) RETURNING id`, start.Add(-time.Hour), start.Add(time.Hour)).Scan(&eventID); err != nil {
-		t.Fatal(err)
-	}
-	insert := func(sequence int, observed time.Time, heat int, hashChar string, id *int64) {
-		err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO event_updates (event_id,sequence_no,kind,summary,observed_at,reason_codes,before_state,after_state,evidence_set_hash,idempotency_key) VALUES ($1,$2,'metric_changed',$3,$4,ARRAY['heat_delta'],'{}',jsonb_build_object('heat_score',$5::numeric),repeat($6::text,64),md5(random()::text)||md5(random()::text)) RETURNING id`, eventID, sequence, fmt.Sprintf("snapshot-%d", sequence), observed, heat, hashChar).Scan(id)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	insert(1, start.Add(-time.Minute), 20, "a", &firstID)
-	insert(2, start.Add(time.Hour), 60, "b", &firstID)
-	insert(3, start.Add(2*time.Hour), 88, "c", &latestID)
-	items, err := NewCandidateReader(runtime).ListForPeriod(ctx, nil, start, start.AddDate(0, 0, 1), 100)
+	fixture := seedReportEvidenceFixture(t, runtime)
+	items, err := NewCandidateReader(runtime).ListForPeriod(ctx, nil, fixture.report.Period.Start, fixture.report.Period.End, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].EventUpdateID != latestID || items[0].HeatScore != 88 || items[0].EvidenceSetHash != strings.Repeat("c", 64) {
+	if len(items) != 1 || items[0].MicroEventID != fixture.microEventID ||
+		items[0].MicroEventUpdateID != fixture.microEventUpdateID || items[0].MicroEventSummaryID != fixture.summaryID ||
+		len(items[0].Sentences) != 1 || len(items[0].Sentences[0].ClaimEvidenceVersionIDs) != 1 ||
+		items[0].Sentences[0].ClaimEvidenceVersionIDs[0] != fixture.claimEvidenceVersionID {
 		t.Fatalf("period candidates = %#v", items)
 	}
 }

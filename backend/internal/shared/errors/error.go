@@ -47,6 +47,7 @@ const (
 	CodeAIRunInProgress                  = 70007
 	CodeAIEmbeddingInvalid               = 70008
 	CodeAIRunLeaseExpired                = 70009
+	CodeReportEvidenceInvalid            = 80000
 	CodeInternal                         = 90000
 	CodeUnavailable                      = 90001
 	CodeBadGateway                       = 90002
@@ -105,6 +106,7 @@ func init() {
 		{Code: CodeAIRunInProgress, HTTPStatus: stdhttp.StatusConflict, Message: "AI run in progress", Retryable: true},
 		{Code: CodeAIEmbeddingInvalid, HTTPStatus: stdhttp.StatusBadRequest, Message: "AI embedding invalid"},
 		{Code: CodeAIRunLeaseExpired, HTTPStatus: stdhttp.StatusServiceUnavailable, Message: "AI run lease expired", Retryable: true},
+		{Code: CodeReportEvidenceInvalid, HTTPStatus: stdhttp.StatusConflict, Message: "report evidence invalid"},
 		{Code: CodeInternal, HTTPStatus: stdhttp.StatusInternalServerError, Message: "internal server error"},
 		{Code: CodeUnavailable, HTTPStatus: stdhttp.StatusServiceUnavailable, Message: "service unavailable", Retryable: true},
 		{Code: CodeBadGateway, HTTPStatus: stdhttp.StatusBadGateway, Message: "bad gateway", Retryable: true},

@@ -278,6 +278,9 @@ func (service *Service) PublishAs(ctx context.Context, reportID, actorID int64) 
 		published.UpdatedBy = &actorID
 	}
 	commit := func(transactionCtx context.Context) error {
+		if err := service.store.ValidatePublication(transactionCtx, report); err != nil {
+			return err
+		}
 		if err := service.store.Save(transactionCtx, published); err != nil {
 			return err
 		}

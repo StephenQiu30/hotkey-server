@@ -24,15 +24,31 @@ type CreateReportRequest struct {
 }
 
 type ReportItemResponse struct {
-	EventID         int64    `json:"event_id"`
-	EventUpdateID   int64    `json:"event_update_id"`
-	Rank            int      `json:"rank"`
-	InclusionReason string   `json:"inclusion_reason"`
-	Title           string   `json:"title"`
-	Summary         string   `json:"summary"`
-	HeatScore       float64  `json:"heat_score"`
-	EvidenceSetHash string   `json:"evidence_set_hash"`
-	ReasonCodes     []string `json:"reason_codes"`
+	EventID             int64                    `json:"event_id,omitempty"`
+	EventUpdateID       int64                    `json:"event_update_id,omitempty"`
+	MicroEventID        int64                    `json:"micro_event_id,omitempty"`
+	MicroEventVersion   int64                    `json:"micro_event_version,omitempty"`
+	MicroEventUpdateID  int64                    `json:"micro_event_update_id,omitempty"`
+	MicroEventSummaryID int64                    `json:"micro_event_summary_id,omitempty"`
+	Rank                int                      `json:"rank"`
+	InclusionReason     string                   `json:"inclusion_reason"`
+	Title               string                   `json:"title"`
+	Summary             string                   `json:"summary"`
+	HeatScore           float64                  `json:"heat_score"`
+	EvidenceSetHash     string                   `json:"evidence_set_hash"`
+	ReasonCodes         []string                 `json:"reason_codes"`
+	Sentences           []ReportSentenceResponse `json:"sentences"`
+}
+
+type ReportSentenceResponse struct {
+	SourceSummarySentenceID int64   `json:"source_summary_sentence_id"`
+	Ordinal                 int     `json:"ordinal"`
+	Text                    string  `json:"text"`
+	EditorialNote           bool    `json:"editorial_note"`
+	DecisionOrigin          string  `json:"decision_origin"`
+	ModelRunID              *int64  `json:"model_run_id,omitempty"`
+	ActorUserID             *int64  `json:"actor_user_id,omitempty"`
+	ClaimEvidenceVersionIDs []int64 `json:"claim_evidence_version_ids"`
 }
 
 type ReportResponse struct {
@@ -69,7 +85,19 @@ type ReportPreviewResponse struct {
 func reportResponse(report domain.Report) ReportResponse {
 	items := make([]ReportItemResponse, 0, len(report.Items))
 	for _, item := range report.Items {
-		items = append(items, ReportItemResponse{EventID: item.EventID, EventUpdateID: item.EventUpdateID, Rank: item.Rank, InclusionReason: item.InclusionReason, Title: item.Title, Summary: item.Summary, HeatScore: item.HeatScore, EvidenceSetHash: item.EvidenceSetHash, ReasonCodes: append([]string(nil), item.ReasonCodes...)})
+		sentences := make([]ReportSentenceResponse, 0, len(item.Sentences))
+		for _, sentence := range item.Sentences {
+			sentences = append(sentences, ReportSentenceResponse{SourceSummarySentenceID: sentence.SourceSummarySentenceID,
+				Ordinal: sentence.Ordinal, Text: sentence.Text, EditorialNote: sentence.EditorialNote,
+				DecisionOrigin: sentence.DecisionOrigin, ModelRunID: sentence.ModelRunID, ActorUserID: sentence.ActorUserID,
+				ClaimEvidenceVersionIDs: append([]int64(nil), sentence.ClaimEvidenceVersionIDs...)})
+		}
+		items = append(items, ReportItemResponse{EventID: item.EventID, EventUpdateID: item.EventUpdateID,
+			MicroEventID: item.MicroEventID, MicroEventVersion: item.MicroEventVersion,
+			MicroEventUpdateID: item.MicroEventUpdateID, MicroEventSummaryID: item.MicroEventSummaryID,
+			Rank: item.Rank, InclusionReason: item.InclusionReason, Title: item.Title, Summary: item.Summary,
+			HeatScore: item.HeatScore, EvidenceSetHash: item.EvidenceSetHash,
+			ReasonCodes: append([]string(nil), item.ReasonCodes...), Sentences: sentences})
 	}
 	timezone := ""
 	if report.Period.Location != nil {

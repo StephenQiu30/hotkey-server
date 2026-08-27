@@ -10,6 +10,7 @@ type Store interface {
 	Save(context.Context, domain.Report) error
 	Get(context.Context, int64) (domain.Report, error)
 	List(context.Context, domain.ListQuery) (domain.Page, error)
+	ValidatePublication(context.Context, domain.Report) error
 }
 
 func Save(ctx context.Context, store Store, report domain.Report) error {

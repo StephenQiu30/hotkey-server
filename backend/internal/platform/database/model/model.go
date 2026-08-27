@@ -405,6 +405,14 @@ type ReportItem struct {
 	Record
 	ReportID, EventID int64
 }
+type ReportItemSentence struct {
+	Record
+	ReportItemID, SourceSummarySentenceID int64
+}
+type ReportItemSentenceEvidence struct {
+	OperationalRecord
+	ReportItemSentenceID, ClaimEvidenceVersionID int64
+}
 type ReportSubscription struct {
 	Record
 	UserID int64
@@ -707,7 +715,9 @@ var specs = []Spec{
 	{"knowledge_change_proposals", LifecycleBusiness, []string{"id", "document_id", "change_type", "status"}},
 	{"knowledge_annotations", LifecycleBusiness, []string{"id", "document_id", "annotation_type", "deleted_at"}},
 	{"reports", LifecycleBusiness, []string{"id", "report_type", "period_start", "status", "deleted_at"}},
-	{"report_items", LifecycleBusiness, []string{"id", "report_id", "event_id", "rank"}},
+	{"report_items", LifecycleBusiness, []string{"id", "report_id", "event_id", "micro_event_id", "micro_event_version", "micro_event_update_id", "micro_event_summary_id", "rank"}},
+	{"report_item_sentences", LifecycleBusiness, []string{"id", "version", "report_item_id", "source_summary_sentence_id", "ordinal", "sentence", "editorial_note", "decision_origin", "model_run_id", "actor_user_id", "created_at"}},
+	{"report_item_sentence_evidences", LifecycleOperational, []string{"id", "report_item_sentence_id", "claim_evidence_version_id", "ordinal", "created_at"}},
 	{"report_subscriptions", LifecycleBusiness, []string{"id", "user_id", "channel", "deleted_at"}},
 	{"ai_model_profiles", LifecycleBusiness, []string{"id", "version", "name", "task_type", "provider", "model_name", "model_version", "credential_ref", "embedding_dimensions", "timeout_seconds", "max_attempts", "max_cost", "daily_budget", "fallback_priority", "enabled", "deleted_at"}},
 	{"retention_policies", LifecycleBusiness, []string{"id", "data_class", "retention_days", "action"}},

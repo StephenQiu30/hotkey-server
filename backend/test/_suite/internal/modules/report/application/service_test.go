@@ -11,7 +11,9 @@ import (
 )
 
 type serviceStoreFake struct {
-	reports map[int64]domain.Report
+	reports                map[int64]domain.Report
+	publicationError       error
+	publicationValidations int
 }
 
 func (fake *serviceStoreFake) Save(_ context.Context, report domain.Report) error {
@@ -29,6 +31,11 @@ func (fake *serviceStoreFake) Get(_ context.Context, reportID int64) (domain.Rep
 
 func (fake *serviceStoreFake) List(_ context.Context, _ domain.ListQuery) (domain.Page, error) {
 	return domain.Page{}, nil
+}
+
+func (fake *serviceStoreFake) ValidatePublication(_ context.Context, _ domain.Report) error {
+	fake.publicationValidations++
+	return fake.publicationError
 }
 
 func (fake *serviceStoreFake) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
@@ -52,7 +59,8 @@ func TestServicePublishFreezesDraftAndRejectsRepeat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := &serviceStoreFake{reports: map[int64]domain.Report{7: {ID: 7, Version: 1, VersionNo: 1, Type: domain.ReportDaily, Period: period, Title: "daily", Status: domain.ReportDraft, Items: []domain.Item{{EventID: 9, EventUpdateID: 19, Rank: 1, Title: "event", HeatScore: 80, EvidenceSetHash: testHash, ReasonCodes: []string{"rising"}}}}}}
+	draft := citedReportDraft(period, 7)
+	store := &serviceStoreFake{reports: map[int64]domain.Report{7: draft}}
 	service, err := NewService(store)
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +71,9 @@ func TestServicePublishFreezesDraftAndRejectsRepeat(t *testing.T) {
 	}
 	if published.Status != domain.ReportPublished || !published.Frozen || published.Version != 2 {
 		t.Fatalf("published report = %#v", published)
+	}
+	if store.publicationValidations != 1 {
+		t.Fatalf("publication validations = %d, want 1", store.publicationValidations)
 	}
 	if _, err := service.Publish(context.Background(), 7); !errors.Is(err, sharedrepository.ErrImmutable) {
 		t.Fatalf("repeat publish error = %v, want ErrImmutable", err)
@@ -86,7 +97,7 @@ func TestServiceBuildUsesTimezoneAndDeterministicFallback(t *testing.T) {
 
 func TestServicePublishRollsBackWhenArchiveProposalFails(t *testing.T) {
 	period, _ := domain.PeriodFor(time.Now().UTC(), domain.ReportDaily, time.UTC)
-	draft := domain.Report{ID: 11, Version: 1, VersionNo: 1, Type: domain.ReportDaily, Period: period, Title: "daily", Status: domain.ReportDraft, Items: []domain.Item{{EventID: 9, EventUpdateID: 19, Rank: 1, Title: "event", HeatScore: 80, EvidenceSetHash: testHash, ReasonCodes: []string{"rising"}}}}
+	draft := citedReportDraft(period, 11)
 	store := &serviceStoreFake{reports: map[int64]domain.Report{draft.ID: draft}}
 	service, err := NewService(store)
 	if err != nil {
@@ -99,6 +110,31 @@ func TestServicePublishRollsBackWhenArchiveProposalFails(t *testing.T) {
 	if stored := store.reports[draft.ID]; stored.Status != domain.ReportDraft || stored.Version != 1 {
 		t.Fatalf("report escaped failed transaction: %#v", stored)
 	}
+}
+
+func TestServicePublishRejectsInvalidEvidenceBeforeAnyWrite(t *testing.T) {
+	period, _ := domain.PeriodFor(time.Now().UTC(), domain.ReportDaily, time.UTC)
+	draft := citedReportDraft(period, 13)
+	store := &serviceStoreFake{reports: map[int64]domain.Report{draft.ID: draft}, publicationError: domain.ErrEvidenceInvalid}
+	service, err := NewService(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.PublishAs(context.Background(), draft.ID, 7); !errors.Is(err, domain.ErrEvidenceInvalid) {
+		t.Fatalf("PublishAs() error = %v, want ErrEvidenceInvalid", err)
+	}
+	if stored := store.reports[draft.ID]; stored.Status != domain.ReportDraft || stored.Version != 1 || stored.UpdatedBy != nil {
+		t.Fatalf("invalid evidence changed report: %#v", stored)
+	}
+}
+
+func citedReportDraft(period domain.Period, id int64) domain.Report {
+	actorID := int64(3)
+	return domain.Report{ID: id, Version: 1, VersionNo: 1, Type: domain.ReportDaily, Period: period, Title: "daily", Status: domain.ReportDraft,
+		Items: []domain.Item{{MicroEventID: 9, MicroEventVersion: 2, MicroEventUpdateID: 19, MicroEventSummaryID: 29,
+			Rank: 1, Title: "event", HeatScore: 80, EvidenceSetHash: testHash, ReasonCodes: []string{"rising"},
+			Sentences: []domain.Sentence{{SourceSummarySentenceID: 39, Ordinal: 0, Text: "Sourced fact.",
+				DecisionOrigin: "manual", ActorUserID: &actorID, ClaimEvidenceVersionIDs: []int64{49}}}}}}
 }
 
 const testHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
