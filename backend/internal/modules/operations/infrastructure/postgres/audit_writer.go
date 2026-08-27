@@ -15,6 +15,7 @@ import (
 )
 
 var ErrTransactionRequired = errors.New("operations audit writer requires a caller transaction")
+var ErrIndependentAuditInsideTransaction = errors.New("independent operations audit cannot reuse a caller transaction")
 
 type AuditWriter struct{ runtime *database.Runtime }
 
@@ -55,6 +56,21 @@ INSERT INTO audit_logs (
 		entry.RequestID, entry.TraceID, entry.IdempotencyKey, entry.CommandFingerprint,
 		before, after, string(entry.Result), entry.IPHash)
 	return databaserepository.MapError(err)
+}
+
+// WriteIndependent appends an attempt audit after a rejected or rolled-back
+// business operation. It must start a distinct transaction so the failed
+// business transaction cannot erase the security record.
+func (writer *AuditWriter) WriteIndependent(ctx context.Context, entry operationsdomain.AuditEntry) error {
+	if writer == nil || writer.runtime == nil || writer.runtime.SQL == nil {
+		return sharedrepository.ErrUnavailable
+	}
+	if _, found := database.TransactionFromContext(ctx); found {
+		return ErrIndependentAuditInsideTransaction
+	}
+	return writer.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+		return writer.Write(transactionCtx, entry)
+	})
 }
 
 func marshalMetadata(metadata map[string]any) ([]byte, error) {

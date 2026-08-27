@@ -127,6 +127,10 @@ type rightsManagementAuditAdapter struct {
 	writer operationsapplication.AuditWriter
 }
 
+type independentOperationsAuditWriter interface {
+	WriteIndependent(context.Context, operationsdomain.AuditEntry) error
+}
+
 var _ sourceapplication.RightsManagementAuditWriter = (*rightsManagementAuditAdapter)(nil)
 
 func newRightsManagementAuditWriter(writer *operationspostgres.AuditWriter) sourceapplication.RightsManagementAuditWriter {
@@ -142,6 +146,64 @@ func (adapter *rightsManagementAuditAdapter) WriteRightsMutation(ctx context.Con
 		return err
 	}
 	return adapter.writer.Write(ctx, entry)
+}
+
+func (adapter *rightsManagementAuditAdapter) WriteRightsMutationAttempt(ctx context.Context, event sourceapplication.RightsManagementAttemptAuditDTO) error {
+	if adapter == nil || adapter.writer == nil {
+		return sharedrepository.ErrUnavailable
+	}
+	independent, ok := adapter.writer.(independentOperationsAuditWriter)
+	if !ok {
+		return sharedrepository.ErrUnavailable
+	}
+	entry, err := rightsManagementAttemptAuditEntry(ctx, event)
+	if err != nil {
+		return err
+	}
+	return independent.WriteIndependent(ctx, entry)
+}
+
+func rightsManagementAttemptAuditEntry(ctx context.Context, event sourceapplication.RightsManagementAttemptAuditDTO) (operationsdomain.AuditEntry, error) {
+	if event.ActorID <= 0 || event.SourceConnectionID != nil && *event.SourceConnectionID <= 0 ||
+		event.IdempotencyKey != "" || event.CommandFingerprint != "" {
+		return operationsdomain.AuditEntry{}, fmt.Errorf("%w: rights attempt audit identity or receipt is invalid", sharedrepository.ErrInvalidInput)
+	}
+	result := operationsdomain.AuditResult(event.Result)
+	if result != operationsdomain.AuditResultFailure && result != operationsdomain.AuditResultDenied {
+		return operationsdomain.AuditEntry{}, fmt.Errorf("%w: rights attempt audit result is invalid", sharedrepository.ErrInvalidInput)
+	}
+	allowedReasons := map[string]struct{}{
+		sourceapplication.RightsManagementReasonInvalidInput:          {},
+		sourceapplication.RightsManagementReasonAuthorizationDenied:   {},
+		sourceapplication.RightsManagementReasonIdempotencyConflict:   {},
+		sourceapplication.RightsManagementReasonVersionConflict:       {},
+		sourceapplication.RightsManagementReasonDependencyUnavailable: {},
+	}
+	if _, allowed := allowedReasons[event.ReasonCode]; !allowed {
+		return operationsdomain.AuditEntry{}, fmt.Errorf("%w: rights attempt audit reason is invalid", sharedrepository.ErrInvalidInput)
+	}
+	entry := operationsdomain.AuditEntry{
+		ActorType: "user", ActorID: event.ActorID,
+		RequestID: sharedrequestcontext.RequestID(ctx), TraceID: sharedrequestcontext.TraceID(ctx),
+		Result: result, After: map[string]any{"reason_code": event.ReasonCode},
+	}
+	switch event.Operation {
+	case sourceapplication.RightsManagementCreatePolicy:
+		if event.PolicyID != 0 {
+			return operationsdomain.AuditEntry{}, fmt.Errorf("%w: failed policy creation cannot claim a policy identity", sharedrepository.ErrInvalidInput)
+		}
+		entry.Action = operationsdomain.ActionRightsPolicyCreated
+		entry.ResourceType = "rights_policy"
+	case sourceapplication.RightsManagementRecordDecisions:
+		entry.Action = operationsdomain.ActionRightsDecisionBatchRecorded
+		entry.ResourceType = "rights_decision_batch"
+	default:
+		return operationsdomain.AuditEntry{}, fmt.Errorf("%w: rights attempt audit operation is invalid", sharedrepository.ErrInvalidInput)
+	}
+	if err := entry.Validate(); err != nil {
+		return operationsdomain.AuditEntry{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return entry, nil
 }
 
 func rightsManagementAuditEntry(ctx context.Context, event sourceapplication.RightsManagementAuditDTO) (operationsdomain.AuditEntry, error) {

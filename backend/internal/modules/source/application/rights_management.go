@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
@@ -207,8 +208,36 @@ type RightsManagementAuditDTO struct {
 	CommandFingerprint string
 }
 
+type RightsManagementAttemptResult string
+
+const (
+	RightsManagementAttemptFailure RightsManagementAttemptResult = "failure"
+	RightsManagementAttemptDenied  RightsManagementAttemptResult = "denied"
+
+	RightsManagementReasonInvalidInput          = "invalid_input"
+	RightsManagementReasonAuthorizationDenied   = "authorization_denied"
+	RightsManagementReasonIdempotencyConflict   = "idempotency_conflict"
+	RightsManagementReasonVersionConflict       = "version_conflict"
+	RightsManagementReasonDependencyUnavailable = "dependency_unavailable"
+)
+
+// RightsManagementAttemptAuditDTO contains only bounded correlation facts.
+// Failure attempts deliberately omit command receipts because the same
+// idempotency key may already belong to a successful immutable audit row.
+type RightsManagementAttemptAuditDTO struct {
+	ActorID            int64
+	Operation          RightsManagementOperation
+	SourceConnectionID *int64
+	PolicyID           int64
+	IdempotencyKey     string
+	CommandFingerprint string
+	Result             RightsManagementAttemptResult
+	ReasonCode         string
+}
+
 type RightsManagementAuditWriter interface {
 	WriteRightsMutation(context.Context, RightsManagementAuditDTO) error
+	WriteRightsMutationAttempt(context.Context, RightsManagementAttemptAuditDTO) error
 }
 
 // RightsManagementTransactionRunner must place Repository and Audit calls in
@@ -262,14 +291,15 @@ func (service *RightsManagementService) CreatePolicy(ctx context.Context, comman
 	}
 	request, err := prepareCreateRightsPolicy(command)
 	if err != nil {
-		return CreateRightsPolicyResult{}, err
+		return CreateRightsPolicyResult{}, service.writeAttemptAudit(ctx, createPolicyAttempt(command, RightsManagementAttemptFailure, RightsManagementReasonInvalidInput), err)
 	}
 	if err := service.authorizer.AuthorizeRightsMutation(ctx, RightsActorAuthorizationDTO{
 		ActorID: command.ActorID, Operation: RightsManagementCreatePolicy,
 		SourceConnectionID: rightsManagementInt64Pointer(request.SourceConnectionID),
 		ApprovedByUserID:   rightsManagementInt64Pointer(request.ApprovedByUserID),
 	}); err != nil {
-		return CreateRightsPolicyResult{}, err
+		result, reason := rightsManagementAuthorizationAttempt(err)
+		return CreateRightsPolicyResult{}, service.writeAttemptAudit(ctx, createPolicyAttempt(command, result, reason), err)
 	}
 
 	var result CreateRightsPolicyResult
@@ -296,7 +326,8 @@ func (service *RightsManagementService) CreatePolicy(ctx context.Context, comman
 		return nil
 	})
 	if err != nil {
-		return CreateRightsPolicyResult{}, err
+		result, reason := rightsManagementMutationAttempt(err, false)
+		return CreateRightsPolicyResult{}, service.writeAttemptAudit(ctx, createPolicyAttempt(command, result, reason), err)
 	}
 	return result, nil
 }
@@ -307,13 +338,14 @@ func (service *RightsManagementService) RecordDecisions(ctx context.Context, com
 	}
 	prepared, err := prepareRecordRightsDecision(command)
 	if err != nil {
-		return RecordRightsDecisionResult{}, err
+		return RecordRightsDecisionResult{}, service.writeAttemptAudit(ctx, recordDecisionAttempt(command, RightsManagementAttemptFailure, RightsManagementReasonInvalidInput), err)
 	}
 	sourceConnectionID := command.SourceConnectionID
 	if err := service.authorizer.AuthorizeRightsMutation(ctx, RightsActorAuthorizationDTO{
 		ActorID: command.ActorID, Operation: RightsManagementRecordDecisions, SourceConnectionID: &sourceConnectionID,
 	}); err != nil {
-		return RecordRightsDecisionResult{}, err
+		result, reason := rightsManagementAuthorizationAttempt(err)
+		return RecordRightsDecisionResult{}, service.writeAttemptAudit(ctx, recordDecisionAttempt(command, result, reason), err)
 	}
 
 	var result RecordRightsDecisionResult
@@ -358,9 +390,74 @@ func (service *RightsManagementService) RecordDecisions(ctx context.Context, com
 		return nil
 	})
 	if err != nil {
-		return RecordRightsDecisionResult{}, err
+		result, reason := rightsManagementMutationAttempt(err, true)
+		return RecordRightsDecisionResult{}, service.writeAttemptAudit(ctx, recordDecisionAttempt(command, result, reason), err)
 	}
 	return result, nil
+}
+
+func (service *RightsManagementService) writeAttemptAudit(ctx context.Context, attempt RightsManagementAttemptAuditDTO, operationErr error) error {
+	if operationErr == nil {
+		return nil
+	}
+	auditCtx := context.WithoutCancel(ctx)
+	if auditErr := service.audit.WriteRightsMutationAttempt(auditCtx, attempt); auditErr != nil {
+		return errors.Join(operationErr, fmt.Errorf("write rights mutation attempt audit: %w", auditErr))
+	}
+	return operationErr
+}
+
+func createPolicyAttempt(command CreateRightsPolicyCommand, result RightsManagementAttemptResult, reason string) RightsManagementAttemptAuditDTO {
+	return RightsManagementAttemptAuditDTO{
+		ActorID: command.ActorID, Operation: RightsManagementCreatePolicy,
+		SourceConnectionID: positiveRightsManagementReference(command.SourceConnectionID),
+		Result:             result, ReasonCode: reason,
+	}
+}
+
+func recordDecisionAttempt(command RecordRightsDecisionCommand, result RightsManagementAttemptResult, reason string) RightsManagementAttemptAuditDTO {
+	var sourceConnectionID *int64
+	if command.SourceConnectionID > 0 {
+		sourceID := command.SourceConnectionID
+		sourceConnectionID = rightsManagementInt64Pointer(&sourceID)
+	}
+	policyID := command.PolicyID
+	if policyID < 0 {
+		policyID = 0
+	}
+	return RightsManagementAttemptAuditDTO{
+		ActorID: command.ActorID, Operation: RightsManagementRecordDecisions,
+		SourceConnectionID: sourceConnectionID, PolicyID: policyID,
+		Result: result, ReasonCode: reason,
+	}
+}
+
+func positiveRightsManagementReference(value *int64) *int64 {
+	if value == nil || *value <= 0 {
+		return nil
+	}
+	return rightsManagementInt64Pointer(value)
+}
+
+func rightsManagementAuthorizationAttempt(err error) (RightsManagementAttemptResult, string) {
+	var appError *sharederrors.AppError
+	if errors.As(err, &appError) && appError.Code == sharederrors.CodeForbidden {
+		return RightsManagementAttemptDenied, RightsManagementReasonAuthorizationDenied
+	}
+	return RightsManagementAttemptFailure, RightsManagementReasonDependencyUnavailable
+}
+
+func rightsManagementMutationAttempt(err error, versioned bool) (RightsManagementAttemptResult, string) {
+	switch {
+	case errors.Is(err, sharedrepository.ErrConflict):
+		return RightsManagementAttemptFailure, RightsManagementReasonIdempotencyConflict
+	case versioned && errors.Is(err, sharedrepository.ErrNotFound):
+		return RightsManagementAttemptFailure, RightsManagementReasonVersionConflict
+	case errors.Is(err, sharedrepository.ErrInvalidInput), errors.Is(err, sharedrepository.ErrConstraint):
+		return RightsManagementAttemptFailure, RightsManagementReasonInvalidInput
+	default:
+		return RightsManagementAttemptFailure, RightsManagementReasonDependencyUnavailable
+	}
 }
 
 func (service *RightsManagementService) prepareDecisionRepositoryRequest(ctx context.Context, prepared RecordRightsDecisionRepositoryDTO, policy RightsPolicyDTO) (RecordRightsDecisionRepositoryDTO, error) {

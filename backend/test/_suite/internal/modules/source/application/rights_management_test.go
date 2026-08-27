@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
@@ -34,8 +35,10 @@ func (authorizer *rightsActorAuthorizerFake) AuthorizeRightsMutation(_ context.C
 }
 
 type rightsManagementAuditFake struct {
-	events []RightsManagementAuditDTO
-	err    error
+	events     []RightsManagementAuditDTO
+	attempts   []RightsManagementAttemptAuditDTO
+	err        error
+	attemptErr error
 }
 
 func (audit *rightsManagementAuditFake) WriteRightsMutation(ctx context.Context, event RightsManagementAuditDTO) error {
@@ -44,6 +47,14 @@ func (audit *rightsManagementAuditFake) WriteRightsMutation(ctx context.Context,
 	}
 	audit.events = append(audit.events, cloneRightsManagementAudit(event))
 	return audit.err
+}
+
+func (audit *rightsManagementAuditFake) WriteRightsMutationAttempt(ctx context.Context, event RightsManagementAttemptAuditDTO) error {
+	if insideTransaction, _ := ctx.Value(rightsManagementTransactionContextKey{}).(bool); insideTransaction {
+		return errors.New("rights attempt audit ran inside rolled-back business transaction")
+	}
+	audit.attempts = append(audit.attempts, event)
+	return audit.attemptErr
 }
 
 type rightsIdempotencyFixture struct {
@@ -196,6 +207,10 @@ func TestRightsManagementServiceCreatesImmutablePolicyIdempotentlyAndAuditsFirst
 	if _, err := service.CreatePolicy(context.Background(), conflict); !errors.Is(err, sharedrepository.ErrConflict) {
 		t.Fatalf("same idempotency key with different input error = %v", err)
 	}
+	if len(audit.attempts) != 1 || audit.attempts[0].Result != RightsManagementAttemptFailure ||
+		audit.attempts[0].ReasonCode != RightsManagementReasonIdempotencyConflict || audit.attempts[0].PolicyID != 0 {
+		t.Fatalf("policy conflict attempt audit = %#v", audit.attempts)
+	}
 
 	originalSourceID := *command.SourceConnectionID
 	*command.SourceConnectionID = originalSourceID + 100
@@ -264,6 +279,10 @@ func TestRightsManagementServiceRecordsExactSingleActionBatchAtomicallyAndIdempo
 	conflict.Decisions[0].Evaluator = "different-evaluator"
 	if _, err := service.RecordDecisions(context.Background(), conflict); !errors.Is(err, sharedrepository.ErrConflict) {
 		t.Fatalf("same decision idempotency key with different input error = %v", err)
+	}
+	if len(audit.attempts) != 1 || audit.attempts[0].Result != RightsManagementAttemptFailure ||
+		audit.attempts[0].ReasonCode != RightsManagementReasonIdempotencyConflict || audit.attempts[0].PolicyID != policy.ID {
+		t.Fatalf("decision conflict attempt audit = %#v", audit.attempts)
 	}
 
 	command.Decisions[0].ReasonCodes[0] = "caller_mutation"
@@ -407,16 +426,64 @@ func TestRightsManagementServiceRecordsUnknownWithoutUpgradingItToAllow(t *testi
 func TestRightsManagementServiceDoesNotBypassActorAuthorization(t *testing.T) {
 	t.Parallel()
 	repository := newRightsManagementRepositoryFake()
-	authorizer := &rightsActorAuthorizerFake{err: errors.New("denied")}
+	authorizer := &rightsActorAuthorizerFake{err: sharederrors.New(sharederrors.CodeForbidden, 403, "")}
 	audit := &rightsManagementAuditFake{}
 	transactions := &rightsManagementTransactionFake{}
 	service := newRightsManagementServiceForTest(t, repository, authorizer, audit, transactions)
 
-	if _, err := service.CreatePolicy(context.Background(), validCreateRightsPolicyCommand()); err == nil || err.Error() != "denied" {
+	if _, err := service.CreatePolicy(context.Background(), validCreateRightsPolicyCommand()); err == nil {
 		t.Fatalf("authorization error = %v", err)
 	}
-	if repository.createCalls != 0 || transactions.calls != 0 || len(audit.events) != 0 {
-		t.Fatal("denied actor reached transaction, repository, or audit writer")
+	if repository.createCalls != 0 || transactions.calls != 0 || len(audit.events) != 0 || len(audit.attempts) != 1 {
+		t.Fatalf("denied actor side effects = repository:%d transactions:%d success-audits:%d attempt-audits:%d", repository.createCalls, transactions.calls, len(audit.events), len(audit.attempts))
+	}
+	if attempt := audit.attempts[0]; attempt.Result != RightsManagementAttemptDenied ||
+		attempt.ReasonCode != RightsManagementReasonAuthorizationDenied || attempt.ActorID != 7 || attempt.SourceConnectionID == nil || *attempt.SourceConnectionID != 42 {
+		t.Fatalf("denied attempt audit = %#v", attempt)
+	}
+}
+
+func TestRightsManagementServiceAuditsInvalidInputBeforeAnySideEffect(t *testing.T) {
+	t.Parallel()
+	repository := newRightsManagementRepositoryFake()
+	authorizer := &rightsActorAuthorizerFake{}
+	audit := &rightsManagementAuditFake{}
+	transactions := &rightsManagementTransactionFake{}
+	service := newRightsManagementServiceForTest(t, repository, authorizer, audit, transactions)
+	command := validCreateRightsPolicyCommand()
+	command.Priority = 999
+
+	if _, err := service.CreatePolicy(context.Background(), command); err == nil {
+		t.Fatal("invalid policy input succeeded")
+	}
+	if repository.createCalls != 0 || authorizer.calls != 0 || transactions.calls != 0 || len(audit.events) != 0 || len(audit.attempts) != 1 {
+		t.Fatalf("invalid input side effects = repository:%d authorization:%d transactions:%d success-audits:%d attempt-audits:%d", repository.createCalls, authorizer.calls, transactions.calls, len(audit.events), len(audit.attempts))
+	}
+	if attempt := audit.attempts[0]; attempt.Result != RightsManagementAttemptFailure ||
+		attempt.ReasonCode != RightsManagementReasonInvalidInput || attempt.IdempotencyKey != "" || attempt.CommandFingerprint != "" {
+		t.Fatalf("invalid input attempt audit = %#v", attempt)
+	}
+}
+
+func TestRightsManagementServiceAuditsStalePolicyVersionWithoutDecisionWrite(t *testing.T) {
+	t.Parallel()
+	repository := newRightsManagementRepositoryFake()
+	policy := approvedRightsPolicyDTO()
+	repository.policies[policy.ID] = policy
+	audit := &rightsManagementAuditFake{}
+	service := newRightsManagementServiceForTest(t, repository, &rightsActorAuthorizerFake{}, audit, &rightsManagementTransactionFake{})
+	command := validRecordRightsDecisionCommand(policy, RightsDecisionDTO{})
+	command.ExpectedPolicyVersion = policy.Version + 1
+
+	if _, err := service.RecordDecisions(context.Background(), command); !errors.Is(err, sharedrepository.ErrNotFound) {
+		t.Fatalf("stale policy version error = %v", err)
+	}
+	if repository.recordCalls != 0 || len(audit.events) != 0 || len(audit.attempts) != 1 {
+		t.Fatalf("stale version side effects = writes:%d success-audits:%d attempt-audits:%d", repository.recordCalls, len(audit.events), len(audit.attempts))
+	}
+	if attempt := audit.attempts[0]; attempt.Result != RightsManagementAttemptFailure ||
+		attempt.ReasonCode != RightsManagementReasonVersionConflict || attempt.PolicyID != policy.ID {
+		t.Fatalf("stale version attempt audit = %#v", attempt)
 	}
 }
 

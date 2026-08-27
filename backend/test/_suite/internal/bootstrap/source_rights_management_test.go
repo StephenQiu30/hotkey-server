@@ -137,7 +137,15 @@ func TestRightsManagementAuditAdapterMapsOnlyBoundedSafeFacts(t *testing.T) {
 	if err := adapter.WriteRightsMutation(ctx, decisionEvent); err != nil {
 		t.Fatalf("write decision audit: %v", err)
 	}
-	if len(writer.entries) != 2 {
+	attemptEvent := sourceapplication.RightsManagementAttemptAuditDTO{
+		ActorID: 3, Operation: sourceapplication.RightsManagementRecordDecisions,
+		SourceConnectionID: &sourceID, PolicyID: 11,
+		Result: sourceapplication.RightsManagementAttemptFailure, ReasonCode: sourceapplication.RightsManagementReasonVersionConflict,
+	}
+	if err := adapter.WriteRightsMutationAttempt(ctx, attemptEvent); err != nil {
+		t.Fatalf("write failed decision attempt audit: %v", err)
+	}
+	if len(writer.entries) != 3 || writer.independentCalls != 1 {
 		t.Fatalf("audit entry count = %d", len(writer.entries))
 	}
 	if first := writer.entries[0]; first.Action != operationsdomain.ActionRightsPolicyCreated || first.ResourceType != "rights_policy" ||
@@ -147,6 +155,12 @@ func TestRightsManagementAuditAdapterMapsOnlyBoundedSafeFacts(t *testing.T) {
 	if second := writer.entries[1]; second.Action != operationsdomain.ActionRightsDecisionBatchRecorded || second.ResourceType != "rights_decision_batch" ||
 		second.ResourceID != 13 || !reflect.DeepEqual(second.After, map[string]any{"decision_count": 2}) {
 		t.Fatalf("decision audit entry = %#v", second)
+	}
+	if attempt := writer.entries[2]; attempt.Action != operationsdomain.ActionRightsDecisionBatchRecorded || attempt.ResourceType != "rights_decision_batch" ||
+		attempt.ResourceID != 0 || attempt.Result != operationsdomain.AuditResultFailure ||
+		!reflect.DeepEqual(attempt.After, map[string]any{"reason_code": sourceapplication.RightsManagementReasonVersionConflict}) ||
+		attempt.IdempotencyKey != "" || attempt.CommandFingerprint != "" {
+		t.Fatalf("decision attempt audit entry = %#v", attempt)
 	}
 	if encoded := strings.ToLower(strings.Join([]string{
 		writer.entries[1].RequestID, writer.entries[1].TraceID, writer.entries[1].IdempotencyKey,
@@ -193,11 +207,18 @@ func (reader *rightsActorReaderFake) FindByID(_ context.Context, id int64) (*ide
 }
 
 type operationsAuditWriterFake struct {
-	entries []operationsdomain.AuditEntry
-	err     error
+	entries          []operationsdomain.AuditEntry
+	independentCalls int
+	err              error
 }
 
 func (writer *operationsAuditWriterFake) Write(_ context.Context, entry operationsdomain.AuditEntry) error {
+	writer.entries = append(writer.entries, entry)
+	return writer.err
+}
+
+func (writer *operationsAuditWriterFake) WriteIndependent(_ context.Context, entry operationsdomain.AuditEntry) error {
+	writer.independentCalls++
 	writer.entries = append(writer.entries, entry)
 	return writer.err
 }

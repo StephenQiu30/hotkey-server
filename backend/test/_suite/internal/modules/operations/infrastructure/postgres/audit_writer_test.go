@@ -204,6 +204,43 @@ func TestAuditWriterRejectsUnknownActionsAndRollsBackWithCaller(t *testing.T) {
 	}
 }
 
+func TestAuditWriterPersistsRejectedAttemptInIndependentTransaction(t *testing.T) {
+	runtime := newOperationsRuntime(t)
+	writer := NewAuditWriter(runtime)
+	entry := operationsdomain.AuditEntry{
+		ActorType: "user", ActorID: 42,
+		Action: operationsdomain.ActionRightsDecisionBatchRecorded, ResourceType: "rights_decision_batch",
+		Result: operationsdomain.AuditResultFailure,
+		After:  map[string]any{"reason_code": "version_conflict"},
+	}
+
+	if err := writer.WriteIndependent(context.Background(), entry); err != nil {
+		t.Fatalf("WriteIndependent() error = %v", err)
+	}
+	var result, reasonCode string
+	if err := runtime.SQL.QueryRow(`
+SELECT result,after_data->>'reason_code'
+FROM audit_logs WHERE action=$1`, string(entry.Action)).Scan(&result, &reasonCode); err != nil {
+		t.Fatalf("read independent attempt audit: %v", err)
+	}
+	if result != string(operationsdomain.AuditResultFailure) || reasonCode != "version_conflict" {
+		t.Fatalf("independent attempt audit = result:%q reason:%q", result, reasonCode)
+	}
+
+	if err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, _ database.Transaction) error {
+		return writer.WriteIndependent(ctx, entry)
+	}); !errors.Is(err, ErrIndependentAuditInsideTransaction) {
+		t.Fatalf("WriteIndependent() inside caller transaction error = %v, want ErrIndependentAuditInsideTransaction", err)
+	}
+	var count int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM audit_logs WHERE action=$1`, string(entry.Action)).Scan(&count); err != nil {
+		t.Fatalf("count independent attempt audits: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("independent attempt audit count = %d, want 1", count)
+	}
+}
+
 func TestAuditActionWhitelistIsClosed(t *testing.T) {
 	t.Parallel()
 	for _, action := range []operationsdomain.AuditAction{
