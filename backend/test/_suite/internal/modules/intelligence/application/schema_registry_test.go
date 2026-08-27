@@ -1,6 +1,7 @@
 package application
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,84 @@ func TestSchemaRegistryEmbedsAndCompilesVersionedContracts(t *testing.T) {
 	vector := strings.Repeat("0,", domain.EmbeddingDimensions-1) + "0"
 	if err := registry.ValidateOutput(domain.TaskTypeEmbedding, "v1", []byte(`{"model_version":"2026-07","vectors":[[`+vector+`]]}`)); err != nil {
 		t.Fatalf("ValidateOutput() embedding error = %v", err)
+	}
+}
+
+func TestP0SkillRegistryExposesFiveStableProductContracts(t *testing.T) {
+	registry, err := NewSchemaRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		taskType domain.TaskType
+		version  string
+		skillID  string
+	}{
+		{domain.TaskTypeTermExpansion, "v1", "monitor.compile.v1"},
+		{domain.TaskTypeRelevanceReview, "v1", "content.relevance.v1"},
+		{domain.TaskTypeEventCluster, "v1", "event.cluster.v1"},
+		{domain.TaskTypeEntityClaimExtraction, "v2", "claim.extract.v1"},
+		{domain.TaskTypeEventSummary, "v1", "event.brief.v1"},
+	}
+	for _, testCase := range tests {
+		contract, contractErr := registry.Structured(testCase.taskType, testCase.version)
+		if contractErr != nil || contract.SkillID != testCase.skillID || contract.SchemaVersion != testCase.version ||
+			len(contract.InputSchema) == 0 || len(contract.OutputSchema) == 0 || strings.TrimSpace(contract.Instruction) == "" {
+			t.Fatalf("contract %s/%s = %#v / %v", testCase.taskType, testCase.version, contract, contractErr)
+		}
+	}
+	clusterInput := []byte(`{"content_family_id":41,"family_version":3,"subject_keys":["product:hotkey"],"action_keys":["action:release"],"location_keys":[],"identifier_keys":["release:v1"],"event_started_at":"2026-08-27T08:00:00Z","candidates":[{"micro_event_id":7,"event_version":2,"same_event_score":0.81,"hard_conflict_reasons":[]}]}`)
+	clusterOutput := []byte(`{"action":"attach","candidate_micro_event_id":7,"confidence":0.81,"reason_codes":["same_subject_action"]}`)
+	if err := registry.ValidateInput(domain.TaskTypeEventCluster, "v1", clusterInput); err != nil {
+		t.Fatalf("event cluster input: %v", err)
+	}
+	if err := registry.ValidateOutput(domain.TaskTypeEventCluster, "v1", clusterOutput); err != nil {
+		t.Fatalf("event cluster output: %v", err)
+	}
+	forged := []byte(`{"action":"attach","candidate_micro_event_id":999,"confidence":0.81,"reason_codes":["same_subject_action"]}`)
+	if err := registry.ValidateOutput(domain.TaskTypeEventCluster, "v1", forged); err != nil {
+		t.Fatalf("schema should accept value shape before candidate whitelist policy: %v", err)
+	}
+}
+
+func TestP0SkillSchemaGoldenInputsAndOutputsRemainCompatible(t *testing.T) {
+	registry, err := NewSchemaRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := os.ReadFile(filepath.Join("testdata", "p0-skills", "golden.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixtures []struct {
+		TaskType      domain.TaskType `json:"task_type"`
+		SchemaVersion string          `json:"schema_version"`
+		SkillID       string          `json:"skill_id"`
+		Input         json.RawMessage `json:"input"`
+		Output        json.RawMessage `json:"output"`
+	}
+	if err := json.Unmarshal(payload, &fixtures); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixtures) != 5 {
+		t.Fatalf("golden fixture count = %d, want 5", len(fixtures))
+	}
+	for _, fixture := range fixtures {
+		t.Run(fixture.SkillID, func(t *testing.T) {
+			contract, contractErr := registry.Structured(fixture.TaskType, fixture.SchemaVersion)
+			if contractErr != nil || contract.SkillID != fixture.SkillID {
+				t.Fatalf("Structured() = %#v / %v", contract, contractErr)
+			}
+			if err := registry.ValidateInput(fixture.TaskType, fixture.SchemaVersion, fixture.Input); err != nil {
+				t.Fatalf("ValidateInput() error = %v", err)
+			}
+			if err := registry.ValidateOutput(fixture.TaskType, fixture.SchemaVersion, fixture.Output); err != nil {
+				t.Fatalf("ValidateOutput() error = %v", err)
+			}
+			if err := validateStructuredOutputPolicy(fixture.TaskType, fixture.SchemaVersion, fixture.Input, fixture.Output); err != nil {
+				t.Fatalf("validateStructuredOutputPolicy() error = %v", err)
+			}
+		})
 	}
 }
 

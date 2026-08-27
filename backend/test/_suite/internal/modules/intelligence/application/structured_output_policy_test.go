@@ -56,3 +56,23 @@ func TestStructuredOutputPolicyRequiresV2ExactQuoteFromAuthorizedBody(t *testing
 		t.Fatal("quote outside the authorized body was accepted")
 	}
 }
+
+func TestStructuredOutputPolicyRejectsInventedEventClusterCandidate(t *testing.T) {
+	input := json.RawMessage(`{"candidates":[{"micro_event_id":7,"event_version":2,"hard_conflict_reasons":[]}]}`)
+	valid := json.RawMessage(`{"action":"attach","candidate_micro_event_id":7}`)
+	if err := validateStructuredOutputPolicy(domain.TaskTypeEventCluster, "v1", input, valid); err != nil {
+		t.Fatalf("allowed cluster candidate was rejected: %v", err)
+	}
+	forged := json.RawMessage(`{"action":"attach","candidate_micro_event_id":999}`)
+	if err := validateStructuredOutputPolicy(domain.TaskTypeEventCluster, "v1", input, forged); err == nil {
+		t.Fatal("invented cluster candidate was accepted")
+	}
+}
+
+func TestStructuredOutputPolicyRejectsEventClusterHardConflict(t *testing.T) {
+	input := json.RawMessage(`{"candidates":[{"micro_event_id":7,"event_version":2,"hard_conflict_reasons":["identifier_conflict"]}]}`)
+	output := json.RawMessage(`{"action":"attach","candidate_micro_event_id":7}`)
+	if err := validateStructuredOutputPolicy(domain.TaskTypeEventCluster, "v1", input, output); err == nil {
+		t.Fatal("event cluster candidate with a hard conflict was accepted")
+	}
+}

@@ -177,6 +177,8 @@ func structuredExecutionTargetValid(taskType domain.TaskType, targetType string)
 		return true
 	case domain.TaskTypeRelevanceReview:
 		return targetType == "monitor_match"
+	case domain.TaskTypeEventCluster:
+		return targetType == "content_family"
 	case domain.TaskTypeEventSummary, domain.TaskTypeEntityClaimExtraction:
 		return targetType == "event"
 	default:

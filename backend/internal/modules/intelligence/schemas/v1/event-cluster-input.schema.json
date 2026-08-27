@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "event-cluster-input-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["content_family_id", "family_version", "subject_keys", "action_keys", "location_keys", "identifier_keys", "event_started_at", "candidates"],
+  "properties": {
+    "content_family_id": {"type": "integer", "minimum": 1},
+    "family_version": {"type": "integer", "minimum": 1},
+    "subject_keys": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 1, "maxLength": 128}, "uniqueItems": true},
+    "action_keys": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 1, "maxLength": 128}, "uniqueItems": true},
+    "location_keys": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 1, "maxLength": 128}, "uniqueItems": true},
+    "identifier_keys": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 1, "maxLength": 128}, "uniqueItems": true},
+    "event_started_at": {"type": "string", "format": "date-time"},
+    "candidates": {
+      "type": "array", "maxItems": 16,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["micro_event_id", "event_version", "same_event_score", "hard_conflict_reasons"],
+        "properties": {
+          "micro_event_id": {"type": "integer", "minimum": 1},
+          "event_version": {"type": "integer", "minimum": 1},
+          "same_event_score": {"type": "number", "minimum": 0, "maximum": 1},
+          "hard_conflict_reasons": {"type": "array", "maxItems": 16, "items": {"type": "string", "enum": ["identifier_conflict", "location_conflict", "time_conflict", "subject_conflict"]}, "uniqueItems": true}
+        }
+      }
+    }
+  }
+}

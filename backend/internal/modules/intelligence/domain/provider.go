@@ -14,12 +14,13 @@ const (
 	TaskTypeEmbedding             TaskType = "embedding"
 	TaskTypeTermExpansion         TaskType = "term_expansion"
 	TaskTypeRelevanceReview       TaskType = "relevance_review"
+	TaskTypeEventCluster          TaskType = "event_cluster"
 	TaskTypeEventSummary          TaskType = "event_summary"
 	TaskTypeEntityClaimExtraction TaskType = "entity_claim_extraction"
 )
 
 func (taskType TaskType) Valid() bool {
-	return taskType == TaskTypeEmbedding || taskType == TaskTypeTermExpansion || taskType == TaskTypeRelevanceReview ||
+	return taskType == TaskTypeEmbedding || taskType == TaskTypeTermExpansion || taskType == TaskTypeRelevanceReview || taskType == TaskTypeEventCluster ||
 		taskType == TaskTypeEventSummary || taskType == TaskTypeEntityClaimExtraction
 }
 

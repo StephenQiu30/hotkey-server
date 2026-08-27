@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "event-cluster-output-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "confidence", "reason_codes"],
+  "properties": {
+    "action": {"type": "string", "enum": ["attach", "create", "review"]},
+    "candidate_micro_event_id": {"type": "integer", "minimum": 1},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "reason_codes": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"type": "string", "enum": ["same_subject_action", "matching_identifier", "consistent_location", "consistent_time", "insufficient_margin", "hard_conflict", "no_candidate"]}, "uniqueItems": true}
+  },
+  "allOf": [
+    {"if": {"properties": {"action": {"const": "attach"}}}, "then": {"required": ["candidate_micro_event_id"]}},
+    {"if": {"properties": {"action": {"enum": ["create", "review"]}}}, "then": {"not": {"required": ["candidate_micro_event_id"]}}}
+  ]
+}

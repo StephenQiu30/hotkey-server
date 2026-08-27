@@ -95,6 +95,7 @@ func TestModelProfileRepositoryPersistsEventIntelligenceProfiles(t *testing.T) {
 	repository := intelligencepostgres.NewRepository(runtime)
 
 	for _, taskType := range []intelligencedomain.TaskType{
+		intelligencedomain.TaskTypeEventCluster,
 		intelligencedomain.TaskTypeEventSummary,
 		intelligencedomain.TaskTypeEntityClaimExtraction,
 	} {

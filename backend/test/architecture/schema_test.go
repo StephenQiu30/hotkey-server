@@ -115,7 +115,7 @@ func TestGreenfieldSchemaEnforcesCriticalConstraints(t *testing.T) {
 		"collection item ingestion state":             "outcome = 'captured' and (",
 		"vector extension":                            "create extension if not exists vector",
 		"fixed embedding dimension":                   "halfvec(1024)",
-		"AI task type whitelist":                      "task_type varchar(32) not null check (task_type in ('embedding','term_expansion','relevance_review','event_summary','entity_claim_extraction'))",
+		"AI task type whitelist":                      "task_type varchar(32) not null check (task_type in ('embedding','term_expansion','relevance_review','event_cluster','event_summary','entity_claim_extraction'))",
 		"AI provider whitelist":                       "provider varchar(120) not null check (provider in ('openai','deepseek','ollama','onnx'))",
 		"AI DeepSeek credential":                      "provider = 'deepseek' and credential_ref = 'env:deepseek_api_key'",
 		"AI Ollama credential":                        "provider in ('ollama','onnx') and credential_ref is null",

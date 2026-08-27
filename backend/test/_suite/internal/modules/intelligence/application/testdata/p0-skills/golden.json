@@ -1,0 +1,82 @@
+[
+  {
+    "task_type": "term_expansion",
+    "schema_version": "v1",
+    "skill_id": "monitor.compile.v1",
+    "input": {
+      "objective": "Track HotKey product releases",
+      "clauses": [{"operator": "must", "field": "term", "value": "HotKey"}],
+      "entities": [{"canonical_id": "product:hotkey", "display_name": "HotKey", "aliases": [], "ambiguity_note": ""}],
+      "examples": [],
+      "existing_candidates": [],
+      "output_languages": ["en"]
+    },
+    "output": {
+      "terms": [{"term": "HotKey release", "language": "en", "reason": "direct product release wording", "similarity": 0.96, "risk": "low"}]
+    }
+  },
+  {
+    "task_type": "relevance_review",
+    "schema_version": "v1",
+    "skill_id": "content.relevance.v1",
+    "input": {
+      "content_excerpt": "HotKey released a new evidence workflow.",
+      "content_language": "en",
+      "monitor_intent": "Track HotKey product releases",
+      "scoring_version": "relevance-v1",
+      "scores": {"semantic": 96, "lexical": 90, "entity": 100, "title": 95, "preference": 80},
+      "recall_paths": ["lexical", "vector"],
+      "reason_codes": ["lexical_candidate", "vector_candidate"],
+      "evidence_terms": ["HotKey", "released"]
+    },
+    "output": {"decision": "accepted", "score": 96, "reason_codes": ["relevant_evidence"]}
+  },
+  {
+    "task_type": "event_cluster",
+    "schema_version": "v1",
+    "skill_id": "event.cluster.v1",
+    "input": {
+      "content_family_id": 41,
+      "family_version": 3,
+      "subject_keys": ["product:hotkey"],
+      "action_keys": ["action:release"],
+      "location_keys": [],
+      "identifier_keys": ["release:v1"],
+      "event_started_at": "2026-08-27T08:00:00Z",
+      "candidates": [{"micro_event_id": 7, "event_version": 2, "same_event_score": 0.81, "hard_conflict_reasons": []}]
+    },
+    "output": {"action": "attach", "candidate_micro_event_id": 7, "confidence": 0.81, "reason_codes": ["same_subject_action"]}
+  },
+  {
+    "task_type": "entity_claim_extraction",
+    "schema_version": "v2",
+    "skill_id": "claim.extract.v1",
+    "input": {
+      "event_id": 7,
+      "event_version": 3,
+      "event_key": "evt-7",
+      "document_version_id": 11,
+      "plaintext_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "body": "Acme released Nova.",
+      "body_truncated": false
+    },
+    "output": {
+      "claims": [{"subject": "Acme", "predicate": "released", "object": "Nova", "relation": "asserts", "exact_quote": "Acme released Nova.", "relation_score": 0.98, "qualifiers": []}]
+    }
+  },
+  {
+    "task_type": "event_summary",
+    "schema_version": "v1",
+    "skill_id": "event.brief.v1",
+    "input": {
+      "event_id": 7,
+      "event_key": "evt-7",
+      "evidence": [{"content_id": 11, "locator": "title", "excerpt": "Acme released Nova."}]
+    },
+    "output": {
+      "title_zh": "Acme 发布 Nova",
+      "title_en": "Acme released Nova",
+      "sentences": [{"text": "Acme 发布了 Nova。", "evidence": [{"content_id": 11, "locator": "title", "excerpt": "Acme released Nova."}]}]
+    }
+  }
+]

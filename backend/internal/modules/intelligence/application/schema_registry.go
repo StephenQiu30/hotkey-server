@@ -25,6 +25,7 @@ type schemaKey struct {
 }
 
 type schemaContract struct {
+	skillID      string
 	schemaName   string
 	input        []byte
 	output       []byte
@@ -36,6 +37,7 @@ type schemaContract struct {
 // StructuredContract contains only compiled static contract material. It has
 // no provider error, prompt, credential, endpoint, or object-store detail.
 type StructuredContract struct {
+	SkillID                   string
 	SchemaName, SchemaVersion string
 	InputSchema, OutputSchema []byte
 	Instruction               string
@@ -54,9 +56,10 @@ func NewSchemaRegistry() (*SchemaRegistry, error) {
 }
 
 func buildSchemaRegistry() (*SchemaRegistry, error) {
-	contracts := make(map[schemaKey]schemaContract, 6)
+	contracts := make(map[schemaKey]schemaContract, 7)
 	for _, specification := range []struct {
 		taskType        domain.TaskType
+		skillID         string
 		version         string
 		directory       string
 		inputName       string
@@ -64,12 +67,13 @@ func buildSchemaRegistry() (*SchemaRegistry, error) {
 		schemaName      string
 		instructionName string
 	}{
-		{domain.TaskTypeEmbedding, "v1", "v1", "embedding-input.schema.json", "embedding-output.schema.json", "embedding-output-v1", ""},
-		{domain.TaskTypeTermExpansion, "v1", "v1", "term-expansion-input.schema.json", "term-expansion-output.schema.json", "term-expansion-output-v1", "term-expansion-instruction-v1.md"},
-		{domain.TaskTypeRelevanceReview, "v1", "v1", "relevance-review-input.schema.json", "relevance-review-output.schema.json", "relevance-review-output-v1", "relevance-review-instruction-v1.md"},
-		{domain.TaskTypeEventSummary, "v1", "v1", "event-summary-input.schema.json", "event-summary-output.schema.json", "event-summary-output-v1", "event-summary-instruction-v1.md"},
-		{domain.TaskTypeEntityClaimExtraction, "v1", "v1", "entity-claim-input.schema.json", "entity-claim-output.schema.json", "entity-claim-output-v1", "entity-claim-instruction-v1.md"},
-		{domain.TaskTypeEntityClaimExtraction, "v2", "v2", "atomic-claim-evidence-input.schema.json", "atomic-claim-evidence-output.schema.json", "atomic-claim-evidence-output-v2", "atomic-claim-evidence-instruction-v2.md"},
+		{domain.TaskTypeEmbedding, "content.embedding.v1", "v1", "v1", "embedding-input.schema.json", "embedding-output.schema.json", "embedding-output-v1", ""},
+		{domain.TaskTypeTermExpansion, "monitor.compile.v1", "v1", "v1", "term-expansion-input.schema.json", "term-expansion-output.schema.json", "term-expansion-output-v1", "term-expansion-instruction-v1.md"},
+		{domain.TaskTypeRelevanceReview, "content.relevance.v1", "v1", "v1", "relevance-review-input.schema.json", "relevance-review-output.schema.json", "relevance-review-output-v1", "relevance-review-instruction-v1.md"},
+		{domain.TaskTypeEventCluster, "event.cluster.v1", "v1", "v1", "event-cluster-input.schema.json", "event-cluster-output.schema.json", "event-cluster-output-v1", "event-cluster-instruction-v1.md"},
+		{domain.TaskTypeEventSummary, "event.brief.v1", "v1", "v1", "event-summary-input.schema.json", "event-summary-output.schema.json", "event-summary-output-v1", "event-summary-instruction-v1.md"},
+		{domain.TaskTypeEntityClaimExtraction, "claim.extract.legacy.v1", "v1", "v1", "entity-claim-input.schema.json", "entity-claim-output.schema.json", "entity-claim-output-v1", "entity-claim-instruction-v1.md"},
+		{domain.TaskTypeEntityClaimExtraction, "claim.extract.v1", "v2", "v2", "atomic-claim-evidence-input.schema.json", "atomic-claim-evidence-output.schema.json", "atomic-claim-evidence-output-v2", "atomic-claim-evidence-instruction-v2.md"},
 	} {
 		input, err := readSchemaAsset(specification.directory, specification.inputName)
 		if err != nil {
@@ -99,7 +103,7 @@ func buildSchemaRegistry() (*SchemaRegistry, error) {
 			}
 		}
 		contracts[schemaKey{taskType: specification.taskType, version: specification.version}] = schemaContract{
-			schemaName: specification.schemaName, input: input, output: output, instruction: instruction,
+			skillID: specification.skillID, schemaName: specification.schemaName, input: input, output: output, instruction: instruction,
 			inputSchema: inputSchema, outputSchema: outputSchema,
 		}
 	}
@@ -140,6 +144,7 @@ func (registry *SchemaRegistry) Structured(taskType domain.TaskType, version str
 		return StructuredContract{}, fmt.Errorf("%s does not use a structured generation instruction", taskType)
 	}
 	return StructuredContract{
+		SkillID:    contract.skillID,
 		SchemaName: contract.schemaName, SchemaVersion: version,
 		InputSchema: cloneJSON(contract.input), OutputSchema: cloneJSON(contract.output), Instruction: contract.instruction,
 	}, nil

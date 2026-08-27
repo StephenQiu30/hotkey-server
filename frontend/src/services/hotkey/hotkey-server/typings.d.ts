@@ -506,6 +506,7 @@ required property without making explicit null impossible to bind. */
       | "embedding"
       | "term_expansion"
       | "relevance_review"
+      | "event_cluster"
       | "event_summary"
       | "entity_claim_extraction";
     timeout_seconds?: number;

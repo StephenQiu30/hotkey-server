@@ -19,6 +19,8 @@ type structuredEvidenceReference struct {
 // candidate reusable result.
 func validateStructuredOutputPolicy(taskType domain.TaskType, schemaVersion string, input, output json.RawMessage) error {
 	switch {
+	case schemaVersion == "v1" && taskType == domain.TaskTypeEventCluster:
+		return validateEventClusterCandidateWhitelist(input, output)
 	case schemaVersion == "v1" && (taskType == domain.TaskTypeEventSummary || taskType == domain.TaskTypeEntityClaimExtraction):
 		return validateEventEvidenceWhitelist(taskType, input, output)
 	case schemaVersion == "v2" && taskType == domain.TaskTypeEntityClaimExtraction:
@@ -26,6 +28,37 @@ func validateStructuredOutputPolicy(taskType domain.TaskType, schemaVersion stri
 	default:
 		return nil
 	}
+}
+
+func validateEventClusterCandidateWhitelist(input, output json.RawMessage) error {
+	var source struct {
+		Candidates []struct {
+			MicroEventID        int64    `json:"micro_event_id"`
+			HardConflictReasons []string `json:"hard_conflict_reasons"`
+		} `json:"candidates"`
+	}
+	var result struct {
+		Action                string `json:"action"`
+		CandidateMicroEventID *int64 `json:"candidate_micro_event_id"`
+	}
+	if json.Unmarshal(input, &source) != nil || json.Unmarshal(output, &result) != nil {
+		return domain.NewError(domain.CodeAIOutputInvalid)
+	}
+	if result.Action != "attach" {
+		return nil
+	}
+	if result.CandidateMicroEventID == nil {
+		return domain.NewError(domain.CodeAIOutputInvalid)
+	}
+	for _, candidate := range source.Candidates {
+		if candidate.MicroEventID == *result.CandidateMicroEventID {
+			if len(candidate.HardConflictReasons) != 0 {
+				return domain.NewError(domain.CodeAIOutputInvalid)
+			}
+			return nil
+		}
+	}
+	return domain.NewError(domain.CodeAIOutputInvalid)
 }
 
 func validateEventEvidenceWhitelist(taskType domain.TaskType, input, output json.RawMessage) error {

@@ -137,7 +137,7 @@ func TestPlan009RelevanceReviewContract(t *testing.T) {
 }
 
 func TestPlan012EventIntelligenceProfileContracts(t *testing.T) {
-	for _, taskType := range []TaskType{TaskTypeEventSummary, TaskTypeEntityClaimExtraction} {
+	for _, taskType := range []TaskType{TaskTypeEventCluster, TaskTypeEventSummary, TaskTypeEntityClaimExtraction} {
 		profile := validOpenAIEmbeddingProfile()
 		profile.Name = string(taskType) + "-primary"
 		profile.TaskType = taskType

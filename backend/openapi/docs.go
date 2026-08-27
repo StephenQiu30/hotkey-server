@@ -8852,6 +8852,7 @@ const docTemplate = `{
                         "embedding",
                         "term_expansion",
                         "relevance_review",
+                        "event_cluster",
                         "event_summary",
                         "entity_claim_extraction"
                     ]
