@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
@@ -140,6 +141,9 @@ func (handler *AutomaticClaimEvidenceHandler) Handle(ctx context.Context, job qu
 		return queue.ClassifyHandlerError(ctx, err)
 	}
 	if result.Status == "degraded" {
+		if strings.HasPrefix(result.ReasonCode, "ai_") {
+			return queue.NewRetryableError(fmt.Errorf("automatic claim evidence pending analysis"))
+		}
 		return queue.NewPermanentError(fmt.Errorf("automatic claim evidence degraded"))
 	}
 	if result.Status != "succeeded" || result.ModelRunID <= 0 || result.EvidenceState == nil || result.Summary == nil {

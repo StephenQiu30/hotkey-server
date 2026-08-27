@@ -59,8 +59,11 @@ func TestEventSummaryServiceFallsBackAfterSafeProviderFailures(t *testing.T) {
 		code int
 	}{
 		{name: "provider unavailable", code: intelligencedomain.CodeAIModelUnavailable},
+		{name: "budget exhausted", code: intelligencedomain.CodeAIBudgetExhausted},
+		{name: "provider rate limited", code: intelligencedomain.CodeAIProviderRateLimited},
 		{name: "provider transient failure", code: intelligencedomain.CodeAIProviderTransient},
 		{name: "provider timeout", code: intelligencedomain.CodeAIProviderTimeout},
+		{name: "schema output invalid", code: intelligencedomain.CodeAIOutputInvalid},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

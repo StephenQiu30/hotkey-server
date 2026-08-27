@@ -41,13 +41,55 @@ func TestS03DegradationMatrixNamesExecutableEvidenceAndHonestGaps(t *testing.T) 
 		}
 	}
 
-	for _, pendingFixture := range []string{
-		"DEG-001-CODEX-UNAVAILABLE",
-		"DEG-001-CODEX-UNAUTHORIZED-SUGGESTION",
+	unavailable := markdownTableRow(t, matrix, "DEG-001-CODEX-UNAVAILABLE")
+	for _, evidence := range []string{
+		"TestRunServicePersistsTerminalOperationalFailureAsPendingAnalysis",
+		"TestAutomaticClaimEvidenceServiceLeavesOperationalModelFailuresPendingWithoutBusinessWrites",
+		"TestCollectionServiceFetchesOnceAndDurablyReconcilesEveryTarget",
+		"TestContentFamilyServicePersistsOnlyFingerprintAndDecisionFacts",
+		"TestEventHeatServiceUsesActiveProfileWeightsAndStableSnapshot",
 	} {
-		row := markdownTableRow(t, matrix, pendingFixture)
-		if !strings.Contains(row, "`PENDING-003-S01/S02`") || !strings.Contains(row, "`pending`") {
-			t.Errorf("%s must stay an explicit 003 implementation gap, got %s", pendingFixture, row)
+		if !strings.Contains(unavailable, "`"+evidence+"`") {
+			t.Errorf("Codex unavailable row does not name %s: %s", evidence, unavailable)
+		}
+	}
+	if !strings.Contains(unavailable, "`partial`") || !strings.Contains(unavailable, "TASK-003-S02-T03") {
+		t.Errorf("Codex unavailable must keep administrator backfill as an explicit next task: %s", unavailable)
+	}
+
+	unauthorized := markdownTableRow(t, matrix, "DEG-001-CODEX-UNAUTHORIZED-SUGGESTION")
+	for _, evidence := range []string{
+		"TestRunServiceNeverPersistsOrReusesForgedEvidenceAndRepairConsumesNewAttempt",
+		"TestStructuredOutputPolicyRejectsEvidenceOutsideExactInputWhitelist",
+	} {
+		if !strings.Contains(unauthorized, "`"+evidence+"`") {
+			t.Errorf("Codex unauthorized suggestion row does not name %s: %s", evidence, unauthorized)
+		}
+	}
+	if !strings.Contains(unauthorized, "`verified`") {
+		t.Errorf("Codex unauthorized suggestion must retain verified evidence: %s", unauthorized)
+	}
+	for testName, path := range map[string]string{
+		"TestRunServicePersistsTerminalOperationalFailureAsPendingAnalysis":                           "backend/test/_suite/internal/modules/intelligence/application/service_integration_test.go",
+		"TestAutomaticClaimEvidenceServiceLeavesOperationalModelFailuresPendingWithoutBusinessWrites": "backend/test/_suite/internal/modules/event/application/automatic_claim_evidence_test.go",
+		"TestCollectionServiceFetchesOnceAndDurablyReconcilesEveryTarget":                             "backend/test/_suite/internal/modules/source/application/collection_service_integration_test.go",
+		"TestContentFamilyServicePersistsOnlyFingerprintAndDecisionFacts":                             "backend/test/_suite/internal/modules/ingestion/application/content_family_test.go",
+		"TestEventHeatServiceUsesActiveProfileWeightsAndStableSnapshot":                               "backend/test/_suite/internal/modules/event/application/event_heat_test.go",
+		"TestRunServiceNeverPersistsOrReusesForgedEvidenceAndRepairConsumesNewAttempt":                "backend/test/_suite/internal/modules/intelligence/application/service_integration_test.go",
+		"TestStructuredOutputPolicyRejectsEvidenceOutsideExactInputWhitelist":                         "backend/test/_suite/internal/modules/intelligence/application/structured_output_policy_test.go",
+	} {
+		if source := readRepositoryFile(t, repository, path); !strings.Contains(source, "func "+testName+"(") {
+			t.Errorf("Codex degradation evidence %s no longer exists in %s", testName, path)
+		}
+	}
+	for _, path := range []string{
+		"backend/internal/modules/source/application/collection_service.go",
+		"backend/internal/modules/ingestion/application/content_family.go",
+		"backend/internal/modules/event/application/event_heat.go",
+	} {
+		source := readRepositoryFile(t, repository, path)
+		if strings.Contains(source, "modules/intelligence") || strings.Contains(source, "Codex") {
+			t.Errorf("deterministic degradation path %s gained an intelligence runtime dependency", path)
 		}
 	}
 

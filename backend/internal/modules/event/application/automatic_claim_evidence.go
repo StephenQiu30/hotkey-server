@@ -216,9 +216,12 @@ func (service *AutomaticClaimEvidenceService) Extract(ctx context.Context, comma
 		EvidenceSetHash: hex.EncodeToString(evidenceDigest[:]), Input: encoded,
 	})
 	if err != nil {
+		if reason, pending := intelligenceapplication.AnalysisPendingReason(err); pending {
+			return AutomaticClaimEvidenceResult{Status: "degraded", ReasonCode: reason}, nil
+		}
 		return AutomaticClaimEvidenceResult{}, fmt.Errorf("execute automatic claim evidence model: %w", err)
 	}
-	if executed.Status == "degraded" {
+	if intelligenceapplication.IsAnalysisPending(executed.Status) {
 		return AutomaticClaimEvidenceResult{Status: "degraded", ReasonCode: executed.ReasonCode}, nil
 	}
 	if executed.Status != "succeeded" || executed.Run.ID <= 0 || !json.Valid(executed.Result) {

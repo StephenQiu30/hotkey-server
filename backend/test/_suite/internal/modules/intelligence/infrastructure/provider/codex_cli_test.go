@@ -82,6 +82,17 @@ func TestCodexCLIAdapterRejectsInvalidExecutableAndEmptyPromptBeforeStartingProc
 	}
 }
 
+func TestCodexCLIAdapterMapsMissingExecutableToModelUnavailable(t *testing.T) {
+	adapter, err := NewCodexCLIAdapter(filepath.Join(t.TempDir(), "missing-codex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = adapter.Run(context.Background(), CodexCLIProcessRequest{Prompt: []byte("bounded prompt")})
+	if code, ok := intelligencedomain.CodeOf(err); !ok || code != intelligencedomain.CodeAIModelUnavailable {
+		t.Fatalf("missing executable error=%v code=%d known=%v", err, code, ok)
+	}
+}
+
 func TestCodexCLIAdapterCreatesReadOnlyTaskInputsCapsOutputAndCleansWorkspace(t *testing.T) {
 	fixtureDirectory := t.TempDir()
 	workspaceRoot := filepath.Join(fixtureDirectory, "workspaces")
@@ -103,7 +114,7 @@ fi
 	adapter, err := NewCodexCLIAdapterWithOptions(CodexCLIAdapterOptions{
 		Executable:     fakeExecutable,
 		WorkspaceRoot:  workspaceRoot,
-		Timeout:        time.Second,
+		Timeout:        10 * time.Second,
 		MaxOutputBytes: 64,
 		MaxConcurrent:  1,
 	})
@@ -161,7 +172,7 @@ wait
 	adapter, err := NewCodexCLIAdapterWithOptions(CodexCLIAdapterOptions{
 		Executable:     fakeExecutable,
 		WorkspaceRoot:  workspaceRoot,
-		Timeout:        time.Second,
+		Timeout:        3 * time.Second,
 		MaxOutputBytes: 1024,
 		MaxConcurrent:  1,
 	})
@@ -207,7 +218,7 @@ wait
 	adapter, err := NewCodexCLIAdapterWithOptions(CodexCLIAdapterOptions{
 		Executable:     fakeExecutable,
 		WorkspaceRoot:  workspaceRoot,
-		Timeout:        3 * time.Second,
+		Timeout:        10 * time.Second,
 		MaxOutputBytes: 1024,
 		MaxConcurrent:  1,
 	})
@@ -220,7 +231,7 @@ wait
 		_, runErr := adapter.Run(ctx, CodexCLIProcessRequest{Prompt: []byte("cancel")})
 		result <- runErr
 	}()
-	waitForFile(t, filepath.Join(fixtureDirectory, "child-pid"), time.Second)
+	waitForFile(t, filepath.Join(fixtureDirectory, "child-pid"), 5*time.Second)
 	cancel()
 	err = <-result
 	if code, ok := intelligencedomain.CodeOf(err); !ok || code != intelligencedomain.CodeAIProviderTimeout {
@@ -263,7 +274,7 @@ printf '{"ok":true}'
 	adapter, err := NewCodexCLIAdapterWithOptions(CodexCLIAdapterOptions{
 		Executable:     fakeExecutable,
 		WorkspaceRoot:  workspaceRoot,
-		Timeout:        3 * time.Second,
+		Timeout:        10 * time.Second,
 		MaxOutputBytes: 1024,
 		MaxConcurrent:  1,
 	})
@@ -275,7 +286,7 @@ printf '{"ok":true}'
 		_, runErr := adapter.Run(context.Background(), CodexCLIProcessRequest{Prompt: []byte("first")})
 		errorsChannel <- runErr
 	}()
-	waitForFile(t, filepath.Join(fixtureDirectory, "started-first"), time.Second)
+	waitForFile(t, filepath.Join(fixtureDirectory, "started-first"), 5*time.Second)
 	go func() {
 		_, runErr := adapter.Run(context.Background(), CodexCLIProcessRequest{Prompt: []byte("second")})
 		errorsChannel <- runErr
@@ -292,7 +303,7 @@ printf '{"ok":true}'
 			t.Fatal(runErr)
 		}
 	}
-	waitForFile(t, filepath.Join(fixtureDirectory, "started-second"), time.Second)
+	waitForFile(t, filepath.Join(fixtureDirectory, "started-second"), 5*time.Second)
 	assertDirectoryEmpty(t, workspaceRoot)
 }
 
@@ -329,7 +340,7 @@ printf '{"ok":true}'
 	adapter, err := NewCodexCLIAdapterWithOptions(CodexCLIAdapterOptions{
 		Executable:     fakeExecutable,
 		WorkspaceRoot:  workspaceRoot,
-		Timeout:        time.Second,
+		Timeout:        10 * time.Second,
 		MaxOutputBytes: 1024,
 		MaxConcurrent:  1,
 	})

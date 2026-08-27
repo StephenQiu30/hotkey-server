@@ -176,10 +176,9 @@ func TestRunServiceNeverPersistsOrReusesForgedEvidenceAndRepairConsumesNewAttemp
 		Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "trusted"}},
 	}
 
-	if _, err := service.Execute(context.Background(), input); err == nil {
-		t.Fatal("forged evidence was accepted after the single repair")
-	} else if code, known := domain.CodeOf(err); !known || code != domain.CodeAIOutputInvalid {
-		t.Fatalf("forged evidence error=%v code=%d known=%v", err, code, known)
+	failedResultState, err := service.Execute(context.Background(), input)
+	if err != nil || failedResultState.Status != AnalysisStatusPending || failedResultState.ReasonCode != AnalysisReasonOutputInvalid || len(failedResultState.Result) != 0 {
+		t.Fatalf("forged evidence result=%#v error=%v, want pending analysis", failedResultState, err)
 	}
 	var failedRunID int64
 	var failedStatus string
@@ -380,6 +379,49 @@ func TestRunServiceRetriesOnlyTransientProviderFailures(t *testing.T) {
 			}
 			if attempt != 2 {
 				t.Fatalf("attempt = %d, want 2", attempt)
+			}
+		})
+	}
+}
+
+func TestRunServicePersistsTerminalOperationalFailureAsPendingAnalysis(t *testing.T) {
+	for _, testCase := range []struct {
+		name, hash, reason string
+		code               int
+	}{
+		{name: "codex not installed", hash: "5", code: domain.CodeAIModelUnavailable, reason: AnalysisReasonModelUnavailable},
+		{name: "codex not authenticated", hash: "6", code: domain.CodeAIProviderTransient, reason: AnalysisReasonProviderFailure},
+		{name: "codex timeout or cancellation", hash: "7", code: domain.CodeAIProviderTimeout, reason: AnalysisReasonProviderTimeout},
+		{name: "schema output rejected", hash: "8", code: domain.CodeAIOutputInvalid, reason: AnalysisReasonOutputInvalid},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			runtime := openApplicationRuntime(t)
+			defer func() { _ = runtime.Close() }()
+			runs := intelligencepostgres.NewRepository(runtime)
+			profile := applicationTermProfile()
+			profile.Name = "pending-analysis-" + strings.ReplaceAll(testCase.name, " ", "-")
+			profile.MaxAttempts = 1
+			if err := runs.CreateProfile(t.Context(), &profile); err != nil {
+				t.Fatal(err)
+			}
+			provider := &applicationFakeProvider{structuredErrors: []error{domain.NewError(testCase.code)}}
+			service := newApplicationRunService(t, runs, provider, &applicationClock{value: time.Date(2026, time.August, 27, 18, 0, 0, 0, time.UTC)})
+			input := applicationStructuredInput()
+			input.InputHash = strings.Repeat(testCase.hash, 64)
+			result, err := service.ExecuteStructured(t.Context(), input)
+			if err != nil || result.Status != AnalysisStatusPending || result.ReasonCode != testCase.reason || len(result.Result) != 0 ||
+				result.Run.Status != domain.RunStatusFailed || result.Run.ErrorCode == nil || *result.Run.ErrorCode != testCase.code {
+				t.Fatalf("ExecuteStructured() = %#v / %v", result, err)
+			}
+			var status string
+			var errorCode int
+			var structuredResult []byte
+			if err := runtime.SQL.QueryRow(`SELECT status,error_code,structured_result FROM ai_runs WHERE id=$1`, result.Run.ID).
+				Scan(&status, &errorCode, &structuredResult); err != nil {
+				t.Fatal(err)
+			}
+			if status != "failed" || errorCode != testCase.code || string(structuredResult) != "{}" {
+				t.Fatalf("stored run status=%q code=%d result=%q", status, errorCode, structuredResult)
 			}
 		})
 	}

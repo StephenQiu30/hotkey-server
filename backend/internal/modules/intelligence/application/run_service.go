@@ -12,7 +12,7 @@ import (
 	sharedclock "github.com/StephenQiu30/hotkey-server/backend/internal/shared/clock"
 )
 
-const degradedReasonModelUnavailable = "ai_model_unavailable"
+const degradedReasonModelUnavailable = AnalysisReasonModelUnavailable
 
 type SleepFunc func(context.Context, time.Duration) error
 
@@ -114,6 +114,9 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 			Schema: contract.OutputSchema, Input: cloneRawJSON(input.Input),
 		}, false)
 		if err != nil {
+			if pending, ok := pendingStructuredExecution(claim.Run, err); ok {
+				return pending, nil
+			}
 			return StructuredExecutionResult{}, err
 		}
 		if schemaErr := service.schemas.ValidateOutput(input.TaskType, input.SchemaVersion, response.JSON); schemaErr != nil ||
@@ -128,10 +131,14 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 			}
 			if repairErr != nil || repair == nil {
 				_ = service.fail(ctx, claim.Run.ID, domain.CodeAIOutputInvalid)
-				return StructuredExecutionResult{}, domain.NewError(domain.CodeAIOutputInvalid)
+				pending, _ := pendingStructuredExecution(claim.Run, domain.NewError(domain.CodeAIOutputInvalid))
+				return pending, nil
 			}
 			if err := service.runs.BeginRepair(ctx, claim.Run.ID, service.now()); err != nil {
 				_ = service.fail(ctx, claim.Run.ID, domain.CodeAIOutputInvalid)
+				if pending, ok := pendingStructuredExecution(claim.Run, err); ok {
+					return pending, nil
+				}
 				return StructuredExecutionResult{}, err
 			}
 			response, err = service.generateStructured(ctx, claim.Run.ID, profile, provider, domain.StructuredRequest{
@@ -140,12 +147,16 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 				Schema: contract.OutputSchema, Input: cloneRawJSON(input.Input), Repair: repair,
 			}, true)
 			if err != nil {
+				if pending, ok := pendingStructuredExecution(claim.Run, err); ok {
+					return pending, nil
+				}
 				return StructuredExecutionResult{}, err
 			}
 			if err := service.schemas.ValidateOutput(input.TaskType, input.SchemaVersion, response.JSON); err != nil ||
 				validateStructuredOutputPolicy(input.TaskType, input.SchemaVersion, input.Input, response.JSON) != nil {
 				_ = service.fail(ctx, claim.Run.ID, domain.CodeAIOutputInvalid)
-				return StructuredExecutionResult{}, domain.NewError(domain.CodeAIOutputInvalid)
+				pending, _ := pendingStructuredExecution(claim.Run, domain.NewError(domain.CodeAIOutputInvalid))
+				return pending, nil
 			}
 			usage, err := firstUsage.Add(response.Usage)
 			if err != nil {
@@ -163,9 +174,10 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 		return StructuredExecutionResult{Status: "succeeded", Run: completed, Result: cloneRawJSON(completed.StructuredResult)}, nil
 	}
 	if budgetError != nil {
-		return StructuredExecutionResult{}, budgetError
+		pending, _ := pendingStructuredExecution(domain.Run{}, budgetError)
+		return pending, nil
 	}
-	return StructuredExecutionResult{Status: "degraded", ReasonCode: degradedReasonModelUnavailable}, nil
+	return StructuredExecutionResult{Status: AnalysisStatusPending, ReasonCode: AnalysisReasonModelUnavailable}, nil
 }
 
 func structuredExecutionTargetValid(taskType domain.TaskType, targetType string) bool {

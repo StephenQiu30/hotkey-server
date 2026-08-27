@@ -86,7 +86,7 @@ func (service *EventSummaryService) Generate(ctx context.Context, eventID int64)
 		}
 		return EventSummaryGenerationResult{}, err
 	}
-	if executed.Status == "degraded" {
+	if intelligenceapplication.IsAnalysisPending(executed.Status) {
 		return service.degraded(ctx, eventID, source, executed.ReasonCode)
 	}
 	if executed.Status != "succeeded" || executed.Run.ID <= 0 {
@@ -108,16 +108,10 @@ func (service *EventSummaryService) degraded(ctx context.Context, eventID int64,
 }
 
 func safeEventSummaryDegradation(err error) (string, bool) {
-	code, known := intelligencedomain.CodeOf(err)
-	if !known {
-		return "", false
-	}
-	switch code {
-	case intelligencedomain.CodeAIModelUnavailable, intelligencedomain.CodeAIProviderTransient, intelligencedomain.CodeAIProviderTimeout:
+	if _, pending := intelligenceapplication.AnalysisPendingReason(err); pending {
 		return "ai_unavailable", true
-	default:
-		return "", false
 	}
+	return "", false
 }
 
 func (service *EventSummaryService) persist(ctx context.Context, eventID int64, result EventSummaryGenerationResult) (EventSummaryGenerationResult, error) {

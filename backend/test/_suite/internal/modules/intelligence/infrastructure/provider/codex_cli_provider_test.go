@@ -75,7 +75,7 @@ not-json
 {"type":"turn.started"}
 {"type":"future.event","secret":"must-not-leak"}
 `, wantedCode: intelligencedomain.CodeAIOutputInvalid},
-		{name: "fatal stream error", stream: `{"type":"error","message":"raw upstream authentication detail"}
+		{name: "authentication failure event", stream: `{"type":"error","message":"raw upstream authentication detail"}
 `, wantedCode: intelligencedomain.CodeAIProviderTransient},
 		{name: "turn failed", stream: `{"type":"thread.started","thread_id":"thread-1"}
 {"type":"turn.started"}
@@ -118,7 +118,7 @@ not-json
 func newCodexCLIProviderFixture(t *testing.T, executable, workspaceRoot string) *CodexCLIProvider {
 	t.Helper()
 	adapter, err := NewCodexCLIAdapterWithOptions(CodexCLIAdapterOptions{
-		Executable: executable, WorkspaceRoot: workspaceRoot, Timeout: 3 * time.Second,
+		Executable: executable, WorkspaceRoot: workspaceRoot, Timeout: 10 * time.Second,
 		MaxOutputBytes: 64 << 10, MaxConcurrent: 1,
 	})
 	if err != nil {

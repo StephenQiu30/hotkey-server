@@ -132,6 +132,45 @@ func TestAutomaticClaimEvidenceServiceDegradesBeforeReadingBodyWithoutActiveQual
 	}
 }
 
+func TestAutomaticClaimEvidenceServiceLeavesOperationalModelFailuresPendingWithoutBusinessWrites(t *testing.T) {
+	for _, testCase := range []struct {
+		name, reason string
+		code         int
+	}{
+		{name: "codex not installed", code: intelligencedomain.CodeAIModelUnavailable, reason: intelligenceapplication.AnalysisReasonModelUnavailable},
+		{name: "codex not authenticated", code: intelligencedomain.CodeAIProviderTransient, reason: intelligenceapplication.AnalysisReasonProviderFailure},
+		{name: "codex timeout", code: intelligencedomain.CodeAIProviderTimeout, reason: intelligenceapplication.AnalysisReasonProviderTimeout},
+		{name: "schema output rejected", code: intelligencedomain.CodeAIOutputInvalid, reason: intelligenceapplication.AnalysisReasonOutputInvalid},
+		{name: "budget exhausted", code: intelligencedomain.CodeAIBudgetExhausted, reason: intelligenceapplication.AnalysisReasonBudgetExhausted},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			now := time.Date(2026, time.August, 10, 8, 0, 0, 0, time.UTC)
+			body := "Acme released Nova."
+			digest := sha256HexFixture(body)
+			targets := &automaticEvidenceTargetFake{target: automaticEvidenceTargetFixture(now, digest, int64(len(body)))}
+			projections := &automaticEvidenceProjectionFake{result: eventapplication.AutomaticClaimEvidenceProjectionDTO{
+				Plaintext: body, MIMEType: "text/plain; charset=utf-8", SHA256: digest, SizeBytes: int64(len(body)),
+			}}
+			models := &automaticEvidenceModelFake{err: intelligencedomain.NewError(testCase.code)}
+			selectors := &automaticEvidenceSelectorFake{}
+			facts := &automaticEvidenceFactRepositoryFake{}
+			evidence, _ := eventapplication.NewClaimEvidenceService(facts)
+			summaries, _ := eventapplication.NewEvidenceSummaryService(&automaticEvidenceSummaryRepositoryFake{})
+			service, err := eventapplication.NewAutomaticClaimEvidenceService(eventapplication.AutomaticClaimEvidenceDependencies{
+				Targets: targets, Projections: projections, Models: models, Selectors: selectors,
+				Evidence: evidence, Summaries: summaries, Clock: fixedAutomaticEvidenceClock{now},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := service.Extract(t.Context(), eventapplication.AutomaticClaimEvidenceCommand{MicroEventID: 7, DocumentVersionID: 11})
+			if err != nil || result.Status != "degraded" || result.ReasonCode != testCase.reason || selectors.calls != 0 || facts.committed.ClaimHash != "" {
+				t.Fatalf("result=%#v error=%v selectors=%d committed=%#v", result, err, selectors.calls, facts.committed)
+			}
+		})
+	}
+}
+
 type automaticEvidenceQualityReaderFake struct{ active bool }
 
 func (fake automaticEvidenceQualityReaderFake) IsDecisionQualityProfileActive(context.Context, string, string) (bool, error) {
@@ -169,13 +208,14 @@ func (fake *automaticEvidenceProjectionFake) ReadAutomaticClaimEvidenceProjectio
 type automaticEvidenceModelFake struct {
 	input  intelligenceapplication.StructuredExecutionInput
 	result intelligenceapplication.StructuredExecutionResult
+	err    error
 	calls  int
 }
 
 func (fake *automaticEvidenceModelFake) ExecuteStructured(_ context.Context, input intelligenceapplication.StructuredExecutionInput) (intelligenceapplication.StructuredExecutionResult, error) {
 	fake.calls++
 	fake.input = input
-	return fake.result, nil
+	return fake.result, fake.err
 }
 
 type automaticEvidenceSelectorFake struct {

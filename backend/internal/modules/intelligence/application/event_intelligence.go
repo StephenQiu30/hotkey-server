@@ -70,10 +70,13 @@ func (service *EventIntelligenceService) Execute(ctx context.Context, input Even
 	}
 	executed, err := service.runs.ExecuteStructured(ctx, prepared)
 	if err != nil {
+		if reason, pending := AnalysisPendingReason(err); pending {
+			return EventIntelligenceResult{Status: AnalysisStatusPending, ReasonCode: reason}, nil
+		}
 		return EventIntelligenceResult{}, err
 	}
-	if executed.Status == "degraded" {
-		return EventIntelligenceResult{Status: "degraded", ReasonCode: executed.ReasonCode}, nil
+	if IsAnalysisPending(executed.Status) {
+		return EventIntelligenceResult{Status: AnalysisStatusPending, ReasonCode: executed.ReasonCode}, nil
 	}
 	if executed.Status != "succeeded" || executed.Run.ID <= 0 || !json.Valid(executed.Result) {
 		return EventIntelligenceResult{}, domain.NewError(domain.CodeAIOutputInvalid)

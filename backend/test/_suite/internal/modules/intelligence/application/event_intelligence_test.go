@@ -63,11 +63,36 @@ func TestEventIntelligenceServiceKeepsSafeDegradationAndRejectsInvalidInput(t *t
 		TaskType: domain.TaskTypeEntityClaimExtraction, EventID: 7, EventKey: "evt_7",
 		Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "safe"}},
 	})
-	if err != nil || result.Status != "degraded" || result.ReasonCode != "ai_unavailable" || len(result.Result) != 0 {
+	if err != nil || result.Status != AnalysisStatusPending || result.ReasonCode != "ai_unavailable" || len(result.Result) != 0 {
 		t.Fatalf("Execute(degraded) = %#v / %v, want safe degradation", result, err)
 	}
 	if _, err := service.Execute(context.Background(), EventIntelligenceInput{TaskType: domain.TaskTypeEventSummary, EventID: 7, EventKey: "evt_7"}); err == nil {
 		t.Fatal("Execute(without evidence) error = nil, want rejection")
+	}
+}
+
+func TestEventIntelligenceServiceMapsOperationalFailuresToPendingAnalysis(t *testing.T) {
+	for _, testCase := range []struct {
+		name, reason string
+		code         int
+	}{
+		{name: "codex not installed", code: domain.CodeAIModelUnavailable, reason: AnalysisReasonModelUnavailable},
+		{name: "codex not authenticated", code: domain.CodeAIProviderTransient, reason: AnalysisReasonProviderFailure},
+		{name: "codex timeout", code: domain.CodeAIProviderTimeout, reason: AnalysisReasonProviderTimeout},
+		{name: "codex cancelled", code: domain.CodeAIProviderTimeout, reason: AnalysisReasonProviderTimeout},
+		{name: "schema output rejected", code: domain.CodeAIOutputInvalid, reason: AnalysisReasonOutputInvalid},
+		{name: "budget exhausted", code: domain.CodeAIBudgetExhausted, reason: AnalysisReasonBudgetExhausted},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			runner := &eventIntelligenceRunnerStub{err: domain.NewError(testCase.code)}
+			result, err := NewEventIntelligenceService(runner).Execute(context.Background(), EventIntelligenceInput{
+				TaskType: domain.TaskTypeEventSummary, EventID: 7, EventKey: "evt_7",
+				Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: "safe"}},
+			})
+			if err != nil || result.Status != AnalysisStatusPending || result.ReasonCode != testCase.reason || len(result.Result) != 0 {
+				t.Fatalf("Execute() = %#v / %v", result, err)
+			}
+		})
 	}
 }
 

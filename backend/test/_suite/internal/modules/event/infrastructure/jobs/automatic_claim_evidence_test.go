@@ -74,6 +74,10 @@ func TestAutomaticClaimEvidenceHandlerResolvesCurrentEventVersionAndIsolatesDegr
 	if err := handler.Handle(context.Background(), job); !errors.Is(err, queue.ErrPermanent) {
 		t.Fatalf("degraded handler error = %v, want isolated permanent job failure", err)
 	}
+	extractor.result = eventapplication.AutomaticClaimEvidenceResult{Status: "degraded", ReasonCode: "ai_provider_timeout"}
+	if err := handler.Handle(context.Background(), job); !errors.Is(err, queue.ErrRetryable) {
+		t.Fatalf("pending-analysis handler error = %v, want retryable isolated failure", err)
+	}
 
 	unsafe := automaticClaimEvidenceTestJob([]byte(`{"micro_event_id":7,"document_version_id":11,"trace_id":"","body":"secret"}`))
 	if err := handler.Handle(context.Background(), unsafe); !errors.Is(err, queue.ErrPermanent) {

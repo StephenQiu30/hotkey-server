@@ -104,7 +104,7 @@ func (service *EventClaimExtractionService) Extract(ctx context.Context, eventID
 	if err != nil {
 		return EventClaimExtractionResult{}, err
 	}
-	if executed.Status == "degraded" {
+	if intelligenceapplication.IsAnalysisPending(executed.Status) {
 		return EventClaimExtractionResult{Status: "degraded", ReasonCode: executed.ReasonCode}, nil
 	}
 	if executed.Status != "succeeded" || executed.Run.ID <= 0 {
