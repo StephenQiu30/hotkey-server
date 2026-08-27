@@ -133,7 +133,8 @@ func TestMonitorScanRouteReturnsViewerSafeSourceProgress(t *testing.T) {
 	scheduledAt := time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
 	service := &collectionControlServiceFake{scans: []domain.MonitorScan{{
 		ID: "manual:1786622400000000000", MonitorID: 9, TriggerType: domain.CollectionTriggerManual,
-		Status: domain.MonitorScanSucceeded, CandidateCount: 8, AcceptedCount: 3, RejectedCount: 5,
+		Status: domain.MonitorScanPartial, RunOutcome: domain.MonitorScanOutcomePartialSuccess,
+		CandidateCount: 8, AcceptedCount: 3, RejectedCount: 5,
 		ScheduledAt: scheduledAt,
 		Sources: []domain.MonitorScanSource{{
 			RunID: 41, MonitorID: 9, SourceConnectionID: 12, SourceName: "Hacker News", SourceType: "hacker_news",
@@ -150,7 +151,7 @@ func TestMonitorScanRouteReturnsViewerSafeSourceProgress(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	for _, value := range []string{"\"id\":\"manual:1786622400000000000\"", "\"source_name\":\"Hacker News\"", "\"source_type\":\"hacker_news\"", "\"status\":\"succeeded\"", "\"accepted_count\":3"} {
+	for _, value := range []string{"\"id\":\"manual:1786622400000000000\"", "\"run_outcome\":\"partial_success\"", "\"source_name\":\"Hacker News\"", "\"source_type\":\"hacker_news\"", "\"status\":\"succeeded\"", "\"accepted_count\":3"} {
 		if !strings.Contains(response.Body.String(), value) {
 			t.Fatalf("monitor scan response misses %s: %s", value, response.Body.String())
 		}

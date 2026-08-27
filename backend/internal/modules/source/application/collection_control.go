@@ -239,8 +239,22 @@ func groupMonitorScans(sources []domain.MonitorScanSource) []domain.MonitorScan 
 	}
 	for index := range items {
 		items[index].Status = monitorScanStatus(items[index].Sources)
+		items[index].RunOutcome = monitorScanOutcome(items[index].Status)
 	}
 	return items
+}
+
+func monitorScanOutcome(status domain.MonitorScanStatus) domain.MonitorScanOutcome {
+	switch status {
+	case domain.MonitorScanSucceeded:
+		return domain.MonitorScanOutcomeSuccess
+	case domain.MonitorScanPartial:
+		return domain.MonitorScanOutcomePartialSuccess
+	case domain.MonitorScanFailed:
+		return domain.MonitorScanOutcomeFailed
+	default:
+		return ""
+	}
 }
 
 func monitorScanStatus(sources []domain.MonitorScanSource) domain.MonitorScanStatus {

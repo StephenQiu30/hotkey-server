@@ -1621,6 +1621,7 @@ probability or a cross-channel relevance percentage. */
     id?: string;
     monitor_id?: number;
     rejected_count?: number;
+    run_outcome?: "success" | "partial_success" | "failed";
     scheduled_at?: string;
     sources?: MonitorScanSourceResponse[];
     started_at?: string;

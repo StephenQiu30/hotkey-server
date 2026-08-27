@@ -11124,6 +11124,14 @@ const docTemplate = `{
                 "rejected_count": {
                     "type": "integer"
                 },
+                "run_outcome": {
+                    "type": "string",
+                    "enum": [
+                        "success",
+                        "partial_success",
+                        "failed"
+                    ]
+                },
                 "scheduled_at": {
                     "type": "string"
                 },

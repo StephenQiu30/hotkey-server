@@ -642,11 +642,22 @@ const (
 	MonitorScanFailed    MonitorScanStatus = "failed"
 )
 
+// MonitorScanOutcome is derived from the terminal per-source target facts. It
+// deliberately is not persisted in the collection status state machine.
+type MonitorScanOutcome string
+
+const (
+	MonitorScanOutcomeSuccess        MonitorScanOutcome = "success"
+	MonitorScanOutcomePartialSuccess MonitorScanOutcome = "partial_success"
+	MonitorScanOutcomeFailed         MonitorScanOutcome = "failed"
+)
+
 type MonitorScan struct {
 	ID             string
 	MonitorID      int64
 	TriggerType    CollectionTriggerType
 	Status         MonitorScanStatus
+	RunOutcome     MonitorScanOutcome
 	CandidateCount int64
 	AcceptedCount  int64
 	RejectedCount  int64

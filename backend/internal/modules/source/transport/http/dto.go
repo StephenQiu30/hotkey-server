@@ -119,6 +119,7 @@ type MonitorScanResponse struct {
 	MonitorID      int64                       `json:"monitor_id"`
 	TriggerType    string                      `json:"trigger_type" enums:"schedule,manual,retry,reconcile"`
 	Status         string                      `json:"status" enums:"queued,running,succeeded,partial,failed"`
+	RunOutcome     string                      `json:"run_outcome,omitempty" enums:"success,partial_success,failed"`
 	CandidateCount int64                       `json:"candidate_count"`
 	AcceptedCount  int64                       `json:"accepted_count"`
 	RejectedCount  int64                       `json:"rejected_count"`
@@ -468,6 +469,7 @@ func monitorScanPageResponse(items []domain.MonitorScan) MonitorScanPageResponse
 	for _, item := range items {
 		scan := MonitorScanResponse{
 			ID: item.ID, MonitorID: item.MonitorID, TriggerType: string(item.TriggerType), Status: string(item.Status),
+			RunOutcome:     string(item.RunOutcome),
 			CandidateCount: item.CandidateCount, AcceptedCount: item.AcceptedCount, RejectedCount: item.RejectedCount,
 			ScheduledAt: item.ScheduledAt.UTC(), StartedAt: item.StartedAt, FinishedAt: item.FinishedAt,
 			Sources: make([]MonitorScanSourceResponse, 0, len(item.Sources)),
