@@ -223,6 +223,7 @@ func codexCLIStructuredRequest() intelligencedomain.StructuredRequest {
 		TaskType:   intelligencedomain.TaskTypeTermExpansion,
 		SchemaName: "term-expansion-output-v1", SchemaVersion: "v1",
 		Instruction: "Return one structured term expansion result and do not execute tools.",
+		InputSchema: json.RawMessage(`{"type":"object"}`),
 		Schema:      json.RawMessage(`{"type":"object","additionalProperties":false,"required":["terms"],"properties":{"terms":{"type":"array"}}}`),
 		Input:       json.RawMessage(`{"objective":"hotkey"}`),
 	}

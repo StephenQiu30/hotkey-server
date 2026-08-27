@@ -325,6 +325,7 @@ func structuredRequest() intelligencedomain.StructuredRequest {
 		SchemaVersion: "v1",
 		TaskType:      intelligencedomain.TaskTypeTermExpansion,
 		Instruction:   "Return only approved terms.",
+		InputSchema:   json.RawMessage(`{"type":"object"}`),
 		Schema:        json.RawMessage(`{"type":"object","properties":{"terms":{"type":"array"}},"additionalProperties":false}`),
 		Input:         json.RawMessage(`{"query":"openai"}`),
 		Repair: &intelligencedomain.RepairInput{
@@ -338,8 +339,9 @@ func relevanceReviewStructuredRequest() intelligencedomain.StructuredRequest {
 	return intelligencedomain.StructuredRequest{
 		ModelName: "gpt-5.6sol", ModelVersion: "2026-07", TaskType: intelligencedomain.TaskTypeRelevanceReview,
 		SchemaName: "relevance_review_output", SchemaVersion: "v1", Instruction: "Return only the bounded relevance decision.",
-		Schema: json.RawMessage(`{"type":"object","additionalProperties":false,"required":["decision","score","reason_codes"],"properties":{"decision":{"type":"string","enum":["accepted","review","rejected"]},"score":{"type":"number","minimum":0,"maximum":100},"reason_codes":{"type":"array","maxItems":8}}}`),
-		Input:  json.RawMessage(`{"content_excerpt":"A verified OpenAI product announcement.","content_language":"en","monitor_intent":"Track OpenAI product releases.","scoring_version":"relevance-v1","scores":{"semantic":70,"lexical":80,"entity":60,"title":70,"preference":50},"recall_paths":["lexical","vector"],"reason_codes":["lexical_candidate"],"evidence_terms":["OpenAI"]}`),
+		InputSchema: json.RawMessage(`{"type":"object"}`),
+		Schema:      json.RawMessage(`{"type":"object","additionalProperties":false,"required":["decision","score","reason_codes"],"properties":{"decision":{"type":"string","enum":["accepted","review","rejected"]},"score":{"type":"number","minimum":0,"maximum":100},"reason_codes":{"type":"array","maxItems":8}}}`),
+		Input:       json.RawMessage(`{"content_excerpt":"A verified OpenAI product announcement.","content_language":"en","monitor_intent":"Track OpenAI product releases.","scoring_version":"relevance-v1","scores":{"semantic":70,"lexical":80,"entity":60,"title":70,"preference":50},"recall_paths":["lexical","vector"],"reason_codes":["lexical_candidate"],"evidence_terms":["OpenAI"]}`),
 	}
 }
 

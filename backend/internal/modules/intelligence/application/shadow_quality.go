@@ -230,7 +230,7 @@ func (evaluator *ShadowQualityEvaluator) execute(ctx context.Context, sample Sha
 	request := domain.StructuredRequest{
 		ModelName: track.ModelName, ModelVersion: track.ModelVersion, TaskType: sample.TaskType,
 		SchemaName: contract.SchemaName, SchemaVersion: contract.SchemaVersion, Instruction: contract.Instruction,
-		Schema: cloneRawJSON(contract.OutputSchema), Input: cloneRawJSON(sample.Input),
+		InputSchema: cloneRawJSON(contract.InputSchema), Schema: cloneRawJSON(contract.OutputSchema), Input: cloneRawJSON(sample.Input),
 	}
 	started := time.Now()
 	callContext, cancel := context.WithTimeout(ctx, evaluator.timeout)

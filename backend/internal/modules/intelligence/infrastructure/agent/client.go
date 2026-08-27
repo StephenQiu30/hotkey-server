@@ -204,6 +204,10 @@ func (client *Client) GenerateStructured(ctx context.Context, request intelligen
 	if err := json.Unmarshal(request.Input, &structuredInput); err != nil {
 		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
 	}
+	var inputSchema any
+	if err := json.Unmarshal(request.InputSchema, &inputSchema); err != nil {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
 	var outputSchema any
 	if err := json.Unmarshal(request.Schema, &outputSchema); err != nil {
 		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
@@ -212,6 +216,7 @@ func (client *Client) GenerateStructured(ctx context.Context, request intelligen
 		"schema_name":    request.SchemaName,
 		"schema_version": request.SchemaVersion,
 		"instruction":    request.Instruction,
+		"input_schema":   inputSchema,
 		"schema":         outputSchema,
 		"input":          structuredInput,
 	}

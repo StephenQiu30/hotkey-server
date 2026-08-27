@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go,internal/modules/knowledge/transport/http,internal/modules/report
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance agent-skill-contract-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -54,6 +54,16 @@ monitor-publication-acceptance: test-env
 		./internal/modules/monitor/application \
 		./internal/modules/monitor/infrastructure/postgres \
 		-run '^(TestMonitorStateTransitionsFollowPublishedStateMachine|TestPublishedIntentVersionKeepsImmutableApprovedSnapshot|TestMonitorServicePublishesImmutableConfigurationAndCoordinatesSourceLifecycle|TestMonitorServiceFirstDraftAndPublishConcurrencyAndAuditRollback|TestIntentCompilerPersistsExactPreviewProfileWithApprovedFactsOnly|TestCompiledIntentProfileHashIsStableAcrossEquivalentPreviewRuns|TestIntentPublicationStagesExactPreviewFactsAndCompletesPublishedProfile|TestIntentRepositoryPersistsExactPreviewCompiledProfileIdempotently|TestIntentPublicationRepositoryPromotesSuccessfulExactPreviewInsidePublishTransaction|TestCollectionSchedulerSkipsPublishedMonitorWithoutReadyCompiledProfile|TestPublishedCollectionTargetReaderPrefersExactCompiledIntentOverLegacyRules|TestCollectionSchedulerEnqueuesDueSourceWithoutWritingCollectionFacts)$$' \
+		-count=1 -v
+
+agent-skill-contract-acceptance: test-env
+	cd ../agent && uv run pytest
+	$(GO) run ./test/runner test -p=1 \
+		./internal/modules/intelligence/domain \
+		./internal/modules/intelligence/application \
+		./internal/modules/intelligence/infrastructure/agent \
+		./internal/modules/event/application \
+		-run '^(TestProviderRequestsKeepOnlyProviderNeutralContract|TestClientSendsVersionedAuthenticatedBoundedAnalysisRequest|TestClientRejectsInvalidConfigurationAndRequestBeforeNetwork|TestClientMapsStatusTimeoutAndMalformedResponsesToStableErrors|TestClientRejectsIdentityAndEvidenceForgery|TestClientAdaptsStructuredRequestsToVersionedAgentPayload|TestClientDoesNotPretendToProvideEmbeddings|TestStructuredOutputPolicy.*|TestSchemaRegistry.*|TestP0Skill.*|TestRelevanceReviewSchemaRegistryContract|TestEventIntelligenceSchemaRegistryContracts|TestAtomicClaimEvidenceV2SchemaRequiresExactQuotedEvidence|TestAutomaticClaimEvidenceServiceLeavesOperationalModelFailuresPendingWithoutBusinessWrites|TestPromptInjectionFixtureCannotChangeEvidenceOrOutputContract|TestRunServiceNeverPersistsOrReusesForgedEvidenceAndRepairConsumesNewAttempt)$$' \
 		-count=1 -v
 
 build:

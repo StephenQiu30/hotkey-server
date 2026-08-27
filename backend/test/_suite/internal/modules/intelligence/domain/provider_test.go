@@ -26,6 +26,7 @@ func TestProviderRequestsKeepOnlyProviderNeutralContract(t *testing.T) {
 		SchemaName:    "term-expansion-output-v1",
 		SchemaVersion: "v1",
 		Instruction:   "Return only JSON.",
+		InputSchema:   json.RawMessage(`{"type":"object"}`),
 		Schema:        json.RawMessage(`{"type":"object"}`),
 		Input:         json.RawMessage(`{"intent":"AI workflow","terms":[],"language":"en"}`),
 	}

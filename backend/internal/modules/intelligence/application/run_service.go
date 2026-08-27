@@ -129,7 +129,7 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 		response, err := service.generateStructured(ctx, claim.Run.ID, profile, provider, domain.StructuredRequest{
 			ModelName: profile.ModelName, ModelVersion: profile.ModelVersion, TaskType: input.TaskType,
 			SchemaName: contract.SchemaName, SchemaVersion: contract.SchemaVersion, Instruction: contract.Instruction,
-			Schema: contract.OutputSchema, Input: cloneRawJSON(input.Input),
+			InputSchema: contract.InputSchema, Schema: contract.OutputSchema, Input: cloneRawJSON(input.Input),
 		}, false)
 		if err != nil {
 			if pending, ok := pendingStructuredExecution(claim.Run, err); ok {
@@ -162,7 +162,7 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 			response, err = service.generateStructured(ctx, claim.Run.ID, profile, provider, domain.StructuredRequest{
 				ModelName: profile.ModelName, ModelVersion: profile.ModelVersion, TaskType: input.TaskType,
 				SchemaName: contract.SchemaName, SchemaVersion: contract.SchemaVersion, Instruction: contract.Instruction,
-				Schema: contract.OutputSchema, Input: cloneRawJSON(input.Input), Repair: repair,
+				InputSchema: contract.InputSchema, Schema: contract.OutputSchema, Input: cloneRawJSON(input.Input), Repair: repair,
 			}, true)
 			if err != nil {
 				if pending, ok := pendingStructuredExecution(claim.Run, err); ok {
@@ -193,7 +193,7 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 			service.shadow.Submit(ctx, domain.StructuredRequest{
 				ModelName: profile.ModelName, ModelVersion: profile.ModelVersion, TaskType: input.TaskType,
 				SchemaName: contract.SchemaName, SchemaVersion: contract.SchemaVersion, Instruction: contract.Instruction,
-				Schema: cloneRawJSON(contract.OutputSchema), Input: cloneRawJSON(input.Input),
+				InputSchema: cloneRawJSON(contract.InputSchema), Schema: cloneRawJSON(contract.OutputSchema), Input: cloneRawJSON(input.Input),
 			}, response)
 		}
 		return StructuredExecutionResult{Status: "succeeded", Run: completed, Result: cloneRawJSON(completed.StructuredResult)}, nil

@@ -128,14 +128,14 @@ type StructuredRequest struct {
 	ModelName, ModelVersion, SchemaName, SchemaVersion string
 	TaskType                                           TaskType
 	Instruction                                        string
-	Schema, Input                                      json.RawMessage
+	InputSchema, Schema, Input                         json.RawMessage
 	Repair                                             *RepairInput
 }
 
 func (request StructuredRequest) Validate() error {
 	if strings.TrimSpace(request.ModelName) == "" || strings.TrimSpace(request.ModelVersion) == "" || !request.TaskType.Valid() ||
 		strings.TrimSpace(request.SchemaName) == "" || strings.TrimSpace(request.SchemaVersion) == "" || strings.TrimSpace(request.Instruction) == "" ||
-		!json.Valid(request.Schema) || !json.Valid(request.Input) {
+		!json.Valid(request.InputSchema) || !json.Valid(request.Schema) || !json.Valid(request.Input) {
 		return NewError(CodeAIModelProfileInvalid)
 	}
 	if request.Repair != nil {

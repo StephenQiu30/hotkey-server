@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+from typing import Protocol
 
 from fastapi import FastAPI, Header, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from hotkey_agent import __version__
@@ -18,10 +20,20 @@ from hotkey_agent.contracts import (
     ErrorResponse,
     HealthResponse,
 )
+from hotkey_agent.skills import (
+    SkillContractError,
+    SkillOutputError,
+    validate_analysis_response,
+    validate_skill_request,
+)
 
 
 class RequestTooLargeError(Exception):
     pass
+
+
+class Analyzer(Protocol):
+    async def analyze(self, request: AnalyzeRequest) -> AnalyzeResponse: ...
 
 
 class RequestSizeMiddleware:
@@ -65,9 +77,9 @@ class RequestSizeMiddleware:
             )(scope, receive, send)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, *, analyzer: Analyzer | None = None) -> FastAPI:
     service_settings = settings or Settings.from_env()
-    analyzer = DeterministicAnalyzer()
+    analysis_engine = analyzer or DeterministicAnalyzer()
     capacity = asyncio.Semaphore(service_settings.max_concurrency)
     application = FastAPI(
         title="HotKey Internal Agent",
@@ -116,8 +128,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return _error(
                 status.HTTP_401_UNAUTHORIZED, "AGENT_UNAUTHORIZED", "invalid service credential"
             )
+        try:
+            selected_skill = validate_skill_request(request)
+        except SkillContractError:
+            return _error(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "AGENT_INVALID_REQUEST",
+                "structured analysis contract is invalid",
+            )
         async with capacity:
-            return await analyzer.analyze(request)
+            response = await analysis_engine.analyze(request)
+        try:
+            response = AnalyzeResponse.model_validate(response.model_dump(mode="python"))
+            validate_analysis_response(request, response, selected_skill)
+        except (AttributeError, ValidationError, SkillOutputError):
+            return _error(
+                status.HTTP_502_BAD_GATEWAY,
+                "AGENT_OUTPUT_INVALID",
+                "analysis output does not match the contract",
+            )
+        return response
 
     return application
 

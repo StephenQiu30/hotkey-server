@@ -109,6 +109,6 @@ func shadowStructuredRequest() intelligencedomain.StructuredRequest {
 	return intelligencedomain.StructuredRequest{
 		ModelName: "agent", ModelVersion: "deterministic.v1", TaskType: intelligencedomain.TaskTypeEventSummary,
 		SchemaName: "event-summary-output-v1", SchemaVersion: "v1", Instruction: "return JSON",
-		Schema: json.RawMessage(`{"type":"object"}`), Input: json.RawMessage(`{"event_id":7}`),
+		InputSchema: json.RawMessage(`{"type":"object"}`), Schema: json.RawMessage(`{"type":"object"}`), Input: json.RawMessage(`{"event_id":7}`),
 	}
 }

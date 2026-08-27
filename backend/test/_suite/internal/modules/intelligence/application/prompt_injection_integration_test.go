@@ -118,6 +118,7 @@ func (provider *promptInjectionRecordingProvider) recordedRequests() []domain.St
 
 func cloneStructuredRequest(request domain.StructuredRequest) domain.StructuredRequest {
 	cloned := request
+	cloned.InputSchema = append(json.RawMessage(nil), request.InputSchema...)
 	cloned.Schema = append(json.RawMessage(nil), request.Schema...)
 	cloned.Input = append(json.RawMessage(nil), request.Input...)
 	if request.Repair != nil {

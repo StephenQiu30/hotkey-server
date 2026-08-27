@@ -176,8 +176,9 @@ func TestClientAdaptsStructuredRequestsToVersionedAgentPayload(t *testing.T) {
 			TaskID   string `json:"task_id"`
 			TaskType string `json:"task_type"`
 			Payload  struct {
-				SchemaName string `json:"schema_name"`
-				Input      struct {
+				SchemaName  string         `json:"schema_name"`
+				InputSchema map[string]any `json:"input_schema"`
+				Input       struct {
 					Evidence []map[string]any `json:"evidence"`
 				} `json:"input"`
 			} `json:"payload"`
@@ -186,7 +187,7 @@ func TestClientAdaptsStructuredRequestsToVersionedAgentPayload(t *testing.T) {
 		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
 			t.Fatal(err)
 		}
-		if input.TaskType != string(TaskEventSummary) || input.Payload.SchemaName != "event-summary-output-v1" || len(input.Payload.Input.Evidence) != 1 || len(input.Evidence) != 1 {
+		if input.TaskType != string(TaskEventSummary) || input.Payload.SchemaName != "event-summary-output-v1" || len(input.Payload.InputSchema) == 0 || len(input.Payload.Input.Evidence) != 1 || len(input.Evidence) != 1 {
 			t.Fatalf("structured Agent request = %#v", input)
 		}
 		writer.Header().Set("Content-Type", "application/json")
@@ -201,7 +202,7 @@ func TestClientAdaptsStructuredRequestsToVersionedAgentPayload(t *testing.T) {
 	response, err := client.GenerateStructured(context.Background(), intelligencedomain.StructuredRequest{
 		ModelName: "agent", ModelVersion: "caller-declared-v1", TaskType: intelligencedomain.TaskTypeEventSummary,
 		SchemaName: "event-summary-output-v1", SchemaVersion: "v1", Instruction: "return JSON",
-		Schema: json.RawMessage(`{"type":"object"}`), Input: json.RawMessage(`{"evidence":[{"content_id":17,"locator":"body:1","excerpt":"trusted"}]}`),
+		InputSchema: json.RawMessage(`{"type":"object"}`), Schema: json.RawMessage(`{"type":"object"}`), Input: json.RawMessage(`{"evidence":[{"content_id":17,"locator":"body:1","excerpt":"trusted"}]}`),
 	})
 	if err != nil || string(response.JSON) != `{"title_zh":"待分析事件","sentences":[]}` || response.ModelVersion != DeterministicRuntimeVersion {
 		t.Fatalf("GenerateStructured() = %#v / %v", response, err)

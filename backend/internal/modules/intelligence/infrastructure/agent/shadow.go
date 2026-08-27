@@ -116,6 +116,7 @@ func (runner *ShadowRunner) Submit(ctx context.Context, request intelligencedoma
 
 func cloneShadowRequest(request intelligencedomain.StructuredRequest) intelligencedomain.StructuredRequest {
 	copyOfRequest := request
+	copyOfRequest.InputSchema = append(json.RawMessage(nil), request.InputSchema...)
 	copyOfRequest.Schema = append(json.RawMessage(nil), request.Schema...)
 	copyOfRequest.Input = append(json.RawMessage(nil), request.Input...)
 	if request.Repair != nil {
