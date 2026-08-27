@@ -3,6 +3,8 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,18 +12,21 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 )
 
 const (
-	ContractVersion        = "analysis.v1"
-	StatusSucceeded        = "succeeded"
-	StatusDegraded         = "degraded"
-	maximumRequestBytes    = 256 << 10
-	maximumEvidenceItems   = 32
-	maximumSuggestionItems = 32
+	ContractVersion             = "analysis.v1"
+	StatusSucceeded             = "succeeded"
+	StatusDegraded              = "degraded"
+	DeterministicRuntimeName    = "deterministic"
+	DeterministicRuntimeVersion = "deterministic.v1"
+	maximumRequestBytes         = 256 << 10
+	maximumEvidenceItems        = 32
+	maximumSuggestionItems      = 32
 )
 
 type TaskType string
@@ -176,6 +181,138 @@ func (client *Client) Analyze(ctx context.Context, input AnalyzeRequest) (Analyz
 	return output, nil
 }
 
+// Embed deliberately remains unavailable: the Agent owns bounded data
+// analysis, while vector generation stays on the existing provider path until
+// its separate replacement acceptance is complete.
+func (client *Client) Embed(context.Context, intelligencedomain.EmbeddingRequest) (intelligencedomain.EmbeddingResponse, error) {
+	return intelligencedomain.EmbeddingResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)
+}
+
+// GenerateStructured adapts the provider-neutral structured port to the
+// versioned Agent contract. It is intentionally not registered in Bootstrap
+// yet; Shadow/Live acceptance must prove the mapping before a profile can use
+// it in production.
+func (client *Client) GenerateStructured(ctx context.Context, request intelligencedomain.StructuredRequest) (intelligencedomain.StructuredResponse, error) {
+	if client == nil || request.Validate() != nil || request.TaskType == intelligencedomain.TaskTypeEmbedding {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	taskType, ok := taskTypeFor(request.TaskType)
+	if !ok {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	var structuredInput any
+	if err := json.Unmarshal(request.Input, &structuredInput); err != nil {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	var outputSchema any
+	if err := json.Unmarshal(request.Schema, &outputSchema); err != nil {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	payload := map[string]any{
+		"schema_name":    request.SchemaName,
+		"schema_version": request.SchemaVersion,
+		"instruction":    request.Instruction,
+		"schema":         outputSchema,
+		"input":          structuredInput,
+	}
+	if request.Repair != nil {
+		payload["repair"] = map[string]any{
+			"previous_output": json.RawMessage(request.Repair.PreviousOutput),
+			"violations":      request.Repair.Violations,
+		}
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil || len(payloadJSON) > maximumRequestBytes {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	inputDigest := sha256.Sum256(request.Input)
+	evidence := structuredEvidence(structuredInput)
+	evidenceJSON, err := json.Marshal(evidence)
+	if err != nil {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	evidenceDigest := sha256.Sum256(evidenceJSON)
+	response, err := client.Analyze(ctx, AnalyzeRequest{
+		TaskID:          "structured-" + hex.EncodeToString(inputDigest[:])[:32],
+		TaskType:        taskType,
+		InputHash:       hex.EncodeToString(inputDigest[:]),
+		EvidenceSetHash: hex.EncodeToString(evidenceDigest[:]),
+		Payload:         payloadJSON,
+		Evidence:        evidence,
+	})
+	if err != nil {
+		return intelligencedomain.StructuredResponse{}, err
+	}
+	if len(response.Suggestions) != 1 || response.Runtime.Name == "" || response.Runtime.Version == "" {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIOutputInvalid)
+	}
+	return intelligencedomain.StructuredResponse{
+		ModelVersion: request.ModelVersion,
+		JSON:         append(json.RawMessage(nil), response.Suggestions[0].Value...),
+	}, nil
+}
+
+func taskTypeFor(taskType intelligencedomain.TaskType) (TaskType, bool) {
+	switch taskType {
+	case intelligencedomain.TaskTypeTermExpansion:
+		return TaskMonitorCompile, true
+	case intelligencedomain.TaskTypeRelevanceReview:
+		return TaskRelevance, true
+	case intelligencedomain.TaskTypeEventCluster:
+		return TaskEventCluster, true
+	case intelligencedomain.TaskTypeEventSummary:
+		return TaskEventSummary, true
+	case intelligencedomain.TaskTypeEntityClaimExtraction:
+		return TaskClaimEvidence, true
+	default:
+		return "", false
+	}
+}
+
+func structuredEvidence(input any) []Evidence {
+	object, ok := input.(map[string]any)
+	if !ok {
+		return nil
+	}
+	items, ok := object["evidence"].([]any)
+	if !ok {
+		return nil
+	}
+	evidence := make([]Evidence, 0, min(len(items), maximumEvidenceItems))
+	for _, item := range items {
+		record, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		contentID, ok := record["content_id"].(float64)
+		locator, locatorOK := record["locator"].(string)
+		excerpt, excerptOK := record["excerpt"].(string)
+		if !ok || contentID < 1 || contentID != math.Trunc(contentID) || !locatorOK || strings.TrimSpace(locator) == "" {
+			continue
+		}
+		if !excerptOK || strings.TrimSpace(excerpt) == "" {
+			excerpt = locator
+		}
+		locatorDigest := sha256.Sum256([]byte(locator))
+		evidence = append(evidence, Evidence{
+			ID:    "content-" + strconv.FormatInt(int64(contentID), 10) + "-" + hex.EncodeToString(locatorDigest[:])[:12],
+			Title: locator,
+			Text:  excerpt,
+		})
+		if len(evidence) == maximumEvidenceItems {
+			break
+		}
+	}
+	return evidence
+}
+
+func min(first, second int) int {
+	if first < second {
+		return first
+	}
+	return second
+}
+
 func validateRequest(input AnalyzeRequest) error {
 	if !identifierPattern.MatchString(input.TaskID) || !input.TaskType.valid() || !hashPattern.MatchString(input.InputHash) || !hashPattern.MatchString(input.EvidenceSetHash) || !validJSONObject(input.Payload) || len(input.Evidence) > maximumEvidenceItems {
 		return errors.New("invalid request")
@@ -244,3 +381,5 @@ func statusCode(value int) int {
 		return intelligencedomain.CodeAIOutputInvalid
 	}
 }
+
+var _ intelligencedomain.Provider = (*Client)(nil)

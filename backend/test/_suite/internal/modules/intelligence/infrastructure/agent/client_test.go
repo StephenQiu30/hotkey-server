@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -166,6 +167,59 @@ func TestClientRejectsIdentityAndEvidenceForgery(t *testing.T) {
 		if errorCode(err) != intelligencedomain.CodeAIOutputInvalid {
 			t.Fatalf("Analyze(forged) error = %v", err)
 		}
+	}
+}
+
+func TestClientAdaptsStructuredRequestsToVersionedAgentPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var input struct {
+			TaskID   string `json:"task_id"`
+			TaskType string `json:"task_type"`
+			Payload  struct {
+				SchemaName string `json:"schema_name"`
+				Input      struct {
+					Evidence []map[string]any `json:"evidence"`
+				} `json:"input"`
+			} `json:"payload"`
+			Evidence []Evidence `json:"evidence"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+			t.Fatal(err)
+		}
+		if input.TaskType != string(TaskEventSummary) || input.Payload.SchemaName != "event-summary-output-v1" || len(input.Payload.Input.Evidence) != 1 || len(input.Evidence) != 1 {
+			t.Fatalf("structured Agent request = %#v", input)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(fmt.Sprintf(`{"contract_version":"analysis.v1","task_id":%q,"task_type":"event_summary","status":"degraded","suggestions":[{"kind":"event_summary","value":{"title_zh":"待分析事件","sentences":[]},"confidence":0,"evidence_ids":[],"reason":"safe fallback"}],"runtime":{"name":"deterministic","version":"deterministic.v1","degraded":true}}`, input.TaskID)))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Options{BaseURL: server.URL, AuthToken: testToken, HTTPClient: server.Client(), MaxResponseBytes: 4096})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.GenerateStructured(context.Background(), intelligencedomain.StructuredRequest{
+		ModelName: "agent", ModelVersion: "deterministic.v1", TaskType: intelligencedomain.TaskTypeEventSummary,
+		SchemaName: "event-summary-output-v1", SchemaVersion: "v1", Instruction: "return JSON",
+		Schema: json.RawMessage(`{"type":"object"}`), Input: json.RawMessage(`{"evidence":[{"content_id":17,"locator":"body:1","excerpt":"trusted"}]}`),
+	})
+	if err != nil || string(response.JSON) != `{"title_zh":"待分析事件","sentences":[]}` || response.ModelVersion != "deterministic.v1" {
+		t.Fatalf("GenerateStructured() = %#v / %v", response, err)
+	}
+}
+
+func TestClientDoesNotPretendToProvideEmbeddings(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("embedding request reached Agent")
+	}))
+	defer server.Close()
+	client, err := NewClient(Options{BaseURL: server.URL, AuthToken: testToken, HTTPClient: server.Client(), MaxResponseBytes: 4096})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Embed(context.Background(), intelligencedomain.EmbeddingRequest{ModelName: "x", ModelVersion: "v", Dimensions: intelligencedomain.EmbeddingDimensions, Inputs: []string{"x"}})
+	if errorCode(err) != intelligencedomain.CodeAIModelUnavailable {
+		t.Fatalf("Embed() error = %v", err)
 	}
 }
 

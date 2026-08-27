@@ -28,6 +28,16 @@ class DeterministicAnalyzer:
 
     def _suggest(self, request: AnalyzeRequest) -> Suggestion:
         evidence_ids = [item.id for item in request.evidence]
+        schema_name = str(request.payload.get("schema_name", ""))
+        if schema_name:
+            schema_value, reason = _schema_fallback(schema_name, request.payload)
+            return Suggestion(
+                kind=request.task_type,
+                value=schema_value,
+                confidence=0.0,
+                evidence_ids=evidence_ids,
+                reason=reason,
+            )
         value: dict[str, Any]
         if request.task_type == "relevance":
             query = str(request.payload.get("query", ""))
@@ -57,6 +67,55 @@ class DeterministicAnalyzer:
             evidence_ids=evidence_ids,
             reason=reason,
         )
+
+
+def _schema_fallback(schema_name: str, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """Return schema-shaped, non-authoritative output for contract testing."""
+
+    if schema_name == "term-expansion-output-v1":
+        return {"terms": []}, "Deterministic empty expansion; model expansion remains pending."
+    if schema_name == "relevance-review-output-v1":
+        return {
+            "decision": "review",
+            "score": 0.0,
+            "reason_codes": ["insufficient_evidence"],
+        }, "Deterministic review fallback; model relevance remains pending."
+    if schema_name == "event-cluster-output-v1":
+        return {
+            "action": "create",
+            "confidence": 0.0,
+            "reason_codes": ["no_candidate"],
+        }, "Deterministic new-event fallback; semantic clustering remains pending."
+    if schema_name == "event-summary-output-v1":
+        return {
+            "title_zh": "待分析事件",
+            "sentences": [],
+        }, "Deterministic title fallback; event narrative remains pending."
+    if schema_name == "entity-claim-output-v1":
+        return {
+            "entities": [],
+            "claims": [],
+        }, "Deterministic empty extraction; claim analysis remains pending."
+    if schema_name == "atomic-claim-evidence-output-v2":
+        source = payload.get("input")
+        body = source.get("body") if isinstance(source, dict) else None
+        if not isinstance(body, str) or not body:
+            return {"claims": []}, "Atomic claim input is unavailable; analysis remains pending."
+        quote = body[:4096]
+        return {
+            "claims": [
+                {
+                    "subject": "pending",
+                    "predicate": "pending",
+                    "object": "pending",
+                    "relation": "unknown",
+                    "exact_quote": quote,
+                    "relation_score": 0.0,
+                    "qualifiers": [],
+                }
+            ]
+        }, "Deterministic exact-quote placeholder; claim analysis remains pending."
+    return {"status": "unsupported"}, "Unsupported schema; model analysis remains pending."
 
 
 def _tokens(value: str) -> set[str]:

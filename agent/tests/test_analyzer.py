@@ -50,3 +50,63 @@ def test_empty_query_and_evidence_remain_reviewable_without_inventing_confidence
     assert suggestion.confidence == 0
     assert suggestion.value == {"score": 0.0, "decision": "review"}
     assert suggestion.evidence_ids == []
+
+
+@pytest.mark.parametrize(
+    ("schema_name", "expected_value"),
+    [
+        ("term-expansion-output-v1", {"terms": []}),
+        (
+            "relevance-review-output-v1",
+            {"decision": "review", "score": 0.0, "reason_codes": ["insufficient_evidence"]},
+        ),
+        (
+            "event-cluster-output-v1",
+            {"action": "create", "confidence": 0.0, "reason_codes": ["no_candidate"]},
+        ),
+        ("event-summary-output-v1", {"title_zh": "待分析事件", "sentences": []}),
+        ("entity-claim-output-v1", {"entities": [], "claims": []}),
+    ],
+)
+def test_structured_schema_fallbacks_are_bounded_and_non_authoritative(
+    schema_name: str, expected_value: dict[str, object]
+) -> None:
+    request = _request("relevance")
+    request.payload = {"schema_name": schema_name, "input": {}}
+    suggestion = asyncio.run(DeterministicAnalyzer().analyze(request)).suggestions[0]
+    assert suggestion.value == expected_value
+    assert suggestion.confidence == 0
+
+
+def test_atomic_claim_fallback_quotes_only_bounded_input_data() -> None:
+    request = _request("claim_evidence")
+    body = "trusted source body " + ("x" * 5000)
+    request.payload = {"schema_name": "atomic-claim-evidence-output-v2", "input": {"body": body}}
+    suggestion = asyncio.run(DeterministicAnalyzer().analyze(request)).suggestions[0]
+    claim = suggestion.value["claims"][0]
+    assert claim["exact_quote"] == body[:4096]
+    assert len(claim["exact_quote"]) == 4096
+    assert suggestion.confidence == 0
+
+
+def test_unknown_and_incomplete_schema_requests_remain_explicitly_unsupported() -> None:
+    for schema_name, source in [
+        ("unknown-output-v1", {}),
+        ("atomic-claim-evidence-output-v2", {"body": ""}),
+    ]:
+        request = _request("claim_evidence")
+        request.payload = {"schema_name": schema_name, "input": source}
+        suggestion = asyncio.run(DeterministicAnalyzer().analyze(request)).suggestions[0]
+        assert suggestion.value in ({"status": "unsupported"}, {"claims": []})
+        assert suggestion.confidence == 0
+
+
+def test_event_summary_fallback_handles_blank_and_missing_titles() -> None:
+    request = _request("event_summary")
+    request.evidence = [Evidence(id="ev-blank", title=" ", text="source")]
+    suggestion = asyncio.run(DeterministicAnalyzer().analyze(request)).suggestions[0]
+    assert suggestion.value == {"candidate_title": "Pending analysis"}
+
+    request.evidence = []
+    suggestion = asyncio.run(DeterministicAnalyzer().analyze(request)).suggestions[0]
+    assert suggestion.value == {"candidate_title": "Pending analysis"}
