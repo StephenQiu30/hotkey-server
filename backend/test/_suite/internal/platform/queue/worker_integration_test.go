@@ -29,7 +29,7 @@ func TestWorkerRoundTripsSemanticDurableArgsWithoutGenericPayload(t *testing.T) 
 	store := NewStore(runtime)
 	if _, _, err := store.Enqueue(ctx, Job{
 		Kind: KindGenerateSourceDocument, UniqueKey: "source-document-71", DurableArgs: args,
-		ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 3,
+		ScheduledAt: dueWorkerFixtureTime(), MaxAttempts: 3, Priority: 3,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestWorkerClaimsCompletesAndRetriesJobs(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewStore(runtime)
-	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-success", Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 2, Priority: 1}); err != nil {
+	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-success", Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: dueWorkerFixtureTime(), MaxAttempts: 2, Priority: 1}); err != nil {
 		t.Fatal(err)
 	}
 	called := 0
@@ -97,7 +97,7 @@ func TestWorkerClaimsCompletesAndRetriesJobs(t *testing.T) {
 	if state != "completed" {
 		t.Fatalf("successful job state = %q", state)
 	}
-	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-fail", Payload: Payload{EntityID: 2, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 1, Priority: 1}); err != nil {
+	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-fail", Payload: Payload{EntityID: 2, EntityVersion: 1}, ScheduledAt: dueWorkerFixtureTime(), MaxAttempts: 1, Priority: 1}); err != nil {
 		t.Fatal(err)
 	}
 	worker = NewWorker(runtime, map[string]Handler{KindRunRetention: func(context.Context, Job) error { return errors.New("fixture failure") }})
@@ -123,7 +123,7 @@ func TestWorkerSchedulesRetryWithExponentialBackoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewStore(runtime)
-	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-backoff", Payload: Payload{EntityID: 3, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}); err != nil {
+	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-backoff", Payload: Payload{EntityID: 3, EntityVersion: 1}, ScheduledAt: dueWorkerFixtureTime(), MaxAttempts: 3, Priority: 1}); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, time.August, 8, 1, 2, 3, 0, time.UTC)
@@ -153,7 +153,7 @@ func TestWorkerNeverRetriesBeforeProviderReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewStore(runtime)
-	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-provider-reset", Payload: Payload{EntityID: 4, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}); err != nil {
+	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-provider-reset", Payload: Payload{EntityID: 4, EntityVersion: 1}, ScheduledAt: dueWorkerFixtureTime(), MaxAttempts: 3, Priority: 1}); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, time.August, 27, 9, 0, 0, 0, time.UTC)
@@ -193,7 +193,7 @@ func TestWorkerClassifiesPermanentAndCancelledFailures(t *testing.T) {
 	}
 	store := NewStore(runtime)
 	for _, key := range []string{"worker-permanent", "worker-cancelled"} {
-		if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: key, Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}); err != nil {
+		if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: key, Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: dueWorkerFixtureTime(), MaxAttempts: 3, Priority: 1}); err != nil {
 			t.Fatal(err)
 		}
 	}

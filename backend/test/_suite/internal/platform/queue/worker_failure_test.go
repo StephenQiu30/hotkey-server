@@ -24,7 +24,7 @@ func TestWorkerPersistsOnlyStableFailureCodes(t *testing.T) {
 	store := NewStore(runtime)
 	jobID, _, err := store.Enqueue(ctx, Job{
 		Kind: KindRunRetention, UniqueKey: "worker-safe-error", Payload: Payload{EntityID: 1, EntityVersion: 1},
-		ScheduledAt: time.Now().UTC(), MaxAttempts: 2, Priority: 1,
+		ScheduledAt: dueWorkerFixtureTime(), MaxAttempts: 2, Priority: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -42,6 +42,12 @@ func TestWorkerPersistsOnlyStableFailureCodes(t *testing.T) {
 	if failureCode != "retryable" || strings.Contains(failureCode, "secret") || strings.Contains(failureCode, "private-topic") {
 		t.Fatalf("persisted failure = %q, want stable retryable code", failureCode)
 	}
+}
+
+// Worker claims compare against the PostgreSQL clock. Keep immediate fixture
+// jobs clearly in the past so host/container clock skew cannot make CI flaky.
+func dueWorkerFixtureTime() time.Time {
+	return time.Now().UTC().Add(-time.Minute)
 }
 
 func TestFailureCodeClassifiesWithoutPreservingTheCause(t *testing.T) {
