@@ -74,6 +74,16 @@ func TestS04CollectionCapacityEvidenceCoversTheApprovedWorkload(t *testing.T) {
 			"os.O_WRONLY|os.O_CREATE|os.O_EXCL",
 			"HOTKEY_COLLECTION_CAPACITY_GIT_REVISION",
 		},
+		"docs/acceptance/evidence/002/collection-capacity-macos-arm64-6f5a3e03.json": {
+			`"version": "hotkey-collection-capacity-v1"`,
+			`"status": "measured"`,
+			`"git_revision": "6f5a3e0367951a28a35a5c286e680639ac0971cc"`,
+			`"active_monitors": 50`,
+			`"enabled_source_connections": 100`,
+			`"candidate_items": 50000`,
+			`"collection_jobs": 20`,
+			`"external_connector_network_latency"`,
+		},
 		"backend/Makefile": {
 			"collection-capacity-fixture:",
 			"collection-capacity-baseline:",
@@ -94,6 +104,9 @@ func TestS04CollectionCapacityEvidenceCoversTheApprovedWorkload(t *testing.T) {
 	}
 
 	plan := readRepositoryFile(t, repository, "docs/plans/002-监控来源采集与证据链计划.md")
+	if !strings.Contains(plan, "docs/acceptance/evidence/002/collection-capacity-macos-arm64-6f5a3e03.json") {
+		t.Error("collection capacity candidate evidence is not traceable from plan 002")
+	}
 	if !strings.Contains(plan, "- [ ] `CHK-002-G5-001`") {
 		t.Error("collection capacity checklist was completed without approved real-source and fixed-environment evidence")
 	}
