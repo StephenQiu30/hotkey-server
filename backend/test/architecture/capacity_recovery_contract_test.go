@@ -141,7 +141,12 @@ func TestCodexCapacityEvidenceKeepsSyntheticAndLiveApprovalSeparate(t *testing.T
 		}
 	}
 	plan := readRepositoryFile(t, repository, "docs/plans/003-智能研判事件热度与人工治理计划.md")
-	if !strings.Contains(plan, "- [ ] `CHK-003-G3-001`") {
-		t.Error("Codex capacity checklist was completed without an approved trusted-runner live calibration")
+	if !strings.Contains(plan, "- [x] `CHK-003-G3-001`") || !strings.Contains(plan, "`agent-capacity.v1`") {
+		t.Error("Python Agent capacity checklist must cite its own approved Agent baseline")
+	}
+	operations := readRepositoryFile(t, repository, "docs/operations/004-可观测性SLO与事件响应.md")
+	if !strings.Contains(operations, "Codex Live 容量报告仍是遗留迁移候选") ||
+		!strings.Contains(operations, "不能替代 `agent-capacity.v1`") {
+		t.Error("Codex candidate capacity must remain separate from the approved Python Agent baseline")
 	}
 }
