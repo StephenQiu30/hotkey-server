@@ -40,6 +40,7 @@ type evidenceLineageAssetManifestRecord struct {
 	RetentionUntil     time.Time
 	StoreAllowed       bool
 	RetainAllowed      bool
+	ExceptionApproved  bool
 	Active             bool
 	DocumentVersionID  *int64
 	DocumentLifecycle  *string
@@ -367,9 +368,13 @@ func (repository *EvidenceLineageMaintenanceRepository) inspectEvidenceLineageMa
 			}
 			return withFindingRepair(finding, "retention_blocked", "block_retention"), nil
 		}
-		if !manifest.RetainAllowed || !manifest.RetentionUntil.After(time.Now().UTC()) {
+		retentionExpired := !manifest.RetentionUntil.After(time.Now().UTC())
+		if !manifest.RetainAllowed || retentionExpired && !manifest.ExceptionApproved {
 			finding.Finding, finding.ReasonCode = string(operationsdomain.ReconciliationFindingRetentionBlocked), "current_retention_right_denied_or_expired"
 			return withFindingRepair(finding, "retention_blocked", "block_retention"), nil
+		}
+		if retentionExpired && manifest.ExceptionApproved {
+			finding.ReasonCode = "approved_retention_exception"
 		}
 	}
 	if manifest.Active && manifest.DocumentLifecycle != nil && *manifest.DocumentLifecycle == "readable" && manifest.LifecycleState != "derived_available" {
@@ -587,7 +592,14 @@ func queryPersistedEvidenceLineageAssetManifests(ctx context.Context, transactio
 		rows, err := transaction.QueryContext(ctx, `
 SELECT id,source_connection_id,object_key,payload_sha256,size_bytes,lifecycle_state,retention_until,
        current_rights_action_is_allowed(source_connection_id,'raw_response',btrim(snapshot_key),payload_sha256,'store_raw',CURRENT_TIMESTAMP),
-       current_rights_retention_days(source_connection_id,'raw_response',btrim(snapshot_key),payload_sha256,CURRENT_TIMESTAMP) IS NOT NULL
+       current_rights_retention_days(source_connection_id,'raw_response',btrim(snapshot_key),payload_sha256,CURRENT_TIMESTAMP) IS NOT NULL,
+       EXISTS (
+         SELECT 1 FROM evidence_retention_exceptions AS exception
+         WHERE exception.evidence_snapshot_id=evidence_snapshots.id
+           AND exception.revoked_at IS NULL
+           AND exception.approved_at <= CURRENT_TIMESTAMP
+           AND (exception.expires_at IS NULL OR exception.expires_at > CURRENT_TIMESTAMP)
+       )
 FROM evidence_snapshots WHERE id>$1 ORDER BY id LIMIT $2`, rawAfter, batchSize+1-len(records))
 		if err != nil {
 			return nil, false, err
@@ -596,7 +608,7 @@ FROM evidence_snapshots WHERE id>$1 ORDER BY id LIMIT $2`, rawAfter, batchSize+1
 			var record evidenceLineageAssetManifestRecord
 			if err := rows.Scan(&record.AssetID, &record.SourceConnectionID, &record.Locator, &record.ExpectedSHA256,
 				&record.ExpectedSizeBytes, &record.LifecycleState, &record.RetentionUntil,
-				&record.StoreAllowed, &record.RetainAllowed); err != nil {
+				&record.StoreAllowed, &record.RetainAllowed, &record.ExceptionApproved); err != nil {
 				rows.Close()
 				return nil, false, err
 			}
@@ -622,6 +634,7 @@ SELECT artifact.id,artifact.source_connection_id,artifact.vault_relative_path,ar
        artifact.lifecycle_state,artifact.retention_until,
        current_rights_action_is_allowed(artifact.source_connection_id,'document_version',artifact.document_version_id::text,version.content_sha256,'store_derived',CURRENT_TIMESTAMP),
        current_rights_retention_days(artifact.source_connection_id,'document_version',artifact.document_version_id::text,version.content_sha256,CURRENT_TIMESTAMP) IS NOT NULL,
+       false,
        artifact.active,artifact.document_version_id,version.lifecycle_state
 FROM derived_artifacts artifact
 JOIN document_versions version ON version.id=artifact.document_version_id
@@ -635,7 +648,7 @@ WHERE artifact.id>$1 ORDER BY artifact.id LIMIT $2`, derivedAfter, batchSize+1-l
 			var documentState string
 			if err := rows.Scan(&record.AssetID, &record.SourceConnectionID, &record.Locator, &record.ExpectedSHA256,
 				&record.ExpectedSizeBytes, &record.LifecycleState, &record.RetentionUntil,
-				&record.StoreAllowed, &record.RetainAllowed, &record.Active, &documentID, &documentState); err != nil {
+				&record.StoreAllowed, &record.RetainAllowed, &record.ExceptionApproved, &record.Active, &documentID, &documentState); err != nil {
 				rows.Close()
 				return nil, false, err
 			}

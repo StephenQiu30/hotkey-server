@@ -102,6 +102,81 @@ FROM evidence_lineage_reconciliation_items WHERE run_id=$1`, result.Run.RunID).
 	}
 }
 
+func TestEvidenceLineageReconciliationQuarantinesDigestMismatchAndNeverMarksItHealthy(t *testing.T) {
+	ctx := context.Background()
+	runtime := openEvidenceLineageReconciliationRuntime(t, ctx)
+	defer runtime.Close()
+	fixture := insertReconciliationRawSnapshotFixture(t, runtime.SQL, "digest-mismatch")
+	observedSHA := reconciliationSHA256("tampered-payload")
+	objectKey := "source-raw/v1/" + fmt.Sprint(fixture.SourceID) + "/" + fixture.SnapshotKey[:2] + "/" + fixture.SnapshotKey + ".raw"
+	repository := newEvidenceLineageMaintenanceRepository(runtime, reconciliationRawObjectInspectorFake{inspections: map[string]evidenceLineageAssetInspectionRecord{
+		objectKey: {Exists: true, SHA256: observedSHA, SizeBytes: 128},
+	}}, reconciliationVaultInspectorFake{})
+	service, err := operationsapplication.NewEvidenceLineageReconciliationService(repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.Reconcile(ctx, validEvidenceLineageReconciliationApplyCommand("pg-minio"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertReconciliationSnapshotLifecycle(t, runtime.SQL, fixture.SnapshotID, "quarantined", false, "")
+	var finding, expected, observed, reason string
+	if err := runtime.SQL.QueryRow(`
+SELECT finding,btrim(expected_sha256),btrim(observed_sha256),reason_code
+FROM evidence_lineage_reconciliation_items WHERE run_id=$1`, result.Run.RunID).
+		Scan(&finding, &expected, &observed, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if finding != "digest_mismatch" || expected != fixture.PayloadSHA256 || observed != observedSHA || reason != "raw_object_integrity_mismatch" {
+		t.Fatalf("digest finding=%q expected=%q observed=%q reason=%q", finding, expected, observed, reason)
+	}
+}
+
+func TestEvidenceLineageReconciliationHonorsAuditableApprovedRetentionException(t *testing.T) {
+	ctx := context.Background()
+	runtime := openEvidenceLineageReconciliationRuntime(t, ctx)
+	defer runtime.Close()
+	fixture := insertReconciliationRawSnapshotFixture(t, runtime.SQL, "retention-exception")
+	expireReconciliationSnapshot(t, runtime.SQL, fixture.SnapshotID)
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO evidence_retention_exceptions (
+  evidence_snapshot_id,approved_by_user_id,approval_basis,approved_at
+) VALUES ($1,$2,'approved legal hold for reconciliation fixture',CURRENT_TIMESTAMP - interval '1 hour')`,
+		fixture.SnapshotID, fixture.AdministratorID); err != nil {
+		t.Fatal(err)
+	}
+	objectKey := "source-raw/v1/" + fmt.Sprint(fixture.SourceID) + "/" + fixture.SnapshotKey[:2] + "/" + fixture.SnapshotKey + ".raw"
+	repository := newEvidenceLineageMaintenanceRepository(runtime, reconciliationRawObjectInspectorFake{inspections: map[string]evidenceLineageAssetInspectionRecord{
+		objectKey: {Exists: true, SHA256: fixture.PayloadSHA256, SizeBytes: 128},
+	}}, reconciliationVaultInspectorFake{})
+	service, err := operationsapplication.NewEvidenceLineageReconciliationService(repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.Reconcile(ctx, validEvidenceLineageReconciliationApplyCommand("all"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Run.HealthyCount != 1 || result.Run.FindingCount != 0 || result.Run.RepairedCount != 0 {
+		t.Fatalf("retention exception run = %+v", result.Run)
+	}
+	assertReconciliationSnapshotLifecycle(t, runtime.SQL, fixture.SnapshotID, "raw_available", true, "")
+	var finding, reason, basis string
+	if err := runtime.SQL.QueryRow(`
+SELECT item.finding,item.reason_code,exception.approval_basis
+FROM evidence_lineage_reconciliation_items item
+JOIN evidence_retention_exceptions exception ON exception.evidence_snapshot_id=item.asset_id
+WHERE item.run_id=$1`, result.Run.RunID).Scan(&finding, &reason, &basis); err != nil {
+		t.Fatal(err)
+	}
+	if finding != "healthy" || reason != "approved_retention_exception" || basis != "approved legal hold for reconciliation fixture" {
+		t.Fatalf("retention exception audit=%q/%q/%q", finding, reason, basis)
+	}
+}
+
 func TestEvidenceLineageReconciliationBlocksWhenStorageInspectorIsUnavailable(t *testing.T) {
 	ctx := context.Background()
 	runtime := openEvidenceLineageReconciliationRuntime(t, ctx)
@@ -184,6 +259,60 @@ func TestEvidenceLineageReconciliationBlocksRawAssetAfterCurrentStorageRightIsDe
 	}
 	if finding != "policy_blocked" || reason != "current_storage_right_denied" {
 		t.Fatalf("rights finding=%q reason=%q", finding, reason)
+	}
+}
+
+func TestEvidenceLineageSampleTraversesEventDocumentObservationAndRejectsCurrentAuthorizationMismatch(t *testing.T) {
+	ctx := context.Background()
+	runtime := openEvidenceLineageReconciliationRuntime(t, ctx)
+	defer runtime.Close()
+	fixture := insertReconciliationRawSnapshotFixture(t, runtime.SQL, "event-lineage")
+	eventID, documentVersionID, observationID := insertReconciliationEventLineage(t, runtime.SQL, fixture)
+
+	var sampledEventID, sampledVersionID, sampledObservationID, sampledSnapshotID int64
+	var payloadSHA string
+	var hashMatches, lifecycleValid, authorizationValid bool
+	readSample := func() {
+		t.Helper()
+		if err := runtime.SQL.QueryRow(`
+SELECT event.id,version.id,observation.id,snapshot.id,btrim(snapshot.payload_sha256),
+       reference.selected_payload_sha256=snapshot.payload_sha256,
+       snapshot.lifecycle_state='raw_available',
+       current_rights_action_is_allowed(
+         snapshot.source_connection_id,
+         'raw_response',btrim(snapshot.snapshot_key),snapshot.payload_sha256,'store_raw',CURRENT_TIMESTAMP
+       ) AND current_rights_retention_days(
+         snapshot.source_connection_id,'raw_response',btrim(snapshot.snapshot_key),snapshot.payload_sha256,CURRENT_TIMESTAMP
+       ) IS NOT NULL
+FROM micro_events event
+JOIN micro_event_members event_member ON event_member.micro_event_id=event.id AND event_member.active
+JOIN content_family_members family_member ON family_member.family_id=event_member.content_family_id AND family_member.active
+JOIN document_versions version ON version.id=family_member.document_version_id
+JOIN source_observations observation ON observation.id=version.source_observation_id
+JOIN source_observation_evidences reference
+  ON reference.source_observation_id=observation.id
+ AND reference.source_connection_id=observation.source_connection_id
+JOIN evidence_snapshots snapshot
+  ON snapshot.id=reference.evidence_snapshot_id
+ AND snapshot.source_connection_id=reference.source_connection_id
+WHERE event.id=$1 AND version.id=$2`, eventID, documentVersionID).
+			Scan(&sampledEventID, &sampledVersionID, &sampledObservationID, &sampledSnapshotID,
+				&payloadSHA, &hashMatches, &lifecycleValid, &authorizationValid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readSample()
+	if sampledEventID != eventID || sampledVersionID != documentVersionID || sampledObservationID != observationID ||
+		sampledSnapshotID != fixture.SnapshotID || payloadSHA != fixture.PayloadSHA256 || !hashMatches || !lifecycleValid || !authorizationValid {
+		t.Fatalf("lineage sample event=%d version=%d observation=%d snapshot=%d hash=%q valid=%v/%v/%v",
+			sampledEventID, sampledVersionID, sampledObservationID, sampledSnapshotID, payloadSHA,
+			hashMatches, lifecycleValid, authorizationValid)
+	}
+
+	insertReconciliationStoreRawDeny(t, runtime.SQL, fixture)
+	readSample()
+	if authorizationValid {
+		t.Fatal("event lineage sample remained valid after current raw-storage authorization was denied")
 	}
 }
 
@@ -312,6 +441,144 @@ INSERT INTO source_rights_decisions (
 		now.Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func expireReconciliationSnapshot(t *testing.T, databaseHandle *sql.DB, snapshotID int64) {
+	t.Helper()
+	transaction, err := databaseHandle.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transaction.Rollback()
+	if _, err := transaction.Exec(`SET LOCAL session_replication_role='replica'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transaction.Exec(`
+UPDATE evidence_snapshots
+SET captured_at=CURRENT_TIMESTAMP - interval '3 days',
+    created_at=CURRENT_TIMESTAMP - interval '3 days',
+    retention_until=CURRENT_TIMESTAMP - interval '1 day',
+    available_at=CURRENT_TIMESTAMP - interval '3 days',
+    updated_at=CURRENT_TIMESTAMP - interval '1 day'
+WHERE id=$1`, snapshotID); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func insertReconciliationEventLineage(t *testing.T, databaseHandle *sql.DB, fixture reconciliationRawSnapshotFixture) (int64, int64, int64) {
+	t.Helper()
+	transaction, err := databaseHandle.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transaction.Rollback()
+	if _, err := transaction.Exec(`SET LOCAL session_replication_role='replica'`); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	suffix := fmt.Sprintf("lineage-%d", time.Now().UnixNano())
+	var observationID, evidenceReferenceID, documentID, documentVersionID int64
+	if err := transaction.QueryRow(`
+INSERT INTO source_observations (
+  source_connection_id,external_id,upstream_identity,source_code,content_type,title,language,
+  source_record_url,body_origin,completeness,discovered_at,captured_at
+) VALUES ($1,$2,$3,'rss','article','Lineage sample','en',$4,'feed_content','full',$5,$5)
+RETURNING id`, fixture.SourceID, suffix, reconciliationSHA256("upstream-"+suffix),
+		"https://feed.example.test/items/"+suffix, now).Scan(&observationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.QueryRow(`
+INSERT INTO source_observation_evidences (
+  source_connection_id,source_observation_id,evidence_snapshot_id,usage,locator_type,
+  locator_value,selected_payload_sha256,selector_version
+) VALUES ($1,$2,$3,'document_source','whole_payload','$',$4,'lineage-sample-v1')
+RETURNING id`, fixture.SourceID, observationID, fixture.SnapshotID, fixture.PayloadSHA256).Scan(&evidenceReferenceID); err != nil {
+		t.Fatal(err)
+	}
+	if evidenceReferenceID <= 0 {
+		t.Fatal("evidence reference was not created")
+	}
+	if err := transaction.QueryRow(`
+INSERT INTO documents (source_connection_id,document_key,external_work_id)
+VALUES ($1,$2,$3) RETURNING id`, fixture.SourceID, reconciliationSHA256("document-"+suffix), suffix).Scan(&documentID); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.QueryRow(`
+INSERT INTO document_versions (
+  document_id,source_observation_id,revision_no,version_key,body_origin,completeness,word_count,
+  language,content_sha256,extractor_version,extractor_profile_version,extractor_profile_sha256,
+  lifecycle_state,captured_at
+) VALUES ($1,$2,1,$3,'feed_content','full',2,'en',$4,'lineage-v1','lineage-profile-v1',$5,'readable',$6)
+RETURNING id`, documentID, observationID, reconciliationSHA256("version-"+suffix),
+		reconciliationSHA256("content-"+suffix), reconciliationSHA256("extractor-"+suffix), now).Scan(&documentVersionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transaction.Exec(`UPDATE documents SET current_document_version_id=$2 WHERE id=$1`, documentID, documentVersionID); err != nil {
+		t.Fatal(err)
+	}
+	var fingerprintID, familyID, lineageDecisionID int64
+	if err := transaction.QueryRow(`
+INSERT INTO content_fingerprints (
+  source_connection_id,document_version_id,derived_artifact_id,store_derived_rights_decision_id,
+  retain_rights_decision_id,profile_version,normalized_content_sha256,simhash_hex,minhash,retention_until
+) VALUES ($1,$2,900001,900002,900003,'lineage-sample-v1',$3,'1111111111111111',$4,$5)
+RETURNING id`, fixture.SourceID, documentVersionID, reconciliationSHA256("normalized-"+suffix),
+		make([]byte, 512), now.Add(24*time.Hour)).Scan(&fingerprintID); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.QueryRow(`
+INSERT INTO content_families (root_document_version_id,lineage_profile_version)
+VALUES ($1,'lineage-sample-v1') RETURNING id`, documentVersionID).Scan(&familyID); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.QueryRow(`
+INSERT INTO content_lineage_decisions (
+  document_version_id,fingerprint_id,family_id,result_family_version,action,relation,
+  hamming_distance,minhash_similarity,decision_profile_version,reason_codes,idempotency_key,command_fingerprint
+) VALUES ($1,$2,$3,1,'create','unrelated',64,0,'lineage-sample-v1','["sample"]',$4,$5)
+RETURNING id`, documentVersionID, fingerprintID, familyID, "lineage-decision-"+suffix,
+		reconciliationSHA256("lineage-decision-"+suffix)).Scan(&lineageDecisionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transaction.Exec(`
+INSERT INTO content_family_members (
+  family_id,document_version_id,fingerprint_id,lineage_decision_id,lineage_profile_version,relation
+) VALUES ($1,$2,$3,$4,'lineage-sample-v1','unrelated')`, familyID, documentVersionID, fingerprintID, lineageDecisionID); err != nil {
+		t.Fatal(err)
+	}
+	var eventID, membershipDecisionID int64
+	if err := transaction.QueryRow(`
+INSERT INTO micro_events (
+  event_key,status,primary_subject_key,primary_action_key,event_started_at,clustering_profile_version
+) VALUES ($1,'active','subject:lineage','action:sample',$2,'lineage-sample-v1') RETURNING id`,
+		reconciliationSHA256("event-"+suffix), now).Scan(&eventID); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.QueryRow(`
+INSERT INTO micro_event_membership_decisions (
+  content_family_id,document_match_decision_id,monitor_id,monitor_version_id,resulting_micro_event_id,
+  result_event_version,action,same_event_score,leading_margin,sparse_similarity,dense_similarity,
+  entity_overlap,action_overlap,location_consistency,identifier_consistency,time_similarity,lineage_relation,
+  hard_conflict_reasons,clustering_profile_version,reason_codes,idempotency_key,command_fingerprint
+) VALUES ($1,900004,900005,900006,$2,1,'create',1,1,1,1,1,1,1,1,1,1,'[]',
+          'lineage-sample-v1','["sample"]',$3,$4)
+RETURNING id`, familyID, eventID, "event-membership-"+suffix,
+		reconciliationSHA256("event-membership-"+suffix)).Scan(&membershipDecisionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transaction.Exec(`
+INSERT INTO micro_event_members (
+  micro_event_id,content_family_id,membership_decision_id,clustering_profile_version
+) VALUES ($1,$2,$3,'lineage-sample-v1')`, eventID, familyID, membershipDecisionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	return eventID, documentVersionID, observationID
 }
 
 func assertReconciliationSnapshotLifecycle(t *testing.T, databaseHandle *sql.DB, snapshotID int64, wantLifecycle string, wantAvailable bool, wantFailure string) {

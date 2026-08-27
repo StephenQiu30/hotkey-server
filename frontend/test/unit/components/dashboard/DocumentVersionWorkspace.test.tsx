@@ -214,6 +214,29 @@ describe("DocumentVersionWorkspace", () => {
     expect(screen.getByText("删除审计已记录")).toBeInTheDocument();
   });
 
+  it("shows an approved retention exception without presenting it as expired", async () => {
+    const retainedCitation = {
+      ...citation,
+      raw_evidence: {
+        availability: "exception_retained" as const,
+        payload_sha256s: ["9".repeat(64)],
+        retention_until: "2026-08-10T08:05:00Z",
+        deletion_audited: false,
+        exception_approved: true,
+      },
+    };
+    mocks.getCitation.mockResolvedValueOnce({ data: retainedCitation });
+    mocks.getDocument.mockResolvedValueOnce({
+      data: { citation: retainedCitation, etag: citation.artifact?.etag, markdown: "# 正式发布\n\n正文内容" },
+    });
+
+    render(<DocumentVersionWorkspace documentVersionID={9} />);
+
+    expect(await screen.findByText("原始对象经批准长期保留")).toBeInTheDocument();
+    expect(screen.getByText("长期保留例外已有批准依据")).toBeInTheDocument();
+    expect(screen.queryByText("原始对象已过保留期")).not.toBeInTheDocument();
+  });
+
   it("keeps safe citation facts visible when the body is policy blocked", async () => {
     mocks.getCitation.mockResolvedValueOnce({
       data: {
