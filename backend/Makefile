@@ -2,11 +2,17 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go,internal/modules/knowledge/transport/http,internal/modules/report
 
-.PHONY: test-env openapi openapi-check vet test build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
 	@test -n "$(HOTKEY_TEST_REDIS_URL)" || { printf '%s\n' 'HOTKEY_TEST_REDIS_URL is required for backend acceptance' >&2; exit 1; }
+
+minio-test-env:
+	@test -n "$(HOTKEY_TEST_MINIO_ENDPOINT)" || { printf '%s\n' 'HOTKEY_TEST_MINIO_ENDPOINT is required for Worker recovery acceptance' >&2; exit 1; }
+	@test -n "$(HOTKEY_TEST_MINIO_ACCESS_KEY)" || { printf '%s\n' 'HOTKEY_TEST_MINIO_ACCESS_KEY is required for Worker recovery acceptance' >&2; exit 1; }
+	@test -n "$(HOTKEY_TEST_MINIO_SECRET_KEY)" || { printf '%s\n' 'HOTKEY_TEST_MINIO_SECRET_KEY is required for Worker recovery acceptance' >&2; exit 1; }
+	@test -n "$(HOTKEY_TEST_MINIO_BUCKET)" || { printf '%s\n' 'HOTKEY_TEST_MINIO_BUCKET is required for Worker recovery acceptance' >&2; exit 1; }
 
 openapi:
 	$(SWAG) init --generalInfo cmd/hotkey/main.go --parseInternal --tags '!events,!radar' --exclude "$(OPENAPI_EXCLUDE)" --output openapi --outputTypes go --packageName openapi
@@ -21,6 +27,15 @@ vet:
 
 test: test-env
 	$(GO) run ./test/runner test ./... -count=1
+
+worker-recovery-acceptance: test-env minio-test-env
+	$(GO) run ./test/runner test -tags=integration -p=1 \
+		./internal/platform/queue \
+		./internal/modules/ingestion/application \
+		./internal/modules/source/infrastructure/postgres \
+		./internal/modules/ingestion/infrastructure/postgres \
+		-run '^(TestWorkerKillAfterClaimReclaimsLeaseAndAppliesSideEffectOnce|TestIngestWorkerKillAfterMinIOWriteRecoversWithoutDuplicateSideEffects|TestEvidenceWorkerKillAfterObservationCommitRecoversOneDocumentJob|TestDocumentProjectionWorkerKillAfterVaultWriteRecoversOneArtifact)$$' \
+		-count=1 -v
 
 build:
 	$(GO) build ./...
