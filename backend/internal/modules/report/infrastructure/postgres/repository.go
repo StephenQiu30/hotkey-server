@@ -53,7 +53,7 @@ func (repository *Repository) Create(ctx context.Context, report domain.Report) 
 		validation.VersionNo = 1
 	}
 	if err := validation.Validate(); err != nil {
-		return domain.Report{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Report{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	created := false
 	err := repository.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
@@ -90,7 +90,7 @@ func (repository *Repository) Save(ctx context.Context, report domain.Report) er
 		return sharedrepository.ErrUnavailable
 	}
 	if err := report.Validate(); err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	write := func(ctx context.Context, transaction database.Transaction) error {
 		var existingStatus string

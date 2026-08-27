@@ -3,9 +3,13 @@ package domain
 import (
 	"errors"
 	"fmt"
+	stdhtml "html"
+	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type ReportType string
@@ -79,7 +83,15 @@ type Sentence struct {
 	ClaimEvidenceVersionIDs []int64
 }
 
-var ErrEvidenceInvalid = errors.New("report evidence is invalid")
+var (
+	ErrEvidenceInvalid = errors.New("report evidence is invalid")
+	ErrUnsafeContent   = errors.New("report content is unsafe")
+)
+
+var (
+	reportHTMLTagPattern        = regexp.MustCompile(`(?i)<\s*/?\s*[a-z][^>]*>`)
+	reportEventAttributePattern = regexp.MustCompile(`(?i)\bon[a-z0-9_-]+\s*=`)
+)
 
 type Report struct {
 	ID, Version, VersionNo int64
@@ -127,6 +139,9 @@ func (report Report) Validate() error {
 	if err := report.Period.Validate(); err != nil {
 		return err
 	}
+	if unsafeReportContent(report.Title) || unsafeReportContent(report.Summary) || unsafeReportContent(report.Body) {
+		return ErrUnsafeContent
+	}
 	if report.Status == ReportPublished && !report.Frozen {
 		return fmt.Errorf("published report must be frozen")
 	}
@@ -140,7 +155,7 @@ func (report Report) Validate() error {
 
 func (report Report) ValidatePublicationShape() error {
 	if err := report.Validate(); err != nil {
-		return fmt.Errorf("%w: %v", ErrEvidenceInvalid, err)
+		return fmt.Errorf("%w: %w", ErrEvidenceInvalid, err)
 	}
 	for _, item := range report.Items {
 		if !item.isMicroEventSnapshot() || len(item.Sentences) == 0 {
@@ -148,7 +163,7 @@ func (report Report) ValidatePublicationShape() error {
 		}
 		for _, sentence := range item.Sentences {
 			if err := sentence.validate(); err != nil {
-				return fmt.Errorf("%w: %v", ErrEvidenceInvalid, err)
+				return fmt.Errorf("%w: %w", ErrEvidenceInvalid, err)
 			}
 		}
 	}
@@ -158,6 +173,9 @@ func (report Report) ValidatePublicationShape() error {
 func (item Item) validate() error {
 	if item.Rank <= 0 || strings.TrimSpace(item.Title) == "" || item.HeatScore < 0 || len(item.EvidenceSetHash) != 64 || len(item.ReasonCodes) == 0 {
 		return fmt.Errorf("invalid report item")
+	}
+	if unsafeReportContent(item.Title) || unsafeReportContent(item.Summary) || unsafeReportContent(item.InclusionReason) {
+		return ErrUnsafeContent
 	}
 	legacy := item.EventID > 0 && item.EventUpdateID > 0 && item.MicroEventID == 0 && item.MicroEventVersion == 0 && item.MicroEventUpdateID == 0 && item.MicroEventSummaryID == 0
 	v2 := item.isMicroEventSnapshot() && item.EventID == 0 && item.EventUpdateID == 0
@@ -182,6 +200,9 @@ func (item Item) isMicroEventSnapshot() bool {
 func (sentence Sentence) validate() error {
 	if sentence.SourceSummarySentenceID <= 0 || sentence.Ordinal < 0 || strings.TrimSpace(sentence.Text) == "" || len(sentence.Text) > 8000 {
 		return fmt.Errorf("invalid report sentence")
+	}
+	if unsafeReportContent(sentence.Text) {
+		return ErrUnsafeContent
 	}
 	switch sentence.DecisionOrigin {
 	case "automatic":
@@ -209,6 +230,51 @@ func (sentence Sentence) validate() error {
 		seen[evidenceID] = struct{}{}
 	}
 	return nil
+}
+
+func unsafeReportContent(value string) bool {
+	if len(value) > 256*1024 {
+		return true
+	}
+	candidates := []string{strings.ToLower(value)}
+	seen := map[string]struct{}{candidates[0]: {}}
+	for index := 0; index < len(candidates) && index < 16; index++ {
+		for _, decoded := range []string{stdhtml.UnescapeString(candidates[index]), queryUnescapeReportContent(candidates[index])} {
+			if decoded == candidates[index] {
+				continue
+			}
+			if _, found := seen[decoded]; !found {
+				seen[decoded] = struct{}{}
+				candidates = append(candidates, decoded)
+			}
+		}
+	}
+	for _, candidate := range candidates {
+		if strings.IndexByte(candidate, 0) >= 0 || reportHTMLTagPattern.MatchString(candidate) ||
+			reportEventAttributePattern.MatchString(candidate) {
+			return true
+		}
+		compact := strings.Map(func(character rune) rune {
+			if unicode.IsSpace(character) || unicode.IsControl(character) {
+				return -1
+			}
+			return character
+		}, candidate)
+		for _, marker := range []string{"javascript:", "vbscript:", "data:text/html", "data:image/svg+xml", "srcdoc=", "expression("} {
+			if strings.Contains(compact, marker) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func queryUnescapeReportContent(value string) string {
+	decoded, err := url.QueryUnescape(value)
+	if err != nil {
+		return value
+	}
+	return decoded
 }
 
 func validStatus(status ReportStatus) bool {

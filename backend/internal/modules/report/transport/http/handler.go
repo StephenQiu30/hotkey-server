@@ -265,6 +265,8 @@ func reportListQuery(c *gin.Context) (domain.ListQuery, error) {
 
 func reportError(err error) error {
 	switch {
+	case errors.Is(err, domain.ErrUnsafeContent):
+		return sharederrors.New(sharederrors.CodeReportContentUnsafe, stdhttp.StatusBadRequest, "report content is not allowed")
 	case errors.Is(err, domain.ErrEvidenceInvalid):
 		return sharederrors.New(sharederrors.CodeReportEvidenceInvalid, stdhttp.StatusConflict, "report evidence is incomplete or unavailable")
 	case errors.Is(err, sharedrepository.ErrNotFound):

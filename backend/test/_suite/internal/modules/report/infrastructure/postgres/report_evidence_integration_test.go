@@ -66,6 +66,32 @@ func TestReportRepositoryFreezesExactSentenceCitationsAndPublishedVersion(t *tes
 	}
 }
 
+func TestReportRepositoryRejectsUnsafeDraftBeforeAnyWrite(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	fixture := seedReportEvidenceFixture(t, runtime)
+	unsafe := cloneCitedReport(fixture.report)
+	unsafe.Items[0].Sentences[0].Text = `<img src=x onerror=alert(1)>`
+	if err := NewRepository(runtime).Save(ctx, unsafe); !errors.Is(err, domain.ErrUnsafeContent) {
+		t.Fatalf("unsafe draft error = %v, want ErrUnsafeContent", err)
+	}
+	var reports, reportItems int
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM reports),(SELECT count(*) FROM report_items)`).
+		Scan(&reports, &reportItems); err != nil {
+		t.Fatal(err)
+	}
+	if reports != 0 || reportItems != 0 {
+		t.Fatalf("unsafe draft side effects = reports %d items %d", reports, reportItems)
+	}
+}
+
 func TestReportPublicationRevalidatesCitationFactsInsteadOfAggregateEvidenceState(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))

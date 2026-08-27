@@ -111,6 +111,20 @@ func TestReportPublishMapsInvalidEvidenceToStableConflict(t *testing.T) {
 	}
 }
 
+func TestReportPublishMapsUnsafeContentWithoutReflectingPayload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &reportServiceFake{publishErr: domain.ErrUnsafeContent}
+	router := gin.New()
+	RegisterRoutes(router, service, reportAuthenticator{role: httptransport.RoleEditor})
+	response := reportRequest(router, http.MethodPost, "/api/v1/reports/7/publish", "editor")
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":80001`) {
+		t.Fatalf("unsafe content response = %d: %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(strings.ToLower(response.Body.String()), "script") {
+		t.Fatalf("unsafe response reflects payload class: %s", response.Body.String())
+	}
+}
+
 func TestReportResponseExposesExactSentenceCitations(t *testing.T) {
 	actorID := int64(3)
 	response := reportResponse(domain.Report{Items: []domain.Item{{MicroEventID: 9, MicroEventVersion: 2,
