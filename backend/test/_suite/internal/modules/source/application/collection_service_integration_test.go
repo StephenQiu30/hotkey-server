@@ -88,6 +88,112 @@ func TestCollectionServiceFetchesOnceAndDurablyReconcilesEveryTarget(t *testing.
 	}
 }
 
+func TestCollectionServiceProjectsThreeSourcePartialSuccessWithoutPersistingAggregateOutcome(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	monitorID, requests := collectionRequestsForThreeSourceScan(t, runtime, "three-source-partial")
+	retryAfter := requests[2].WindowEnd.Add(15 * time.Minute)
+	rss := &collectionConnectorFake{result: domain.FetchResult{Items: []domain.SourceItem{{
+		SourceCode: "rss", ExternalID: "rss-result", ContentType: "article", Title: "Climate result continues downstream",
+		URL: "https://feeds.example.test/items/rss-result", ObservedAt: requests[0].WindowStart.Add(time.Minute),
+	}}, NextCursor: "rss-cursor"}}
+	hackerNews := &collectionConnectorFake{result: domain.FetchResult{NextCursor: "hn-empty-cursor"}}
+	x := &collectionConnectorFake{
+		result: domain.FetchResult{RateLimit: domain.RateLimit{RetryAfter: &retryAfter}},
+		err:    domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("synthetic upstream detail")),
+	}
+	registry := collectionConnectorRegistryByTypeFake{connectors: map[domain.SourceType]domain.Connector{
+		domain.SourceTypeRSS: rss, domain.SourceTypeHackerNews: hackerNews, domain.SourceTypeX: x,
+	}}
+	runs := sourcepostgres.NewCollectionRepository(runtime)
+	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs,
+		Connectors: registry, Now: func() time.Time { return requests[0].WindowEnd },
+	})
+	if err != nil {
+		t.Fatalf("NewCollectionService(): %v", err)
+	}
+	jobs := queue.NewStore(runtime)
+	collected := make([]domain.CollectionRun, 0, len(requests))
+	for index, request := range requests {
+		request := request
+		run, collectErr := service.CollectWithSuccessHook(context.Background(), request, func(ctx context.Context, runID int64) error {
+			_, _, enqueueErr := jobs.Enqueue(ctx, queue.Job{
+				Kind: queue.KindNormalizeContent, UniqueKey: queue.StableJobKey(queue.KindNormalizeContent, runID, 1, request.QuerySignature),
+				Payload:     queue.Payload{EntityID: runID, EntityVersion: 1, WindowStart: request.WindowStart, WindowEnd: request.WindowEnd, InputHash: request.QuerySignature},
+				ScheduledAt: request.ScheduledAt, MaxAttempts: 3, Priority: 2,
+			})
+			return enqueueErr
+		})
+		collected = append(collected, run)
+		if index < 2 && (collectErr != nil || run.Status != domain.CollectionRunSucceeded) {
+			t.Fatalf("Collect(success source %d) run/error = %#v / %v", index, run, collectErr)
+		}
+		if index == 2 && (domain.ClassifyCollectionError(collectErr) != domain.CollectionErrorRateLimited || run.Status != domain.CollectionRunFailed) {
+			t.Fatalf("Collect(rate-limited X) run/error = %#v / %v", run, collectErr)
+		}
+	}
+
+	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Connectors: registry,
+		Retries: collectionRetryActivatorFake{}, Scans: monitorpostgres.NewMonitorScanReader(runtime),
+	})
+	if err != nil {
+		t.Fatalf("NewCollectionControlService(): %v", err)
+	}
+	scans, err := control.Scans(context.Background(), sourceapplication.MonitorScanListInput{
+		Subject: identitydomain.Subject{UserID: 7, SessionID: 9, Role: identitydomain.RoleViewer}, MonitorID: monitorID, Limit: 10,
+	})
+	if err != nil || len(scans) != 1 {
+		t.Fatalf("Scans() scans/error = %#v / %v, want one aggregate scan", scans, err)
+	}
+	scan := scans[0]
+	if scan.Status != domain.MonitorScanPartial || scan.RunOutcome != domain.MonitorScanOutcomePartialSuccess || len(scan.Sources) != 3 {
+		t.Fatalf("aggregate scan = %#v, want three-source partial_success projection", scan)
+	}
+	if scan.CandidateCount != 1 || scan.AcceptedCount != 1 || scan.RejectedCount != 0 {
+		t.Fatalf("aggregate counts = candidate:%d accepted:%d rejected:%d", scan.CandidateCount, scan.AcceptedCount, scan.RejectedCount)
+	}
+	wantSources := []struct {
+		sourceType domain.SourceType
+		status     domain.CollectionRunStatus
+		accepted   int64
+		errorCode  string
+	}{
+		{sourceType: domain.SourceTypeRSS, status: domain.CollectionRunSucceeded, accepted: 1},
+		{sourceType: domain.SourceTypeHackerNews, status: domain.CollectionRunSucceeded},
+		{sourceType: domain.SourceTypeX, status: domain.CollectionRunFailed, errorCode: string(domain.CollectionErrorRateLimited)},
+	}
+	for index, want := range wantSources {
+		got := scan.Sources[index]
+		if got.SourceType != string(want.sourceType) || got.Status != want.status || got.AcceptedCount != want.accepted || got.ErrorCode != want.errorCode {
+			t.Fatalf("source %d = %#v, want type=%q status=%q accepted=%d error=%q", index, got, want.sourceType, want.status, want.accepted, want.errorCode)
+		}
+	}
+	var normalizeRuns []int64
+	rows, err := runtime.SQL.Query(`SELECT (args->>'entity_id')::bigint FROM river_job WHERE kind = $1 ORDER BY id`, queue.KindNormalizeContent)
+	if err != nil {
+		t.Fatalf("query normalize jobs: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var runID int64
+		if err := rows.Scan(&runID); err != nil {
+			t.Fatalf("scan normalize job: %v", err)
+		}
+		normalizeRuns = append(normalizeRuns, runID)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read normalize jobs: %v", err)
+	}
+	if len(normalizeRuns) != 2 || normalizeRuns[0] != collected[0].ID || normalizeRuns[1] != collected[1].ID {
+		t.Fatalf("normalize runs = %v, want only successful RSS/HN runs %d/%d", normalizeRuns, collected[0].ID, collected[1].ID)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE collection_runs SET status = 'partial_success' WHERE id = $1`, collected[0].ID); err == nil {
+		t.Fatal("collection_runs unexpectedly persisted derived partial_success outcome")
+	}
+}
+
 func TestCollectionServiceDistinguishesPartialItemResultsFromFullFailure(t *testing.T) {
 	runtime := openRuntime(t)
 	defer func() { _ = runtime.Close() }()
@@ -1297,6 +1403,56 @@ func collectionRequestForService(t *testing.T, runtime *database.Runtime, name s
 	return domain.CollectionRequest{SourceConnectionID: connection.ID, QuerySignature: signature, Query: "climate", Languages: []string{"en"}, WindowStart: windowStart, WindowEnd: windowStart.Add(time.Hour), Targets: targets}
 }
 
+func collectionRequestsForThreeSourceScan(t *testing.T, runtime *database.Runtime, name string) (int64, []domain.CollectionRequest) {
+	t.Helper()
+	var monitorID, configID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name) VALUES ($1) RETURNING id`, "collection-service-monitor-"+name).Scan(&monitorID); err != nil {
+		t.Fatalf("create multi-source monitor: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitor_config_versions (monitor_id, revision) VALUES ($1, 1) RETURNING id`, monitorID).Scan(&configID); err != nil {
+		t.Fatalf("create multi-source monitor config: %v", err)
+	}
+	compiledProfileID := stageCollectionCompiledProfile(t, runtime, monitorID, configID, name)
+	windowStart := time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)
+	scheduledAt := windowStart.Add(-time.Minute)
+	sourceSpecs := []domain.SourceConnection{
+		{SourceType: domain.SourceTypeRSS, Name: name + " RSS", Endpoint: "https://feeds.example.test/rss", AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true, HealthStatus: domain.HealthStatusUnknown},
+		{SourceType: domain.SourceTypeHackerNews, Name: name + " Hacker News", Endpoint: domain.HackerNewsEndpoint, AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true, HealthStatus: domain.HealthStatusUnknown},
+		{SourceType: domain.SourceTypeX, Name: name + " X", Endpoint: domain.XRecentSearchEndpoint, AuthType: domain.AuthTypeBearer, CredentialRef: "env:HOTKEY_TEST_X_TOKEN", Config: domain.DefaultSourceConfig(), Enabled: true, HealthStatus: domain.HealthStatusUnknown},
+	}
+	requests := make([]domain.CollectionRequest, 0, len(sourceSpecs))
+	for index := range sourceSpecs {
+		connection := sourceSpecs[index]
+		if err := sourcepostgres.NewRepository(runtime).Create(context.Background(), &connection); err != nil {
+			t.Fatalf("create %s source: %v", connection.SourceType, err)
+		}
+		signature := strings.Repeat(string(rune('d'+index)), 64)
+		var monitorSourceID, checkpointID, checkpointVersion int64
+		if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_sources (config_version_id, source_connection_id, query_signature)
+VALUES ($1, $2, $3) RETURNING id`, configID, connection.ID, signature).Scan(&monitorSourceID); err != nil {
+			t.Fatalf("create %s monitor source: %v", connection.SourceType, err)
+		}
+		if err := runtime.SQL.QueryRow(`
+INSERT INTO source_checkpoints (monitor_source_id, query_hash, next_poll_at)
+VALUES ($1, $2, $3) RETURNING id, version`, monitorSourceID, signature, windowStart).Scan(&checkpointID, &checkpointVersion); err != nil {
+			t.Fatalf("create %s checkpoint: %v", connection.SourceType, err)
+		}
+		target := domain.PublishedCollectionTarget{
+			MonitorID: monitorID, MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configID,
+			CompiledProfileID: compiledProfileID, SourceConnectionID: connection.ID, QuerySignature: signature,
+			Terms: []domain.CollectionTerm{{Value: "climate"}}, Languages: []string{"en"}, CollectionInterval: 5 * time.Minute,
+			Checkpoint: domain.CollectionCheckpoint{ID: checkpointID, Version: checkpointVersion, MonitorSourceID: monitorSourceID, QueryHash: signature, NextPollAt: windowStart},
+		}
+		requests = append(requests, domain.CollectionRequest{
+			SourceConnectionID: connection.ID, QuerySignature: signature, Query: "climate", Languages: []string{"en"},
+			WindowStart: windowStart, WindowEnd: windowStart.Add(time.Hour), ScheduledAt: scheduledAt,
+			TriggerType: domain.CollectionTriggerManual, Targets: []domain.PublishedCollectionTarget{target},
+		})
+	}
+	return monitorID, requests
+}
+
 func stageCollectionCompiledProfile(t *testing.T, runtime *database.Runtime, monitorID, configID int64, suffix string) int64 {
 	t.Helper()
 	var draftID, revisionID, riverJobID, previewRunID, previewProfileID, publishedProfileID int64
@@ -1393,6 +1549,18 @@ type collectionConnectorRegistryFake struct{ connector domain.Connector }
 
 func (registry collectionConnectorRegistryFake) Resolve(context.Context, domain.SourceConnection) (domain.Connector, error) {
 	return registry.connector, nil
+}
+
+type collectionConnectorRegistryByTypeFake struct {
+	connectors map[domain.SourceType]domain.Connector
+}
+
+func (registry collectionConnectorRegistryByTypeFake) Resolve(_ context.Context, connection domain.SourceConnection) (domain.Connector, error) {
+	connector, found := registry.connectors[connection.SourceType]
+	if !found {
+		return nil, fmt.Errorf("connector %q is not configured", connection.SourceType)
+	}
+	return connector, nil
 }
 
 type collectionConnectorFake struct {
