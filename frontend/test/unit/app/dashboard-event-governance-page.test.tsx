@@ -144,6 +144,20 @@ describe("EventGovernancePage", () => {
     expect(mocks.postMicroEventsIdFeedback).not.toHaveBeenCalled();
   });
 
+  it.each([UserRole.Editor, UserRole.Admin])(
+    "grants the real %s role event governance controls",
+    async (role) => {
+      mocks.role = role;
+
+      render(<EventGovernancePage />);
+
+      expect(await screen.findByRole("button", { name: "归档事件" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "移出" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "纠正 Evidence #61" })).toBeEnabled();
+      expect(screen.queryByRole("alert", { name: "只读权限" })).not.toBeInTheDocument();
+    },
+  );
+
   it("keeps a server forbidden response as an explicit page state", async () => {
     mocks.getMicroEventsId.mockRejectedValue(
       new HotKeyAPIError(403, "forbidden", null, APIErrorCode.Forbidden),

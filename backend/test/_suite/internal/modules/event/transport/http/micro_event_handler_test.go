@@ -116,10 +116,26 @@ func (fake *microEventQueryRepositoryFake) GetMicroEventSummary(context.Context,
 	return nil, application.ErrEvidenceSummaryUnavailable
 }
 
-type microEventGovernanceRepositoryFake struct{}
+type microEventGovernanceRepositoryFake struct {
+	calls int
+}
 
-func (*microEventGovernanceRepositoryFake) ApplyMicroEventGovernance(context.Context, application.ApplyMicroEventGovernanceCommand) (application.ApplyMicroEventGovernanceResult, error) {
-	return application.ApplyMicroEventGovernanceResult{}, nil
+func (fake *microEventGovernanceRepositoryFake) ApplyMicroEventGovernance(_ context.Context, command application.ApplyMicroEventGovernanceCommand) (application.ApplyMicroEventGovernanceResult, error) {
+	fake.calls++
+	return application.ApplyMicroEventGovernanceResult{
+		Feedback: application.MicroEventGovernanceFeedbackDTO{
+			ID: 101, Action: command.Action, ActorUserID: command.ActorUserID,
+			MicroEventID: command.MicroEventID, OriginalEventVersion: command.ExpectedEventVersion,
+			MembershipDecisionID: command.MembershipDecisionID, ContentFamilyID: command.ContentFamilyID,
+			TargetMicroEventID: command.TargetMicroEventID, TargetEventVersion: command.ExpectedTargetEventVersion,
+			ResultMicroEventID: command.MicroEventID, ResultEventVersion: command.ExpectedEventVersion + 1,
+			GovernanceProfileVersion: command.GovernanceProfileVersion, ReasonCode: command.ReasonCode,
+			Note: command.Note, IdempotencyKey: command.IdempotencyKey,
+		},
+		SourceEvent: application.MicroEventDTO{
+			ID: command.MicroEventID, Version: command.ExpectedEventVersion + 1, Status: "closed",
+		},
+	}, nil
 }
 
 type claimEvidenceRepositoryFake struct{}
@@ -149,6 +165,14 @@ func (microEventViewerAuthenticator) Authenticate(context.Context, string) (http
 	return httptransport.Subject{UserID: 8, SessionID: 9, Role: httptransport.RoleViewer}, nil
 }
 
+type microEventRoleAuthenticator struct {
+	role httptransport.Role
+}
+
+func (authenticator microEventRoleAuthenticator) Authenticate(context.Context, string) (httptransport.Subject, error) {
+	return httptransport.Subject{UserID: 8, SessionID: 9, Role: authenticator.role}, nil
+}
+
 func TestMicroEventRoutesRequireAuthenticationAndProtectMutations(t *testing.T) {
 	queries, governance, evidence := newMicroEventHTTPServices(t, &microEventQueryRepositoryFake{})
 	gin.SetMode(gin.TestMode)
@@ -176,6 +200,53 @@ func TestMicroEventRoutesRequireAuthenticationAndProtectMutations(t *testing.T) 
 		if recorder.Code != http.StatusForbidden {
 			t.Fatalf("viewer mutation %s status = %d, want 403: %s", path, recorder.Code, recorder.Body.String())
 		}
+	}
+}
+
+func TestMicroEventRoutesEnforceFourRoleReadAndGovernanceBoundary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, testCase := range []struct {
+		role             httptransport.Role
+		wantGovernStatus int
+		wantWrites       int
+	}{
+		{role: httptransport.RoleViewer, wantGovernStatus: http.StatusForbidden},
+		{role: httptransport.RoleAnalyst, wantGovernStatus: http.StatusForbidden},
+		{role: httptransport.RoleEditor, wantGovernStatus: http.StatusOK, wantWrites: 1},
+		{role: httptransport.RoleAdmin, wantGovernStatus: http.StatusOK, wantWrites: 1},
+	} {
+		t.Run(string(testCase.role), func(t *testing.T) {
+			governanceRepository := &microEventGovernanceRepositoryFake{}
+			queries, governance, evidence := newMicroEventHTTPServicesWithGovernanceRepository(
+				t, &microEventQueryRepositoryFake{}, governanceRepository,
+			)
+			router := gin.New()
+			RegisterMicroEventRoutes(router, queries, governance, evidence, microEventRoleAuthenticator{role: testCase.role})
+
+			readRecorder := httptest.NewRecorder()
+			readRequest := httptest.NewRequest(http.MethodGet, "/api/v1/micro-events", nil)
+			readRequest.Header.Set("Authorization", "Bearer "+string(testCase.role))
+			router.ServeHTTP(readRecorder, readRequest)
+			if readRecorder.Code != http.StatusOK {
+				t.Fatalf("%s read status = %d, want 200: %s", testCase.role, readRecorder.Code, readRecorder.Body.String())
+			}
+
+			governRecorder := httptest.NewRecorder()
+			governRequest := httptest.NewRequest(http.MethodPost, "/api/v1/micro-events/7/feedback", strings.NewReader(
+				`{"expected_event_version":3,"action":"close_event","reason_code":"reviewed"}`,
+			))
+			governRequest.Header.Set("Authorization", "Bearer "+string(testCase.role))
+			governRequest.Header.Set("Content-Type", "application/json")
+			governRequest.Header.Set("If-Match", `"v3"`)
+			governRequest.Header.Set("Idempotency-Key", "govern-event-7-v3-"+string(testCase.role))
+			router.ServeHTTP(governRecorder, governRequest)
+			if governRecorder.Code != testCase.wantGovernStatus {
+				t.Fatalf("%s govern status = %d, want %d: %s", testCase.role, governRecorder.Code, testCase.wantGovernStatus, governRecorder.Body.String())
+			}
+			if governanceRepository.calls != testCase.wantWrites {
+				t.Fatalf("%s governance writes = %d, want %d", testCase.role, governanceRepository.calls, testCase.wantWrites)
+			}
+		})
 	}
 }
 
@@ -228,12 +299,16 @@ func TestMicroEventReadProjectionOmitsTruthScoresAndRevokedQuotes(t *testing.T) 
 }
 
 func newMicroEventHTTPServices(t *testing.T, queryRepository *microEventQueryRepositoryFake) (*application.MicroEventQueryService, *application.MicroEventGovernanceService, *application.ClaimEvidenceService) {
+	return newMicroEventHTTPServicesWithGovernanceRepository(t, queryRepository, &microEventGovernanceRepositoryFake{})
+}
+
+func newMicroEventHTTPServicesWithGovernanceRepository(t *testing.T, queryRepository *microEventQueryRepositoryFake, governanceRepository application.MicroEventGovernanceRepository) (*application.MicroEventQueryService, *application.MicroEventGovernanceService, *application.ClaimEvidenceService) {
 	t.Helper()
 	queries, err := application.NewMicroEventQueryService(queryRepository)
 	if err != nil {
 		t.Fatalf("new query service: %v", err)
 	}
-	governance, err := application.NewMicroEventGovernanceService(&microEventGovernanceRepositoryFake{})
+	governance, err := application.NewMicroEventGovernanceService(governanceRepository)
 	if err != nil {
 		t.Fatalf("new governance service: %v", err)
 	}
