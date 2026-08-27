@@ -9,6 +9,8 @@ import (
 
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/postgres"
+	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
+	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 )
 
@@ -70,12 +72,14 @@ func TestCitationRepositoryPinsExactVersionAndRechecksCurrentRights(t *testing.T
 		!read.Artifact.StoreDerivedAllowed || !read.Artifact.RetainAllowed || read.Artifact.AnchorMap == nil ||
 		len(read.Artifact.AnchorMap.Blocks) != 1 || read.Artifact.AnchorMap.Blocks[0].MarkdownAnchor != "body-0000-000000000000" ||
 		read.Publisher == nil || read.Publisher.DisplayName != "Example Newsroom" || read.ContentOrigin == nil ||
-		read.ContentOrigin.DisplayName != "Original Desk" || len(read.Distributors) != 1 || read.Distributors[0].DisplayName != "Syndication Desk" {
+		read.ContentOrigin.DisplayName != "Original Desk" || len(read.Distributors) != 1 || read.Distributors[0].DisplayName != "Syndication Desk" ||
+		read.RawEvidence.Availability != ingestionapplication.CitationRawEvidenceAvailable || len(read.RawEvidence.PayloadSHA256s) != 1 {
 		t.Fatalf("exact first-version projection = %#v", read)
 	}
 	if read.DocumentVersionID == currentVersionID || read.Artifact.SHA256 == secondArtifactSHA {
 		t.Fatalf("exact read drifted to current version: %#v", read)
 	}
+	assertCitationRawEvidenceLifecycle(t, runtime, repository, first.DocumentVersion.ID, firstObservationID)
 	if _, err := runtime.SQL.Exec(`UPDATE source_connections SET enabled=false, deleted_at=now() WHERE id=$1`, sourceID); err != nil {
 		t.Fatalf("archive source connection fixture: %v", err)
 	}
@@ -131,10 +135,10 @@ func attachCitationPartyFacts(t *testing.T, runtime *database.Runtime, sourceID,
 INSERT INTO evidence_snapshots (
   source_connection_id,store_raw_rights_decision_id,retain_rights_decision_id,
   snapshot_key,object_key,payload_sha256,collector_profile_version,mime_type,size_bytes,
-  response_status,requested_url,final_url,redirect_chain,response_headers,captured_at,retention_until
+  response_status,requested_url,final_url,redirect_chain,response_headers,captured_at,retention_until,lifecycle_state,available_at
 ) VALUES ($1,$2,$3,$4,$5,$6,'citation-party-fixture-v1','application/rss+xml',128,
           200,'https://feed.example.test/citation-party.xml','https://feed.example.test/citation-party.xml',
-          '[]'::jsonb,'{}'::jsonb,$7,$8)
+          '[]'::jsonb,'{}'::jsonb,$7,$8,'raw_available',CURRENT_TIMESTAMP)
 RETURNING id`, sourceID, storeDecisionID, retainDecisionID, snapshotKey,
 		fmt.Sprintf("source-raw/v1/%d/%s/%s.raw", sourceID, snapshotKey[:2], snapshotKey), payloadSHA,
 		now, now.Add(30*24*time.Hour)).Scan(&snapshotID); err != nil {
@@ -171,6 +175,55 @@ INSERT INTO source_observation_parties (
 			party.role, party.displayName, party.homepageURL); err != nil {
 			t.Fatalf("insert citation observation party: %v", err)
 		}
+	}
+}
+
+func assertCitationRawEvidenceLifecycle(t *testing.T, runtime *database.Runtime, repository *ingestionpostgres.CitationRepository, documentVersionID, observationID int64) {
+	t.Helper()
+	ctx := context.Background()
+	var snapshotID, approverID int64
+	var objectKey, payloadSHA string
+	var retentionUntil time.Time
+	if err := runtime.SQL.QueryRow(`
+SELECT snapshot.id,snapshot.object_key,btrim(snapshot.payload_sha256),snapshot.retention_until,policy.recorded_by_user_id
+FROM source_observation_evidences AS reference
+JOIN evidence_snapshots AS snapshot ON snapshot.id=reference.evidence_snapshot_id
+JOIN source_rights_decisions AS decision ON decision.id=snapshot.retain_rights_decision_id
+JOIN source_rights_policies AS policy ON policy.id=decision.policy_id
+WHERE reference.source_observation_id=$1`, observationID).Scan(&snapshotID, &objectKey, &payloadSHA, &retentionUntil, &approverID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO evidence_retention_exceptions (evidence_snapshot_id,approved_by_user_id,approval_basis,approved_at)
+VALUES ($1,$2,'citation lifecycle fixture',CURRENT_TIMESTAMP)`, snapshotID, approverID); err != nil {
+		t.Fatal(err)
+	}
+	exceptionRead, err := repository.ReadCitation(ctx, documentVersionID)
+	if err != nil || exceptionRead.RawEvidence.Availability != ingestionapplication.CitationRawEvidenceExceptionRetained || !exceptionRead.RawEvidence.ExceptionApproved {
+		t.Fatalf("approved exception projection = %#v/%v", exceptionRead.RawEvidence, err)
+	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE evidence_retention_exceptions
+SET revoked_by_user_id=$2,revoked_at=CURRENT_TIMESTAMP,revocation_basis='fixture completed'
+WHERE evidence_snapshot_id=$1 AND revoked_at IS NULL`, snapshotID, approverID); err != nil {
+		t.Fatal(err)
+	}
+	retention := sourcepostgres.NewRawEvidenceRetentionRepository(runtime)
+	at := retentionUntil.Add(time.Hour)
+	candidates, err := retention.ClaimExpired(ctx, at, 1)
+	if err != nil || len(candidates) != 1 || candidates[0].SnapshotID != snapshotID {
+		t.Fatalf("claim citation evidence = %#v/%v", candidates, err)
+	}
+	if err := retention.CompleteDeletion(ctx, sourceapplication.CompleteRawEvidenceDeletionCommand{
+		SnapshotID: snapshotID, AttemptNo: candidates[0].AttemptNo, ObjectKey: objectKey,
+		PayloadSHA256: payloadSHA, DeletedAt: at,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	expiredRead, err := repository.ReadCitation(ctx, documentVersionID)
+	if err != nil || expiredRead.RawEvidence.Availability != ingestionapplication.CitationRawEvidenceExpired ||
+		!expiredRead.RawEvidence.DeletionAudited || expiredRead.RawEvidence.PayloadSHA256s[0] != payloadSHA {
+		t.Fatalf("expired raw evidence projection = %#v/%v", expiredRead.RawEvidence, err)
 	}
 }
 

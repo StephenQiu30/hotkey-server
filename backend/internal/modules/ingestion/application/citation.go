@@ -51,6 +51,28 @@ const (
 	CitationReasonLocatorUnavailable       CitationUnavailableReason = "locator_unavailable"
 )
 
+type CitationRawEvidenceAvailability string
+
+const (
+	CitationRawEvidenceAvailable         CitationRawEvidenceAvailability = "available"
+	CitationRawEvidenceExpired           CitationRawEvidenceAvailability = "expired"
+	CitationRawEvidenceExceptionRetained CitationRawEvidenceAvailability = "exception_retained"
+	CitationRawEvidenceUnavailable       CitationRawEvidenceAvailability = "unavailable"
+)
+
+func (availability CitationRawEvidenceAvailability) valid() bool {
+	return availability == CitationRawEvidenceAvailable || availability == CitationRawEvidenceExpired ||
+		availability == CitationRawEvidenceExceptionRetained || availability == CitationRawEvidenceUnavailable
+}
+
+type CitationRawEvidenceDTO struct {
+	Availability      CitationRawEvidenceAvailability
+	PayloadSHA256s    []string
+	RetentionUntil    *time.Time
+	DeletionAudited   bool
+	ExceptionApproved bool
+}
+
 type CitationQuery struct {
 	DocumentVersionID int64
 }
@@ -141,6 +163,7 @@ type CitationDTO struct {
 	PublishedAt   *time.Time
 	CapturedAt    time.Time
 	ContentSHA256 *string
+	RawEvidence   CitationRawEvidenceDTO
 
 	Availability      CitationAvailability
 	UnavailableReason CitationUnavailableReason
@@ -228,10 +251,19 @@ type CitationReadDTO struct {
 	PublishedAt   *time.Time
 	CapturedAt    time.Time
 	ContentSHA256 string
+	RawEvidence   CitationRawEvidenceReadDTO
 
 	DisplayPrivateAllowed bool
 	RightsEvaluatedAt     time.Time
 	Artifact              *CitationArtifactReadDTO
+}
+
+type CitationRawEvidenceReadDTO struct {
+	Availability      CitationRawEvidenceAvailability
+	PayloadSHA256s    []string
+	RetentionUntil    time.Time
+	DeletionAudited   bool
+	ExceptionApproved bool
 }
 
 type CitationReader interface {
@@ -270,7 +302,8 @@ func (service *CitationService) GetCitation(ctx context.Context, query CitationQ
 	if err != nil {
 		return CitationResult{}, fmt.Errorf("read exact document citation: %w", err)
 	}
-	if read.DocumentVersionID != query.DocumentVersionID || read.DocumentID <= 0 || read.SourceConnectionID <= 0 || read.RightsEvaluatedAt.IsZero() {
+	if read.DocumentVersionID != query.DocumentVersionID || read.DocumentID <= 0 || read.SourceConnectionID <= 0 || read.RightsEvaluatedAt.IsZero() ||
+		!validCitationRawEvidenceRead(read.RawEvidence) {
 		return CitationResult{}, newDocumentReadError(DocumentReadFailureIntegrity, nil)
 	}
 	return CitationResult{Citation: citationDTO(read)}, nil
@@ -367,6 +400,54 @@ func sameCitationOptionalString(left, right *string) bool {
 	return *left == *right
 }
 
+func validCitationRawEvidenceRead(value CitationRawEvidenceReadDTO) bool {
+	if value.Availability == "" {
+		return value.PayloadSHA256s == nil && value.RetentionUntil.IsZero() && !value.DeletionAudited && !value.ExceptionApproved
+	}
+	if !value.Availability.valid() || value.PayloadSHA256s == nil {
+		return false
+	}
+	if value.Availability == CitationRawEvidenceUnavailable {
+		if value.DeletionAudited || value.ExceptionApproved {
+			return false
+		}
+		if len(value.PayloadSHA256s) == 0 {
+			return value.RetentionUntil.IsZero()
+		}
+	}
+	if len(value.PayloadSHA256s) == 0 || value.RetentionUntil.IsZero() {
+		return false
+	}
+	seen := make(map[string]struct{}, len(value.PayloadSHA256s))
+	for _, digest := range value.PayloadSHA256s {
+		if !validLowerHexSHA256(digest) {
+			return false
+		}
+		if _, duplicate := seen[digest]; duplicate {
+			return false
+		}
+		seen[digest] = struct{}{}
+	}
+	return value.ExceptionApproved == (value.Availability == CitationRawEvidenceExceptionRetained) &&
+		(!value.DeletionAudited || value.Availability == CitationRawEvidenceExpired)
+}
+
+func citationRawEvidenceDTO(value CitationRawEvidenceReadDTO) CitationRawEvidenceDTO {
+	if value.Availability == "" {
+		value.Availability = CitationRawEvidenceUnavailable
+		value.PayloadSHA256s = []string{}
+	}
+	result := CitationRawEvidenceDTO{
+		Availability: value.Availability, PayloadSHA256s: append([]string(nil), value.PayloadSHA256s...),
+		DeletionAudited: value.DeletionAudited, ExceptionApproved: value.ExceptionApproved,
+	}
+	if !value.RetentionUntil.IsZero() {
+		retentionUntil := value.RetentionUntil.UTC()
+		result.RetentionUntil = &retentionUntil
+	}
+	return result
+}
+
 func citationDTO(read CitationReadDTO) CitationDTO {
 	availability, reason := citationReadAvailability(read)
 	publisher := citationPartyDTO(read.Publisher, "publisher")
@@ -376,6 +457,7 @@ func citationDTO(read CitationReadDTO) CitationDTO {
 		DocumentID: read.DocumentID, DocumentVersionID: read.DocumentVersionID,
 		SourceType: read.SourceType, SourceName: read.SourceName, Title: read.Title,
 		Author: safeCitationText(read.Author), PublisherParty: publisher, ContentOrigin: contentOrigin, Distributors: distributors,
+		RawEvidence:           citationRawEvidenceDTO(read.RawEvidence),
 		PublisherAvailability: CitationFactUnavailable, PublisherUnavailableReason: CitationReasonPublisherUnavailable,
 		ContentOriginAvailability: CitationFactUnavailable, ContentOriginUnavailableReason: CitationReasonContentOriginUnavailable,
 		SourceRecordURL: safeCitationURL(read.SourceRecordURL), CanonicalURL: safeCitationURL(read.CanonicalURL),

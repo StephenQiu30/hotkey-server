@@ -61,6 +61,14 @@ type CitationPartyResponseDTO struct {
 	HomepageURL       *string `json:"homepage_url" extensions:"x-nullable"`
 }
 
+type CitationRawEvidenceResponseDTO struct {
+	Availability      string     `json:"availability" enums:"available,expired,exception_retained,unavailable"`
+	PayloadSHA256s    []string   `json:"payload_sha256s"`
+	RetentionUntil    *time.Time `json:"retention_until" extensions:"x-nullable"`
+	DeletionAudited   bool       `json:"deletion_audited"`
+	ExceptionApproved bool       `json:"exception_approved"`
+}
+
 // CitationResponseDTO is an explicit transport allowlist. Internal storage
 // and rights-decision identities are intentionally not representable.
 type CitationResponseDTO struct {
@@ -83,12 +91,13 @@ type CitationResponseDTO struct {
 	CanonicalURL                   *string `json:"canonical_url" extensions:"x-nullable"`
 	DiscussionURL                  *string `json:"discussion_url" extensions:"x-nullable"`
 
-	BodyOrigin    string     `json:"body_origin"`
-	Completeness  string     `json:"completeness"`
-	Language      string     `json:"language"`
-	PublishedAt   *time.Time `json:"published_at" extensions:"x-nullable"`
-	CapturedAt    time.Time  `json:"captured_at"`
-	ContentSHA256 *string    `json:"content_sha256" extensions:"x-nullable"`
+	BodyOrigin    string                         `json:"body_origin"`
+	Completeness  string                         `json:"completeness"`
+	Language      string                         `json:"language"`
+	PublishedAt   *time.Time                     `json:"published_at" extensions:"x-nullable"`
+	CapturedAt    time.Time                      `json:"captured_at"`
+	ContentSHA256 *string                        `json:"content_sha256" extensions:"x-nullable"`
+	RawEvidence   CitationRawEvidenceResponseDTO `json:"raw_evidence"`
 
 	Availability      string                       `json:"availability" enums:"full_archive,partial_archive,summary_only,metadata_only,policy_blocked,temporarily_unavailable,quarantined,tombstoned"`
 	UnavailableReason *string                      `json:"unavailable_reason" extensions:"x-nullable"`
@@ -258,6 +267,11 @@ func citationResponseDTO(value ingestionapplication.CitationDTO) CitationRespons
 		SourceRecordURL:                value.SourceRecordURL, CanonicalURL: value.CanonicalURL, DiscussionURL: value.DiscussionURL,
 		BodyOrigin: string(value.BodyOrigin), Completeness: string(value.Completeness), Language: value.Language,
 		PublishedAt: value.PublishedAt, CapturedAt: value.CapturedAt, ContentSHA256: value.ContentSHA256,
+		RawEvidence: CitationRawEvidenceResponseDTO{
+			Availability: string(value.RawEvidence.Availability), PayloadSHA256s: append([]string(nil), value.RawEvidence.PayloadSHA256s...),
+			RetentionUntil: value.RawEvidence.RetentionUntil, DeletionAudited: value.RawEvidence.DeletionAudited,
+			ExceptionApproved: value.RawEvidence.ExceptionApproved,
+		},
 		Availability: string(value.Availability), UnavailableReason: citationReasonPointer(value.UnavailableReason),
 		LocatorAvailability:      string(value.LocatorAvailability),
 		LocatorUnavailableReason: citationReasonPointer(value.LocatorUnavailableReason),

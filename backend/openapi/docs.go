@@ -7668,6 +7668,36 @@ const docTemplate = `{
                 }
             }
         },
+        "http.CitationRawEvidenceResponseDTO": {
+            "type": "object",
+            "properties": {
+                "availability": {
+                    "type": "string",
+                    "enum": [
+                        "available",
+                        "expired",
+                        "exception_retained",
+                        "unavailable"
+                    ]
+                },
+                "deletion_audited": {
+                    "type": "boolean"
+                },
+                "exception_approved": {
+                    "type": "boolean"
+                },
+                "payload_sha256s": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "retention_until": {
+                    "type": "string",
+                    "x-nullable": true
+                }
+            }
+        },
         "http.CitationResponseDTO": {
             "type": "object",
             "properties": {
@@ -7800,6 +7830,9 @@ const docTemplate = `{
                 "publisher_unavailable_reason": {
                     "type": "string",
                     "x-nullable": true
+                },
+                "raw_evidence": {
+                    "$ref": "#/definitions/http.CitationRawEvidenceResponseDTO"
                 },
                 "source_name": {
                     "type": "string"

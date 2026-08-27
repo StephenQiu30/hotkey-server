@@ -54,6 +54,13 @@ const citation = {
     },
   ],
   availability: "full_archive",
+  raw_evidence: {
+    availability: "available",
+    payload_sha256s: ["e".repeat(64)],
+    retention_until: "2026-09-08T08:05:00Z",
+    deletion_audited: false,
+    exception_approved: false,
+  },
   body_origin: "feed_content",
   completeness: "full",
   canonical_url: "https://openai.example/release",
@@ -162,6 +169,29 @@ describe("DocumentVersionWorkspace", () => {
     expect(screen.getByText("内容源主体未提供")).toBeInTheDocument();
     expect(screen.getByText("分发方信息未提供")).toBeInTheDocument();
     expect(screen.queryByText("OpenAI Feed", { selector: "a" })).not.toBeInTheDocument();
+  });
+
+  it("shows an explicit expired raw-object state while retaining hash metadata", async () => {
+    const expiredCitation = {
+      ...citation,
+      raw_evidence: {
+        availability: "expired" as const,
+        payload_sha256s: ["f".repeat(64)],
+        retention_until: "2026-08-10T08:05:00Z",
+        deletion_audited: true,
+        exception_approved: false,
+      },
+    };
+    mocks.getCitation.mockResolvedValueOnce({ data: expiredCitation });
+    mocks.getDocument.mockResolvedValueOnce({
+      data: { citation: expiredCitation, etag: citation.artifact?.etag, markdown: "# 正式发布\n\n正文内容" },
+    });
+
+    render(<DocumentVersionWorkspace documentVersionID={9} />);
+
+    expect(await screen.findByText("原始对象已过保留期")).toBeInTheDocument();
+    expect(screen.getByText(/ffffffffff/)).toBeInTheDocument();
+    expect(screen.getByText("删除审计已记录")).toBeInTheDocument();
   });
 
   it("keeps safe citation facts visible when the body is policy blocked", async () => {

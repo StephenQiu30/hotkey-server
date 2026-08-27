@@ -91,6 +91,18 @@ required property without making explicit null impossible to bind. */
     role?: "publisher" | "author" | "distributor" | "content_origin";
   };
 
+  type CitationRawEvidenceResponseDTO = {
+    availability?:
+      | "available"
+      | "expired"
+      | "exception_retained"
+      | "unavailable";
+    deletion_audited?: boolean;
+    exception_approved?: boolean;
+    payload_sha256s?: string[];
+    retention_until?: string;
+  };
+
   type CitationResponseDTO = {
     anchor_map?: CitationAnchorMapResponseDTO;
     artifact?: CitationArtifactResponseDTO;
@@ -125,6 +137,7 @@ required property without making explicit null impossible to bind. */
     publisher_availability?: "available" | "unavailable";
     publisher_party?: CitationPartyResponseDTO;
     publisher_unavailable_reason?: string;
+    raw_evidence?: CitationRawEvidenceResponseDTO;
     source_name?: string;
     source_record_url?: string;
     source_type?: string;

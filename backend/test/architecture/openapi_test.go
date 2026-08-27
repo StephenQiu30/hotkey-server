@@ -440,7 +440,11 @@ func assertSafeVersionedCitationOpenAPIDefinitions(t *testing.T, definitions map
 			"published_at": true, "captured_at": true, "content_sha256": true, "availability": true,
 			"unavailable_reason": true, "artifact": true, "locator_availability": true,
 			"locator_unavailable_reason": true, "exact_quote": true, "utf8_byte_start": true,
-			"utf8_byte_end": true, "anchor_map": true,
+			"utf8_byte_end": true, "anchor_map": true, "raw_evidence": true,
+		},
+		"http.CitationRawEvidenceResponseDTO": {
+			"availability": true, "payload_sha256s": true, "retention_until": true,
+			"deletion_audited": true, "exception_approved": true,
 		},
 		"http.VersionedDocumentResponseDTO": {"citation": true, "markdown": true, "etag": true},
 	}

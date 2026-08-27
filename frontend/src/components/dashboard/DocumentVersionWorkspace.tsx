@@ -34,6 +34,13 @@ const availabilityLabels: Record<string, string> = {
   tombstoned: "已停止保留",
 };
 
+const rawEvidenceLabels: Record<string, string> = {
+  available: "原始对象仍在保留期",
+  expired: "原始对象已过保留期",
+  exception_retained: "原始对象经批准长期保留",
+  unavailable: "原始对象状态不可用",
+};
+
 function formatDateTime(value?: string) {
   if (!value) return "—";
   const date = new Date(value);
@@ -280,6 +287,17 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
             正文类型：<span className="font-medium text-foreground">{citation.body_origin || "未知"} · {citation.completeness || "未知"}</span>
           </p>
           <p className="mono">Document #{citation.document_id ?? "—"} · Version #{citation.document_version_id ?? "—"}</p>
+          <p className="font-medium text-foreground">
+            {rawEvidenceLabels[citation.raw_evidence?.availability ?? "unavailable"] ?? "原始对象状态不可用"}
+          </p>
+          {citation.raw_evidence?.retention_until ? (
+            <p>原始对象保留期限：{formatDateTime(citation.raw_evidence.retention_until)}</p>
+          ) : null}
+          {citation.raw_evidence?.payload_sha256s?.map((digest) => (
+            <p className="mono break-all" key={digest}>原始对象 SHA-256：{digest}</p>
+          ))}
+          {citation.raw_evidence?.deletion_audited ? <p>删除审计已记录</p> : null}
+          {citation.raw_evidence?.exception_approved ? <p>长期保留例外已有批准依据</p> : null}
         </div>
 
         <section aria-labelledby="document-parties-title" className="mt-4 rounded-md border border-border p-4">

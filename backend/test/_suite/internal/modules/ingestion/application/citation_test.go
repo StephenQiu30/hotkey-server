@@ -269,6 +269,30 @@ func TestCitationServiceProjectsMetadataOnlyWithoutInventingAnArtifact(t *testin
 	}
 }
 
+func TestCitationServiceProjectsExpiredRawEvidenceMetadataWithoutObjectAccess(t *testing.T) {
+	record := readyCitationReadDTO(41, "expired raw evidence", strings.Repeat("1", 64), strings.Repeat("a", 64))
+	record.RawEvidence = CitationRawEvidenceReadDTO{
+		Availability: CitationRawEvidenceExpired, PayloadSHA256s: []string{strings.Repeat("e", 64)},
+		RetentionUntil: record.CapturedAt.Add(24 * time.Hour), DeletionAudited: true,
+	}
+	service, err := NewCitationService(CitationDependencies{
+		Citations:   &citationMetadataReaderStub{records: map[int64]CitationReadDTO{41: record}},
+		Projections: &citationProjectionReaderStub{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.GetCitation(context.Background(), CitationQuery{DocumentVersionID: 41})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Citation.RawEvidence.Availability != CitationRawEvidenceExpired ||
+		len(result.Citation.RawEvidence.PayloadSHA256s) != 1 || !result.Citation.RawEvidence.DeletionAudited ||
+		result.Citation.RawEvidence.ExceptionApproved {
+		t.Fatalf("expired raw evidence metadata was not conserved: %#v", result.Citation.RawEvidence)
+	}
+}
+
 func TestCitationServiceVerifiesProjectionBeforeStrongETag304(t *testing.T) {
 	t.Parallel()
 	artifactSHA := strings.Repeat("a", 64)
@@ -384,6 +408,10 @@ func readyCitationReadDTO(documentVersionID int64, title, contentSHA, artifactSH
 		BodyOrigin: BodyOriginFeedContent, Completeness: BodyCompletenessFull,
 		Language: "en", PublishedAt: &now, CapturedAt: now.Add(-time.Hour), ContentSHA256: contentSHA,
 		DisplayPrivateAllowed: true, RightsEvaluatedAt: now,
+		RawEvidence: CitationRawEvidenceReadDTO{
+			Availability: CitationRawEvidenceAvailable, PayloadSHA256s: []string{strings.Repeat("e", 64)},
+			RetentionUntil: now.Add(24 * time.Hour),
+		},
 		Artifact: &CitationArtifactReadDTO{
 			ArtifactType: "markdown", TransformerProfileSHA256: strings.Repeat("b", 64),
 			MIMEType: "text/markdown; charset=utf-8", SHA256: artifactSHA, SizeBytes: 12,

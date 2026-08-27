@@ -33,28 +33,33 @@ type citationQueryExecutor interface {
 // populated explicitly so persistence-only nullable and rights fields cannot
 // cross the adapter boundary by accident.
 type citationRecord struct {
-	documentID             int64
-	documentVersionID      int64
-	sourceConnectionID     int64
-	documentState          string
-	documentLifecycleState string
-	observationState       string
-	sourceType             string
-	sourceName             string
-	title                  string
-	author                 sql.NullString
-	partyFactsJSON         []byte
-	sourceRecordURL        sql.NullString
-	canonicalURL           sql.NullString
-	discussionURL          sql.NullString
-	bodyOrigin             string
-	completeness           string
-	language               string
-	publishedAt            sql.NullTime
-	capturedAt             time.Time
-	contentSHA256          string
-	displayPrivateAllowed  bool
-	rightsEvaluatedAt      time.Time
+	documentID                   int64
+	documentVersionID            int64
+	sourceConnectionID           int64
+	documentState                string
+	documentLifecycleState       string
+	observationState             string
+	sourceType                   string
+	sourceName                   string
+	title                        string
+	author                       sql.NullString
+	partyFactsJSON               []byte
+	sourceRecordURL              sql.NullString
+	canonicalURL                 sql.NullString
+	discussionURL                sql.NullString
+	bodyOrigin                   string
+	completeness                 string
+	language                     string
+	publishedAt                  sql.NullTime
+	capturedAt                   time.Time
+	contentSHA256                string
+	displayPrivateAllowed        bool
+	rightsEvaluatedAt            time.Time
+	rawEvidenceAvailability      string
+	rawEvidencePayloadsJSON      []byte
+	rawEvidenceRetentionUntil    sql.NullTime
+	rawEvidenceDeletionAudited   bool
+	rawEvidenceExceptionApproved bool
 
 	artifactID                 sql.NullInt64
 	artifactType               sql.NullString
@@ -148,6 +153,11 @@ SELECT
     'display_private', CURRENT_TIMESTAMP
   ) AS display_private_allowed,
   CURRENT_TIMESTAMP AS rights_evaluated_at,
+  raw_evidence.availability,
+  raw_evidence.payload_sha256s,
+  raw_evidence.retention_until,
+  raw_evidence.deletion_audited,
+  raw_evidence.exception_approved,
   artifact.id,
   artifact.artifact_type,
   btrim(artifact.transformer_profile_sha256),
@@ -199,6 +209,37 @@ JOIN documents AS document ON document.id = document_version.document_id
 JOIN source_observations AS observation ON observation.id = document_version.source_observation_id
 JOIN source_connections AS source ON source.id = document.source_connection_id
 LEFT JOIN LATERAL (
+  SELECT
+    CASE
+      WHEN count(snapshot.id)=0 THEN 'unavailable'
+      WHEN bool_or(snapshot.lifecycle_state='raw_available' AND EXISTS (
+        SELECT 1 FROM evidence_retention_exceptions AS exception
+        WHERE exception.evidence_snapshot_id=snapshot.id AND exception.revoked_at IS NULL
+          AND exception.approved_at <= CURRENT_TIMESTAMP
+          AND (exception.expires_at IS NULL OR exception.expires_at > CURRENT_TIMESTAMP)
+      )) THEN 'exception_retained'
+      WHEN bool_or(snapshot.lifecycle_state='raw_available' AND snapshot.retention_until > CURRENT_TIMESTAMP) THEN 'available'
+      WHEN bool_and(snapshot.lifecycle_state IN ('retention_blocked','tombstoned') OR snapshot.retention_until <= CURRENT_TIMESTAMP) THEN 'expired'
+      ELSE 'unavailable'
+    END AS availability,
+    COALESCE(jsonb_agg(DISTINCT btrim(snapshot.payload_sha256) ORDER BY btrim(snapshot.payload_sha256)) FILTER (WHERE snapshot.id IS NOT NULL),'[]'::jsonb) AS payload_sha256s,
+    max(snapshot.retention_until) AS retention_until,
+    COALESCE(bool_or(EXISTS (
+      SELECT 1 FROM evidence_deletion_audits AS deletion
+      WHERE deletion.evidence_snapshot_id=snapshot.id AND deletion.event_type='delete_succeeded'
+    )),false) AS deletion_audited,
+    COALESCE(bool_or(snapshot.lifecycle_state='raw_available' AND EXISTS (
+      SELECT 1 FROM evidence_retention_exceptions AS exception
+      WHERE exception.evidence_snapshot_id=snapshot.id AND exception.revoked_at IS NULL
+        AND exception.approved_at <= CURRENT_TIMESTAMP
+        AND (exception.expires_at IS NULL OR exception.expires_at > CURRENT_TIMESTAMP)
+    )),false) AS exception_approved
+  FROM source_observation_evidences AS reference
+  JOIN evidence_snapshots AS snapshot ON snapshot.id=reference.evidence_snapshot_id
+  WHERE reference.source_observation_id=observation.id
+    AND reference.source_connection_id=observation.source_connection_id
+) AS raw_evidence ON true
+LEFT JOIN LATERAL (
   SELECT candidate.*
   FROM derived_artifacts AS candidate
   WHERE candidate.document_version_id = document_version.id
@@ -240,6 +281,8 @@ func scanCitationRecord(row *sql.Row) (citationRecord, error) {
 		&record.sourceRecordURL, &record.canonicalURL, &record.discussionURL,
 		&record.bodyOrigin, &record.completeness, &record.language, &record.publishedAt,
 		&record.capturedAt, &record.contentSHA256, &record.displayPrivateAllowed, &record.rightsEvaluatedAt,
+		&record.rawEvidenceAvailability, &record.rawEvidencePayloadsJSON, &record.rawEvidenceRetentionUntil,
+		&record.rawEvidenceDeletionAudited, &record.rawEvidenceExceptionApproved,
 		&record.artifactID, &record.artifactType, &record.transformerProfileSHA256, &record.mimeType,
 		&record.artifactSHA256, &record.sizeBytes,
 		&record.anchorNormalizationVersion, &record.anchorMapProfileVersion, &record.anchorPlaintextSHA256,
@@ -268,6 +311,15 @@ func citationReadDTO(record citationRecord) (ingestionapplication.CitationReadDT
 		Language: record.language, PublishedAt: citationOptionalTime(record.publishedAt), CapturedAt: record.capturedAt.UTC(),
 		ContentSHA256: record.contentSHA256, DisplayPrivateAllowed: record.displayPrivateAllowed,
 		RightsEvaluatedAt: record.rightsEvaluatedAt.UTC(),
+	}
+	var rawEvidencePayloadSHA256s []string
+	if err := json.Unmarshal(record.rawEvidencePayloadsJSON, &rawEvidencePayloadSHA256s); err != nil || rawEvidencePayloadSHA256s == nil {
+		return ingestionapplication.CitationReadDTO{}, fmt.Errorf("decode raw evidence payload hashes")
+	}
+	result.RawEvidence = ingestionapplication.CitationRawEvidenceReadDTO{
+		Availability:   ingestionapplication.CitationRawEvidenceAvailability(record.rawEvidenceAvailability),
+		PayloadSHA256s: rawEvidencePayloadSHA256s, RetentionUntil: citationTime(record.rawEvidenceRetentionUntil),
+		DeletionAudited: record.rawEvidenceDeletionAudited, ExceptionApproved: record.rawEvidenceExceptionApproved,
 	}
 	for index := range parties {
 		party := parties[index]
