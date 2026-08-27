@@ -33,10 +33,10 @@ describe("dashboard menu", () => {
     ).toBe(true);
   });
 
-  it("marks source management as administrator-only", () => {
+  it("exposes the safe source directory to every product role", () => {
     expect(
       dashboardMenuItems.find((item) => item.path === "/dashboard/sources")
         ?.roles
-    ).toEqual([UserRole.Admin]);
+    ).toBeUndefined();
   });
 });

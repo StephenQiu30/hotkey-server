@@ -1,7 +1,14 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { FilterX, Flame, Loader2, RefreshCw, Search } from "lucide-react";
+import {
+  FilterX,
+  Flame,
+  Loader2,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+} from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -38,6 +45,7 @@ import { PageHeader } from "@/components/dashboard/PageHeader";
 import { getHotspots } from "@/services/hotkey/hotkey-server/hotspots";
 import { getMonitors } from "@/services/hotkey/hotkey-server/monitors";
 import { getSourceConnections } from "@/services/hotkey/hotkey-server/sources";
+import { HotKeyAPIError } from "@/lib/request";
 
 type HotspotSort = NonNullable<HotKeyAPI.getHotspotsParams["sort"]>;
 
@@ -52,6 +60,7 @@ const sortLabels: Readonly<Record<HotspotSort, string>> = {
 function HotspotLoadingState() {
   return (
     <div
+      aria-label="正在加载热点"
       aria-live="polite"
       className="flex min-h-80 items-center justify-center"
       role="status"
@@ -107,6 +116,7 @@ function HotspotRadar() {
   const [monitors, setMonitors] = useState<HotKeyAPI.MonitorResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
 
   const replaceURL = useCallback(
     (changes: Record<string, string | undefined>) => {
@@ -135,6 +145,7 @@ function HotspotRadar() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(undefined);
+    setForbidden(false);
     try {
       const result = await getHotspots({
         limit: pageSize,
@@ -154,6 +165,7 @@ function HotspotRadar() {
     } catch (reason) {
       setItems([]);
       setNextCursor(undefined);
+      setForbidden(reason instanceof HotKeyAPIError && reason.status === 403);
       setError(reason instanceof Error ? reason.message : "热点加载失败");
     } finally {
       setLoading(false);
@@ -257,10 +269,10 @@ function HotspotRadar() {
     });
   }
 
-  return (
-    <div className="app-page">
-      <PageHeader
-        action={
+  const pageHeader = (
+    <PageHeader
+      action={
+        forbidden ? undefined : (
           <Button
             className="gap-2"
             onClick={() => void load()}
@@ -269,11 +281,32 @@ function HotspotRadar() {
             <RefreshCw className={loading ? "animate-spin" : ""} />
             刷新热点
           </Button>
-        }
-        description="持续查看监控扫描发现的文章、帖子和视频，并按来源、监控与热度快速定位。"
-        eyebrow="HOTSPOT RADAR"
-        title="热点雷达"
-      />
+        )
+      }
+      description="持续查看监控扫描发现的文章、帖子和视频，并按来源、监控与热度快速定位。"
+      eyebrow="HOTSPOT RADAR"
+      title="热点雷达"
+    />
+  );
+
+  if (forbidden) {
+    return (
+      <div className="app-page">
+        {pageHeader}
+        <Alert aria-label="热点访问权限不足" className="mt-6">
+          <ShieldAlert />
+          <AlertTitle>热点访问权限不足</AlertTitle>
+          <AlertDescription>
+            当前账号无法读取热点内容。请联系管理员核对工作区角色。
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app-page">
+      {pageHeader}
 
       <section
         aria-label="热点统计"

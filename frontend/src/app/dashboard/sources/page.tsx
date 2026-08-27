@@ -8,10 +8,11 @@ import {
   Loader2,
   Power,
   RefreshCw,
+  ShieldAlert,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +46,7 @@ import { PageHeader } from "@/components/dashboard/PageHeader";
 import { useAuthStore } from "@/stores/authStore";
 import { SourceAction, UserRole } from "@/lib/domainEnums";
 import { sourceHealthPresentation } from "@/lib/domainPresentation";
+import { HotKeyAPIError } from "@/lib/request";
 import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
 import { SourceConnectionDialog } from "@/components/dashboard/SourceConnectionDialog";
 import { SourceCredentialDialog } from "@/components/dashboard/SourceCredentialDialog";
@@ -66,11 +68,13 @@ function sourceStatus(source: HotKeyAPI.SourceReadResponse) {
 
 export default function SourcesPage() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const user = useAuthStore((state) => state.user);
-  const canManage = user?.role === UserRole.Admin;
+  const canManage = useAuthStore(
+    (state) => state.user?.role === UserRole.Admin
+  );
   const [sources, setSources] = useState<HotKeyAPI.SourceReadResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
   const [creating, setCreating] = useState(false);
   const [action, setAction] = useState<number>();
   const [deleteTarget, setDeleteTarget] =
@@ -83,9 +87,9 @@ export default function SourcesPage() {
 
   const loadPage = useCallback(
     async (cursor: string | undefined, pageNumber: number) => {
-      if (!canManage) return;
       setLoading(true);
       setLoadError(undefined);
+      setForbidden(false);
       try {
         const result = await getSourceConnections({
           limit: pageSize,
@@ -99,13 +103,18 @@ export default function SourcesPage() {
       } catch (reason) {
         const message =
           reason instanceof Error ? reason.message : "来源加载失败";
+        setSources([]);
+        setNextCursor(undefined);
+        setForbidden(reason instanceof HotKeyAPIError && reason.status === 403);
         setLoadError(message);
-        toast.error(message);
+        if (!(reason instanceof HotKeyAPIError && reason.status === 403)) {
+          toast.error(message);
+        }
       } finally {
         setLoading(false);
       }
     },
-    [canManage, pageSize]
+    [pageSize]
   );
 
   const load = useCallback(async () => {
@@ -246,17 +255,32 @@ export default function SourcesPage() {
     }
   };
 
-  if (!canManage) return null;
-
   return (
     <div className="app-page">
       <PageHeader
         eyebrow="Sources"
-        title="来源管理"
-        description="连接、探测并管理七类正式来源；单个来源失败不会阻塞其他来源，也不会触发隐藏回退。"
-        action={<SourceConnectionDialog busy={creating} onSubmit={create} />}
+        title={canManage ? "来源管理" : "来源目录"}
+        description={
+          canManage
+            ? "连接、探测并管理七类正式来源；单个来源失败不会阻塞其他来源，也不会触发隐藏回退。"
+            : "查看已接入来源的类型、可用状态和公开健康信息；凭据与管理配置仅管理员可见。"
+        }
+        action={
+          canManage ? (
+            <SourceConnectionDialog busy={creating} onSubmit={create} />
+          ) : undefined
+        }
       />
-      {loadError && (
+      {forbidden ? (
+        <Alert aria-label="来源访问权限不足" className="mt-6">
+          <ShieldAlert />
+          <AlertTitle>来源访问权限不足</AlertTitle>
+          <AlertDescription>
+            当前账号无法读取来源目录。请联系管理员核对工作区角色。
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {loadError && !forbidden ? (
         <Alert variant="destructive" className="mt-6">
           <div className="mb-1 font-medium leading-none tracking-tight">
             来源加载失败
@@ -268,12 +292,19 @@ export default function SourcesPage() {
             </Button>
           </AlertDescription>
         </Alert>
-      )}
+      ) : null}
       {loading ? (
-        <div className="flex h-72 items-center justify-center">
-          <Loader2 className="animate-spin text-muted-foreground" />
+        <div
+          aria-label="正在加载来源"
+          className="flex h-72 items-center justify-center"
+          role="status"
+        >
+          <Loader2
+            aria-hidden="true"
+            className="animate-spin text-muted-foreground"
+          />
         </div>
-      ) : !sources.length && !loadError ? (
+      ) : !forbidden && !sources.length && !loadError ? (
         <Card className="mt-6 gap-0 overflow-hidden py-0">
           <Empty className="h-72">
             <EmptyHeader>
@@ -326,11 +357,11 @@ export default function SourcesPage() {
                     <p className="truncate text-sm font-medium">
                       {source.name}
                     </p>
-                    {source.endpoint && (
+                    {canManage && source.endpoint ? (
                       <p className="mt-1 break-all text-xs text-muted-foreground md:truncate">
                         {source.endpoint}
                       </p>
-                    )}
+                    ) : null}
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       {source.terms_policy_url && (
                         <a
@@ -346,13 +377,14 @@ export default function SourcesPage() {
                       {source.source_type === "bing_grounding" && (
                         <span>模型生成的派生证据 · 保留引用</span>
                       )}
-                      {source.config?.rate_limit_per_minute != null &&
-                        source.config?.content_retention_days != null && (
-                          <span>
-                            {source.config.rate_limit_per_minute} req/min · 保留{" "}
-                            {source.config.content_retention_days} 天
-                          </span>
-                        )}
+                      {canManage &&
+                        source.config?.rate_limit_per_minute != null &&
+                        source.config?.content_retention_days != null ? (
+                        <span>
+                          {source.config.rate_limit_per_minute} req/min · 保留{" "}
+                          {source.config.content_retention_days} 天
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                   <span className="mono text-xs text-muted-foreground">
@@ -430,16 +462,18 @@ export default function SourcesPage() {
           />
         </Card>
       ) : null}
-      <div className="mt-4 flex justify-end">
-        <Button
-          variant="ghost"
-          onClick={load}
-          className="gap-2 text-muted-foreground"
-        >
-          <RefreshCw />
-          刷新来源
-        </Button>
-      </div>
+      {!forbidden ? (
+        <div className="mt-4 flex justify-end">
+          <Button
+            variant="ghost"
+            onClick={load}
+            className="gap-2 text-muted-foreground"
+          >
+            <RefreshCw />
+            刷新来源
+          </Button>
+        </div>
+      ) : null}
       <ConfirmDeleteDialog
         open={deleteTarget != null}
         onOpenChange={(open) => !open && setDeleteTarget(undefined)}

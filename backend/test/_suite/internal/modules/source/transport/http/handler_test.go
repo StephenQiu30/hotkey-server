@@ -24,15 +24,23 @@ import (
 // reader-safe while guarding all mutating routes at the HTTP boundary.
 func TestSourceRoutesRequireAdminForManagement(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	RegisterRoutes(router, (*sourceapplication.Service)(nil), testAuthenticator{subject: httptransport.Subject{UserID: 1, SessionID: 1, Role: httptransport.RoleViewer}})
+	for _, role := range []httptransport.Role{
+		httptransport.RoleViewer,
+		httptransport.RoleAnalyst,
+		httptransport.RoleEditor,
+	} {
+		t.Run(string(role), func(t *testing.T) {
+			router := gin.New()
+			RegisterRoutes(router, (*sourceapplication.Service)(nil), testAuthenticator{subject: httptransport.Subject{UserID: 1, SessionID: 1, Role: role}})
 
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/source-connections", nil)
-	request.Header.Set("Authorization", "Bearer viewer")
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/source-connections", nil)
+			request.Header.Set("Authorization", "Bearer "+string(role))
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+			}
+		})
 	}
 }
 
@@ -168,6 +176,7 @@ func TestSourceReadRoutesUseRoleDependentSafeUnion(t *testing.T) {
 		wantEndpoint bool
 	}{
 		{name: "viewer get", role: httptransport.RoleViewer, path: "/api/v1/source-connections/1", wantEndpoint: false},
+		{name: "analyst list", role: httptransport.RoleAnalyst, path: "/api/v1/source-connections", wantEndpoint: false},
 		{name: "editor list", role: httptransport.RoleEditor, path: "/api/v1/source-connections", wantEndpoint: false},
 		{name: "admin get", role: httptransport.RoleAdmin, path: "/api/v1/source-connections/1", wantEndpoint: true},
 		{name: "admin list", role: httptransport.RoleAdmin, path: "/api/v1/source-connections", wantEndpoint: true},

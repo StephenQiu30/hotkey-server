@@ -254,7 +254,7 @@ func TestContentDocumentRouteAllowsAuthenticatedRolesAndReturnsSafeProjection(t 
 		Availability: ingestiondomain.ContentDocumentReady, Markdown: "# 正文\n", SHA256: strings.Repeat("a", 64),
 		CapturedAt: time.Date(2026, time.July, 17, 8, 1, 0, 0, time.UTC),
 	}
-	for _, role := range []httptransport.Role{httptransport.RoleViewer, httptransport.RoleEditor, httptransport.RoleAdmin} {
+	for _, role := range []httptransport.Role{httptransport.RoleViewer, httptransport.RoleAnalyst, httptransport.RoleEditor, httptransport.RoleAdmin} {
 		t.Run(string(role), func(t *testing.T) {
 			service := &contentQueryServiceStub{document: document}
 			router := newContentRouter(t, service, role)
@@ -313,6 +313,7 @@ func TestContentDeleteRouteRequiresEditorAndReturnsEmptySuccess(t *testing.T) {
 		wantCalls  int
 	}{
 		{name: "viewer cannot delete", role: httptransport.RoleViewer, wantStatus: stdhttp.StatusForbidden, wantCalls: 0},
+		{name: "analyst cannot delete", role: httptransport.RoleAnalyst, wantStatus: stdhttp.StatusForbidden, wantCalls: 0},
 		{name: "editor can delete", role: httptransport.RoleEditor, wantStatus: stdhttp.StatusOK, wantCalls: 1},
 		{name: "admin can delete", role: httptransport.RoleAdmin, wantStatus: stdhttp.StatusOK, wantCalls: 1},
 	} {

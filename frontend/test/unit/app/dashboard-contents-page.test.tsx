@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ContentsPage from "@/app/dashboard/contents/page";
+import { HotKeyAPIError } from "@/lib/request";
 
 const mocks = vi.hoisted(() => ({
   getHotspots: vi.fn(),
@@ -104,6 +105,15 @@ describe("HotspotRadar", () => {
     );
   });
 
+  it("announces the hotspot loading state", () => {
+    mocks.getHotspots.mockReturnValue(new Promise(() => {}));
+    render(<ContentsPage />);
+
+    expect(
+      screen.getByRole("status", { name: "正在加载热点" }),
+    ).toBeInTheDocument();
+  });
+
   it("restores combined filters and delegates relevance ordering to the server", async () => {
     mocks.navigationQuery =
       "q=Claude&source=3&monitor=5&from=2026-08-01&to=2026-08-13&sort=relevance&limit=50";
@@ -166,5 +176,17 @@ describe("HotspotRadar", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(mocks.getHotspots).toHaveBeenCalledTimes(2));
     expect(await screen.findByText("暂时没有热点")).toBeInTheDocument();
+  });
+
+  it("shows a dedicated forbidden hotspot state without a retry action", async () => {
+    mocks.getHotspots.mockRejectedValue(
+      new HotKeyAPIError(403, "当前账号没有执行此操作的权限"),
+    );
+    render(<ContentsPage />);
+
+    expect(
+      await screen.findByRole("alert", { name: "热点访问权限不足" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
   });
 });

@@ -29,7 +29,6 @@ export const dashboardMenuItems: MenuItem[] = [
     path: "/dashboard/sources",
     name: "来源",
     icon: <Database className="h-4 w-4" />,
-    roles: dashboardRouteRoles["/dashboard/sources"],
   },
   {
     path: "/dashboard/search",

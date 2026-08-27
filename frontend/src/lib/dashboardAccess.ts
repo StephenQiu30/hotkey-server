@@ -1,7 +1,6 @@
 import { UserRole } from "@/lib/domainEnums";
 
 export const dashboardRouteRoles = {
-  "/dashboard/sources": [UserRole.Admin],
   "/dashboard/users": [UserRole.Admin],
   "/dashboard/governance": [UserRole.Admin],
 } as const satisfies Record<string, readonly UserRole[]>;

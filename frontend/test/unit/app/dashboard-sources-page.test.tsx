@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SourcesPage from "@/app/dashboard/sources/page";
 import { useAuthStore } from "@/stores/authStore";
 import { AuthStatus, UserRole } from "@/lib/domainEnums";
+import { HotKeyAPIError } from "@/lib/request";
 
 const mocks = vi.hoisted(() => ({
   getSourceConnections: vi.fn(),
@@ -221,16 +222,79 @@ describe("multi-source workspace", () => {
     })));
   });
 
-  it.each([UserRole.Viewer, UserRole.Editor])(
-    "does not render or load source management for %s",
-    (role) => {
+  it.each([UserRole.Viewer, UserRole.Analyst, UserRole.Editor])(
+    "loads the safe source directory without management actions for %s",
+    async (role) => {
       setRole(role);
-      const { container } = render(<SourcesPage />);
+      mocks.getSourceConnections.mockResolvedValue({
+        data: {
+          items: [
+            {
+              id: 9,
+              name: "公开 RSS",
+              source_type: "rss",
+              enabled: true,
+              health_status: "healthy",
+              credential_configured: true,
+              endpoint: "https://management-only.example.test/feed.xml",
+              config: {
+                rate_limit_per_minute: 60,
+                content_retention_days: 30,
+              },
+            },
+          ],
+        },
+      });
+      render(<SourcesPage />);
 
-      expect(container).toBeEmptyDOMElement();
-      expect(mocks.getSourceConnections).not.toHaveBeenCalled();
+      expect(await screen.findByText("公开 RSS")).toBeInTheDocument();
+      expect(mocks.getSourceConnections).toHaveBeenCalledWith({ limit: 20 });
+      expect(screen.queryByRole("button", { name: "新增来源" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "探测" })).not.toBeInTheDocument();
+      expect(screen.queryByText("https://management-only.example.test/feed.xml")).not.toBeInTheDocument();
+      expect(screen.queryByText(/60 req\/min/)).not.toBeInTheDocument();
     },
   );
+
+  it("announces loading before showing an explicit empty source state", async () => {
+    let resolveSources!: (value: { data: { items: never[] } }) => void;
+    mocks.getSourceConnections.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSources = resolve;
+      }),
+    );
+    render(<SourcesPage />);
+
+    expect(
+      screen.getByRole("status", { name: "正在加载来源" }),
+    ).toBeInTheDocument();
+    resolveSources({ data: { items: [] } });
+    expect(await screen.findByText("还没有来源连接")).toBeInTheDocument();
+  });
+
+  it("shows a retryable source error separately from an empty result", async () => {
+    mocks.getSourceConnections
+      .mockRejectedValueOnce(new Error("source unavailable"))
+      .mockResolvedValueOnce({ data: { items: [] } });
+    render(<SourcesPage />);
+
+    expect(await screen.findByText("来源加载失败")).toBeInTheDocument();
+    expect(screen.queryByText("还没有来源连接")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "重新加载" }));
+    expect(await screen.findByText("还没有来源连接")).toBeInTheDocument();
+  });
+
+  it("shows a dedicated forbidden source state without retrying", async () => {
+    mocks.getSourceConnections.mockRejectedValue(
+      new HotKeyAPIError(403, "当前账号没有执行此操作的权限"),
+    );
+    render(<SourcesPage />);
+
+    expect(
+      await screen.findByRole("alert", { name: "来源访问权限不足" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新加载" })).not.toBeInTheDocument();
+  });
 
   it("replaces an existing X credential without reading the old value", async () => {
     mocks.getSourceConnections.mockResolvedValue({

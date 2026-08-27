@@ -74,7 +74,6 @@ describe("AuthGuard", () => {
   });
 
   it.each([
-    "/dashboard/sources",
     "/dashboard/users",
     "/dashboard/governance",
   ])("redirects a non-admin away from %s without rendering the page", async (pathname) => {
@@ -125,22 +124,22 @@ describe("AuthGuard", () => {
     });
   });
 
-  it("renders an administrator-only route for an administrator", () => {
+  it("allows an analyst to open the safe source directory", () => {
     navigation.pathname = "/dashboard/sources";
     navigation.query = "";
     navigation.auth = {
       status: AuthStatus.Authenticated,
-      user: { role: UserRole.Admin },
+      user: { role: UserRole.Analyst },
     };
     window.history.replaceState({}, "", navigation.pathname);
 
     render(
       <AuthGuard>
-        <main>administrator page</main>
+        <main>safe source directory</main>
       </AuthGuard>,
     );
 
-    expect(screen.getByText("administrator page")).toBeInTheDocument();
+    expect(screen.getByText("safe source directory")).toBeInTheDocument();
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 });
