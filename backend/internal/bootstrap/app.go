@@ -310,12 +310,12 @@ func newSourceCredentialStore(runtime *database.Runtime, cfg config.Config) (*so
 	return sourcecredentialstore.NewStore(runtime, cfg.SourceCredentialMasterKey)
 }
 
-func newSourceConnectorRegistry(cfg config.Config, credentials *sourcecredentialstore.Store) (*sourceinfrastructure.ConnectorRegistry, error) {
+func newSourceConnectorRegistry(cfg config.Config, runtime *database.Runtime, credentials *sourcecredentialstore.Store) (*sourceinfrastructure.ConnectorRegistry, error) {
 	resolver, err := sourcenet.NewResolver(cfg.SourceDNSOverHTTPSURL)
 	if err != nil {
 		return nil, fmt.Errorf("configure source DNS resolver: %w", err)
 	}
-	return sourceinfrastructure.NewConnectorRegistry(resolver, credentials), nil
+	return sourceinfrastructure.NewConnectorRegistry(resolver, credentials, sourcepostgres.NewExternalRequestBudget(runtime)), nil
 }
 
 func newAIProviderRegistry(cfg config.Config, logger *zap.Logger) *intelligenceapplication.ProviderRegistry {

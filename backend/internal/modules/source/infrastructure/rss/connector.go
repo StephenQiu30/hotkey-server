@@ -19,8 +19,7 @@ import (
 )
 
 const (
-	maxRedirects         = 3
-	maxResponseBodyBytes = 4 << 20
+	maxRedirects = 3
 )
 
 var (
@@ -34,6 +33,9 @@ type Connector struct {
 	client           *http.Client
 	maxPages         int
 	now              func() time.Time
+	retryWait        func(context.Context, int) error
+	resourceLimits   ResourceLimitProfile
+	requestBudget    domain.ExternalRequestBudget
 	collectorProfile domain.CollectorProfileVersion
 }
 
@@ -44,10 +46,13 @@ func (lookup lookupIPAddrFunc) LookupIPAddr(ctx context.Context, host string) ([
 }
 
 type connectorOptions struct {
-	resolver    lookupIPAddrFunc
-	dialContext func(context.Context, string, string) (net.Conn, error)
-	tlsConfig   *tls.Config
-	now         func() time.Time
+	resolver       lookupIPAddrFunc
+	dialContext    func(context.Context, string, string) (net.Conn, error)
+	tlsConfig      *tls.Config
+	now            func() time.Time
+	retryWait      func(context.Context, int) error
+	resourceLimits ResourceLimitProfile
+	requestBudget  domain.ExternalRequestBudget
 }
 
 type redirectTraceContextKey struct{}
@@ -55,8 +60,8 @@ type redirectTraceContextKey struct{}
 // New binds the RSS Connector to one immutable SourceConnection execution
 // endpoint. Collection runs later supply only request state, never endpoints
 // or credentials.
-func New(connection domain.SourceConnection, resolvers ...sourcenet.Resolver) (*Connector, error) {
-	options := connectorOptions{}
+func New(connection domain.SourceConnection, requestBudget domain.ExternalRequestBudget, resolvers ...sourcenet.Resolver) (*Connector, error) {
+	options := connectorOptions{requestBudget: requestBudget}
 	if len(resolvers) > 0 && resolvers[0] != nil {
 		options.resolver = resolvers[0].LookupIPAddr
 	}
@@ -84,6 +89,15 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	if options.now == nil {
 		options.now = func() time.Time { return time.Now().UTC() }
 	}
+	if options.resourceLimits.Version == "" {
+		options.resourceLimits = DefaultResourceLimitProfile()
+	}
+	if err := options.resourceLimits.Validate(); err != nil || options.requestBudget == nil {
+		return nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid RSS resource limit profile"))
+	}
+	if options.retryWait == nil {
+		options.retryWait = retryBackoff
+	}
 	collectorProfile, err := domain.NewCollectorProfileVersion(CollectorProfileVersion)
 	if err != nil {
 		return nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid RSS collector profile version"))
@@ -98,13 +112,31 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	transport := &http.Transport{
 		Proxy:                 nil,
 		ForceAttemptHTTP2:     true,
+		DisableKeepAlives:     true,
 		TLSClientConfig:       tlsConfig,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: time.Duration(normalized.Config.RequestTimeoutSeconds) * time.Second,
-		DialContext:           secureDialContext(options.resolver, options.dialContext),
+		TLSHandshakeTimeout:   options.resourceLimits.ConnectTimeout,
+		ResponseHeaderTimeout: minimumDuration(time.Duration(normalized.Config.RequestTimeoutSeconds)*time.Second, options.resourceLimits.ReadTimeout),
+		DialContext: secureDialContext(options.resolver, options.dialContext,
+			options.resourceLimits.ConnectTimeout, options.resourceLimits.ReadTimeout),
+	}
+	reserveRedirect := func(ctx context.Context) error {
+		decision, err := options.requestBudget.ReserveExternalRequest(ctx, domain.ExternalRequestBudgetReservation{
+			SourceConnectionID: normalized.ID, ResourceProfileVersion: options.resourceLimits.Version,
+			DailyLimit: options.resourceLimits.DailyRequestQuota, At: options.now().UTC(),
+		})
+		if err != nil {
+			return err
+		}
+		if err := decision.Validate(options.resourceLimits.DailyRequestQuota); err != nil {
+			return err
+		}
+		if !decision.Allowed {
+			return requestQuotaError{resetAt: decision.ResetAt}
+		}
+		return nil
 	}
 	client := &http.Client{
-		Timeout:   time.Duration(normalized.Config.RequestTimeoutSeconds) * time.Second,
+		Timeout:   options.resourceLimits.WallClockTimeout,
 		Transport: transport,
 		CheckRedirect: func(request *http.Request, via []*http.Request) error {
 			if len(via) >= maxRedirects {
@@ -113,15 +145,23 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 			if _, err := validatedRSSURLForEndpoint(endpoint, request.URL.String()); err != nil {
 				return errUnsafeDestination
 			}
+			if err := reserveRedirect(request.Context()); err != nil {
+				return err
+			}
 			if trace, ok := request.Context().Value(redirectTraceContextKey{}).(*[]string); ok && trace != nil {
 				*trace = append(*trace, request.URL.String())
 			}
 			return nil
 		},
 	}
+	maxPages := normalized.Config.MaxPagesPerRun
+	if maxPages > options.resourceLimits.MaxPages {
+		maxPages = options.resourceLimits.MaxPages
+	}
 	return &Connector{
 		sourceID: normalized.ID, endpoint: endpoint, client: client,
-		maxPages: normalized.Config.MaxPagesPerRun, now: options.now, collectorProfile: collectorProfile,
+		maxPages: maxPages, now: options.now, retryWait: options.retryWait,
+		resourceLimits: options.resourceLimits, requestBudget: options.requestBudget, collectorProfile: collectorProfile,
 	}, nil
 }
 
@@ -145,6 +185,8 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		return domain.FetchResult{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid RSS request cursor"))
 	}
 	rootFeedRequest := strings.TrimSpace(request.RequestCursor) == ""
+	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
+	defer cancel()
 	result := domain.FetchResult{
 		Items:        []domain.SourceItem{},
 		Snapshots:    []domain.EvidenceSnapshot{},
@@ -152,13 +194,23 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		LastModified: request.LastModified,
 		Diagnostics:  []domain.FetchDiagnostic{},
 	}
+	maximumItems := request.Limit
+	if maximumItems > connector.resourceLimits.MaxItems {
+		maximumItems = connector.resourceLimits.MaxItems
+	}
+	var cumulativeBytes int64
 	for page := 0; page < connector.maxPages; page++ {
 		etag, lastModified := "", ""
 		if rootFeedRequest && page == 0 {
 			etag, lastModified = request.ETag, request.LastModified
 		}
-		response, redirectChain, err := connector.get(ctx, current, etag, lastModified)
+		response, redirectChain, err := connector.getWithRetry(ctx, current, etag, lastModified)
 		if err != nil {
+			var quota requestQuotaError
+			if errors.As(err, &quota) {
+				resetAt := quota.resetAt.UTC()
+				result.RateLimit.RetryAfter = &resetAt
+			}
 			return result, connector.requestError(err)
 		}
 		if rootFeedRequest && page == 0 {
@@ -179,14 +231,16 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 			closeResponse(response)
 			return result, statusError(status)
 		}
-		payload, readErr := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
+		remainingBytes := connector.resourceLimits.MaxCumulativeResponseBytes - cumulativeBytes
+		payload, readErr := io.ReadAll(io.LimitReader(response.Body, remainingBytes+1))
 		closeErr := response.Body.Close()
 		if readErr != nil || closeErr != nil {
 			return result, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read RSS response"))
 		}
-		if len(payload) > maxResponseBodyBytes {
+		if int64(len(payload)) > remainingBytes {
 			return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("RSS response exceeds body byte limit"))
 		}
+		cumulativeBytes += int64(len(payload))
 		capturedAt := connector.now().UTC()
 		feed, err := parseFeed(payload, capturedAt)
 		if err != nil {
@@ -223,7 +277,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 			}
 			feed.Items[index] = normalized
 		}
-		if len(result.Items)+len(feed.Items) > request.Limit {
+		if len(result.Items)+len(feed.Items) > maximumItems {
 			return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("RSS response exceeds collection item limit"))
 		}
 		result.Snapshots = append(result.Snapshots, snapshot)
@@ -238,7 +292,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		if next == nil {
 			return result, nil
 		}
-		if page+1 == connector.maxPages {
+		if page+1 == connector.maxPages || len(result.Items) == maximumItems || cumulativeBytes == connector.resourceLimits.MaxCumulativeResponseBytes {
 			result.HasMore = true
 			result.NextCursor = next.String()
 			return result, nil
@@ -253,7 +307,9 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 	if err := connector.Validate(ctx, connection); err != nil {
 		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.ClassifyCollectionError(err), DiagnosticCode: "invalid_source_connection"}
 	}
-	response, _, err := connector.get(ctx, connector.endpoint, "", "")
+	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
+	defer cancel()
+	response, _, err := connector.getWithRetry(ctx, connector.endpoint, "", "")
 	if err != nil {
 		diagnosticCode := "request_failed"
 		if errors.Is(err, errUnsafeDestination) || errors.Is(err, errRedirectLimit) {
@@ -293,6 +349,19 @@ func (connector *Connector) nextURL(current *url.URL, linkHeader, atomNext strin
 }
 
 func (connector *Connector) get(ctx context.Context, target *url.URL, etag, lastModified string) (*http.Response, []string, error) {
+	decision, err := connector.requestBudget.ReserveExternalRequest(ctx, domain.ExternalRequestBudgetReservation{
+		SourceConnectionID: connector.sourceID, ResourceProfileVersion: connector.resourceLimits.Version,
+		DailyLimit: connector.resourceLimits.DailyRequestQuota, At: connector.now().UTC(),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := decision.Validate(connector.resourceLimits.DailyRequestQuota); err != nil {
+		return nil, nil, err
+	}
+	if !decision.Allowed {
+		return nil, nil, requestQuotaError{resetAt: decision.ResetAt}
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return nil, nil, errUnsafeDestination
@@ -310,7 +379,32 @@ func (connector *Connector) get(ctx context.Context, target *url.URL, etag, last
 	return response, redirectChain, err
 }
 
+func (connector *Connector) getWithRetry(ctx context.Context, target *url.URL, etag, lastModified string) (*http.Response, []string, error) {
+	for attempt := 0; ; attempt++ {
+		response, redirects, err := connector.get(ctx, target, etag, lastModified)
+		retryable := false
+		if err != nil {
+			retryable = domain.ClassifyCollectionError(connector.requestError(err)) == domain.CollectionErrorTemporary
+		} else if response.StatusCode >= http.StatusInternalServerError {
+			retryable = true
+		}
+		if !retryable || attempt >= connector.resourceLimits.MaxRetries {
+			return response, redirects, err
+		}
+		if response != nil {
+			closeResponse(response)
+		}
+		if err := connector.retryWait(ctx, attempt+1); err != nil {
+			return nil, nil, err
+		}
+	}
+}
+
 func (connector *Connector) requestError(err error) error {
+	var quota requestQuotaError
+	if errors.As(err, &quota) {
+		return domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("RSS daily request quota exceeded"))
+	}
 	if errors.Is(err, errUnsafeDestination) || errors.Is(err, errRedirectLimit) {
 		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("RSS destination is not permitted"))
 	}
@@ -347,7 +441,7 @@ func retryAfter(value string, now time.Time) *time.Time {
 }
 
 func closeResponse(response *http.Response) {
-	_, _ = io.Copy(io.Discard, response.Body)
+	_, _ = io.CopyN(io.Discard, response.Body, 32<<10)
 	_ = response.Body.Close()
 }
 
@@ -374,8 +468,10 @@ func validatedRSSURLForEndpoint(endpoint *url.URL, value string) (*url.URL, erro
 	return parsed, nil
 }
 
-func secureDialContext(resolver lookupIPAddrFunc, dialContext func(context.Context, string, string) (net.Conn, error)) func(context.Context, string, string) (net.Conn, error) {
+func secureDialContext(resolver lookupIPAddrFunc, dialContext func(context.Context, string, string) (net.Conn, error), connectTimeout, readTimeout time.Duration) func(context.Context, string, string) (net.Conn, error) {
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		ctx, cancel := context.WithTimeout(ctx, connectTimeout)
+		defer cancel()
 		host, port, err := net.SplitHostPort(address)
 		if err != nil || network != "tcp" || port != "443" {
 			return nil, errUnsafeDestination
@@ -393,7 +489,7 @@ func secureDialContext(resolver lookupIPAddrFunc, dialContext func(context.Conte
 		for _, address := range addresses {
 			connection, err := dialContext(ctx, network, net.JoinHostPort(address.IP.String(), port))
 			if err == nil {
-				return connection, nil
+				return &deadlineConnection{Conn: connection, timeout: readTimeout}, nil
 			}
 			dialErr = err
 		}
@@ -402,6 +498,48 @@ func secureDialContext(resolver lookupIPAddrFunc, dialContext func(context.Conte
 		}
 		return nil, errUnsafeDestination
 	}
+}
+
+type deadlineConnection struct {
+	net.Conn
+	timeout time.Duration
+}
+
+func (connection *deadlineConnection) Read(buffer []byte) (int, error) {
+	if err := connection.SetReadDeadline(time.Now().Add(connection.timeout)); err != nil {
+		return 0, err
+	}
+	return connection.Conn.Read(buffer)
+}
+
+func (connection *deadlineConnection) Write(buffer []byte) (int, error) {
+	if err := connection.SetWriteDeadline(time.Now().Add(connection.timeout)); err != nil {
+		return 0, err
+	}
+	return connection.Conn.Write(buffer)
+}
+
+type requestQuotaError struct{ resetAt time.Time }
+
+func (requestQuotaError) Error() string { return "RSS request quota exhausted" }
+
+func retryBackoff(ctx context.Context, attempt int) error {
+	delay := 250 * time.Millisecond * time.Duration(1<<uint(attempt-1))
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func minimumDuration(left, right time.Duration) time.Duration {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func publicAddress(value net.IP) bool {

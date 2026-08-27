@@ -72,6 +72,18 @@ func TestParseFeedRejectsMalformedXML(t *testing.T) {
 	}
 }
 
+func TestParseFeedPreservesMissingPublishedTimeAsUnknown(t *testing.T) {
+	t.Parallel()
+
+	feed, err := parseFeed([]byte(`<?xml version="1.0"?><rss><channel><item><guid>unknown-time</guid><title>Unknown time</title></item></channel></rss>`), time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC))
+	if err != nil || len(feed.Items) != 1 {
+		t.Fatalf("parseFeed() = %#v/%v", feed, err)
+	}
+	if feed.Items[0].PublishedAt != nil {
+		t.Fatalf("missing published time was fabricated as %v", feed.Items[0].PublishedAt)
+	}
+}
+
 func TestParseFeedNormalizesRSS1RDFItems(t *testing.T) {
 	t.Parallel()
 

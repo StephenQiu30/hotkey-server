@@ -140,6 +140,25 @@ func TestConnectorReturnsNotModifiedAndClassifiesResponses(t *testing.T) {
 	}
 }
 
+func TestConnectorTreatsEmptyRSSAndAtomFeedsAsSuccessfulZeroItems(t *testing.T) {
+	t.Parallel()
+
+	for _, payload := range []string{
+		`<?xml version="1.0"?><rss><channel><title>Empty</title></channel></rss>`,
+		`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Empty</title></feed>`,
+	} {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			_, _ = writer.Write([]byte(payload))
+		}))
+		connector := newTestConnector(t, server, 1, publicResolver())
+		result, err := connector.Fetch(context.Background(), testFetchRequest())
+		server.Close()
+		if err != nil || len(result.Items) != 0 || len(result.Snapshots) != 1 {
+			t.Fatalf("empty feed result/error = %#v/%v", result, err)
+		}
+	}
+}
+
 func TestConnectorSnapshotRecordsRequestedFinalAndRedirectChain(t *testing.T) {
 	t.Parallel()
 
@@ -412,13 +431,22 @@ func TestConnectorHealthReportsBlockedDestination(t *testing.T) {
 
 func newTestConnector(t *testing.T, server *httptest.Server, maxPages int, resolver lookupIPAddrFunc) *Connector {
 	t.Helper()
+	profile := DefaultResourceLimitProfile()
+	return newTestConnectorWithLimits(t, server, maxPages, resolver, profile, allowingRequestBudget{}, nil)
+}
+
+func newTestConnectorWithLimits(t *testing.T, server *httptest.Server, maxPages int, resolver lookupIPAddrFunc, profile ResourceLimitProfile, budget domain.ExternalRequestBudget, wait func(context.Context, int) error) *Connector {
+	t.Helper()
 	config := domain.DefaultSourceConfig()
 	config.MaxPagesPerRun = maxPages
 	connector, err := newConnector(domain.SourceConnection{
 		ID: 7, SourceType: domain.SourceTypeRSS, Name: "Fixture RSS", Endpoint: "https://feeds.example.test/rss",
 		AuthType: domain.AuthTypeNone, Config: config, Enabled: true,
 	}, connectorOptions{
-		resolver: resolver,
+		resolver:       resolver,
+		requestBudget:  budget,
+		resourceLimits: profile,
+		retryWait:      wait,
 		dialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
 		},
@@ -429,6 +457,14 @@ func newTestConnector(t *testing.T, server *httptest.Server, maxPages int, resol
 		t.Fatalf("newConnector(): %v", err)
 	}
 	return connector
+}
+
+type allowingRequestBudget struct{}
+
+func (allowingRequestBudget) ReserveExternalRequest(_ context.Context, reservation domain.ExternalRequestBudgetReservation) (domain.ExternalRequestBudgetDecision, error) {
+	at := reservation.At.UTC()
+	resetAt := time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
+	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, ResetAt: resetAt}, nil
 }
 
 func publicResolver() lookupIPAddrFunc {

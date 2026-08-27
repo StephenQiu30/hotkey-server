@@ -23,18 +23,15 @@ import (
 // SourceConnection. Connector constructors retain endpoint validation, so the
 // registry is only a type dispatcher and never accepts request-supplied URLs.
 type ConnectorRegistry struct {
-	resolver    sourcenet.Resolver
-	credentials domain.ManagedCredentialStore
+	resolver      sourcenet.Resolver
+	credentials   domain.ManagedCredentialStore
+	requestBudget domain.ExternalRequestBudget
 }
 
 var _ domain.CollectionConnectorRegistry = (*ConnectorRegistry)(nil)
 
-func NewConnectorRegistry(resolver sourcenet.Resolver, credentials ...domain.ManagedCredentialStore) *ConnectorRegistry {
-	registry := &ConnectorRegistry{resolver: resolver}
-	if len(credentials) > 0 {
-		registry.credentials = credentials[0]
-	}
-	return registry
+func NewConnectorRegistry(resolver sourcenet.Resolver, credentials domain.ManagedCredentialStore, requestBudget domain.ExternalRequestBudget) *ConnectorRegistry {
+	return &ConnectorRegistry{resolver: resolver, credentials: credentials, requestBudget: requestBudget}
 }
 
 const managedCredentialEnvName = "HOTKEY_MANAGED_SOURCE_CREDENTIAL"
@@ -75,7 +72,7 @@ func (registry *ConnectorRegistry) Resolve(ctx context.Context, connection domai
 func (registry *ConnectorRegistry) resolveConnector(connection domain.SourceConnection, lookup func(string) (string, bool)) (domain.Connector, error) {
 	switch connection.SourceType {
 	case domain.SourceTypeRSS:
-		return rss.New(connection, registry.resolver)
+		return rss.New(connection, registry.requestBudget, registry.resolver)
 	case domain.SourceTypeHackerNews:
 		return hackernews.New(connection, registry.resolver)
 	case domain.SourceTypeX:

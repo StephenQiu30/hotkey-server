@@ -31,7 +31,7 @@ func TestExternalFeedHealthWithConfiguredDoH(t *testing.T) {
 		Enabled:      true,
 		HealthStatus: domain.HealthStatusUnknown,
 	}
-	connector, err := New(connection, resolver)
+	connector, err := New(connection, allowingRequestBudget{}, resolver)
 	if err != nil {
 		t.Fatalf("New(): %v", err)
 	}

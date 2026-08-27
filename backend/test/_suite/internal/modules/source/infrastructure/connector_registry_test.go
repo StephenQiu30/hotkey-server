@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
@@ -14,7 +15,7 @@ func TestConnectorRegistryBindsOnlyKnownSourceTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver(): %v", err)
 	}
-	registry := NewConnectorRegistry(resolver)
+	registry := NewConnectorRegistry(resolver, nil, allowingExternalRequestBudget{})
 	groundingConfig := domain.DefaultSourceConfig()
 	groundingConfig.RequiresAttribution = true
 	groundingConfig.GroundingDataBoundaryApproved = true
@@ -43,13 +44,27 @@ func TestConnectorRegistryBindsOnlyKnownSourceTypes(t *testing.T) {
 	}
 }
 
+func TestConnectorRegistryFailsClosedWhenRSSRequestBudgetIsUnavailable(t *testing.T) {
+	resolver, err := sourcenet.NewResolver("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := domain.SourceConnection{
+		ID: 1, SourceType: domain.SourceTypeRSS, Name: "RSS", Endpoint: "https://feeds.example.test/rss",
+		AuthType: domain.AuthTypeNone, Config: domain.DefaultSourceConfig(), Enabled: true,
+	}
+	if _, err := NewConnectorRegistry(resolver, nil, nil).Resolve(context.Background(), connection); err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
+		t.Fatalf("missing RSS request budget error = %v", err)
+	}
+}
+
 func TestConnectorRegistryResolvesManagedCredentialWithoutChangingSourceFact(t *testing.T) {
 	resolver, err := sourcenet.NewResolver("")
 	if err != nil {
 		t.Fatalf("NewResolver(): %v", err)
 	}
 	credentials := &credentialStoreFake{value: "managed-x-token"}
-	registry := NewConnectorRegistry(resolver, credentials)
+	registry := NewConnectorRegistry(resolver, credentials, allowingExternalRequestBudget{})
 	connection := domain.SourceConnection{
 		ID: 9, SourceType: domain.SourceTypeX, Name: "Managed X", Endpoint: domain.XRecentSearchEndpoint,
 		AuthType: domain.AuthTypeBearer, CredentialRef: domain.ManagedCredentialReference,
@@ -69,7 +84,7 @@ func TestConnectorRegistryResolvesManagedCredentialWithoutChangingSourceFact(t *
 		t.Fatalf("registry mutated source credential reference to %q", connection.CredentialRef)
 	}
 
-	unavailable, err := NewConnectorRegistry(resolver).Resolve(context.Background(), connection)
+	unavailable, err := NewConnectorRegistry(resolver, nil, allowingExternalRequestBudget{}).Resolve(context.Background(), connection)
 	if err != nil {
 		t.Fatalf("Resolve(unconfigured store) error = %v", err)
 	}
@@ -82,6 +97,12 @@ func TestConnectorRegistryResolvesManagedCredentialWithoutChangingSourceFact(t *
 type credentialStoreFake struct {
 	value      string
 	resolvedID int64
+}
+
+type allowingExternalRequestBudget struct{}
+
+func (allowingExternalRequestBudget) ReserveExternalRequest(_ context.Context, reservation domain.ExternalRequestBudgetReservation) (domain.ExternalRequestBudgetDecision, error) {
+	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
 }
 
 func (*credentialStoreFake) Store(context.Context, int64, string, int64) error { return nil }

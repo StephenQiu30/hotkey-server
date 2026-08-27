@@ -15,7 +15,7 @@ import (
 
 const (
 	sourceCode               = "rss"
-	CollectorProfileVersion  = "rss-http-feed-go-xml-v1"
+	CollectorProfileVersion  = "rss-http-feed-go-xml-v2"
 	RSSItemSelectorVersion   = "rss2-go-xml-v1"
 	RDFItemSelectorVersion   = "rss-rdf-go-xml-v1"
 	AtomEntrySelectorVersion = "atom-go-xml-v1"
