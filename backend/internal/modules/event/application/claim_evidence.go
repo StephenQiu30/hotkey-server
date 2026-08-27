@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -359,9 +361,12 @@ func (service *ClaimEvidenceService) CalculateState(ctx context.Context, command
 	if err != nil {
 		return CalculateEvidenceStateResult{}, fmt.Errorf("commit evidence state snapshot: %w", err)
 	}
-	if snapshot.ID <= 0 || snapshot.MicroEventID != target.MicroEventID || snapshot.EventVersion != target.EventVersion ||
-		snapshot.ProfileID != target.ProfileID || snapshot.EvidenceSetHash != evidenceHash || snapshot.State != string(calculated.State) ||
-		snapshot.IndependentOriginCount != calculated.IndependentOriginCount {
+	if !evidenceStateReceiptMatches(snapshot, CommitEvidenceStateSnapshotCommand{
+		MicroEventID: target.MicroEventID, EventVersion: target.EventVersion, ProfileID: target.ProfileID,
+		AlgorithmVersion: target.AlgorithmVersion, EvidenceSetHash: evidenceHash, State: string(calculated.State),
+		IndependentOriginCount: calculated.IndependentOriginCount, ReasonCodes: calculated.ReasonCodes,
+		ClaimEvidenceVersionIDs: ids, CalculatedAt: command.CalculatedAt.UTC(),
+	}) {
 		return CalculateEvidenceStateResult{}, ErrInvalidClaimEvidenceContract
 	}
 	return CalculateEvidenceStateResult{Snapshot: snapshot}, nil
@@ -378,8 +383,9 @@ func canonicalClaimEvidenceCommand(command RecordClaimEvidenceCommand) (RecordCl
 		command.ExtractionSchemaVersion != CanonicalClaimExtractionSchemaVersion || command.DecisionAt.IsZero() ||
 		command.IdempotencyKey == "" || len(command.IdempotencyKey) > 96 || (command.Origin != "automatic" && command.Origin != "manual") ||
 		(command.Origin == "automatic" && (command.ModelRunID == nil || *command.ModelRunID <= 0 || command.ActorUserID != nil)) ||
-		(command.Origin == "manual" && (command.ActorUserID == nil || *command.ActorUserID <= 0)) ||
-		(command.ModelRelationScore != nil && (*command.ModelRelationScore < 0 || *command.ModelRelationScore > 1)) {
+		(command.Origin == "manual" && (command.ActorUserID == nil || *command.ActorUserID <= 0 || command.ModelRunID != nil || command.ModelRelationScore != nil)) ||
+		(command.ModelRelationScore != nil && (math.IsNaN(*command.ModelRelationScore) || math.IsInf(*command.ModelRelationScore, 0) ||
+			*command.ModelRelationScore < 0 || *command.ModelRelationScore > 1)) {
 		return RecordClaimEvidenceCommand{}, ErrInvalidClaimEvidenceContract
 	}
 	qualifiers := make([]ClaimQualifierDTO, len(command.Qualifiers))
@@ -439,10 +445,41 @@ func claimEvidenceReceiptMatches(result RecordClaimEvidenceResult, command Recor
 	return result.Claim.ID > 0 && result.Claim.Version > 0 && result.Claim.MicroEventID == command.MicroEventID &&
 		result.Claim.MicroEventVersion == command.ExpectedEventVersion && result.Claim.ClaimHash == claimHash &&
 		result.Claim.Subject == command.Subject && result.Claim.Predicate == command.Predicate && result.Claim.Object == command.Object &&
-		result.Evidence.ID > 0 && result.Evidence.ClaimID == result.Claim.ID && result.Evidence.DocumentVersionID == command.DocumentVersionID &&
+		slices.Equal(result.Claim.Qualifiers, command.Qualifiers) && result.Evidence.ID > 0 && result.Evidence.Version > 0 &&
+		result.Evidence.ClaimID == result.Claim.ID && result.Evidence.DocumentVersionID == command.DocumentVersionID &&
 		result.Evidence.TextQuoteSelectorID == command.TextQuoteSelectorID && result.Evidence.ContentFamilyID == target.ContentFamilyID &&
 		result.Evidence.LineageRootID == target.LineageRootID && result.Evidence.Relation == command.Relation &&
-		result.Evidence.ExtractionSchemaVersion == command.ExtractionSchemaVersion && result.Evidence.Origin == command.Origin
+		result.Evidence.ExtractionSchemaVersion == command.ExtractionSchemaVersion && result.Evidence.Origin == command.Origin &&
+		equalOptionalValue(result.Evidence.ModelRunID, command.ModelRunID) &&
+		equalOptionalValue(result.Evidence.ModelRelationScore, command.ModelRelationScore) &&
+		equalOptionalValue(result.Evidence.ActorUserID, command.ActorUserID) && result.Evidence.QuoteSHA256 == target.QuoteSHA256 &&
+		result.Evidence.PlaintextSHA256 == target.PlaintextSHA256 && result.Evidence.SelectorVersion == target.SelectorVersion &&
+		equalOptionalValue(result.Evidence.SourceRecordURL, target.SourceRecordURL) &&
+		equalOptionalValue(result.Evidence.CanonicalURL, target.CanonicalURL) &&
+		equalOptionalValue(result.Evidence.PublisherPartyID, target.PublisherPartyID) &&
+		equalOptionalValue(result.Evidence.PublisherName, target.PublisherName) &&
+		equalOptionalValue(result.Evidence.ContentOriginPartyID, target.ContentOriginPartyID) &&
+		equalOptionalValue(result.Evidence.ContentOriginName, target.ContentOriginName) &&
+		equalOptionalTime(result.Evidence.PublishedAt, target.PublishedAt) && result.Evidence.CapturedAt.Equal(target.CapturedAt) &&
+		result.Evidence.RetentionUntil.Equal(target.SelectorRetentionUntil)
+}
+
+func evidenceStateReceiptMatches(value EvidenceStateSnapshotDTO, command CommitEvidenceStateSnapshotCommand) bool {
+	return value.ID > 0 && value.Version > 0 && value.MicroEventID == command.MicroEventID &&
+		value.EventVersion == command.EventVersion && value.ProfileID == command.ProfileID &&
+		value.AlgorithmVersion == command.AlgorithmVersion && value.EvidenceSetHash == command.EvidenceSetHash &&
+		value.State == command.State && value.IndependentOriginCount == command.IndependentOriginCount &&
+		slices.Equal(value.ReasonCodes, command.ReasonCodes) &&
+		slices.Equal(value.ClaimEvidenceVersionIDs, command.ClaimEvidenceVersionIDs) &&
+		(value.CalculatedAt.Equal(command.CalculatedAt) || !value.Created && !value.CalculatedAt.IsZero())
+}
+
+func equalOptionalValue[T comparable](left, right *T) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
+func equalOptionalTime(left, right *time.Time) bool {
+	return left == nil && right == nil || left != nil && right != nil && left.Equal(*right)
 }
 
 func lowerHexDigest(value string) bool {

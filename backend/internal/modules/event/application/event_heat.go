@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	eventdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/domain"
@@ -165,7 +166,8 @@ func eventHeatReceiptMatches(value EventHeatSnapshotDTO, command CommitEventHeat
 		value.WindowEndedAt.Equal(command.WindowEndedAt) && value.IndependentLineageRoots == command.IndependentLineageRoots &&
 		value.Velocity == command.Velocity && value.Acceleration == command.Acceleration && value.Coverage == command.Coverage &&
 		equalOptionalFloat(value.NormalizedEngagement, command.NormalizedEngagement) && value.Recency == command.Recency &&
-		value.AvailableWeight == command.AvailableWeight && value.HeatScore == command.HeatScore
+		value.AvailableWeight == command.AvailableWeight && value.HeatScore == command.HeatScore &&
+		slices.Equal(value.ReasonCodes, command.ReasonCodes)
 }
 
 func equalOptionalFloat(left, right *float64) bool {

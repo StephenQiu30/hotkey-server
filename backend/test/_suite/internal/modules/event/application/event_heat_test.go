@@ -2,6 +2,7 @@ package application_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -36,6 +37,28 @@ func TestEventHeatServiceUsesActiveProfileWeightsAndStableSnapshot(t *testing.T)
 	}
 }
 
+func TestEventHeatServiceRejectsRepositoryRewriteOfDeterministicScore(t *testing.T) {
+	endedAt := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
+	repository := &eventHeatRepositoryFake{target: eventapplication.EventHeatTargetDTO{
+		MicroEventID: 7, MicroEventVersion: 3, HeatProfileID: 5, HeatProfileVersion: "heat-v2",
+		Weights: eventapplication.EventHeatWeightsDTO{Lineage: .25, Velocity: .20, Acceleration: .15,
+			Coverage: .15, Engagement: .15, Recency: .10},
+		WindowStartedAt: endedAt.Add(-24 * time.Hour), WindowEndedAt: endedAt,
+		IndependentLineageRoots: 2, ReportsInWindow: 3, ReportsInPreviousWindow: 1,
+		PublisherCoverage: 1, SourceTypeCoverage: 1, AgeHours: 5,
+	}, mutate: func(snapshot *eventapplication.EventHeatSnapshotDTO) {
+		snapshot.HeatScore = 99
+		snapshot.ReasonCodes = []string{"model_override"}
+	}}
+	service, _ := eventapplication.NewEventHeatService(repository)
+	_, err := service.Calculate(context.Background(), eventapplication.CalculateEventHeatCommand{
+		MicroEventID: 7, WindowHours: 24, WindowEndedAt: endedAt,
+	})
+	if !errors.Is(err, eventapplication.ErrInvalidEventHeatContract) {
+		t.Fatalf("Calculate() error = %v, want invalid contract", err)
+	}
+}
+
 func TestEventHeatServiceRenormalizesWhenEngagementIsUnavailable(t *testing.T) {
 	endedAt := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
 	repository := &eventHeatRepositoryFake{target: eventapplication.EventHeatTargetDTO{
@@ -62,6 +85,7 @@ func TestEventHeatServiceRenormalizesWhenEngagementIsUnavailable(t *testing.T) {
 type eventHeatRepositoryFake struct {
 	target    eventapplication.EventHeatTargetDTO
 	committed eventapplication.CommitEventHeatSnapshotCommand
+	mutate    func(*eventapplication.EventHeatSnapshotDTO)
 }
 
 func (repository *eventHeatRepositoryFake) ReadEventHeatTarget(_ context.Context, _ eventapplication.ReadEventHeatTargetQuery) (eventapplication.EventHeatTargetDTO, error) {
@@ -70,12 +94,16 @@ func (repository *eventHeatRepositoryFake) ReadEventHeatTarget(_ context.Context
 
 func (repository *eventHeatRepositoryFake) CommitEventHeatSnapshot(_ context.Context, command eventapplication.CommitEventHeatSnapshotCommand) (eventapplication.EventHeatSnapshotDTO, error) {
 	repository.committed = command
-	return eventapplication.EventHeatSnapshotDTO{ID: 9, MicroEventID: command.MicroEventID,
+	snapshot := eventapplication.EventHeatSnapshotDTO{ID: 9, MicroEventID: command.MicroEventID,
 		MicroEventVersion: command.MicroEventVersion, HeatProfileID: command.HeatProfileID,
 		WindowStartedAt: command.WindowStartedAt, WindowEndedAt: command.WindowEndedAt,
 		IndependentLineageRoots: command.IndependentLineageRoots, Velocity: command.Velocity,
 		Acceleration: command.Acceleration, Coverage: command.Coverage,
 		NormalizedEngagement: command.NormalizedEngagement, Recency: command.Recency,
 		AvailableWeight: command.AvailableWeight, HeatScore: command.HeatScore,
-		ReasonCodes: command.ReasonCodes, Created: true}, nil
+		ReasonCodes: command.ReasonCodes, Created: true}
+	if repository.mutate != nil {
+		repository.mutate(&snapshot)
+	}
+	return snapshot, nil
 }
