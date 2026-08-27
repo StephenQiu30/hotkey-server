@@ -26,7 +26,7 @@ canonical_path: docs/prd/README.md
 ## 共通边界
 
 - V1 P0 保持 Go 模块化单体、现有 PostgreSQL/River/MinIO/Redis、JWT/RBAC、统一 Result 和生成式 OpenAPI 契约。
-- Kafka、Temporal、Python 微服务、Elasticsearch、Keycloak、增量迁移目录和生产高可用不是 V1 要求。
+- 根目录 `agent/` Python 数据分析服务属于 V1；Kafka、Temporal、其他业务微服务、Elasticsearch、Keycloak、增量迁移目录和生产高可用不是 V1 要求。
 - 新知识检索不依赖向量、Embedding 或 RAG；仓库现有 Provider、ONNX、Embedding 与 pgvector 路径是待评估迁移现状，不得描述为已清理。
 - 24 周只承诺完成通过门禁的 P0；评论、周报、更多授权来源、邮件和生产高可用均属于 P1。
 - 每条 P0 FR/NFR 必须映射 Given-When-Then 验收，量化候选指标必须先补齐数据规模、环境、统计窗口与排除条件。

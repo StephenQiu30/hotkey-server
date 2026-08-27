@@ -25,7 +25,7 @@ canonical_path: docs/plans/README.md
 - `docs/openapi/swagger.json` 由 Swaggo 注解生成，前端只消费生成客户端；业务响应保持 `code`、`message`、`data`，成功业务码为 `0`；
 - 前端继续使用 Next.js App Router、React、TypeScript、Tailwind CSS、现有 Radix 组合组件、Zustand、Axios、Recharts 与 GSAP；
 - 全文检索使用 PostgreSQL FTS、`pg_trgm`、结构化筛选和高亮，不引入 Elasticsearch、向量检索、Embedding 或 RAG；
-- Codex 通过 Go Worker 内的受控 CLI Adapter 执行；不新增 Python 微服务。现有 Provider 与 Embedding 路径在替换验收和回滚演练完成前不得删除；
+- 智能分析由根目录 `agent/` Python 服务执行，Go Worker 通过内部契约调用并保留最终业务校验；现有 Provider、Go Codex 与 Embedding 路径在替换验收和回滚演练完成前不得删除；
 - 认证沿用现有身份、会话、JWT 与服务端 RBAC，不引入 Keycloak；
 - PostgreSQL 是业务事实源，MinIO 保存原始证据，本地 Vault 保存人类可读知识投影，Redis 只承载短期状态与协同。
 
@@ -46,14 +46,14 @@ canonical_path: docs/plans/README.md
 | W1–W2 | M0 审计、范围与设计门禁 | 现状盘点、当前/目标差距、P0/P1 冻结、架构冲突清零、追踪矩阵、候选基线与开工检查 | G0–G3 通过；Design/PRD 已批准且 W3 首批 Plan 可进入执行 |
 | W3–W6 | M1 薄垂直切片 | `Monitor → RSS → Evidence → Event → UI`，含 River 幂等、MinIO 原始证据和 PostgreSQL 事实链 | 一个真实 RSS 来源完成可重复端到端验收 |
 | W7–W10 | M2 真实多来源 | RSS、Hacker News、X 官方来源；Rights、Credential、Quota、Checkpoint、部分成功和恢复 | 三来源真实授权冒烟；单来源失败不阻塞其余结果 |
-| W11–W14 | M3 智能与热点 | Go Worker 内 Codex CLI Adapter、结构校验、Evidence 白名单、事件聚类、确定性 Heat、降级与人工治理 | Codex 可用和不可用两条路径均通过；错误输出不污染事实 |
+| W11–W14 | M3 智能与热点 | Python Agent、Go 内部 Client、双端结构校验、Evidence 白名单、事件聚类、确定性 Heat、降级与人工治理 | Agent 可用和不可用两条路径均通过；错误输出不污染事实 |
 | W15–W18 | M4 交付与知识 | WebSocket/REST 重放、日报与审批冻结、Vault 投影、PostgreSQL 全文检索、重建对账 | 通知、报告、知识和检索形成完整证据闭环 |
 | W19–W21 | M5 治理与恢复 | 保留删除、审计、指标告警、容量、跨域安全收敛、备份恢复与回滚演练 | G5 前置运维材料和恢复证据就绪，可进入 W22 RC；不得表述为 G5 已通过 |
 | W22 | RC | 全量 CI、契约、跨端 E2E、故障注入、性能与安全回归 | 无未处置 P0 缺陷，发布候选清单闭合 |
 | W23 | UAT 与缓冲 | 真实用户故事、可访问性、来源授权复核、缺陷修正与复验 | UAT 签字；所有豁免有责任人和期限 |
 | W24 | 发布与观察 | 生产预检、灰度、发布、回滚窗口、指标观察和复盘 | G6 通过；Acceptance 留存长期证据 |
 
-以下能力不进入本轮 24 周承诺：评论正文与会话树、周报、新增或扩展邮件交付、更多来源、通用浏览器采集、Kafka/Temporal/Elasticsearch、Python Agent 服务、Keycloak、Kubernetes 高可用和多地域部署。既有邮件能力只保持兼容，不扩大 P0；其他候选能力必须另立同编号三件套并重新评估人力与周期。
+以下能力不进入本轮 24 周承诺：评论正文与会话树、周报、新增或扩展邮件交付、更多来源、通用浏览器采集、Kafka/Temporal/Elasticsearch、其他业务微服务、Keycloak、Kubernetes 高可用和多地域部署。既有邮件能力只保持兼容，不扩大 P0；其他候选能力必须另立同编号三件套并重新评估人力与周期。
 
 ## 关键依赖与责任门禁
 

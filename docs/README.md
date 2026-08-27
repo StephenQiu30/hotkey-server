@@ -30,12 +30,12 @@ canonical_path: docs/README.md
 | 后端 | Go 模块化单体，单二进制支持 `all/api/worker` | 保持模块化单体，不新增微服务或第二业务后端 |
 | 异步任务 | PostgreSQL/River 持久任务 | 在现有任务边界内补齐幂等、恢复与投影 |
 | 数据 | `backend/db/schema.sql` 是唯一 Schema；PostgreSQL、Redis、MinIO | 保持单一 Schema 与事实源，证据大对象进入 MinIO |
-| AI | 已有多 Provider、ONNX、Embedding 与 pgvector 路径 | 新智能能力以受控 Codex CLI 为候选；旧路径仅在替代验收后迁移 |
+| AI | 已有多 Provider、Go Codex CLI、ONNX、Embedding 与 pgvector 路径 | 新智能能力由根目录 `agent/` Python 服务执行；旧路径仅在替代验收后迁移 |
 | 搜索 | 当前数据库查询与已有投影 | V1 使用可审计的全文检索，不新增 Elasticsearch、向量检索或 RAG |
 | 身份 | 自建 JWT、会话与 RBAC | 在现有身份模块扩展 Viewer/Analyst/Editor/Admin 产品权限 |
 | Web/API | Next.js、Axios、Zustand、Recharts；Result 为 `code/message/data` | 保持现有栈与成功码 `0`，契约只由 OpenAPI 生成 |
 
-Kafka、Temporal、Python FastAPI Agent、Elasticsearch/ELK、Keycloak、增量迁移目录和分布式生产拓扑只作为输入方案中曾出现的候选，不是本基线的采用决策。若未来确需改变这些仓库级约束，必须先单独评审并更新仓库治理规则。
+根目录 `agent/` 的 Python 数据分析服务已经产品负责人复核并纳入本基线。Kafka、Temporal、其他业务微服务、Elasticsearch/ELK、Keycloak、增量迁移目录和分布式生产拓扑仍不是采用决策。若未来确需改变这些仓库级约束，必须先单独评审并更新仓库治理规则。
 
 ## 五个交付域
 

@@ -78,8 +78,29 @@ services:
     command:
       - |
         /usr/local/bin/hotkey db verify ||
-          /usr/local/bin/hotkey db init --empty-only --confirm-empty ||
+        /usr/local/bin/hotkey db init --empty-only --confirm-empty ||
           /usr/local/bin/hotkey db verify
+
+  hotkey-agent:
+    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey}-agent"
+    image: hotkey-agent:env
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      HOTKEY_AGENT_AUTH_TOKEN: "${HOTKEY_AGENT_AUTH_TOKEN:-development-agent-token-change-me-000000}"
+      HOTKEY_AGENT_RUNTIME: deterministic
+      HOTKEY_AGENT_MAX_REQUEST_BYTES: "${HOTKEY_AGENT_MAX_REQUEST_BYTES:-262144}"
+      HOTKEY_AGENT_MAX_CONCURRENCY: "${HOTKEY_AGENT_MAX_CONCURRENCY:-2}"
+    expose:
+      - "8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/readyz', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   hotkey-server:
     container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey}-api"
@@ -107,6 +128,8 @@ services:
       HOTKEY_NOTIFICATION_POLL_INTERVAL: ${HOTKEY_NOTIFICATION_POLL_INTERVAL:-1s}
       HOTKEY_NOTIFICATION_HEARTBEAT_INTERVAL: ${HOTKEY_NOTIFICATION_HEARTBEAT_INTERVAL:-10s}
       HOTKEY_NOTIFICATION_MAX_CONNECTIONS: ${HOTKEY_NOTIFICATION_MAX_CONNECTIONS:-100}
+      HOTKEY_AGENT_URL: http://hotkey-agent:8090
+      HOTKEY_AGENT_AUTH_TOKEN: "${HOTKEY_AGENT_AUTH_TOKEN:-development-agent-token-change-me-000000}"
     depends_on:
       db-init:
         condition: service_completed_successfully

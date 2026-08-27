@@ -489,6 +489,50 @@ func TestAIConfigUsesOnlyExplicitProviderAndArtifactKeys(t *testing.T) {
 	}
 }
 
+func TestAgentConfigLoadsAnOptionalInternalAnalysisBoundary(t *testing.T) {
+	t.Setenv("HOTKEY_AGENT_URL", "http://hotkey-agent:8090")
+	t.Setenv("HOTKEY_AGENT_AUTH_TOKEN", "test-agent-secret-0123456789abcdef0123456789abcdef")
+	t.Setenv("HOTKEY_AGENT_MAX_RESPONSE_BYTES", "524288")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Agent.URL != "http://hotkey-agent:8090" || cfg.Agent.AuthToken != "test-agent-secret-0123456789abcdef0123456789abcdef" || cfg.Agent.MaxResponseBytes != 524288 {
+		t.Fatalf("Load() Agent = %#v", cfg.Agent)
+	}
+	for _, key := range []string{"agent_url", "agent_auth_token", "agent_max_response_bytes"} {
+		if !strings.Contains(strings.Join(configKeys(), ","), key) {
+			t.Errorf("configKeys() does not bind %q", key)
+		}
+	}
+}
+
+func TestAgentConfigFailsClosedWhenPartiallyOrUnsafelyConfigured(t *testing.T) {
+	tests := []struct {
+		name   string
+		config AgentConfig
+	}{
+		{name: "URL without token", config: AgentConfig{URL: "http://hotkey-agent:8090", MaxResponseBytes: 262144}},
+		{name: "token without URL", config: AgentConfig{AuthToken: "test-agent-secret-0123456789abcdef0123456789abcdef", MaxResponseBytes: 262144}},
+		{name: "short token", config: AgentConfig{URL: "http://hotkey-agent:8090", AuthToken: "short", MaxResponseBytes: 262144}},
+		{name: "URL with credentials", config: AgentConfig{URL: "http://user:pass@hotkey-agent:8090", AuthToken: "test-agent-secret-0123456789abcdef0123456789abcdef", MaxResponseBytes: 262144}},
+		{name: "URL with path", config: AgentConfig{URL: "http://hotkey-agent:8090/v1", AuthToken: "test-agent-secret-0123456789abcdef0123456789abcdef", MaxResponseBytes: 262144}},
+		{name: "unbounded response", config: AgentConfig{URL: "http://hotkey-agent:8090", AuthToken: "test-agent-secret-0123456789abcdef0123456789abcdef", MaxResponseBytes: 0}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := Default()
+			cfg.Agent = test.config
+			err := cfg.Validate()
+			leaksToken := test.config.AuthToken != "" && err != nil && strings.Contains(err.Error(), test.config.AuthToken)
+			if err == nil || leaksToken {
+				t.Fatalf("Validate() error = %v, want redacted rejection", err)
+			}
+		})
+	}
+}
+
 func TestLoadUsesDefaultEnvironmentFileAndProcessOverrides(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, ".env"), []byte(strings.Join([]string{

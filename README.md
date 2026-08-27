@@ -2,17 +2,18 @@
 
 [![CI](https://github.com/StephenQiu30/hotkey-server/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/StephenQiu30/hotkey-server/actions/workflows/ci.yml)
 
-HotKey 采用单体仓库管理后端与 Web 工作台。
+HotKey 采用单体仓库管理 Go Core、Python 数据分析 Agent 与 Web 工作台。
 
 | 目录 | 内容 |
 | --- | --- |
 | [`backend/`](backend/README.md) | Go 后端、PostgreSQL Schema、采集与 AI 任务、运行时 OpenAPI 和镜像配置 |
+| [`agent/`](agent/README.md) | Python 数据分析服务、版本化内部契约和独立安全边界 |
 | [`frontend/`](frontend/README.md) | Next.js Web 工作台、页面组件和生成的 API 客户端 |
 | [`docs/`](docs/README.md) | 不按应用分层的统一正式文档与 OpenAPI 发布契约 |
 
 ## 本机开发（默认方式）
 
-本机开发不启动 Docker，也不连接 Compose 内的 PostgreSQL、Redis 或 MinIO。请先通过 Homebrew 或其他本机方式启动 PostgreSQL 16 + pgvector、Redis 和 MinIO，再分别运行 Go 与 Next.js 开发进程。
+本机开发不启动 Docker，也不连接 Compose 内的 PostgreSQL、Redis 或 MinIO。请先通过 Homebrew 或其他本机方式启动 PostgreSQL 16 + pgvector、Redis 和 MinIO，再分别运行 Go、Python Agent 与 Next.js 开发进程。
 
 克隆仓库后，在对应子目录执行命令：
 
@@ -29,13 +30,19 @@ go run ./cmd/hotkey db init --empty-only --confirm-empty
 go run ./cmd/hotkey db verify
 go run ./cmd/hotkey
 
+# Python Agent（另开终端；当前尚未接入 Go Worker 生产路径）
+cd agent
+uv sync --all-extras --locked
+export HOTKEY_AGENT_AUTH_TOKEN=development-agent-token-change-me-000000
+uv run uvicorn hotkey_agent.main:app --host 127.0.0.1 --port 8090
+
 # 前端（另开终端）
 cd frontend
 npm ci
 npm run dev
 ```
 
-`backend/.env` 的数据库、Redis 和 MinIO 地址必须使用本机地址（默认分别为 `localhost:5432`、`127.0.0.1:6379`、`localhost:9000`）。后端默认监听 `http://127.0.0.1:8866`，前端默认启动在 `http://127.0.0.1:8010`，并通过自身的 Next.js 服务访问后端。环境变量与部署方式分别见两个子项目的 README。
+`backend/.env` 的数据库、Redis 和 MinIO 地址必须使用本机地址（默认分别为 `localhost:5432`、`127.0.0.1:6379`、`localhost:9000`）。后端默认监听 `http://127.0.0.1:8866`，Agent 默认监听仅本机的 `http://127.0.0.1:8090`，前端默认启动在 `http://127.0.0.1:8010`。Agent 不接收业务存储或来源凭据；环境变量与部署方式见各子项目 README。
 
 登录后，管理员可在“来源管理”中直接填写和轮换第三方来源凭据。来源参数与加密密文以 PostgreSQL 为事实源；`.env` 只保留数据库、身份、存储等部署配置和独立的 `HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY`。旧 `env:NAME` 来源继续兼容，任何读取接口都不会返回凭据明文或引用。
 
@@ -59,9 +66,9 @@ go run ./cmd/hotkey db verify
 
 ## Docker Compose 部署与隔离验收
 
-Docker Compose 只用于完整容器部署和隔离验收，不是本机开发依赖。根 `docker-compose.yml` 统一定义前端、后端、PostgreSQL、Redis、MinIO、默认环境配置、健康检查和卷；生产文件只覆盖生产环境差异。
+Docker Compose 只用于完整容器部署和隔离验收，不是本机开发依赖。根 `docker-compose.yml` 统一定义前端、Go Core、内部 Python Agent、PostgreSQL、Redis、MinIO、默认环境配置、健康检查和卷；Agent 不发布宿主机端口，生产文件只覆盖生产环境差异。
 
-容器使用固定名称 `hotkey-postgres`、`hotkey-redis`、`hotkey-minio`、`hotkey-minio-init`、`hotkey-db-init`、`hotkey-api` 和 `hotkey-web`，不带 `-1`。同一主机运行多套时通过 `HOTKEY_CONTAINER_PREFIX` 设置唯一前缀。
+容器使用固定名称 `hotkey-postgres`、`hotkey-redis`、`hotkey-minio`、`hotkey-minio-init`、`hotkey-db-init`、`hotkey-agent`、`hotkey-api` 和 `hotkey-web`，不带 `-1`。同一主机运行多套时通过 `HOTKEY_CONTAINER_PREFIX` 设置唯一前缀。
 
 默认容器环境：
 
@@ -95,6 +102,14 @@ npm run typecheck
 npm run test:unit
 npm audit --omit=dev --audit-level=high
 npm run build
+
+cd ../agent
+uv sync --all-extras --locked
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy src
+uv run pytest
+uv run pip-audit
 ```
 
 后端 OpenAPI 发布契约位于 [`docs/openapi/swagger.json`](docs/openapi/swagger.json)，运行时注册代码位于 `backend/openapi/docs.go`，生成的前端客户端位于 `frontend/src/services/hotkey/hotkey-server/`。

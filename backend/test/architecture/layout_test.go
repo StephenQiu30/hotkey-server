@@ -309,7 +309,7 @@ func TestRepositoryUsesSingleAgentRules(t *testing.T) {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() && (entry.Name() == ".git" || entry.Name() == "node_modules" || entry.Name() == ".next") {
+		if entry.IsDir() && (entry.Name() == ".git" || entry.Name() == "node_modules" || entry.Name() == ".next" || entry.Name() == ".venv" || entry.Name() == ".pytest_cache" || entry.Name() == ".mypy_cache" || entry.Name() == ".ruff_cache") {
 			return filepath.SkipDir
 		}
 		if !entry.IsDir() && entry.Name() == "AGENTS.md" {
@@ -412,7 +412,7 @@ func TestRepositoryKeepsCommonConfigurationAtRoot(t *testing.T) {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() && (entry.Name() == ".git" || entry.Name() == "node_modules" || entry.Name() == ".next") {
+		if entry.IsDir() && (entry.Name() == ".git" || entry.Name() == "node_modules" || entry.Name() == ".next" || entry.Name() == ".venv" || entry.Name() == ".pytest_cache" || entry.Name() == ".mypy_cache" || entry.Name() == ".ruff_cache") {
 			return filepath.SkipDir
 		}
 		if path == root {

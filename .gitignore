@@ -14,9 +14,14 @@ skills-lock.json
 
 # Dependencies and language caches
 node_modules/
+.venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Build output and reports
 dist/

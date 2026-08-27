@@ -92,6 +92,7 @@ func TestForbiddenInfrastructureDetectorCatchesErroneousIntroductions(t *testing
 
 	writeFixture("backend/go.mod", "module fixture\nrequire github.com/segmentio/kafka-go v0.4.49\n")
 	writeFixture("docker-compose.yml", "services:\n  temporal:\n    image: temporalio/auto-setup:latest\n")
+	writeFixture("agent/pyproject.toml", "[project]\nname = 'hotkey-agent'\n")
 	writeFixture("backend/pyproject.toml", "[project]\nname = 'second-backend'\n")
 	if err := os.MkdirAll(filepath.Join(repository, "backend", "db", "migrations"), 0o755); err != nil {
 		t.Fatal(err)
@@ -102,11 +103,47 @@ func TestForbiddenInfrastructureDetectorCatchesErroneousIntroductions(t *testing
 		"backend/go.mod: forbidden Go dependency github.com/segmentio/kafka-go",
 		"docker-compose.yml: forbidden service temporal",
 		"docker-compose.yml: forbidden image temporalio/",
-		"backend/pyproject.toml: Python business-service manifest is forbidden",
+		"backend/pyproject.toml: Python manifest is only allowed under root agent/",
 		"backend/db/migrations: incremental migrations directory is forbidden",
 	} {
 		if !strings.Contains(violations, expected) {
 			t.Errorf("detector did not report %q; got:\n%s", expected, violations)
+		}
+	}
+}
+
+func TestPythonAgentIsTheOnlyApprovedAnalysisService(t *testing.T) {
+	repository := filepath.Clean(filepath.Join(repositoryRoot(t), ".."))
+	required := []string{
+		"agent/pyproject.toml",
+		"agent/Dockerfile",
+		"agent/src/hotkey_agent/main.py",
+		"agent/tests/test_api.py",
+	}
+	for _, relative := range required {
+		info, err := os.Stat(filepath.Join(repository, filepath.FromSlash(relative)))
+		if err != nil || info.IsDir() {
+			t.Errorf("approved Python Agent artifact %s is missing", relative)
+		}
+	}
+
+	compose := readRepositoryFile(t, repository, "docker-compose.yml")
+	if !strings.Contains(compose, "  hotkey-agent:") {
+		t.Error("development Compose does not declare the approved hotkey-agent service")
+	}
+	agentBlock := composeServiceBlock(compose, "hotkey-agent")
+	if strings.Contains(agentBlock, "\n    ports:") {
+		t.Error("hotkey-agent must not publish a host port")
+	}
+	for _, forbidden := range []string{
+		"HOTKEY_DATABASE_URL",
+		"HOTKEY_REDIS_URL",
+		"HOTKEY_MINIO_SECRET_KEY",
+		"HOTKEY_VAULT_PATH",
+		"HOTKEY_JWT_SECRET",
+	} {
+		if strings.Contains(agentBlock, forbidden) {
+			t.Errorf("hotkey-agent receives forbidden business credential %s", forbidden)
 		}
 	}
 }
@@ -182,8 +219,8 @@ func forbiddenInfrastructureViolations(t *testing.T, repository string) []string
 			}
 		}
 
-		if _, isPythonManifest := pythonManifests[name]; isPythonManifest && isProductionServicePath(relative) {
-			violations = append(violations, relative+": Python business-service manifest is forbidden")
+		if _, isPythonManifest := pythonManifests[name]; isPythonManifest && isProductionServicePath(relative) && !isAllowedPythonAgentManifest(relative) {
+			violations = append(violations, relative+": Python manifest is only allowed under root agent/")
 		}
 		return nil
 	})
@@ -208,15 +245,39 @@ func isComposeFilename(name string) bool {
 		(strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml"))
 }
 
+func composeServiceBlock(contents, service string) string {
+	var block []string
+	started := false
+	for _, line := range strings.Split(contents, "\n") {
+		if line == "  "+service+":" {
+			started = true
+			block = append(block, line)
+			continue
+		}
+		if started && strings.HasPrefix(line, "  ") && len(line) > 2 && line[2] != ' ' && line[2] != '\t' {
+			break
+		}
+		if started {
+			block = append(block, line)
+		}
+	}
+	return strings.Join(block, "\n")
+}
+
 func isProductionServicePath(relative string) bool {
 	parts := strings.Split(filepath.ToSlash(relative), "/")
 	if len(parts) == 1 {
 		return true
 	}
 	switch parts[0] {
-	case "backend", "services", "apps", "python", "src":
+	case "agent", "backend", "services", "apps", "python", "src":
 		return true
 	default:
 		return false
 	}
+}
+
+func isAllowedPythonAgentManifest(relative string) bool {
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	return len(parts) == 2 && parts[0] == "agent"
 }

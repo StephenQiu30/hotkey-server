@@ -10,6 +10,7 @@ import (
 func TestDockerDeploymentContract(t *testing.T) {
 	backendRoot := repositoryRoot(t)
 	root := filepath.Clean(filepath.Join(backendRoot, ".."))
+	agentRoot := filepath.Join(root, "agent")
 	for _, relative := range []string{"Dockerfile", ".dockerignore"} {
 		if _, err := os.Stat(filepath.Join(backendRoot, relative)); err != nil {
 			t.Errorf("required backend deployment file %s is missing: %v", relative, err)
@@ -22,6 +23,11 @@ func TestDockerDeploymentContract(t *testing.T) {
 	} {
 		if _, err := os.Stat(filepath.Join(root, relative)); err != nil {
 			t.Errorf("required deployment file %s is missing: %v", relative, err)
+		}
+	}
+	for _, relative := range []string{"Dockerfile", ".dockerignore"} {
+		if _, err := os.Stat(filepath.Join(agentRoot, relative)); err != nil {
+			t.Errorf("required Agent deployment file %s is missing: %v", relative, err)
 		}
 	}
 	if t.Failed() {
@@ -48,6 +54,7 @@ func TestDockerDeploymentContract(t *testing.T) {
 	baseCompose := readDockerContractFile(t, root, "docker-compose.yml")
 	assertDockerContains(t, "docker-compose.yml", baseCompose,
 		"image: hotkey-server:env",
+		"image: hotkey-agent:env",
 		"image: hotkey-web:env",
 		"pgvector/pgvector:pg16",
 		"redis:latest",
@@ -59,6 +66,7 @@ func TestDockerDeploymentContract(t *testing.T) {
 		"minio-init:",
 		"db-init:",
 		"hotkey-server:",
+		"hotkey-agent:",
 		"hotkey-web:",
 		"HOTKEY_ENV: development",
 		"HOTKEY_DEPLOY_ENV: env",
@@ -97,9 +105,11 @@ func TestDockerProductionIsolation(t *testing.T) {
 		"minio/minio:latest",
 		"minio/mc:latest",
 		"image: hotkey-server:prod",
+		"image: hotkey-agent:prod",
 		"image: hotkey-web:prod",
 		"- .env.prod",
 		"context: ./backend",
+		"context: ./agent",
 		"context: ./frontend",
 		"healthcheck:",
 		"depends_on:",
@@ -122,7 +132,7 @@ func TestDockerProductionIsolation(t *testing.T) {
 	assertDockerComposeNamingContract(t, "docker-compose-prod.yml", prodOverride, "hotkey-prod", "hotkey-prod")
 	assertDockerUsesLatestUpstreamImages(t, dockerfile, prodOverride)
 	for name, compose := range map[string]string{"docker-compose.yml": baseCompose, "docker-compose-prod.yml": prodOverride} {
-		for _, service := range []string{"postgres", "redis", "minio", "minio-init", "db-init"} {
+		for _, service := range []string{"postgres", "redis", "minio", "minio-init", "db-init", "hotkey-agent"} {
 			block := dockerComposeServiceBlock(t, compose, service)
 			if strings.Contains(block, "\n    ports:") {
 				t.Errorf("%s support service %s must not publish host ports", name, service)
@@ -144,6 +154,7 @@ func TestDockerProductionIsolation(t *testing.T) {
 		"MINIO_ROOT_PASSWORD=",
 		"HOTKEY_JWT_SECRET=",
 		"HOTKEY_VERIFICATION_HMAC_SECRET=",
+		"HOTKEY_AGENT_AUTH_TOKEN=",
 	)
 	for _, key := range []string{
 		"POSTGRES_PASSWORD",
@@ -151,6 +162,7 @@ func TestDockerProductionIsolation(t *testing.T) {
 		"MINIO_ROOT_PASSWORD",
 		"HOTKEY_JWT_SECRET",
 		"HOTKEY_VERIFICATION_HMAC_SECRET",
+		"HOTKEY_AGENT_AUTH_TOKEN",
 	} {
 		if !hasEmptyDockerEnvValue(prodExample, key) {
 			t.Errorf(".env.prod.example must leave %s empty", key)
@@ -176,6 +188,7 @@ func assertDockerComposeNamingContract(t *testing.T, name, source, projectName, 
 		{name: "minio", suffix: "minio"},
 		{name: "minio-init", suffix: "minio-init"},
 		{name: "db-init", suffix: "db-init"},
+		{name: "hotkey-agent", suffix: "agent"},
 		{name: "hotkey-server", suffix: "api"},
 		{name: "hotkey-web", suffix: "web"},
 	} {
@@ -202,7 +215,7 @@ func assertDockerUsesLatestUpstreamImages(t *testing.T, sources ...string) {
 			case strings.HasPrefix(trimmed, "image: "):
 				image = strings.TrimSpace(strings.TrimPrefix(trimmed, "image: "))
 			}
-			if image == "" || strings.HasPrefix(image, "hotkey-server:") || strings.HasPrefix(image, "hotkey-web:") || image == "pgvector/pgvector:pg16" {
+			if image == "" || strings.HasPrefix(image, "hotkey-server:") || strings.HasPrefix(image, "hotkey-agent:") || strings.HasPrefix(image, "hotkey-web:") || image == "pgvector/pgvector:pg16" || image == "python:3.12-slim" {
 				continue
 			}
 			if !strings.HasSuffix(image, ":latest") {

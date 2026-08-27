@@ -105,6 +105,44 @@ jobs:
       - name: Production build acceptance
         run: npm run build
 
+  agent-acceptance:
+    name: Python Agent test acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: agent
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up locked Python and uv toolchain
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.11.32"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: agent/uv.lock
+
+      - name: Install locked Agent environment
+        run: uv sync --all-extras --locked
+
+      - name: Python format and lint acceptance
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+
+      - name: Python type acceptance
+        run: uv run mypy src
+
+      - name: Python unit and contract acceptance
+        run: uv run pytest
+
+      - name: Python dependency vulnerability acceptance
+        run: uv run pip-audit
+
   compose-acceptance:
     name: Compose configuration acceptance
     runs-on: ubuntu-latest
@@ -125,6 +163,7 @@ jobs:
           sed -i 's/^MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=ci-minio-password/' .env.prod
           sed -i 's/^HOTKEY_JWT_SECRET=.*/HOTKEY_JWT_SECRET=ci-jwt-secret-0123456789abcdef0123456789abcdef/' .env.prod
           sed -i 's/^HOTKEY_VERIFICATION_HMAC_SECRET=.*/HOTKEY_VERIFICATION_HMAC_SECRET=ci-verification-secret-0123456789abcdef0123456789abcdef/' .env.prod
+          sed -i 's/^HOTKEY_AGENT_AUTH_TOKEN=.*/HOTKEY_AGENT_AUTH_TOKEN=ci-agent-secret-0123456789abcdef0123456789abcdef/' .env.prod
           sed -i 's|^HOTKEY_CORS_ALLOWED_ORIGINS=.*|HOTKEY_CORS_ALLOWED_ORIGINS=https://hotkey.example.test|' .env.prod
 
       - name: Development Compose acceptance
@@ -137,7 +176,7 @@ jobs:
     name: Fresh-container browser smoke acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    needs: [backend-acceptance, frontend-acceptance, compose-acceptance]
+    needs: [backend-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance]
     env:
       HOTKEY_CONTAINER_PREFIX: hotkey-ci-${{ github.run_id }}
 

@@ -33,6 +33,7 @@ type Config struct {
 	VaultPath                 string
 	Authentication            AuthenticationConfig
 	AI                        AIConfig
+	Agent                     AgentConfig
 	Notification              NotificationConfig
 }
 
@@ -134,6 +135,38 @@ type AIConfig struct {
 	ONNXManifestPath   string
 }
 
+type AgentConfig struct {
+	URL              string
+	AuthToken        string
+	MaxResponseBytes int64
+}
+
+func (c AgentConfig) Enabled() bool {
+	return strings.TrimSpace(c.URL) != "" && strings.TrimSpace(c.AuthToken) != ""
+}
+
+func (c AgentConfig) Validate() error {
+	urlValue := strings.TrimSpace(c.URL)
+	token := strings.TrimSpace(c.AuthToken)
+	if urlValue == "" && token == "" {
+		return nil
+	}
+	if urlValue == "" || token == "" {
+		return errors.New("Agent URL and auth token must be configured together")
+	}
+	if len([]byte(token)) < 32 {
+		return errors.New("Agent auth token must be at least 32 bytes")
+	}
+	parsed, err := url.Parse(urlValue)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("Agent URL must be an absolute HTTP(S) origin without credentials, path, query, or fragment")
+	}
+	if c.MaxResponseBytes <= 0 || c.MaxResponseBytes > 8<<20 {
+		return errors.New("Agent max response bytes must be between 1 and 8388608")
+	}
+	return nil
+}
+
 func Default() Config {
 	return Config{
 		Environment:        "development",
@@ -159,6 +192,9 @@ func Default() Config {
 			},
 		},
 		AI: AIConfig{OllamaBaseURL: "http://127.0.0.1:11434"},
+		Agent: AgentConfig{
+			MaxResponseBytes: 1 << 20,
+		},
 		Notification: NotificationConfig{
 			PollInterval:      time.Second,
 			HeartbeatInterval: 10 * time.Second,
@@ -241,6 +277,11 @@ func Load() (Config, error) {
 			ONNXModelPath:      configString(v, "onnx_model_path"),
 			ONNXTokenizerPath:  configString(v, "onnx_tokenizer_path"),
 			ONNXManifestPath:   configString(v, "onnx_manifest_path"),
+		},
+		Agent: AgentConfig{
+			URL:              configString(v, "agent_url"),
+			AuthToken:        configString(v, "agent_auth_token"),
+			MaxResponseBytes: int64(configInt(v, "agent_max_response_bytes")),
 		},
 		Notification: NotificationConfig{
 			PollInterval:      configDuration(v, "notification_poll_interval"),
@@ -331,6 +372,9 @@ func (c Config) Validate() error {
 		if err != nil || len(decoded) != 32 {
 			return errors.New("source credential master key must be Base64-encoded 32 bytes")
 		}
+	}
+	if err := c.Agent.Validate(); err != nil {
+		return err
 	}
 	return c.Authentication.SMTP.ValidateRuntime()
 }
@@ -432,6 +476,7 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("smtp_from_name", "HotKey")
 	v.SetDefault("ollama_enabled", cfg.AI.OllamaEnabled)
 	v.SetDefault("ollama_base_url", cfg.AI.OllamaBaseURL)
+	v.SetDefault("agent_max_response_bytes", cfg.Agent.MaxResponseBytes)
 	v.SetDefault("notification_poll_interval", cfg.Notification.PollInterval)
 	v.SetDefault("notification_heartbeat_interval", cfg.Notification.HeartbeatInterval)
 	v.SetDefault("notification_max_connections", cfg.Notification.MaxConnections)
@@ -446,6 +491,7 @@ func configKeys() []string {
 		"minio_use_ssl", "vault_path",
 		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure",
 		"openai_api_key", "deepseek_api_key", "ollama_enabled", "ollama_base_url", "onnx_runtime_library", "onnx_model_path", "onnx_tokenizer_path", "onnx_manifest_path",
+		"agent_url", "agent_auth_token", "agent_max_response_bytes",
 		"notification_poll_interval", "notification_heartbeat_interval", "notification_max_connections", "notification_web_origin",
 	}
 }

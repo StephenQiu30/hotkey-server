@@ -29,7 +29,7 @@ prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 
 - 新基线需要把“已实现事实”“目标行为”“候选能力”分开，不能把交付包中的分布式目标写成当前能力；
 - 五个新 PRD 的 P0/P1、角色边界、候选容量和 24 周承诺需要统一冻结；
-- 现有实现仍包含多 Provider、Embedding 与向量路径，而新目标要求本地 Codex 和无向量全文检索；该差距是受控替换项目，不是文档清理时可直接删除的遗留物；
+- 现有实现仍包含多 Provider、Go Codex CLI Adapter、Embedding 与向量路径，而新目标要求根目录 Python Agent 和无向量全文检索；该差距是受控替换项目，不是文档清理时可直接删除的遗留物；
 - Analyst 等角色与当前权限投影的差距需要显式迁移方案，不能先改 UI 再补服务端权限；
 - 当前 Schema、OpenAPI、River、Compose 和测试入口必须成为后续四个计划的硬门禁；
 - 候选性能指标尚需固定测试数据集、环境、采样方法和证据格式，不能提前宣称为已满足 SLO。
@@ -42,7 +42,7 @@ S01 现状审计和 S02 评审准备允许在 Design=`proposed`、PRD=`draft` �
 2. 进入 S03 工程实施前，001 Design 必须为 `accepted`、PRD 必须为 `approved`，十条 AC 文义稳定；未批准项保持 `planned`，不能以审计结果代替批准；
 3. 交付包只作为需求输入，不作为删除代码、改变架构或扩大范围的执行指令；
 4. 当前仓库的后端、前端、Compose、Schema 和 OpenAPI 基线命令必须在 S01 至少运行一次并记录结果；
-5. Kafka、Temporal、Python 微服务、Elasticsearch、Keycloak、`migrations/` 与新向量/RAG 能力必须在 G1/G2 明确排除；
+5. G1/G2 必须批准且约束根目录 `agent/` Python 分析服务，同时明确排除第二业务后端、Kafka、Temporal、其他微服务、Elasticsearch、Keycloak、`migrations/` 与新向量/RAG 能力；
 6. 任何既有能力移除都有后继方案、双轨验证、回滚入口和单独验收，不以“目标不需要”为由直接删除。
 
 ## 阶段、依赖与出口
@@ -74,6 +74,10 @@ backend/internal/platform/http/
 backend/internal/platform/queue/
 backend/internal/platform/database/
 backend/db/schema.sql
+agent/pyproject.toml
+agent/src/hotkey_agent/
+agent/tests/
+agent/Dockerfile
 backend/openapi/docs.go
 backend/test/architecture/
 backend/test/tools/validate-architecture.sh
@@ -100,7 +104,7 @@ docker-compose-prod.yml
 ### S02：冻结产品和技术范围
 
 1. `TASK-001-S02-T01`：把完整 P0 用户故事拆为登录、Monitor、来源、证据、事件、通知、日报、Vault 和全文检索的端到端测试故事，并为每一步定义事实源和失败状态；日报逐句 ClaimEvidence 覆盖及 Vault 自动区域更新不覆盖人工区域必须是硬断言。映射 `AC-001-001`。
-2. `TASK-001-S02-T02`：增加禁止 Kafka、Temporal、Python 服务、Elasticsearch、Keycloak 和 `migrations/` 的仓库结构或依赖断言；只有测试能够捕获错误引入后才固化规则。映射 `AC-001-003`。
+2. `TASK-001-S02-T02`：增加仅允许根目录 `agent/` Python 分析服务，并禁止其持有业务存储凭据/公网端口，同时禁止第二业务后端、Kafka、Temporal、其他微服务、Elasticsearch、Keycloak 和 `migrations/` 的仓库结构或依赖断言；只有测试能够捕获错误引入后才固化规则。映射 `AC-001-003`。
 3. `TASK-001-S02-T03`：为统一 Result、无数据 `data: null`、错误脱敏和生成 OpenAPI 建立契约测试，禁止新增 `request_id` 等未批准顶层字段。映射 `AC-001-005`。
 4. `TASK-001-S02-T04`：为正常、空、加载、错误、权限不足和移动端状态建立前端测试矩阵，并覆盖全键盘操作、焦点顺序/可见焦点、语义化标签、对比度和 `prefers-reduced-motion`；公共组件变化先保存失败测试。映射 `AC-001-004`。
 5. `TASK-001-S02-T05`：为关键写操作建立未认证、越权、无效输入、固定幂等键重复/重放、过期资源版本和并发冲突 Fixture；断言拒绝发生在副作用前、重复请求复用结果且不重复写事实、过期版本返回稳定冲突，成功/拒绝/冲突均追加净化审计。映射 `AC-001-009`。
@@ -109,7 +113,7 @@ docker-compose-prod.yml
 ### S03：固化非功能与降级边界
 
 1. `TASK-001-S03-T01`：为候选容量和时延定义固定数据规模、并发、硬件、预热、采样次数、P95 算法和输出格式；同时在隔离环境从一致备份恢复 PostgreSQL、MinIO、Vault 与持久任务，完成事实/Hash/人工区域/任务对账并测量真实 RPO/RTO；先建立可重复基准和恢复证据，不先宣称达标。映射 `AC-001-006`。
-2. `TASK-001-S03-T02`：建立 Codex 不可用、单来源失败、Redis 短暂不可用、MinIO 写失败和 Vault 不可写的故障矩阵；用可解析但越权的 Codex 建议证明 AI 只能返回建议，必须经过 Application/Domain 校验和授权人工治理，无法直写业务事实、权限或最终状态。映射 `AC-001-007`。
+2. `TASK-001-S03-T02`：建立 Python Agent 不可用、单来源失败、Redis 短暂不可用、MinIO 写失败和 Vault 不可写的故障矩阵；用可解析但越权的 Agent 建议证明分析服务只能返回建议，必须经过 Go Application/Domain 校验和授权人工治理，无法直写业务事实、权限或最终状态。映射 `AC-001-007`。
 3. `TASK-001-S03-T03`：为 PostgreSQL FTS 路径补充无向量/无 RAG 的架构检查与搜索契约测试；现有 Embedding 路径仅标记为待迁移，不在此任务删除。映射 `AC-001-008`。
 
 ### S04：追踪和评审
@@ -127,10 +131,11 @@ docker-compose-prod.yml
 | `SPEC-001-API-004` | P0 列表使用不可变排序字段与唯一 ID 构成稳定游标和顺序，页大小有界；并发新增不回流到已越过区间，无效、过期或越权游标返回稳定脱敏错误。 | `AC-001-010` |
 | `SPEC-001-DATA-001` | `backend/db/schema.sql` 是唯一数据库结构事实源；新增结构必须向前兼容并通过空库、非空库和兼容性检查，不创建迁移目录。 | `AC-001-003`、`AC-001-005` |
 | `SPEC-001-JOB-001` | 异步工作使用 PostgreSQL River 表和 Go Worker；任务参数只传稳定 ID/版本/幂等键，处理时重读事实。 | `AC-001-003`、`AC-001-007` |
+| `SPEC-001-AGENT-001` | 根目录 `agent/` 使用 Python 实现无状态数据分析服务；Go Worker 通过内部认证的版本化 HTTP 契约提交有界上下文，Agent 不持有 PostgreSQL/Redis/MinIO/Vault/来源/用户凭据，不直接写业务事实。 | `AC-001-003`、`AC-001-007` |
 | `SPEC-001-UI-001` | Next.js 页面同时覆盖桌面/移动与正常、空、加载、错误、权限不足状态，使用生成客户端和现有设计令牌；关键流程必须支持键盘、可见焦点、语义化标签、合理对比度及 `prefers-reduced-motion`。 | `AC-001-004` |
-| `SPEC-001-SEC-001` | 身份沿用现有 JWT、会话和服务端 RBAC；来源只允许官方 API、RSS、Atom 或授权 Feed；AI/Codex 仅返回结构化建议，经 Application/Domain 校验及授权人工治理后才能影响当前视图，不能直写事实、权限或最终状态；错误与日志不得泄露凭据。 | `AC-001-002`、`AC-001-007` |
+| `SPEC-001-SEC-001` | 身份沿用现有 JWT、会话和服务端 RBAC；来源只允许官方 API、RSS、Atom 或授权 Feed；Python Agent 仅返回结构化建议，经 Go Application/Domain 校验及授权人工治理后才能影响当前视图，不能直写事实、权限或最终状态；错误与日志不得泄露凭据。 | `AC-001-002`、`AC-001-007` |
 | `SPEC-001-OBS-001` | 候选容量和时延只有在环境、数据、命令、原始结果和统计方式齐全时才可作为验收证据；候选 RPO/RTO 只有在隔离环境联合恢复 PostgreSQL、MinIO、Vault 和持久任务并完成对账后才能成为承诺。 | `AC-001-006` |
-| `SPEC-001-OPS-001` | P0 运行拓扑保持模块化单体、PostgreSQL、Redis、MinIO、Vault 与根 Compose；禁用基础设施不进入启动图。 | `AC-001-003` |
+| `SPEC-001-OPS-001` | P0 运行拓扑保持 Go Core、内部 Python Agent、PostgreSQL、Redis、MinIO、Vault 与根 Compose；Agent 不发布宿主机端口，禁用基础设施不进入启动图。 | `AC-001-003` |
 | `SPEC-001-OPS-002` | 任何既有 Provider、Embedding 或向量结构的退出必须先完成替换验收、数据影响审计、灰度和回滚演练，删除另行评审。 | `AC-001-007`、`AC-001-008` |
 | `SPEC-001-OPS-003` | P0 主故事必须沿正式模块边界完成登录、Monitor、采集、证据、事件、通知、日报、Vault 和检索；每一步状态、事实身份和 Evidence 引用均可追踪，每个事实性报告句有允许的 ClaimEvidence，自动知识更新不得覆盖人工区域。代码/契约记录当前事实，Design/PRD/Plan 记录目标与执行状态，只有 Acceptance 记录已验证完成。 | `AC-001-001`、`AC-001-003`、`AC-001-008` |
 
@@ -144,7 +149,7 @@ docker-compose-prod.yml
 - [ ] `CHK-001-G3-002`（`AC-001-006`）：容量/性能测试和 PostgreSQL/MinIO/Vault/持久任务联合恢复的环境、数据、命令、统计法、对账与 RPO/RTO 测量均已冻结；预期证据：基准报告、恢复时间线和零未解释差异报告模板。
 - [ ] `CHK-001-G3-003`（`AC-001-009`）：关键写操作的未认证/越权、幂等重放、旧版本和并发冲突矩阵在副作用、事实计数与审计上闭合；预期证据：并发集成测试、稳定错误码、写前后事实计数和追加审计查询。
 - [ ] `CHK-001-G3-004`（`AC-001-010`）：并列排序和并发新增下连续游标遍历无回流、重复或漏项，页大小及无效/过期/越权游标均受控；预期证据：固定数据集、游标序列、边界/权限负向测试和脱敏错误快照。
-- [ ] `CHK-001-G4-001`（`AC-001-007`）：所有降级场景都有“事实继续/暂停/重试/人工介入”的明确结论；AI/Codex 只能提交建议，必须经 Application/Domain 校验和授权人工治理，不得直写业务事实、权限或最终状态；预期证据：故障矩阵、越权建议负向测试和零直接事实写入断言。
+- [ ] `CHK-001-G4-001`（`AC-001-007`）：所有降级场景都有“事实继续/暂停/重试/人工介入”的明确结论；Python Agent 只能提交建议，必须经 Go Application/Domain 校验和授权人工治理，不得直写业务事实、权限或最终状态；预期证据：故障矩阵、越权建议负向测试和零直接事实写入断言。
 - [ ] `CHK-001-G4-002`（`AC-001-008`）：全文检索目标不依赖向量/RAG，现有向量能力只进入受控迁移清单；自动知识区域可重建但人工区域只能从 Vault/Revision/备份恢复；预期证据：搜索架构断言、人工区域恢复矩阵和替换/回滚清单。
 
 ## 验证命令
@@ -165,6 +170,13 @@ npm run openapi:check
 npm run typecheck
 npm run test:unit
 npm run build
+
+cd ../agent
+python -m pip install -e '.[dev]'
+python -m ruff check .
+python -m mypy src
+python -m pytest
+python -m pip_audit
 
 cd ..
 docker compose -f docker-compose.yml config --quiet
@@ -188,7 +200,7 @@ git diff --check
 
 - 本计划本身不执行数据迁移或删除，只建立后续计划的兼容顺序；
 - 角色变更先服务端双读/兼容旧角色，再更新前端菜单，最后在证据充分时收紧旧授权；
-- Codex、全文检索和其他替换路径必须支持按配置或模型 Profile 灰度，保留旧路径直到替换验收完成；
+- Python Agent、全文检索和其他替换路径必须支持按配置或模型 Profile 灰度，保留旧 Provider/Codex 路径直到替换验收完成；
 - Schema 只做向前兼容的增加与约束收紧准备，不自动删除列、表、扩展或历史事实；
 - 若新基线导致 P0 主故事、权限、Result、OpenAPI、Schema 或启动拓扑回归，立即停止后续计划，将 Design/PRD 恢复到最近 accepted/approved 版本，并通过现有代码路径回滚；
 - 文档回滚不能把已经发生的实现事实改写为“从未存在”，偏差由 Acceptance 或后继 Design 记录。

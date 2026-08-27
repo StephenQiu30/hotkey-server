@@ -11,6 +11,7 @@ func TestAIReplacementInventoryCoversCurrentCallersAndDataDisposition(t *testing
 	plan := readRepositoryFile(t, repository, "docs/plans/003-智能研判事件热度与人工治理计划.md")
 
 	callers := []string{
+		"backend/internal/modules/intelligence/infrastructure/agent/client.go",
 		"backend/internal/modules/intelligence/domain/provider.go",
 		"backend/internal/bootstrap/app.go",
 		"backend/internal/modules/intelligence/application/run_service.go",
@@ -54,9 +55,10 @@ func TestAIReplacementInventoryCoversCurrentCallersAndDataDisposition(t *testing
 
 	for _, decision := range []string{
 		"当前 Provider Registry 只注册 OpenAI、DeepSeek、Ollama 与 ONNX",
-		"Codex CLI Adapter 已实现但尚未进入 ProviderName、Model Profile Schema 或生产 Registry",
+		"Go Codex CLI Adapter 已实现但尚未进入 ProviderName、Model Profile Schema 或生产 Registry",
+		"Python Agent 尚未接入 Go Worker 生产路径",
 		"无第一方页面直接调用模型 Profile 管理客户端",
-		"报告模块不直接调用 Provider、Embedding 或 Codex",
+		"报告模块不直接调用 Provider、Embedding、Codex 或 Agent",
 		"旧记录继续按原 Model Profile、Run 与向量版本可读",
 		"本阶段禁止物理删除",
 	} {
@@ -66,11 +68,14 @@ func TestAIReplacementInventoryCoversCurrentCallersAndDataDisposition(t *testing
 	}
 }
 
-func TestAIReplacementInventoryRecordsCodexProductionWiringGap(t *testing.T) {
+func TestAIReplacementInventoryRecordsPythonAgentMigrationBoundary(t *testing.T) {
 	root := repositoryRoot(t)
+	repository := filepath.Clean(filepath.Join(root, ".."))
 	providerDomain := readRepositoryFile(t, root, "internal/modules/intelligence/domain/provider.go")
 	bootstrap := readRepositoryFile(t, root, "internal/bootstrap/app.go")
 	codexProvider := readRepositoryFile(t, root, "internal/modules/intelligence/infrastructure/provider/codex_cli_provider.go")
+	agentClient := readRepositoryFile(t, root, "internal/modules/intelligence/infrastructure/agent/client.go")
+	agentMain := readRepositoryFile(t, repository, "agent/src/hotkey_agent/main.py")
 
 	if strings.Contains(providerDomain, "ProviderCodex") {
 		t.Fatal("Codex unexpectedly entered the production ProviderName contract before S05 switch tests")
@@ -80,5 +85,11 @@ func TestAIReplacementInventoryRecordsCodexProductionWiringGap(t *testing.T) {
 	}
 	if !strings.Contains(codexProvider, "type CodexCLIProvider struct") {
 		t.Fatal("controlled Codex provider adapter is missing from the replacement inventory")
+	}
+	if !strings.Contains(agentMain, "FastAPI") || !strings.Contains(agentMain, `"/v1/analyze"`) {
+		t.Fatal("approved Python Agent analysis boundary is missing")
+	}
+	if !strings.Contains(agentClient, "type Client struct") || strings.Contains(bootstrap, "intelligenceagent") {
+		t.Fatal("Python Agent client must exist without entering production Bootstrap before S05 switch tests")
 	}
 }

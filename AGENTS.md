@@ -1,14 +1,15 @@
 # HotKey 单体仓库规范
 
-本文件是整个仓库唯一的 `AGENTS.md`，适用于根目录、`backend/`、`frontend/` 与 `docs/`。子目录不得再创建同名规则文件；目录归属通过本文件的分区规则表达。
+本文件是整个仓库唯一的 `AGENTS.md`，适用于根目录、`backend/`、`agent/`、`frontend/` 与 `docs/`。子目录不得再创建同名规则文件；目录归属通过本文件的分区规则表达。
 
 ## 目录与单一事实源
 
 - `backend/`：Go 后端、完整 PostgreSQL Schema、运行时 OpenAPI、任务系统、后端 Dockerfile 与应用环境示例。
+- `agent/`：Python 数据分析服务、版本化分析契约、Python 测试、Agent Dockerfile 与服务环境示例；不得承载业务 API 或业务事实。
 - `frontend/`：Next.js Web 工作台、页面组件、生成的 OpenAPI 客户端、前端 Dockerfile 与应用环境示例。
 - `docs/`：唯一正式文档树，统一使用 `design/`、`prd/`、`plans/`、`acceptance/`、`operations/` 与 `openapi/` 分类。
 - `.github/`、`.codex/`、`.gitignore`、`.gitattributes`、`.editorconfig`、`LICENSE`、`CONTRIBUTING.md` 与 `SECURITY.md`：只在根目录维护。
-- `docker-compose.yml`：前后端和基础设施的公共编排基线；根目录的日常、生产覆盖文件只保存环境差异。
+- `docker-compose.yml`：Go Core、Python Agent、前端和基础设施的公共编排基线；根目录的日常、生产覆盖文件只保存环境差异。
 - `docs/openapi/swagger.json`：唯一发布 OpenAPI；`backend/openapi/docs.go` 是同一契约的运行时生成代码。
 - `backend/db/schema.sql`：唯一数据库结构事实源。
 
@@ -16,7 +17,7 @@
 
 ## 通用工作规则
 
-- 后端命令从 `backend/` 执行，前端命令从 `frontend/` 执行，Compose 与跨项目命令从仓库根目录执行。
+- Go 后端命令从 `backend/` 执行，Python Agent 命令从 `agent/` 执行，前端命令从 `frontend/` 执行，Compose 与跨项目命令从仓库根目录执行。
 - 修改前先阅读相关 Design、PRD、Plan、Acceptance、Operations 和现有测试；目标设计不得描述为当前已实现能力。
 - 行为变更遵循测试先行：先保存可复现失败，再做最小实现，最后重构并运行相关回归。纯文档和机械迁移可说明为何不新增行为测试。
 - 只在出现第二个真实实现或明确替换需求时提取抽象；避免空目录、占位层、重复 DTO、重复配置和第二套事实源。
@@ -27,7 +28,7 @@
 
 ### 架构边界
 
-后端是单仓库、单二进制的模块化单体，`cmd/hotkey` 支持 `all`、`api` 与 `worker` 角色。依赖方向固定为：
+Go Core 是唯一业务后端和事实拥有者，`cmd/hotkey` 支持 `all`、`api` 与 `worker` 角色。Python Agent 是只返回结构化建议的内部分析服务，不改变 Go Core 的模块化单体依赖方向：
 
 ```text
 transport/http -> application -> domain
@@ -39,7 +40,17 @@ bootstrap -> all adapters
 - 跨模块调用使用目标模块的 Application 接口或只读查询端口，不直接读取其他模块拥有的表。
 - Domain 不得导入 Gin、GORM、pgx、River、MinIO 或第三方 SDK；第三方类型不得穿透 Infrastructure。
 - `internal/shared/` 只保存基础设施中立的稳定类型和契约，不导入 Platform 或具体适配器；通用数据库适配器位于 `internal/platform/database/repository`。
-- Redis 只用于缓存、验证码、短期票据与限流，不是业务事实源。不得引入第二套 Schema、Kafka、微服务、内部事件总线、Elasticsearch、独立向量库或通用规则引擎。
+- Redis 只用于缓存、验证码、短期票据与限流，不是业务事实源。除根目录 `agent/` 的 Python 分析服务外，不得引入第二套业务后端、第二套 Schema、Kafka、其他微服务、内部事件总线、Elasticsearch、独立向量库或通用规则引擎。
+
+## Python Agent 规则
+
+- Agent 只负责相关性、聚类候选、摘要、实体/主题提取等数据分析与模型编排；业务授权、幂等、状态迁移、Evidence 白名单、最终写入和人工治理必须留在 Go Application/Domain。
+- Agent 不得持有 PostgreSQL DSN、Redis URL、MinIO/Vault 凭据、来源 Token、浏览器 JWT 或任意用户会话；不得直接访问业务表、对象存储、Vault 或外部来源。
+- Go Worker 通过内部版本化 HTTP 契约调用 Agent。请求只包含任务身份、契约版本、有界输入、允许 Evidence ID 与追踪信息；Agent 响应只包含经 Pydantic/JSON Schema 校验的建议、计量和稳定错误码。
+- Python 包、应用和测试分别位于 `agent/src/hotkey_agent/` 与 `agent/tests/`；使用 `pyproject.toml` 管理依赖，生产依赖必须锁定并通过高危漏洞门禁。
+- Agent 必须提供存活与就绪检查，限制请求体、并发、超时和输出大小；日志不得记录正文、Prompt、Token、密钥或完整模型原始响应。
+- Agent 不得把数据分析接口暴露给浏览器或公网。Compose 中只供内部网络访问，生产环境必须使用独立的服务认证密钥并支持禁用；不可用时 Go 确定性链路继续并保留待补算状态。
+- Agent 行为变更遵循 Python 测试先行，并至少运行格式、静态检查、类型检查、单元测试和依赖审计；跨语言契约必须同时由 Python 与 Go 契约测试保护。
 
 ### HTTP 与数据
 
@@ -87,10 +98,10 @@ bootstrap -> all adapters
 
 ## Docker 与环境配置
 
-- Dockerfile 与 `.dockerignore` 保留在各应用目录，因为构建上下文不同；不得为了文件名相同而合并不同应用镜像。
+- Dockerfile 与 `.dockerignore` 保留在 `backend/`、`agent/` 与 `frontend/`，因为构建上下文不同；不得为了文件名相同而合并不同应用镜像。
 - `docker-compose.yml` 与 `docker-compose-prod.yml` 都保存完整服务、环境变量、依赖、健康检查、初始化命令和卷；prod 文件只将默认环境值替换为生产环境值、生产凭据和 prod 镜像标签。
 - 日常环境读取 `backend/.env` 并可发布基础设施端口；生产环境读取根 `.env.prod`，基础设施只接收所需凭据且不发布宿主机端口。
-- 上游镜像使用 `latest`；`pgvector/pgvector` 使用官方浮动 `pg16` 以保持 PostgreSQL 16 数据卷兼容。应用镜像使用 `env` / `prod` 标签。
+- 上游镜像使用 `latest`；`pgvector/pgvector` 使用官方浮动 `pg16` 以保持 PostgreSQL 16 数据卷兼容，Python Agent 使用官方 `3.12-slim` 以匹配锁定运行时。应用镜像使用 `env` / `prod` 标签。
 - 子项目不得新增 Compose 文件、生产环境模板、启动脚本或重复部署入口。
 
 ```bash
@@ -127,6 +138,14 @@ npm run openapi:check
 npm run typecheck
 npm run test:unit
 npm run build
+
+cd ../agent
+uv sync --all-extras --locked
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy src
+uv run pytest
+uv run pip-audit
 
 cd ..
 docker compose -f docker-compose.yml config --quiet
