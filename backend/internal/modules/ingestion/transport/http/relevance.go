@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	stdhttp "net/http"
@@ -13,6 +12,7 @@ import (
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	"github.com/gin-gonic/gin"
 )
 
@@ -28,10 +28,13 @@ type relevanceHTTPService interface {
 	ReviewSuggestion(context.Context, int64, int64, int64, int64, ingestiondomain.SuggestionStatus) (ingestiondomain.RelevanceSuggestion, error)
 }
 
-type RelevanceHandler struct{ service relevanceHTTPService }
+type RelevanceHandler struct {
+	service     relevanceHTTPService
+	cursorCodec *pagination.Codec
+}
 
-func NewRelevanceHandler(service relevanceHTTPService) *RelevanceHandler {
-	return &RelevanceHandler{service: service}
+func NewRelevanceHandlerWithCursorCodec(service relevanceHTTPService, codec *pagination.Codec) *RelevanceHandler {
+	return &RelevanceHandler{service: service, cursorCodec: codec}
 }
 
 // ListMatches returns the current active Content match for each configuration
@@ -56,7 +59,7 @@ func (handler *RelevanceHandler) ListMatches(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	query, err := relevanceMatchListQuery(c)
+	query, err := relevanceMatchListQuery(c, handler.cursorCodec, monitorID)
 	if err != nil {
 		return err
 	}
@@ -68,7 +71,10 @@ func (handler *RelevanceHandler) ListMatches(c *gin.Context) error {
 	for _, snapshot := range page.Items {
 		response.Items = append(response.Items, relevanceMatchResponse(snapshot))
 	}
-	response.NextCursor = encodeMatchCursor(page.Next)
+	response.NextCursor, err = encodeMatchCursor(handler.cursorCodec, monitorID, query.Decision, page.Next)
+	if err != nil {
+		return err
+	}
 	httptransport.OK(c, response)
 	return nil
 }
@@ -305,7 +311,7 @@ func (handler *RelevanceHandler) ListSuggestions(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	query, err := relevanceSuggestionListQuery(c)
+	query, err := relevanceSuggestionListQuery(c, handler.cursorCodec, monitorID)
 	if err != nil {
 		return err
 	}
@@ -313,7 +319,11 @@ func (handler *RelevanceHandler) ListSuggestions(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	response := RelevanceSuggestionPageResponse{Items: make([]RelevanceSuggestionResponse, 0, len(page.Items)), NextCursor: encodeSuggestionCursor(page.Next)}
+	nextCursor, err := encodeSuggestionCursor(handler.cursorCodec, monitorID, query.Status, page.Next)
+	if err != nil {
+		return err
+	}
+	response := RelevanceSuggestionPageResponse{Items: make([]RelevanceSuggestionResponse, 0, len(page.Items)), NextCursor: nextCursor}
 	for _, value := range page.Items {
 		response.Items = append(response.Items, relevanceSuggestionResponse(value))
 	}
@@ -440,7 +450,7 @@ func relevanceSuggestionReviewRequest(c *gin.Context) (int64, ingestiondomain.Su
 	return request.ExpectedVersion, status, nil
 }
 
-func relevanceMatchListQuery(c *gin.Context) (ingestiondomain.RelevanceSnapshotListQuery, error) {
+func relevanceMatchListQuery(c *gin.Context, codec *pagination.Codec, monitorID int64) (ingestiondomain.RelevanceSnapshotListQuery, error) {
 	query := ingestiondomain.RelevanceSnapshotListQuery{Limit: 20}
 	if raw := c.Query("limit"); raw != "" {
 		limit, err := relevanceLimit(raw)
@@ -457,7 +467,7 @@ func relevanceMatchListQuery(c *gin.Context) (ingestiondomain.RelevanceSnapshotL
 		query.Decision = &decision
 	}
 	if raw := c.Query("cursor"); raw != "" {
-		cursor, err := decodeMatchCursor(raw)
+		cursor, err := decodeMatchCursor(codec, raw, monitorID, query.Decision)
 		if err != nil {
 			return ingestiondomain.RelevanceSnapshotListQuery{}, err
 		}
@@ -466,7 +476,7 @@ func relevanceMatchListQuery(c *gin.Context) (ingestiondomain.RelevanceSnapshotL
 	return query, nil
 }
 
-func relevanceSuggestionListQuery(c *gin.Context) (ingestiondomain.RelevanceSuggestionListQuery, error) {
+func relevanceSuggestionListQuery(c *gin.Context, codec *pagination.Codec, monitorID int64) (ingestiondomain.RelevanceSuggestionListQuery, error) {
 	query := ingestiondomain.RelevanceSuggestionListQuery{Limit: 20}
 	if raw := c.Query("limit"); raw != "" {
 		limit, err := relevanceLimit(raw)
@@ -483,7 +493,7 @@ func relevanceSuggestionListQuery(c *gin.Context) (ingestiondomain.RelevanceSugg
 		query.Status = &status
 	}
 	if raw := c.Query("cursor"); raw != "" {
-		cursor, err := decodeSuggestionCursor(raw)
+		cursor, err := decodeSuggestionCursor(codec, raw, monitorID, query.Status)
 		if err != nil {
 			return ingestiondomain.RelevanceSuggestionListQuery{}, err
 		}
@@ -517,40 +527,50 @@ func relevanceActorID(c *gin.Context) (int64, error) {
 }
 
 type relevanceMatchCursorPayload struct {
+	MonitorID  int64   `json:"monitor_id"`
+	Decision   string  `json:"decision"`
 	FinalScore float64 `json:"final_score"`
 	ID         int64   `json:"id"`
 }
 
 type relevanceSuggestionCursorPayload struct {
+	MonitorID int64  `json:"monitor_id"`
+	Status    string `json:"status"`
 	UpdatedAt string `json:"updated_at"`
 	ID        int64  `json:"id"`
 }
 
-func encodeMatchCursor(cursor *ingestiondomain.RelevanceSnapshotCursor) string {
+func encodeMatchCursor(codec *pagination.Codec, monitorID int64, decision *ingestiondomain.MatchDecision, cursor *ingestiondomain.RelevanceSnapshotCursor) (string, error) {
 	if cursor == nil {
-		return ""
+		return "", nil
 	}
-	return encodeRelevanceCursor(relevanceMatchCursorPayload{FinalScore: cursor.FinalScore, ID: cursor.ID})
+	return codec.Seal("relevance_match_list", relevanceMatchCursorPayload{
+		MonitorID: monitorID, Decision: relevanceMatchDecisionScope(decision), FinalScore: cursor.FinalScore, ID: cursor.ID,
+	})
 }
 
-func decodeMatchCursor(raw string) (*ingestiondomain.RelevanceSnapshotCursor, error) {
+func decodeMatchCursor(codec *pagination.Codec, raw string, monitorID int64, decision *ingestiondomain.MatchDecision) (*ingestiondomain.RelevanceSnapshotCursor, error) {
 	var payload relevanceMatchCursorPayload
-	if err := decodeRelevanceCursor(raw, &payload); err != nil || payload.ID <= 0 || payload.FinalScore < 0 || payload.FinalScore > 100 {
+	if err := codec.Open(raw, "relevance_match_list", &payload); err != nil || payload.MonitorID != monitorID ||
+		payload.Decision != relevanceMatchDecisionScope(decision) || payload.ID <= 0 || payload.FinalScore < 0 || payload.FinalScore > 100 {
 		return nil, invalidRequest(fmt.Errorf("invalid relevance match cursor"))
 	}
 	return &ingestiondomain.RelevanceSnapshotCursor{FinalScore: payload.FinalScore, ID: payload.ID}, nil
 }
 
-func encodeSuggestionCursor(cursor *ingestiondomain.RelevanceSuggestionCursor) string {
+func encodeSuggestionCursor(codec *pagination.Codec, monitorID int64, status *ingestiondomain.SuggestionStatus, cursor *ingestiondomain.RelevanceSuggestionCursor) (string, error) {
 	if cursor == nil {
-		return ""
+		return "", nil
 	}
-	return encodeRelevanceCursor(relevanceSuggestionCursorPayload{UpdatedAt: cursor.UpdatedAt.UTC().Format(time.RFC3339Nano), ID: cursor.ID})
+	return codec.Seal("relevance_suggestion_list", relevanceSuggestionCursorPayload{
+		MonitorID: monitorID, Status: relevanceSuggestionStatusScope(status), UpdatedAt: cursor.UpdatedAt.UTC().Format(time.RFC3339Nano), ID: cursor.ID,
+	})
 }
 
-func decodeSuggestionCursor(raw string) (*ingestiondomain.RelevanceSuggestionCursor, error) {
+func decodeSuggestionCursor(codec *pagination.Codec, raw string, monitorID int64, status *ingestiondomain.SuggestionStatus) (*ingestiondomain.RelevanceSuggestionCursor, error) {
 	var payload relevanceSuggestionCursorPayload
-	if err := decodeRelevanceCursor(raw, &payload); err != nil || payload.ID <= 0 {
+	if err := codec.Open(raw, "relevance_suggestion_list", &payload); err != nil || payload.MonitorID != monitorID ||
+		payload.Status != relevanceSuggestionStatusScope(status) || payload.ID <= 0 {
 		return nil, invalidRequest(fmt.Errorf("invalid relevance suggestion cursor"))
 	}
 	updatedAt, err := time.Parse(time.RFC3339Nano, payload.UpdatedAt)
@@ -560,30 +580,28 @@ func decodeSuggestionCursor(raw string) (*ingestiondomain.RelevanceSuggestionCur
 	return &ingestiondomain.RelevanceSuggestionCursor{UpdatedAt: updatedAt.UTC(), ID: payload.ID}, nil
 }
 
-func encodeRelevanceCursor(value any) string {
-	raw, err := json.Marshal(value)
-	if err != nil {
+func relevanceMatchDecisionScope(decision *ingestiondomain.MatchDecision) string {
+	if decision == nil {
 		return ""
 	}
-	return base64.RawURLEncoding.EncodeToString(raw)
+	return string(*decision)
 }
 
-func decodeRelevanceCursor(raw string, target any) error {
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return err
+func relevanceSuggestionStatusScope(status *ingestiondomain.SuggestionStatus) string {
+	if status == nil {
+		return ""
 	}
-	return json.Unmarshal(decoded, target)
+	return string(*status)
 }
 
 // RegisterRelevanceRoutes mounts the PLAN-009 public relevance contract. The
 // route groups make the viewer/editor/admin role matrix structural rather than
 // a conditional hidden inside a handler.
-func RegisterRelevanceRoutes(router *gin.Engine, service relevanceHTTPService, authenticator httptransport.Authenticator) {
+func RegisterRelevanceRoutesWithCursorCodec(router *gin.Engine, service relevanceHTTPService, authenticator httptransport.Authenticator, codec *pagination.Codec) {
 	if router == nil {
 		return
 	}
-	handler := NewRelevanceHandler(service)
+	handler := NewRelevanceHandlerWithCursorCodec(service, codec)
 	monitor := router.Group("/api/v1/monitors/:id", httptransport.RequireAuthentication(authenticator))
 	read := monitor.Group("", httptransport.RequireRoles(httptransport.RoleViewer, httptransport.RoleEditor, httptransport.RoleAdmin))
 	read.GET("/matches", httptransport.Wrap(handler.ListMatches))

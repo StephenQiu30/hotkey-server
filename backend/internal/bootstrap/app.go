@@ -56,6 +56,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/observability"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
 	sharedclock "github.com/StephenQiu30/hotkey-server/backend/internal/shared/clock"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
@@ -152,7 +153,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newClaimEvidenceService,
 				eventpostgres.NewEvidenceSummaryPostgresRepository,
 				newEvidenceSummaryService,
-				eventpostgres.NewMicroEventQueryPostgresRepository,
+				newMicroEventQueryRepository,
 				newMicroEventQueryService,
 				eventapplication.NewAcceptedMatchEventProjectionService,
 				exposeAcceptedDocumentMatchEventProjector,
@@ -393,10 +394,11 @@ func registerIngestionRoutes(
 	contentLineageFeedback *ingestionapplication.ContentLineageFeedbackService,
 	authenticator httptransport.Authenticator,
 	metrics *observability.Metrics,
+	cursorCodec *pagination.Codec,
 ) {
 	ingestiontransport.RegisterRoutes(router, service, authenticator, metrics)
 	ingestiontransport.RegisterCitationRoutes(router, citations, authenticator)
-	ingestiontransport.RegisterRelevanceRoutes(router, relevance, authenticator)
+	ingestiontransport.RegisterRelevanceRoutesWithCursorCodec(router, relevance, authenticator, cursorCodec)
 	ingestiontransport.RegisterDocumentMatchRoutes(router, documentMatches, documentMatchReviews, authenticator)
 	ingestiontransport.RegisterTextQuoteSelectorRoutes(router, textQuoteSelectors, authenticator)
 	ingestiontransport.RegisterContentLineageFeedbackRoutes(router, contentLineageFeedback, authenticator)

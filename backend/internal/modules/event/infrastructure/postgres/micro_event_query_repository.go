@@ -1,11 +1,9 @@
 package postgres
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -15,22 +13,35 @@ import (
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	databaserepository "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database/repository"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
 type MicroEventQueryPostgresRepository struct {
-	runtime *database.Runtime
-	now     func() time.Time
+	runtime     *database.Runtime
+	now         func() time.Time
+	cursorCodec *pagination.Codec
 }
 
 var _ eventapplication.MicroEventQueryRepository = (*MicroEventQueryPostgresRepository)(nil)
 var _ eventapplication.ContentSearchReader = (*MicroEventQueryPostgresRepository)(nil)
 
 func NewMicroEventQueryPostgresRepository(runtime *database.Runtime) (*MicroEventQueryPostgresRepository, error) {
+	seed := "event-query:unavailable"
+	if runtime != nil && runtime.Pool != nil {
+		seed = "event-query:" + runtime.Pool.Config().ConnString()
+	}
+	return NewMicroEventQueryPostgresRepositoryWithCursorCodec(runtime, pagination.NewTestCodec(seed))
+}
+
+func NewMicroEventQueryPostgresRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) (*MicroEventQueryPostgresRepository, error) {
 	if runtime == nil || runtime.SQL == nil {
 		return nil, fmt.Errorf("micro-event query database runtime is required")
 	}
-	return &MicroEventQueryPostgresRepository{runtime: runtime, now: func() time.Time { return time.Now().UTC() }}, nil
+	if codec == nil {
+		return nil, fmt.Errorf("micro-event query cursor codec is required")
+	}
+	return &MicroEventQueryPostgresRepository{runtime: runtime, now: func() time.Time { return time.Now().UTC() }, cursorCodec: codec}, nil
 }
 
 func (repository *MicroEventQueryPostgresRepository) ListContentSearchReferences(ctx context.Context, contentIDs []int64) ([]eventapplication.ContentSearchReference, error) {
@@ -200,24 +211,14 @@ func microEventFilterFingerprint(query eventapplication.MicroEventListQuery) str
 	return fmt.Sprintf("%x", sha256.Sum256(payload))
 }
 
-func encodeMicroEventListCursor(cursor microEventListCursor) (string, error) {
-	cursor.Version = 2
-	payload, err := json.Marshal(cursor)
-	if err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(payload), nil
+func encodeMicroEventListCursor(codec *pagination.Codec, cursor microEventListCursor) (string, error) {
+	cursor.Version = 3
+	return codec.Seal("micro_event_list", cursor)
 }
 
-func decodeMicroEventListCursor(value, expectedSort, expectedFilter string) (microEventListCursor, error) {
-	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(value))
-	if err != nil || len(payload) == 0 || len(payload) > 8192 {
-		return microEventListCursor{}, eventapplication.ErrInvalidMicroEventQuery
-	}
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.DisallowUnknownFields()
+func decodeMicroEventListCursor(codec *pagination.Codec, value, expectedSort, expectedFilter string) (microEventListCursor, error) {
 	var cursor microEventListCursor
-	if err := decoder.Decode(&cursor); err != nil {
+	if err := codec.Open(value, "micro_event_list", &cursor); err != nil {
 		return microEventListCursor{}, eventapplication.ErrInvalidMicroEventQuery
 	}
 	validHeat := cursor.Sort == "heat" && (cursor.HasHeat && !cursor.HeatWindowEnd.IsZero() && cursor.HeatScore >= 0 && cursor.HeatScore <= 100 ||
@@ -226,7 +227,7 @@ func decodeMicroEventListCursor(value, expectedSort, expectedFilter string) (mic
 	validRelevance := cursor.Sort == "relevance" && (cursor.HasRelevance && cursor.RelevanceScore >= 0 && cursor.RelevanceScore <= 1 ||
 		!cursor.HasRelevance && cursor.RelevanceScore == 0) ||
 		cursor.Sort != "relevance" && !cursor.HasRelevance && cursor.RelevanceScore == 0
-	if cursor.Version != 2 || cursor.Sort != expectedSort ||
+	if cursor.Version != 3 || cursor.Sort != expectedSort ||
 		cursor.Filter != expectedFilter || cursor.AsOf.IsZero() || cursor.EventStartedAt.IsZero() || cursor.ID <= 0 ||
 		!validHeat || !validRelevance {
 		return microEventListCursor{}, eventapplication.ErrInvalidMicroEventQuery
@@ -258,7 +259,7 @@ func (repository *MicroEventQueryPostgresRepository) ListMicroEvents(ctx context
 	fingerprint := microEventFilterFingerprint(query)
 	cursor := microEventListCursor{Sort: query.Sort, Filter: fingerprint, AsOf: repository.now().UTC()}
 	if query.Cursor != "" {
-		decoded, err := decodeMicroEventListCursor(query.Cursor, query.Sort, fingerprint)
+		decoded, err := decodeMicroEventListCursor(repository.cursorCodec, query.Cursor, query.Sort, fingerprint)
 		if err != nil {
 			return eventapplication.MicroEventPageDTO{}, err
 		}
@@ -379,7 +380,7 @@ ORDER BY relevance.score DESC NULLS LAST,event.event_started_at DESC,event.id DE
 		if query.Sort == "relevance" && last.RelevanceScore != nil {
 			next.HasRelevance, next.RelevanceScore = true, *last.RelevanceScore
 		}
-		page.NextCursor, err = encodeMicroEventListCursor(next)
+		page.NextCursor, err = encodeMicroEventListCursor(repository.cursorCodec, next)
 		if err != nil {
 			return eventapplication.MicroEventPageDTO{}, fmt.Errorf("encode micro-event cursor: %w", err)
 		}

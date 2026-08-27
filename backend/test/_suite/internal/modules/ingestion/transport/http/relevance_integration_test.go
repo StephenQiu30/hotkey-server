@@ -13,6 +13,7 @@ import (
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	"github.com/gin-gonic/gin"
 )
 
@@ -49,7 +50,7 @@ func TestPlan009RelevanceRoutesPostgresIntegration(t *testing.T) {
 		t.Fatalf("NewRelevanceAPIService(): %v", err)
 	}
 	router := gin.New()
-	RegisterRelevanceRoutes(router, service, relevanceIntegrationAuthenticator{userID: actorID, role: httptransport.RoleAdmin})
+	RegisterRelevanceRoutesWithCursorCodec(router, service, relevanceIntegrationAuthenticator{userID: actorID, role: httptransport.RoleAdmin}, pagination.NewTestCodec("relevance-integration"))
 
 	list := performRelevanceRequest(router, stdhttp.MethodGet, fmt.Sprintf("/api/v1/monitors/%d/matches?limit=1", monitorID), "", "admin")
 	if list.Code != stdhttp.StatusOK {

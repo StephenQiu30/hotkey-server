@@ -6,7 +6,12 @@ import (
 	"time"
 
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 )
+
+func microEventTestCursorCodec() *pagination.Codec {
+	return pagination.NewTestCodec("micro-event-cursor")
+}
 
 func TestMicroEventListCursorFreezesRankingAndRejectsChangedQuery(t *testing.T) {
 	query := eventapplication.MicroEventListQuery{
@@ -21,18 +26,26 @@ func TestMicroEventListCursorFreezesRankingAndRejectsChangedQuery(t *testing.T) 
 		HeatWindowEnd:  time.Date(2026, time.August, 12, 7, 59, 0, 0, time.UTC),
 		EventStartedAt: time.Date(2026, time.August, 12, 7, 0, 0, 0, time.UTC), ID: 17,
 	}
-	encoded, err := encodeMicroEventListCursor(cursor)
+	codec := microEventTestCursorCodec()
+	encoded, err := encodeMicroEventListCursor(codec, cursor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := decodeMicroEventListCursor(encoded, "heat", filter)
+	decoded, err := decodeMicroEventListCursor(codec, encoded, "heat", filter)
 	if err != nil || decoded.ID != cursor.ID || decoded.HeatScore != cursor.HeatScore || !decoded.AsOf.Equal(cursor.AsOf) {
 		t.Fatalf("decoded cursor = %#v / %v", decoded, err)
+	}
+	tampered := "A" + encoded[1:]
+	if encoded[0] == 'A' {
+		tampered = "B" + encoded[1:]
+	}
+	if _, err := decodeMicroEventListCursor(codec, tampered, "heat", filter); !errors.Is(err, eventapplication.ErrInvalidMicroEventQuery) {
+		t.Fatalf("tampered cursor error = %v", err)
 	}
 	changedQuery := query
 	changedQuery.SourceTypes = []string{"hacker_news"}
 	for _, mismatch := range []struct{ sort, filter string }{{"latest", filter}, {"heat", microEventFilterFingerprint(changedQuery)}} {
-		if _, err := decodeMicroEventListCursor(encoded, mismatch.sort, mismatch.filter); !errors.Is(err, eventapplication.ErrInvalidMicroEventQuery) {
+		if _, err := decodeMicroEventListCursor(codec, encoded, mismatch.sort, mismatch.filter); !errors.Is(err, eventapplication.ErrInvalidMicroEventQuery) {
 			t.Fatalf("mismatched cursor error = %v", err)
 		}
 	}
@@ -40,14 +53,15 @@ func TestMicroEventListCursorFreezesRankingAndRejectsChangedQuery(t *testing.T) 
 
 func TestMicroEventListCursorRejectsMalformedHeatTuple(t *testing.T) {
 	filter := microEventFilterFingerprint(eventapplication.MicroEventListQuery{Statuses: []string{"active"}})
-	encoded, err := encodeMicroEventListCursor(microEventListCursor{
+	codec := microEventTestCursorCodec()
+	encoded, err := encodeMicroEventListCursor(codec, microEventListCursor{
 		Sort: "heat", Filter: filter, AsOf: time.Now().UTC(), HasHeat: false,
 		HeatScore: 42, EventStartedAt: time.Now().UTC(), ID: 3,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := decodeMicroEventListCursor(encoded, "heat", filter); !errors.Is(err, eventapplication.ErrInvalidMicroEventQuery) {
+	if _, err := decodeMicroEventListCursor(codec, encoded, "heat", filter); !errors.Is(err, eventapplication.ErrInvalidMicroEventQuery) {
 		t.Fatalf("malformed tuple error = %v", err)
 	}
 }
@@ -59,11 +73,12 @@ func TestMicroEventListCursorSupportsRelevanceTuple(t *testing.T) {
 		HasRelevance: true, RelevanceScore: .83,
 		EventStartedAt: time.Date(2026, 8, 12, 7, 0, 0, 0, time.UTC), ID: 23,
 	}
-	encoded, err := encodeMicroEventListCursor(cursor)
+	codec := microEventTestCursorCodec()
+	encoded, err := encodeMicroEventListCursor(codec, cursor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := decodeMicroEventListCursor(encoded, "relevance", filter)
+	decoded, err := decodeMicroEventListCursor(codec, encoded, "relevance", filter)
 	if err != nil || !decoded.HasRelevance || decoded.RelevanceScore != cursor.RelevanceScore {
 		t.Fatalf("decoded cursor = %#v / %v", decoded, err)
 	}

@@ -21,6 +21,7 @@ const (
 	cursorVersion            = 2
 	maximumCursorTTL         = 24 * time.Hour
 	maximumEncodedCursorSize = 2048
+	maximumSealedPayloadSize = 8192
 	maximumFilterSize        = 256
 	cursorSigningContext     = "hotkey-pagination-cursor-v2"
 	// DefaultTTL bounds ordinary P0 list traversals without making cursors durable credentials.
@@ -28,10 +29,11 @@ const (
 )
 
 var (
-	ErrInvalidCursor  = errors.New("invalid cursor")
-	ErrStaleCursor    = errors.New("cursor does not match query")
-	ErrExpiredCursor  = errors.New("cursor expired")
-	cursorSortPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+	ErrInvalidCursor     = errors.New("invalid cursor")
+	ErrStaleCursor       = errors.New("cursor does not match query")
+	ErrExpiredCursor     = errors.New("cursor expired")
+	cursorSortPattern    = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+	cursorPurposePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 )
 
 type Cursor struct {
@@ -52,6 +54,14 @@ type Codec struct {
 	key []byte
 	ttl time.Duration
 	now func() time.Time
+}
+
+type sealedPayload struct {
+	Version   int             `json:"v"`
+	Purpose   string          `json:"p"`
+	IssuedAt  time.Time       `json:"iat"`
+	ExpiresAt time.Time       `json:"exp"`
+	Value     json.RawMessage `json:"value"`
 }
 
 func NewCodec(secret string, ttl time.Duration) (*Codec, error) {
@@ -99,6 +109,101 @@ func (codec *Codec) Encode(sort string, descending bool, filterFingerprint strin
 		return "", fmt.Errorf("%w: encoded cursor is too large", ErrInvalidCursor)
 	}
 	return encoded, nil
+}
+
+// Seal signs a bounded typed cursor payload for list contracts that need a
+// compound immutable ordering tuple instead of the common ID-only Cursor.
+func (codec *Codec) Seal(purpose string, value any) (string, error) {
+	if codec == nil || len(codec.key) != sha256.Size || codec.ttl <= 0 || !cursorPurposePattern.MatchString(purpose) || value == nil {
+		return "", ErrInvalidCursor
+	}
+	valueJSON, err := json.Marshal(value)
+	if err != nil || len(valueJSON) == 0 || bytes.Equal(valueJSON, []byte("null")) || len(valueJSON) > maximumSealedPayloadSize/2 {
+		return "", ErrInvalidCursor
+	}
+	now := codec.currentTime()
+	payload, err := json.Marshal(sealedPayload{
+		Version: 1, Purpose: purpose, IssuedAt: now, ExpiresAt: now.Add(codec.ttl), Value: valueJSON,
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode sealed cursor: %w", err)
+	}
+	return codec.signPayload(payload, maximumSealedPayloadSize)
+}
+
+// Open verifies signature, purpose and expiry before decoding a typed cursor
+// boundary. It never decodes attacker-controlled JSON before MAC validation.
+func (codec *Codec) Open(encoded, purpose string, target any) error {
+	if codec == nil || len(codec.key) != sha256.Size || !cursorPurposePattern.MatchString(purpose) || target == nil {
+		return ErrInvalidCursor
+	}
+	payload, err := codec.verifyPayload(encoded, maximumSealedPayloadSize)
+	if err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	var envelope sealedPayload
+	if err := decoder.Decode(&envelope); err != nil || ensureCursorJSONEOF(decoder) != nil {
+		return ErrInvalidCursor
+	}
+	now := codec.currentTime()
+	if envelope.Version != 1 || !cursorPurposePattern.MatchString(envelope.Purpose) || envelope.IssuedAt.IsZero() ||
+		envelope.ExpiresAt.IsZero() || !envelope.ExpiresAt.After(envelope.IssuedAt) ||
+		envelope.ExpiresAt.Sub(envelope.IssuedAt) > maximumCursorTTL || envelope.IssuedAt.After(now.Add(time.Minute)) ||
+		len(envelope.Value) == 0 || bytes.Equal(envelope.Value, []byte("null")) {
+		return ErrInvalidCursor
+	}
+	if !envelope.ExpiresAt.After(now) {
+		return ErrExpiredCursor
+	}
+	if envelope.Purpose != purpose {
+		return ErrStaleCursor
+	}
+	valueDecoder := json.NewDecoder(bytes.NewReader(envelope.Value))
+	valueDecoder.DisallowUnknownFields()
+	if err := valueDecoder.Decode(target); err != nil || ensureCursorJSONEOF(valueDecoder) != nil {
+		return ErrInvalidCursor
+	}
+	return nil
+}
+
+func (codec *Codec) signPayload(payload []byte, maximumSize int) (string, error) {
+	if len(payload) == 0 || len(payload) > maximumSize {
+		return "", ErrInvalidCursor
+	}
+	payloadPart := base64.RawURLEncoding.EncodeToString(payload)
+	signature := hmac.New(sha256.New, codec.key)
+	_, _ = signature.Write([]byte(payloadPart))
+	encoded := payloadPart + "." + base64.RawURLEncoding.EncodeToString(signature.Sum(nil))
+	if len(encoded) > maximumSize {
+		return "", ErrInvalidCursor
+	}
+	return encoded, nil
+}
+
+func (codec *Codec) verifyPayload(encoded string, maximumSize int) ([]byte, error) {
+	if encoded == "" || len(encoded) > maximumSize || strings.TrimSpace(encoded) != encoded {
+		return nil, ErrInvalidCursor
+	}
+	parts := strings.Split(encoded, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, ErrInvalidCursor
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || len(signature) != sha256.Size {
+		return nil, ErrInvalidCursor
+	}
+	want := hmac.New(sha256.New, codec.key)
+	_, _ = want.Write([]byte(parts[0]))
+	if !hmac.Equal(signature, want.Sum(nil)) {
+		return nil, ErrInvalidCursor
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil || len(payload) == 0 || len(payload) > maximumSize {
+		return nil, ErrInvalidCursor
+	}
+	return payload, nil
 }
 
 func (codec *Codec) Decode(encoded, sort string, descending bool, filterFingerprint string) (Cursor, error) {

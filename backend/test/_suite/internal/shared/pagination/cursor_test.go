@@ -114,3 +114,31 @@ func TestCodecRejectsUnsafeConstructionAndUnboundedCursorFields(t *testing.T) {
 		t.Fatalf("empty cursor = %#v / %v", cursor, err)
 	}
 }
+
+func TestCodecSealsTypedPayloadWithPurposeAndExpiry(t *testing.T) {
+	now := time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC)
+	codec, err := NewCodec(testCursorSecret, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	codec.now = func() time.Time { return now }
+	type boundary struct {
+		Score float64 `json:"score"`
+		ID    int64   `json:"id"`
+	}
+	encoded, err := codec.Seal("micro_event_list", boundary{Score: 91.5, ID: 42})
+	if err != nil {
+		t.Fatalf("Seal() error = %v", err)
+	}
+	var decoded boundary
+	if err := codec.Open(encoded, "micro_event_list", &decoded); err != nil || decoded != (boundary{Score: 91.5, ID: 42}) {
+		t.Fatalf("Open() = %#v / %v", decoded, err)
+	}
+	if err := codec.Open(encoded, "relevance_list", &decoded); !errors.Is(err, ErrStaleCursor) {
+		t.Fatalf("wrong-purpose payload error = %v", err)
+	}
+	codec.now = func() time.Time { return now.Add(time.Minute) }
+	if err := codec.Open(encoded, "micro_event_list", &decoded); !errors.Is(err, ErrExpiredCursor) {
+		t.Fatalf("expired payload error = %v", err)
+	}
+}

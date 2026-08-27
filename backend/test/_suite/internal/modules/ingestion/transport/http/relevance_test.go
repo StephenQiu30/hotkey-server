@@ -7,11 +7,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	"github.com/gin-gonic/gin"
 )
 
@@ -123,6 +125,44 @@ func TestPlan009RelevanceRoutes(t *testing.T) {
 	}
 }
 
+func TestRelevanceCursorsRejectTamperingAndCrossQueryReuse(t *testing.T) {
+	codec := pagination.NewTestCodec("relevance-query-binding")
+	accepted := ingestiondomain.MatchDecisionAccepted
+	matchCursor, err := encodeMatchCursor(codec, 7, &accepted, &ingestiondomain.RelevanceSnapshotCursor{FinalScore: 91, ID: 42})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded, err := decodeMatchCursor(codec, matchCursor, 7, &accepted); err != nil || decoded.ID != 42 {
+		t.Fatalf("decode bound match cursor = %#v / %v", decoded, err)
+	}
+	if _, err := decodeMatchCursor(codec, matchCursor, 8, &accepted); err == nil {
+		t.Fatal("match cursor crossed monitor scope")
+	}
+	rejected := ingestiondomain.MatchDecisionRejected
+	if _, err := decodeMatchCursor(codec, matchCursor, 7, &rejected); err == nil {
+		t.Fatal("match cursor crossed decision filter")
+	}
+	tampered := "A" + matchCursor[1:]
+	if matchCursor[0] == 'A' {
+		tampered = "B" + matchCursor[1:]
+	}
+	if _, err := decodeMatchCursor(codec, tampered, 7, &accepted); err == nil {
+		t.Fatal("tampered match cursor was accepted")
+	}
+
+	pending := ingestiondomain.SuggestionStatusPending
+	suggestionCursor, err := encodeSuggestionCursor(codec, 7, &pending, &ingestiondomain.RelevanceSuggestionCursor{
+		UpdatedAt: time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC), ID: 9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved := ingestiondomain.SuggestionStatusApproved
+	if _, err := decodeSuggestionCursor(codec, suggestionCursor, 7, &approved); err == nil {
+		t.Fatal("suggestion cursor crossed status filter")
+	}
+}
+
 type relevanceHTTPStub struct {
 	snapshot    ingestiondomain.RelevanceSnapshot
 	content     ingestiondomain.Content
@@ -183,7 +223,7 @@ func plan009HTTPContent() ingestiondomain.Content {
 
 func newRelevanceRouter(service relevanceHTTPService, role httptransport.Role) *gin.Engine {
 	router := gin.New()
-	RegisterRelevanceRoutes(router, service, contentAuthenticator{role: role})
+	RegisterRelevanceRoutesWithCursorCodec(router, service, contentAuthenticator{role: role}, pagination.NewTestCodec("relevance-router"))
 	return router
 }
 func performRelevanceRequest(router *gin.Engine, method, path, body, token string) *httptest.ResponseRecorder {

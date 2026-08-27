@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"strings"
 
+	eventpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/infrastructure/postgres"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/postgres"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
@@ -40,4 +41,8 @@ func newContentRepository(runtime *database.Runtime, codec *pagination.Codec) *i
 
 func newMonitorRepository(runtime *database.Runtime, codec *pagination.Codec) *monitorpostgres.Repository {
 	return monitorpostgres.NewRepositoryWithCursorCodec(runtime, codec)
+}
+
+func newMicroEventQueryRepository(runtime *database.Runtime, codec *pagination.Codec) (*eventpostgres.MicroEventQueryPostgresRepository, error) {
+	return eventpostgres.NewMicroEventQueryPostgresRepositoryWithCursorCodec(runtime, codec)
 }
