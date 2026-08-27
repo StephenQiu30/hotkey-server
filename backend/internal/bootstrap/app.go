@@ -775,6 +775,9 @@ func Run(ctx context.Context, args []string) error {
 	if len(args) > 0 && args[0] == "quality" {
 		return runDecisionQualityCommand(ctx, cfg, args[1:], os.Stdout)
 	}
+	if len(args) > 0 && args[0] == "agent-quality" {
+		return runAgentQualityCommand(ctx, cfg, args[1:], os.Stdout)
+	}
 	if len(args) > 0 && args[0] == "maintenance" {
 		return runMaintenanceCommand(ctx, cfg, args[1:], os.Stdout)
 	}

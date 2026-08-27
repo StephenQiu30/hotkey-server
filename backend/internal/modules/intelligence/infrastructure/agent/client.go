@@ -247,7 +247,9 @@ func (client *Client) GenerateStructured(ctx context.Context, request intelligen
 		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIOutputInvalid)
 	}
 	return intelligencedomain.StructuredResponse{
-		ModelVersion: request.ModelVersion,
+		// The comparison and persistence layers must bind to what actually ran,
+		// not the caller's requested label. A mismatch is a stable profile error.
+		ModelVersion: response.Runtime.Version,
 		JSON:         append(json.RawMessage(nil), response.Suggestions[0].Value...),
 	}, nil
 }

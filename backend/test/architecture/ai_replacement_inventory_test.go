@@ -1,6 +1,7 @@
 package architecture_test
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -110,6 +111,69 @@ func TestAIReplacementInventoryRecordsPythonAgentMigrationBoundary(t *testing.T)
 	for _, forbidden := range []string{"PrimaryOutputSHA256", "ShadowOutputSHA256", "AuthToken", "Prompt", "StructuredResult"} {
 		if strings.Contains(observerBlock, forbidden) {
 			t.Fatalf("Agent Shadow bootstrap logs forbidden high-cardinality or secret-bearing field %q", forbidden)
+		}
+	}
+}
+
+func TestAgentQualityFrameworkCannotMasqueradeAsLiveApproval(t *testing.T) {
+	root := repositoryRoot(t)
+	repository := filepath.Clean(filepath.Join(root, ".."))
+	bootstrap := readRepositoryFile(t, root, "internal/bootstrap/app.go")
+	command := readRepositoryFile(t, root, "internal/bootstrap/agent_quality_command.go")
+	evaluator := readRepositoryFile(t, root, "internal/modules/intelligence/application/shadow_quality.go")
+	fixture := readRepositoryFile(t, root, "test/fixtures/agent-shadow/v1/golden-dataset.json")
+	plan := readRepositoryFile(t, repository, "docs/plans/003-智能研判事件热度与人工治理计划.md")
+
+	if !strings.Contains(bootstrap, `args[0] == "agent-quality"`) || !strings.Contains(bootstrap, "runAgentQualityCommand") {
+		t.Fatal("trusted Agent quality command is not registered")
+	}
+	for _, required := range []string{"ShadowQualityStatusCandidate", "ApprovalReady: false", "quality_thresholds_not_approved", "human_review_incomplete"} {
+		if !strings.Contains(evaluator, required) {
+			t.Fatalf("Agent quality evaluator is missing non-approval guard %q", required)
+		}
+	}
+	if strings.Contains(command, `"activate"`) || strings.Contains(command, `"live"`) {
+		t.Fatal("candidate quality command unexpectedly exposes activation or Live switching")
+	}
+	for _, required := range []string{
+		"backend/test/fixtures/agent-shadow/v1/golden-dataset.json",
+		"backend/internal/modules/intelligence/application/shadow_quality.go",
+		"candidate",
+		"approval_ready=false",
+		"不能勾选 `CHK-003-G5-001`",
+	} {
+		if !strings.Contains(plan, required) {
+			t.Fatalf("S05 T02 evidence is missing %q", required)
+		}
+	}
+
+	var dataset struct {
+		AnnotatorCount int `json:"annotator_count"`
+		Samples        []struct {
+			TaskType      string `json:"task_type"`
+			SchemaVersion string `json:"schema_version"`
+		} `json:"samples"`
+	}
+	if err := json.Unmarshal([]byte(fixture), &dataset); err != nil {
+		t.Fatalf("decode Agent Golden fixture: %v", err)
+	}
+	if dataset.AnnotatorCount != 0 || len(dataset.Samples) != 5 {
+		t.Fatalf("unreviewed fixed fixture = %#v", dataset)
+	}
+	wanted := map[string]bool{
+		"term_expansion/v1": false, "relevance_review/v1": false, "event_cluster/v1": false,
+		"event_summary/v1": false, "entity_claim_extraction/v2": false,
+	}
+	for _, sample := range dataset.Samples {
+		key := sample.TaskType + "/" + sample.SchemaVersion
+		if _, ok := wanted[key]; !ok {
+			t.Fatalf("unapproved Agent Golden contract %q", key)
+		}
+		wanted[key] = true
+	}
+	for contract, covered := range wanted {
+		if !covered {
+			t.Fatalf("Agent Golden fixture is missing %s", contract)
 		}
 	}
 }

@@ -1,0 +1,250 @@
+package bootstrap
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"math"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	intelligenceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/application"
+	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
+	intelligenceagent "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/agent"
+	intelligenceprovider "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/provider"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/config"
+	"go.uber.org/zap"
+)
+
+const maximumAgentQualityDatasetBytes = 8 << 20
+
+type agentQualityCommandOptions struct {
+	DatasetPath                       string
+	BaselineRuntime                   string
+	BaselineModelName                 string
+	BaselineModelVersion              string
+	AgentModelName                    string
+	AgentModelVersion                 string
+	CodexExecutable                   string
+	Timeout                           time.Duration
+	BaselineInputUSDPerMillionTokens  float64
+	BaselineOutputUSDPerMillionTokens float64
+}
+
+type agentQualityTrackBuilder func(context.Context, config.Config, agentQualityCommandOptions) (intelligenceapplication.ShadowQualityTrack, intelligenceapplication.ShadowQualityTrack, error)
+
+type agentQualityDatasetRequest struct {
+	DatasetVersion            string                      `json:"dataset_version"`
+	AnnotationProtocolVersion string                      `json:"annotation_protocol_version"`
+	AnnotatorCount            int                         `json:"annotator_count"`
+	Samples                   []agentQualitySampleRequest `json:"samples"`
+}
+
+type agentQualitySampleRequest struct {
+	SampleID         string                             `json:"sample_id"`
+	TaskType         intelligencedomain.TaskType        `json:"task_type"`
+	SchemaVersion    string                             `json:"schema_version"`
+	Input            json.RawMessage                    `json:"input"`
+	ExpectedEvidence []agentQualityEvidenceLabelRequest `json:"expected_evidence"`
+	HumanReviews     []agentQualityHumanReviewRequest   `json:"human_reviews"`
+}
+
+type agentQualityEvidenceLabelRequest struct {
+	ContentID  int64  `json:"content_id,omitempty"`
+	Locator    string `json:"locator,omitempty"`
+	ExactQuote string `json:"exact_quote,omitempty"`
+}
+
+type agentQualityHumanReviewRequest struct {
+	Track         string `json:"track"`
+	OutputSHA256  string `json:"output_sha256"`
+	Accepted      bool   `json:"accepted"`
+	ReviewerCount int    `json:"reviewer_count"`
+}
+
+func runAgentQualityCommand(ctx context.Context, cfg config.Config, args []string, output io.Writer) error {
+	return executeAgentQualityCommand(ctx, cfg, args, output, buildAgentQualityTracks)
+}
+
+func executeAgentQualityCommand(ctx context.Context, cfg config.Config, args []string, output io.Writer, builder agentQualityTrackBuilder) error {
+	if len(args) == 0 || args[0] != "evaluate" {
+		return errors.New("agent-quality command is required: expected evaluate")
+	}
+	flags := flag.NewFlagSet("hotkey agent-quality evaluate", flag.ContinueOnError)
+	flags.SetOutput(new(discardWriter))
+	options := agentQualityCommandOptions{}
+	flags.StringVar(&options.DatasetPath, "dataset", "", "fixed versioned Golden dataset JSON")
+	flags.StringVar(&options.BaselineRuntime, "baseline-runtime", "", "openai, deepseek, ollama, or codex")
+	flags.StringVar(&options.BaselineModelName, "baseline-model-name", "", "baseline provider model name")
+	flags.StringVar(&options.BaselineModelVersion, "baseline-model-version", "", "baseline provider model version")
+	flags.StringVar(&options.AgentModelName, "agent-model-name", "", "Python Agent model name")
+	flags.StringVar(&options.AgentModelVersion, "agent-model-version", "", "Python Agent runtime version")
+	flags.StringVar(&options.CodexExecutable, "codex-executable", "", "absolute trusted Codex executable path")
+	flags.DurationVar(&options.Timeout, "timeout", time.Minute, "per-track sample timeout")
+	flags.Float64Var(&options.BaselineInputUSDPerMillionTokens, "baseline-input-usd-per-million", -1, "optional baseline input-token price")
+	flags.Float64Var(&options.BaselineOutputUSDPerMillionTokens, "baseline-output-usd-per-million", -1, "optional baseline output-token price")
+	if err := flags.Parse(args[1:]); err != nil {
+		return fmt.Errorf("parse agent-quality evaluate flags: %w", err)
+	}
+	options.DatasetPath = strings.TrimSpace(options.DatasetPath)
+	options.BaselineRuntime = strings.TrimSpace(options.BaselineRuntime)
+	options.BaselineModelName = strings.TrimSpace(options.BaselineModelName)
+	options.BaselineModelVersion = strings.TrimSpace(options.BaselineModelVersion)
+	options.AgentModelName = strings.TrimSpace(options.AgentModelName)
+	options.AgentModelVersion = strings.TrimSpace(options.AgentModelVersion)
+	options.CodexExecutable = strings.TrimSpace(options.CodexExecutable)
+	if err := validateAgentQualityCommandOptions(options, flags.NArg(), output, builder); err != nil {
+		return err
+	}
+	dataset, err := readAgentQualityDataset(options.DatasetPath)
+	if err != nil {
+		return err
+	}
+	baseline, agent, err := builder(ctx, cfg, options)
+	if err != nil {
+		return err
+	}
+	schemas, err := intelligenceapplication.NewSchemaRegistry()
+	if err != nil {
+		return errors.New("initialize Agent quality schema registry")
+	}
+	evaluator, err := intelligenceapplication.NewShadowQualityEvaluator(schemas, intelligenceapplication.ShadowQualityEvaluatorOptions{Timeout: options.Timeout})
+	if err != nil {
+		return err
+	}
+	report, err := evaluator.Evaluate(ctx, dataset, baseline, agent)
+	if err != nil {
+		return err
+	}
+	encoder := json.NewEncoder(output)
+	encoder.SetEscapeHTML(true)
+	return encoder.Encode(report)
+}
+
+func validateAgentQualityCommandOptions(options agentQualityCommandOptions, positionalArguments int, output io.Writer, builder agentQualityTrackBuilder) error {
+	if positionalArguments != 0 || output == nil || builder == nil || options.DatasetPath == "" ||
+		options.BaselineModelName == "" || options.BaselineModelVersion == "" || options.AgentModelName == "" || options.AgentModelVersion == "" ||
+		options.Timeout <= 0 || options.Timeout > 5*time.Minute || !validAgentQualityRuntime(options.BaselineRuntime) {
+		return errors.New("agent-quality evaluate requires a dataset, approved runtimes, model identities, and timeout up to 5m")
+	}
+	if options.BaselineRuntime == "codex" {
+		if options.CodexExecutable == "" || !filepath.IsAbs(options.CodexExecutable) {
+			return errors.New("agent-quality Codex baseline requires an absolute --codex-executable")
+		}
+	} else if options.CodexExecutable != "" {
+		return errors.New("--codex-executable is valid only for the Codex baseline")
+	}
+	inputPriceSet := options.BaselineInputUSDPerMillionTokens >= 0
+	outputPriceSet := options.BaselineOutputUSDPerMillionTokens >= 0
+	if inputPriceSet != outputPriceSet || options.BaselineInputUSDPerMillionTokens < 0 && options.BaselineInputUSDPerMillionTokens != -1 ||
+		options.BaselineOutputUSDPerMillionTokens < 0 && options.BaselineOutputUSDPerMillionTokens != -1 ||
+		math.IsNaN(options.BaselineInputUSDPerMillionTokens) || math.IsInf(options.BaselineInputUSDPerMillionTokens, 0) ||
+		math.IsNaN(options.BaselineOutputUSDPerMillionTokens) || math.IsInf(options.BaselineOutputUSDPerMillionTokens, 0) ||
+		options.BaselineInputUSDPerMillionTokens > 1_000_000 || options.BaselineOutputUSDPerMillionTokens > 1_000_000 {
+		return errors.New("baseline pricing must provide two finite non-negative values together")
+	}
+	return nil
+}
+
+func validAgentQualityRuntime(runtime string) bool {
+	return runtime == string(intelligencedomain.ProviderOpenAI) || runtime == string(intelligencedomain.ProviderDeepSeek) ||
+		runtime == string(intelligencedomain.ProviderOllama) || runtime == "codex"
+}
+
+func readAgentQualityDataset(path string) (intelligenceapplication.ShadowQualityDataset, error) {
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		return intelligenceapplication.ShadowQualityDataset{}, fmt.Errorf("open Agent quality dataset: %w", err)
+	}
+	if len(encoded) > maximumAgentQualityDatasetBytes {
+		return intelligenceapplication.ShadowQualityDataset{}, errors.New("Agent quality dataset exceeds 8 MiB")
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(encoded)))
+	decoder.DisallowUnknownFields()
+	var request agentQualityDatasetRequest
+	if err := decoder.Decode(&request); err != nil {
+		return intelligenceapplication.ShadowQualityDataset{}, fmt.Errorf("decode Agent quality dataset: %w", err)
+	}
+	if err := ensureRelevanceDatasetEOF(decoder); err != nil {
+		return intelligenceapplication.ShadowQualityDataset{}, err
+	}
+	digest := sha256.Sum256(encoded)
+	dataset := intelligenceapplication.ShadowQualityDataset{
+		DatasetVersion: request.DatasetVersion, DatasetSHA256: hex.EncodeToString(digest[:]),
+		AnnotationProtocolVersion: request.AnnotationProtocolVersion, AnnotatorCount: request.AnnotatorCount,
+		Samples: make([]intelligenceapplication.ShadowQualitySample, len(request.Samples)),
+	}
+	for sampleIndex, sample := range request.Samples {
+		mapped := intelligenceapplication.ShadowQualitySample{
+			SampleID: sample.SampleID, TaskType: sample.TaskType, SchemaVersion: sample.SchemaVersion,
+			Input:            append(json.RawMessage(nil), sample.Input...),
+			ExpectedEvidence: make([]intelligenceapplication.ShadowQualityEvidenceLabel, len(sample.ExpectedEvidence)),
+			HumanReviews:     make([]intelligenceapplication.ShadowQualityHumanReview, len(sample.HumanReviews)),
+		}
+		for evidenceIndex, evidence := range sample.ExpectedEvidence {
+			mapped.ExpectedEvidence[evidenceIndex] = intelligenceapplication.ShadowQualityEvidenceLabel{
+				ContentID: evidence.ContentID, Locator: evidence.Locator, ExactQuote: evidence.ExactQuote,
+			}
+		}
+		for reviewIndex, review := range sample.HumanReviews {
+			mapped.HumanReviews[reviewIndex] = intelligenceapplication.ShadowQualityHumanReview{
+				Track: review.Track, OutputSHA256: review.OutputSHA256, Accepted: review.Accepted, ReviewerCount: review.ReviewerCount,
+			}
+		}
+		dataset.Samples[sampleIndex] = mapped
+	}
+	return dataset, nil
+}
+
+func buildAgentQualityTracks(_ context.Context, cfg config.Config, options agentQualityCommandOptions) (intelligenceapplication.ShadowQualityTrack, intelligenceapplication.ShadowQualityTrack, error) {
+	var baselineProvider intelligencedomain.Provider
+	if options.BaselineRuntime == "codex" {
+		adapter, err := intelligenceprovider.NewCodexCLIAdapterWithOptions(intelligenceprovider.CodexCLIAdapterOptions{
+			Executable: options.CodexExecutable, WorkspaceRoot: os.TempDir(), Timeout: options.Timeout,
+			MaxOutputBytes: 1 << 20, MaxConcurrent: 1,
+		})
+		if err != nil {
+			return intelligenceapplication.ShadowQualityTrack{}, intelligenceapplication.ShadowQualityTrack{}, errors.New("configure trusted Codex baseline")
+		}
+		baselineProvider, err = intelligenceprovider.NewCodexCLIProvider(adapter)
+		if err != nil {
+			return intelligenceapplication.ShadowQualityTrack{}, intelligenceapplication.ShadowQualityTrack{}, errors.New("configure trusted Codex baseline")
+		}
+	} else {
+		registry := newAIProviderRegistry(cfg, zap.NewNop())
+		var found bool
+		baselineProvider, found = registry.Resolve(intelligencedomain.ProviderName(options.BaselineRuntime))
+		if !found {
+			return intelligenceapplication.ShadowQualityTrack{}, intelligenceapplication.ShadowQualityTrack{}, errors.New("configured baseline provider is unavailable")
+		}
+	}
+	agentProvider, err := intelligenceagent.NewClient(intelligenceagent.Options{
+		BaseURL: cfg.Agent.URL, AuthToken: cfg.Agent.AuthToken, MaxResponseBytes: cfg.Agent.MaxResponseBytes,
+	})
+	if err != nil {
+		return intelligenceapplication.ShadowQualityTrack{}, intelligenceapplication.ShadowQualityTrack{}, errors.New("configured Python Agent is unavailable")
+	}
+	baseline := intelligenceapplication.ShadowQualityTrack{
+		Name: intelligenceapplication.ShadowQualityTrackBaseline, RuntimeName: options.BaselineRuntime,
+		ModelName: options.BaselineModelName, ModelVersion: options.BaselineModelVersion,
+		Provider: baselineProvider, UsageAvailable: true,
+	}
+	if options.BaselineInputUSDPerMillionTokens >= 0 {
+		baseline.Pricing = &intelligenceapplication.ShadowQualityPricing{
+			InputUSDPerMillion: options.BaselineInputUSDPerMillionTokens, OutputUSDPerMillion: options.BaselineOutputUSDPerMillionTokens,
+		}
+	}
+	agent := intelligenceapplication.ShadowQualityTrack{
+		Name: intelligenceapplication.ShadowQualityTrackAgent, RuntimeName: "hotkey-agent",
+		ModelName: options.AgentModelName, ModelVersion: options.AgentModelVersion,
+		Provider: agentProvider, RuntimeDegraded: options.AgentModelVersion == intelligenceagent.DeterministicRuntimeVersion,
+	}
+	return baseline, agent, nil
+}

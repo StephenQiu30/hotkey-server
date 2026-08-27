@@ -199,11 +199,11 @@ func TestClientAdaptsStructuredRequestsToVersionedAgentPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	response, err := client.GenerateStructured(context.Background(), intelligencedomain.StructuredRequest{
-		ModelName: "agent", ModelVersion: "deterministic.v1", TaskType: intelligencedomain.TaskTypeEventSummary,
+		ModelName: "agent", ModelVersion: "caller-declared-v1", TaskType: intelligencedomain.TaskTypeEventSummary,
 		SchemaName: "event-summary-output-v1", SchemaVersion: "v1", Instruction: "return JSON",
 		Schema: json.RawMessage(`{"type":"object"}`), Input: json.RawMessage(`{"evidence":[{"content_id":17,"locator":"body:1","excerpt":"trusted"}]}`),
 	})
-	if err != nil || string(response.JSON) != `{"title_zh":"待分析事件","sentences":[]}` || response.ModelVersion != "deterministic.v1" {
+	if err != nil || string(response.JSON) != `{"title_zh":"待分析事件","sentences":[]}` || response.ModelVersion != DeterministicRuntimeVersion {
 		t.Fatalf("GenerateStructured() = %#v / %v", response, err)
 	}
 }

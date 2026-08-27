@@ -1,0 +1,94 @@
+{
+  "dataset_version": "agent-shadow-golden-v1",
+  "annotation_protocol_version": "pending-dual-review-v1",
+  "annotator_count": 0,
+  "samples": [
+    {
+      "sample_id": "monitor-compile-001",
+      "task_type": "term_expansion",
+      "schema_version": "v1",
+      "input": {
+        "objective": "Track the synthetic launch",
+        "clauses": [
+          {"operator": "must", "field": "term", "value": "Synthetic launch"}
+        ],
+        "entities": [],
+        "examples": [],
+        "existing_candidates": [],
+        "output_languages": ["en"]
+      },
+      "expected_evidence": [],
+      "human_reviews": []
+    },
+    {
+      "sample_id": "relevance-001",
+      "task_type": "relevance_review",
+      "schema_version": "v1",
+      "input": {
+        "content_excerpt": "Synthetic launch evidence.",
+        "content_language": "en",
+        "monitor_intent": "Track the synthetic launch",
+        "scoring_version": "relevance-v1",
+        "scores": {"semantic": 90, "lexical": 90, "entity": 80, "title": 80, "preference": 50},
+        "recall_paths": ["lexical"],
+        "reason_codes": ["lexical_candidate"],
+        "evidence_terms": ["Synthetic launch"]
+      },
+      "expected_evidence": [],
+      "human_reviews": []
+    },
+    {
+      "sample_id": "event-cluster-001",
+      "task_type": "event_cluster",
+      "schema_version": "v1",
+      "input": {
+        "content_family_id": 7,
+        "family_version": 1,
+        "subject_keys": ["synthetic-product"],
+        "action_keys": ["launch"],
+        "location_keys": [],
+        "identifier_keys": ["synthetic-release-1"],
+        "event_started_at": "2026-08-01T00:00:00Z",
+        "candidates": [
+          {"micro_event_id": 41, "event_version": 1, "same_event_score": 0.95, "hard_conflict_reasons": []}
+        ]
+      },
+      "expected_evidence": [],
+      "human_reviews": []
+    },
+    {
+      "sample_id": "event-summary-001",
+      "task_type": "event_summary",
+      "schema_version": "v1",
+      "input": {
+        "event_id": 41,
+        "event_key": "evt-synthetic-41",
+        "evidence": [
+          {"content_id": 11, "locator": "body:0", "excerpt": "Synthetic launch evidence."}
+        ]
+      },
+      "expected_evidence": [
+        {"content_id": 11, "locator": "body:0"}
+      ],
+      "human_reviews": []
+    },
+    {
+      "sample_id": "claim-evidence-001",
+      "task_type": "entity_claim_extraction",
+      "schema_version": "v2",
+      "input": {
+        "event_id": 41,
+        "event_version": 1,
+        "event_key": "evt-synthetic-41",
+        "document_version_id": 71,
+        "plaintext_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "body": "Synthetic launch evidence.",
+        "body_truncated": false
+      },
+      "expected_evidence": [
+        {"exact_quote": "Synthetic launch evidence."}
+      ],
+      "human_reviews": []
+    }
+  ]
+}
