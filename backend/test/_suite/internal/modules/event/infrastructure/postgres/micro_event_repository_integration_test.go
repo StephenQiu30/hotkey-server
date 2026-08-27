@@ -83,11 +83,71 @@ func TestMicroEventRepositoryPersistsCreateJoinReviewAndStableReplay(t *testing.
 	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM notification_outbox_events`).Scan(&outboxEvents); err != nil {
 		t.Fatal(err)
 	}
-	if decisions != 3 || members != 2 || outboxEvents != 3 {
-		t.Fatalf("decisions/members/outbox = %d/%d/%d, want 3/2/3", decisions, members, outboxEvents)
+	if decisions != 3 || members != 2 || outboxEvents != 0 {
+		t.Fatalf("decisions/members/outbox = %d/%d/%d, want 3/2/0 before Event Refresh evaluates notifications", decisions, members, outboxEvents)
 	}
 	if _, err := runtime.SQL.Exec(`UPDATE micro_event_membership_decisions SET reason_codes='["changed"]' WHERE id=$1`, created.Decision.ID); err == nil {
 		t.Fatal("append-only membership decision accepted mutation")
+	}
+}
+
+func TestMicroEventRepositoryReusesOneMemberForSyndicatedNearDuplicateAndRepeatedMatches(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	repository, err := NewMicroEventRepository(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := eventapplication.NewMicroEventService(repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	root := seedMicroEventAssignmentFixture(t, runtime, "family-root", "accepted")
+	syndicated := seedMicroEventAssignmentFixture(t, runtime, "family-syndicated", "accepted")
+	nearDuplicate := seedMicroEventAssignmentFixture(t, runtime, "family-near-duplicate", "accepted")
+	moveMicroEventFixtureIntoFamily(t, runtime, syndicated, root, "syndicated_from")
+	moveMicroEventFixtureIntoFamily(t, runtime, nearDuplicate, root, "near_duplicate")
+
+	created, err := service.Assign(ctx, eventapplication.AssignContentFamilyToMicroEventCommand{
+		ContentFamilyID: root.familyID, DocumentMatchDecisionID: root.matchDecisionID,
+		ClusteringProfileVersion: eventapplication.CanonicalMicroEventClusteringProfileVersion,
+	})
+	if err != nil || created.Decision.Action != "create" || created.Event.Version != 1 {
+		t.Fatalf("root assignment=%#v / %v", created, err)
+	}
+	for _, duplicate := range []microEventAssignmentFixture{syndicated, nearDuplicate, syndicated} {
+		replayed, replayErr := service.Assign(ctx, eventapplication.AssignContentFamilyToMicroEventCommand{
+			ContentFamilyID: root.familyID, DocumentMatchDecisionID: duplicate.matchDecisionID,
+			ClusteringProfileVersion: eventapplication.CanonicalMicroEventClusteringProfileVersion,
+		})
+		if replayErr != nil || replayed.Event.ID != created.Event.ID || replayed.Event.Version != created.Event.Version ||
+			replayed.Decision.ID != created.Decision.ID || replayed.Decision.ContentFamilyID != root.familyID {
+			t.Fatalf("family replay for match %d=%#v / %v", duplicate.matchDecisionID, replayed, replayErr)
+		}
+	}
+
+	var events, decisions, members, familyDocuments, legacyEvents, legacyTopics int
+	if err := runtime.SQL.QueryRow(`SELECT
+  (SELECT count(*) FROM micro_events),
+  (SELECT count(*) FROM micro_event_membership_decisions),
+  (SELECT count(*) FROM micro_event_members WHERE active),
+  (SELECT count(*) FROM content_family_members WHERE family_id=$1 AND active),
+  (SELECT count(*) FROM events),
+  (SELECT count(*) FROM topics)`, root.familyID).
+		Scan(&events, &decisions, &members, &familyDocuments, &legacyEvents, &legacyTopics); err != nil {
+		t.Fatal(err)
+	}
+	if events != 1 || decisions != 1 || members != 1 || familyDocuments != 3 || legacyEvents != 0 || legacyTopics != 0 {
+		t.Fatalf("events/decisions/members/family-documents/legacy-events/legacy-topics=%d/%d/%d/%d/%d/%d, want 1/1/1/3/0/0",
+			events, decisions, members, familyDocuments, legacyEvents, legacyTopics)
 	}
 }
 
@@ -353,6 +413,51 @@ model_profile_id,model_profile_version,model_version,normalized_text_sha256,embe
 VALUES ($1,$2,$3,$4,990001,1,'embedding-fixture-v1',$5,$6::halfvec,990002,$7)`,
 		fixture.documentVersionID, fixture.sourceID, embedDecisionID, fixture.retainDecisionID,
 		strings.Repeat("d", 64), "["+strings.Join(components, ",")+"]", now.Add(24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func moveMicroEventFixtureIntoFamily(t *testing.T, runtime *database.Runtime, child, root microEventAssignmentFixture, relation string) {
+	t.Helper()
+	if relation != "syndicated_from" && relation != "near_duplicate" {
+		t.Fatalf("unsupported fixture relation %q", relation)
+	}
+	transaction, err := runtime.SQL.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transaction.Rollback()
+	var fingerprintID, familyVersion, lineageDecisionID int64
+	if err := transaction.QueryRow(`SELECT fingerprint_id FROM content_family_members
+WHERE family_id=$1 AND document_version_id=$2 AND active`, child.familyID, child.documentVersionID).Scan(&fingerprintID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transaction.Exec(`UPDATE content_family_members
+SET active=false,retired_at=now(),version=version+1
+WHERE family_id=$1 AND document_version_id=$2 AND active`, child.familyID, child.documentVersionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.QueryRow(`UPDATE content_families SET version=version+1,updated_at=now()
+WHERE id=$1 RETURNING version`, root.familyID).Scan(&familyVersion); err != nil {
+		t.Fatal(err)
+	}
+	idempotencyKey := fmt.Sprintf("lineage-family-%d-%s", child.documentVersionID, relation)
+	commandFingerprint := fmt.Sprintf("%064x", child.documentVersionID)
+	if err := transaction.QueryRow(`INSERT INTO content_lineage_decisions (
+document_version_id,fingerprint_id,family_id,result_family_version,candidate_root_document_version_id,
+action,relation,hamming_distance,minhash_similarity,decision_profile_version,reason_codes,idempotency_key,command_fingerprint)
+VALUES ($1,$2,$3,$4,$5,'join',$6,1,.99,'content-family-decision-v1','["fixture"]',$7,$8)
+RETURNING id`, child.documentVersionID, fingerprintID, root.familyID, familyVersion, root.documentVersionID,
+		relation, idempotencyKey, commandFingerprint).Scan(&lineageDecisionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transaction.Exec(`INSERT INTO content_family_members (
+family_id,document_version_id,fingerprint_id,lineage_decision_id,lineage_profile_version,relation,parent_document_version_id)
+VALUES ($1,$2,$3,$4,'content-family-decision-v1',$5,$6)`, root.familyID, child.documentVersionID,
+		fingerprintID, lineageDecisionID, relation, root.documentVersionID); err != nil {
 		t.Fatal(err)
 	}
 	if err := transaction.Commit(); err != nil {

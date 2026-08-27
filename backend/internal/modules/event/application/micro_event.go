@@ -176,9 +176,7 @@ func (service *MicroEventService) Assign(ctx context.Context, command AssignCont
 	}
 	if target.ExistingAssignment != nil {
 		value := target.ExistingAssignment
-		if value.Decision.ContentFamilyID != command.ContentFamilyID ||
-			value.Decision.DocumentMatchDecisionID != command.DocumentMatchDecisionID ||
-			value.Decision.ClusteringProfileVersion != command.ClusteringProfileVersion {
+		if !microEventExistingAssignmentMatches(*value, target, command.ClusteringProfileVersion) {
 			return AssignContentFamilyToMicroEventResult{}, ErrInvalidMicroEventContract
 		}
 		return AssignContentFamilyToMicroEventResult{Event: value.Event, Decision: value.Decision}, nil
@@ -235,6 +233,16 @@ func (service *MicroEventService) Assign(ctx context.Context, command AssignCont
 		return AssignContentFamilyToMicroEventResult{}, fmt.Errorf("%w: micro-event receipt changed", ErrInvalidMicroEventContract)
 	}
 	return AssignContentFamilyToMicroEventResult{Event: persisted.Event, Decision: persisted.Decision}, nil
+}
+
+func microEventExistingAssignmentMatches(value CommitMicroEventMembershipResult, target MicroEventAssignmentTargetDTO, profileVersion string) bool {
+	return value.Event.ID > 0 && value.Event.Version > 0 && value.Event.ClusteringProfileVersion == profileVersion &&
+		value.Decision.ID > 0 && value.Decision.ContentFamilyID == target.ContentFamilyID &&
+		value.Decision.DocumentMatchDecisionID > 0 && value.Decision.MicroEventID == value.Event.ID &&
+		value.Decision.EventVersion == value.Event.Version && value.Decision.ClusteringProfileVersion == profileVersion &&
+		(value.Decision.Action == string(eventdomain.MicroEventActionCreate) ||
+			value.Decision.Action == string(eventdomain.MicroEventActionJoin) ||
+			value.Decision.Action == string(eventdomain.MicroEventActionReview))
 }
 
 func validateMicroEventTarget(target MicroEventAssignmentTargetDTO, command AssignContentFamilyToMicroEventCommand) error {

@@ -1,0 +1,107 @@
+{
+  "profile_version": "same-event-cold-start-v1",
+  "cases": [
+    {
+      "name": "cross_source_related_ignores_unrelated_hard_conflict",
+      "coverage": "cross_source",
+      "content_family_id": 101,
+      "document_match_decision_id": 1001,
+      "candidates": [
+        {
+          "micro_event_id": 900,
+          "event_version": 2,
+          "dense_available": true,
+          "hard_conflict": true,
+          "hard_conflict_reasons": ["time_conflict"],
+          "features": {"sparse": 0.20, "dense": 0.18, "entity": 0.10, "action": 0.20, "location": 0.50, "identifier": 0.50, "time": 0.05, "lineage": 0.00}
+        },
+        {
+          "micro_event_id": 10,
+          "event_version": 3,
+          "dense_available": true,
+          "features": {"sparse": 0.98, "dense": 0.98, "entity": 1.00, "action": 1.00, "location": 0.98, "identifier": 0.98, "time": 0.96, "lineage": 0.90}
+        }
+      ],
+      "expected_action": "join",
+      "expected_event_id": 10,
+      "expected_commit": true
+    },
+    {
+      "name": "syndicated_repost_reuses_family_assignment",
+      "coverage": "syndicated",
+      "content_family_id": 102,
+      "document_match_decision_id": 1002,
+      "existing_assignment": {"event_id": 20, "event_version": 1, "decision_id": 2001, "original_match_decision_id": 901, "action": "create"},
+      "expected_action": "create",
+      "expected_event_id": 20,
+      "expected_commit": false
+    },
+    {
+      "name": "same_source_comment_remains_review_pending",
+      "coverage": "same_source_comment",
+      "content_family_id": 103,
+      "document_match_decision_id": 1003,
+      "candidates": [
+        {
+          "micro_event_id": 30,
+          "event_version": 4,
+          "dense_available": false,
+          "features": {"sparse": 0.90, "dense": 0.00, "entity": 1.00, "action": 0.85, "location": 0.50, "identifier": 0.50, "time": 0.88, "lineage": 0.10}
+        }
+      ],
+      "expected_action": "review",
+      "expected_event_id": 30,
+      "expected_commit": true
+    },
+    {
+      "name": "near_duplicate_reuses_family_assignment",
+      "coverage": "near_duplicate",
+      "content_family_id": 104,
+      "document_match_decision_id": 1004,
+      "existing_assignment": {"event_id": 40, "event_version": 2, "decision_id": 2004, "original_match_decision_id": 904, "action": "join"},
+      "expected_action": "join",
+      "expected_event_id": 40,
+      "expected_commit": false
+    },
+    {
+      "name": "late_arrival_uses_occurrence_features_not_ingest_order",
+      "coverage": "late_arrival",
+      "content_family_id": 105,
+      "document_match_decision_id": 1005,
+      "candidates": [
+        {
+          "micro_event_id": 50,
+          "event_version": 5,
+          "dense_available": true,
+          "features": {"sparse": 0.97, "dense": 0.98, "entity": 1.00, "action": 1.00, "location": 0.97, "identifier": 0.98, "time": 0.95, "lineage": 0.90}
+        }
+      ],
+      "expected_action": "join",
+      "expected_event_id": 50,
+      "expected_commit": true
+    },
+    {
+      "name": "duplicate_candidate_is_scored_once",
+      "coverage": "duplicate_candidate",
+      "content_family_id": 106,
+      "document_match_decision_id": 1006,
+      "candidates": [
+        {
+          "micro_event_id": 60,
+          "event_version": 6,
+          "dense_available": true,
+          "features": {"sparse": 0.98, "dense": 0.98, "entity": 1.00, "action": 1.00, "location": 0.98, "identifier": 0.98, "time": 0.96, "lineage": 0.90}
+        },
+        {
+          "micro_event_id": 60,
+          "event_version": 6,
+          "dense_available": true,
+          "features": {"sparse": 0.98, "dense": 0.98, "entity": 1.00, "action": 1.00, "location": 0.98, "identifier": 0.98, "time": 0.96, "lineage": 0.90}
+        }
+      ],
+      "expected_action": "join",
+      "expected_event_id": 60,
+      "expected_commit": true
+    }
+  ]
+}

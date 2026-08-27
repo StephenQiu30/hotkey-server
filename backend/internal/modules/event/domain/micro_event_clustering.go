@@ -78,17 +78,31 @@ func DecideMicroEventMembership(input MicroEventDecisionInput) (MicroEventDecisi
 		score     float64
 	}
 	scored := make([]scoredCandidate, 0, len(input.Candidates))
+	seen := make(map[int64]MicroEventCandidate, len(input.Candidates))
+	hardConflictReasons := make([]string, 0)
 	for _, candidate := range input.Candidates {
 		if candidate.MicroEventID <= 0 || candidate.EventVersion <= 0 || candidate.Features.Validate() != nil {
 			return MicroEventDecision{}, errors.New("invalid micro-event candidate")
 		}
+		if previous, exists := seen[candidate.MicroEventID]; exists {
+			if !sameMicroEventCandidate(previous, candidate) {
+				return MicroEventDecision{}, errors.New("conflicting duplicate micro-event candidate")
+			}
+			continue
+		}
+		seen[candidate.MicroEventID] = candidate
 		if candidate.HardConflict {
-			reasons := append([]string{"hard_conflict"}, candidate.HardConflictReasons...)
-			return MicroEventDecision{Action: MicroEventActionCreate, ProfileVersion: input.ProfileVersion, ReasonCodes: reasons}, nil
+			hardConflictReasons = appendUniqueReasonCodes(hardConflictReasons, candidate.HardConflictReasons...)
+			continue
 		}
 		scored = append(scored, scoredCandidate{candidate: candidate, score: candidate.Features.sameEventScore()})
 	}
 	if len(scored) == 0 {
+		if len(seen) != 0 {
+			sort.Strings(hardConflictReasons)
+			reasons := append([]string{"hard_conflict"}, hardConflictReasons...)
+			return MicroEventDecision{Action: MicroEventActionCreate, ProfileVersion: input.ProfileVersion, ReasonCodes: reasons}, nil
+		}
 		return MicroEventDecision{Action: MicroEventActionCreate, ProfileVersion: input.ProfileVersion, ReasonCodes: []string{"no_candidate"}}, nil
 	}
 	sort.SliceStable(scored, func(left, right int) bool {
@@ -125,4 +139,34 @@ func DecideMicroEventMembership(input MicroEventDecisionInput) (MicroEventDecisi
 		result.ReasonCodes = append(result.ReasonCodes, "dense_unavailable")
 	}
 	return result, nil
+}
+
+func sameMicroEventCandidate(left, right MicroEventCandidate) bool {
+	if left.MicroEventID != right.MicroEventID || left.EventVersion != right.EventVersion || left.Features != right.Features ||
+		left.DenseAvailable != right.DenseAvailable || left.HardConflict != right.HardConflict ||
+		len(left.HardConflictReasons) != len(right.HardConflictReasons) {
+		return false
+	}
+	for index := range left.HardConflictReasons {
+		if left.HardConflictReasons[index] != right.HardConflictReasons[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func appendUniqueReasonCodes(values []string, candidates ...string) []string {
+	for _, candidate := range candidates {
+		found := false
+		for _, value := range values {
+			if value == candidate {
+				found = true
+				break
+			}
+		}
+		if !found {
+			values = append(values, candidate)
+		}
+	}
+	return values
 }
