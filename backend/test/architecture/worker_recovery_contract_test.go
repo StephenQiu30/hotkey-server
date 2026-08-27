@@ -37,7 +37,7 @@ func TestCollectionWorkerRecoveryGateCoversFourDurableCrashBoundaries(t *testing
 		"run: make worker-recovery-acceptance",
 		"HOTKEY_TEST_MINIO_ENDPOINT",
 		"minio/minio@sha256:",
-		"needs: [backend-static-acceptance, backend-acceptance, backend-vulnerability-acceptance, worker-recovery-acceptance",
+		"needs: [backend-static-acceptance, backend-acceptance, backend-vulnerability-acceptance, worker-recovery-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance, browser-smoke-acceptance]",
 	} {
 		if !strings.Contains(workflow, fragment) {
 			t.Errorf("CI Worker recovery gate is missing %q", fragment)

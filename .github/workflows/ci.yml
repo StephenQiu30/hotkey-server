@@ -299,7 +299,6 @@ jobs:
     name: Fresh-container browser smoke acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    needs: [backend-static-acceptance, backend-acceptance, backend-vulnerability-acceptance, worker-recovery-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance]
     env:
       HOTKEY_CONTAINER_PREFIX: hotkey-ci-${{ github.run_id }}
 
@@ -356,3 +355,22 @@ jobs:
       - name: Remove fresh container stack
         if: always()
         run: docker compose -p hotkey-ci -f docker-compose.yml down --volumes --remove-orphans
+
+  all-acceptance:
+    name: All acceptance gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ always() }}
+    needs: [backend-static-acceptance, backend-acceptance, backend-vulnerability-acceptance, worker-recovery-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance, browser-smoke-acceptance]
+
+    steps:
+      - name: Verify every required acceptance gate
+        run: |
+          test "${{ needs.backend-static-acceptance.result }}" = "success"
+          test "${{ needs.backend-acceptance.result }}" = "success"
+          test "${{ needs.backend-vulnerability-acceptance.result }}" = "success"
+          test "${{ needs.worker-recovery-acceptance.result }}" = "success"
+          test "${{ needs.frontend-acceptance.result }}" = "success"
+          test "${{ needs.agent-acceptance.result }}" = "success"
+          test "${{ needs.compose-acceptance.result }}" = "success"
+          test "${{ needs.browser-smoke-acceptance.result }}" = "success"

@@ -30,13 +30,24 @@ func TestBackendCIPreservesCanonicalCoverageAcrossParallelGates(t *testing.T) {
 		"run: make ci-runtime",
 		"backend-vulnerability-acceptance:",
 		"run: make ci-vulnerability",
-		"needs: [backend-static-acceptance, backend-acceptance, backend-vulnerability-acceptance, worker-recovery-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance]",
+		"all-acceptance:",
+		"if: ${{ always() }}",
+		"needs: [backend-static-acceptance, backend-acceptance, backend-vulnerability-acceptance, worker-recovery-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance, browser-smoke-acceptance]",
+		`test "${{ needs.browser-smoke-acceptance.result }}" = "success"`,
 	} {
 		if !strings.Contains(workflow, fragment) {
-			t.Errorf("CI must parallelize backend gates without dropping browser prerequisite %q", fragment)
+			t.Errorf("CI must parallelize gates without dropping final acceptance prerequisite %q", fragment)
 		}
 	}
 	if strings.Contains(workflow, "run: make ci\n") {
 		t.Error("hosted CI must not serialize every backend gate behind one make ci step")
+	}
+	browserStart := strings.Index(workflow, "  browser-smoke-acceptance:")
+	finalStart := strings.Index(workflow, "  all-acceptance:")
+	if browserStart < 0 || finalStart <= browserStart {
+		t.Fatal("CI must declare browser smoke before the final acceptance gate")
+	}
+	if strings.Contains(workflow[browserStart:finalStart], "\n    needs:") {
+		t.Error("browser smoke must start in parallel because it consumes no preceding job artifact")
 	}
 }
