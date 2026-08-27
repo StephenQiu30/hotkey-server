@@ -65,4 +65,6 @@ npm run build
 
 The published backend OpenAPI contract is [`docs/openapi/swagger.json`](docs/openapi/swagger.json), while runtime registration code lives at `backend/openapi/docs.go`. The generated frontend client lives under `frontend/src/services/hotkey/hotkey-server/`.
 
+The rebuilt deployment, recovery, source-incident, and capacity contracts are indexed in the [operations guides](docs/operations/README.md). A guide marked `planned` has not passed the rebuilt baseline acceptance gate and is not yet a production procedure.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) for contribution and vulnerability-reporting guidance.

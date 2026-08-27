@@ -3,57 +3,95 @@ layer: Plan
 scope: shared
 doc_no: "000"
 title: Plan 索引
-status: completed
-version: v3.0
+status: planned
+version: v1.0
 owner: HotKey Team
 canonical_path: docs/plans/README.md
 ---
 
 # Plan 索引
 
-Plan 将已评审 Design 和 PRD 转换为文件级、测试先行、可回滚的执行计划。状态只使用 `planned`、`in_progress`、`blocked`、`completed`。
+本目录把 Design 与 PRD 转换为文件级、测试先行、可验证、可灰度和可回滚的执行计划。计划编制、现状审计、威胁盘点和评审准备可在 Design=`proposed`、PRD=`draft` 时进行；进入相应工程实现前必须通过 G1/G2，不能要求尚未执行的批准计划先批准自身。当前 Design 仍为 `proposed`、PRD 仍为 `draft`，因此各 Plan 只能保持 `planned`；状态只使用 `planned`、`in_progress`、`blocked`、`completed`。
 
-Plan 中的“当前实现”仅用于确定差距；只有 Acceptance 保存完成证据。001–038 的推荐依赖顺序见 [文档地图](../README.md)。
+当前文档体系保持严格模式，不新增 `specs/` 或 `checklists/` 目录。每份 Plan 必须在正文内提供“实施规格（SPEC）”与“执行检查清单（CHECKLIST）”，并用稳定 ID 将 PRD 验收标准映射到任务、规格、检查项和最终 Acceptance 证据。
 
-## 交付项
+## 架构执行基线
 
-| 编号 | Design | PRD | Plan | 状态 |
-|---:|---|---|---|---|
-| 001 | [MVP产品边界与模块化单体](../design/archive/001-MVP产品边界与模块化单体设计.md) | [PRD](../prd/archive/001-MVP产品边界与模块化单体.md) | [Plan](archive/001-MVP产品边界与模块化单体计划.md) | completed |
-| 002 | [Vercel风格与shadcn-ui设计系统](../design/archive/002-Vercel风格与shadcn-ui设计系统设计.md) | [PRD](../prd/archive/002-Vercel风格与shadcn-ui设计系统.md) | [Plan](archive/002-Vercel风格与shadcn-ui设计系统计划.md) | completed |
-| 003 | [账户认证与会话安全](../design/archive/003-账户认证与会话安全设计.md) | [PRD](../prd/archive/003-账户认证与会话安全.md) | [Plan](archive/003-账户认证与会话安全计划.md) | completed |
-| 004 | [用户角色与权限管理](../design/archive/004-用户角色与权限管理设计.md) | [PRD](../prd/archive/004-用户角色与权限管理.md) | [Plan](archive/004-用户角色与权限管理计划.md) | completed |
-| 005 | [监控主题CRUD与生命周期](../design/archive/005-监控主题CRUD与生命周期设计.md) | [PRD](../prd/archive/005-监控主题CRUD与生命周期.md) | [Plan](archive/005-监控主题CRUD与生命周期计划.md) | completed |
-| 006 | [关键词规则与多语言查询扩展](../design/archive/006-关键词规则与多语言查询扩展设计.md) | [PRD](../prd/archive/006-关键词规则与多语言查询扩展.md) | [Plan](archive/006-关键词规则与多语言查询扩展计划.md) | completed |
-| 007 | [来源连接控制面与合规健康](../design/archive/007-来源连接控制面与合规健康设计.md) | [PRD](../prd/archive/007-来源连接控制面与合规健康.md) | [Plan](archive/007-来源连接控制面与合规健康计划.md) | completed |
-| 008 | [RSS-Atom来源连接器](../design/archive/008-RSS-Atom来源连接器设计.md) | [PRD](../prd/archive/008-RSS-Atom来源连接器.md) | [Plan](archive/008-RSS-Atom来源连接器计划.md) | completed |
-| 009 | [Hacker-News官方来源连接器](../design/archive/009-Hacker-News官方来源连接器设计.md) | [PRD](../prd/archive/009-Hacker-News官方来源连接器.md) | [Plan](archive/009-Hacker-News官方来源连接器计划.md) | completed |
-| 010 | [X官方搜索连接器](../design/archive/010-X官方搜索连接器设计.md) | [PRD](../prd/archive/010-X官方搜索连接器.md) | [Plan](archive/010-X官方搜索连接器计划.md) | completed |
-| 011 | [Bing-Grounding来源适配](../design/archive/011-Bing-Grounding来源适配设计.md) | [PRD](../prd/archive/011-Bing-Grounding来源适配.md) | [Plan](archive/011-Bing-Grounding来源适配计划.md) | completed |
-| 012 | [搜狗授权来源适配](../design/archive/012-搜狗授权来源适配设计.md) | [PRD](../prd/archive/012-搜狗授权来源适配.md) | [Plan](archive/012-搜狗授权来源适配计划.md) | completed |
-| 013 | [Bilibili开放平台与账号监控](../design/archive/013-Bilibili开放平台与账号监控设计.md) | [PRD](../prd/archive/013-Bilibili开放平台与账号监控.md) | [Plan](archive/013-Bilibili开放平台与账号监控计划.md) | completed |
-| 014 | [微博开放平台来源适配](../design/archive/014-微博开放平台来源适配设计.md) | [PRD](../prd/archive/014-微博开放平台来源适配.md) | [Plan](archive/014-微博开放平台来源适配计划.md) | completed |
-| 015 | [Google可授权搜索迁移](../design/archive/015-Google可授权搜索迁移设计.md) | [PRD](../prd/archive/015-Google可授权搜索迁移.md) | [Plan](archive/015-Google可授权搜索迁移计划.md) | completed |
-| 016 | [DuckDuckGo-Instant-Answer边界](../design/archive/016-DuckDuckGo-Instant-Answer边界设计.md) | [PRD](../prd/archive/016-DuckDuckGo-Instant-Answer边界.md) | [Plan](archive/016-DuckDuckGo-Instant-Answer边界计划.md) | completed |
-| 017 | [定时监听手动搜索与失败重试](../design/archive/017-定时监听手动搜索与失败重试设计.md) | [PRD](../prd/archive/017-定时监听手动搜索与失败重试.md) | [Plan](archive/017-定时监听手动搜索与失败重试计划.md) | completed |
-| 018 | [内容标准化去重时效与原始证据](../design/archive/018-内容标准化去重时效与原始证据设计.md) | [PRD](../prd/archive/018-内容标准化去重时效与原始证据.md) | [Plan](archive/018-内容标准化去重时效与原始证据计划.md) | completed |
-| 019 | [AI真伪相关性重要性与摘要](../design/archive/019-AI真伪相关性重要性与摘要设计.md) | [PRD](../prd/archive/019-AI真伪相关性重要性与摘要.md) | [Plan](archive/019-AI真伪相关性重要性与摘要计划.md) | completed |
-| 020 | [事件聚类生命周期热度与趋势](../design/archive/020-事件聚类生命周期热度与趋势设计.md) | [PRD](../prd/archive/020-事件聚类生命周期热度与趋势.md) | [Plan](archive/020-事件聚类生命周期热度与趋势计划.md) | completed |
-| 021 | [内容与事件检索筛选排序](../design/archive/021-内容与事件检索筛选排序设计.md) | [PRD](../prd/archive/021-内容与事件检索筛选排序.md) | [Plan](archive/021-内容与事件检索筛选排序计划.md) | completed |
-| 022 | [实时事件流与站内通知](../design/archive/022-实时事件流与站内通知设计.md) | [PRD](../prd/archive/022-实时事件流与站内通知.md) | [Plan](archive/022-实时事件流与站内通知计划.md) | completed |
-| 023 | [低噪声告警与邮件交付](../design/archive/023-低噪声告警与邮件交付设计.md) | [PRD](../prd/archive/023-低噪声告警与邮件交付.md) | [Plan](archive/023-低噪声告警与邮件交付计划.md) | completed |
-| 024 | [日报周报私有Feed与知识归档](../design/archive/024-日报周报私有Feed与知识归档设计.md) | [PRD](../prd/archive/024-日报周报私有Feed与知识归档.md) | [Plan](archive/024-日报周报私有Feed与知识归档计划.md) | completed |
-| 025 | [配额限流保留与审计治理](../design/archive/025-配额限流保留与审计治理设计.md) | [PRD](../prd/archive/025-配额限流保留与审计治理.md) | [Plan](archive/025-配额限流保留与审计治理计划.md) | completed |
-| 026 | [Web工作台全页面交互](../design/archive/026-Web工作台全页面交互设计.md) | [PRD](../prd/archive/026-Web工作台全页面交互.md) | [Plan](archive/026-Web工作台全页面交互计划.md) | completed |
-| 027 | [Agent-Skill与外部API](../design/archive/027-Agent-Skill与外部API设计.md) | [PRD](../prd/archive/027-Agent-Skill与外部API.md) | [Plan](archive/027-Agent-Skill与外部API计划.md) | completed |
-| 028 | [可观测性部署与质量门禁](../design/archive/028-可观测性部署与质量门禁设计.md) | [PRD](../prd/archive/028-可观测性部署与质量门禁.md) | [Plan](archive/028-可观测性部署与质量门禁计划.md) | completed |
-| 029 | [来源凭据与个性化配置](../design/archive/029-来源凭据与个性化配置设计.md) | [PRD](../prd/archive/029-来源凭据与个性化配置.md) | [Plan](archive/029-来源凭据与个性化配置计划.md) | completed |
-| 030 | [通知与订阅页面拆分](../design/archive/030-通知与订阅页面拆分设计.md) | [PRD](../prd/archive/030-通知与订阅页面拆分.md) | [Plan](archive/030-通知与订阅页面拆分计划.md) | completed |
-| 031 | [Hacker-News热门榜单与持续观测](../design/archive/031-Hacker-News热门榜单与持续观测设计.md) | [PRD](../prd/archive/031-Hacker-News热门榜单与持续观测.md) | [Plan](archive/031-Hacker-News热门榜单与持续观测计划.md) | completed |
-| 032 | [热点事件语义监控与出处正文](../design/archive/032-热点事件语义监控与出处正文设计.md) | [PRD](../prd/archive/032-热点事件语义监控与出处正文.md) | [Plan](archive/032-热点事件语义监控与出处正文计划.md) | completed |
-| 033 | [X热点发现与持续热度观测](../design/033-X热点发现与持续热度观测设计.md) | [PRD](../prd/033-X热点发现与持续热度观测.md) | [Plan](033-X热点发现与持续热度观测计划.md) | planned |
-| 034 | [X热点核心链路收敛与遗留系统清理](../design/034-X热点核心链路收敛与遗留系统清理设计.md) | [PRD](../prd/034-X热点核心链路收敛与遗留系统清理.md) | [Plan](034-X热点核心链路收敛与遗留系统清理计划.md) | completed |
-| 035 | [多源AI热点监控首版收敛](../design/archive/035-多源AI热点监控首版收敛设计.md) | [PRD](../prd/archive/035-多源AI热点监控首版收敛.md) | [Plan](archive/035-多源AI热点监控首版收敛计划.md) | completed |
-| 036 | [评论会话采集与采集运行时边界](../design/036-评论会话采集与采集运行时边界设计.md) | [PRD](../prd/036-评论会话采集与采集运行时边界.md) | [Plan](036-评论会话采集与采集运行时边界计划.md) | planned |
-| 037 | [实时热点监控MVP功能基线](../design/archive/037-实时热点监控MVP功能基线设计.md) | [PRD](../prd/archive/037-实时热点监控MVP功能基线.md) | [Plan](archive/037-实时热点监控MVP功能基线计划.md) | completed |
-| 038 | [邮件与WebSocket双通道通知收敛](../design/archive/038-邮件与WebSocket双通道通知收敛设计.md) | [PRD](../prd/archive/038-邮件与WebSocket双通道通知收敛.md) | [Plan](archive/038-邮件与WebSocket双通道通知收敛计划.md) | completed |
+所有计划都受以下边界约束：
+
+- 后端保持 Go 模块化单体与单二进制，`cmd/hotkey` 的 `all`、`api`、`worker` 角色共享同一领域事实；
+- 持久异步任务继续使用 PostgreSQL `river_job`、有界重试、租约恢复和幂等键，不引入 Kafka、Temporal 或内部事件总线；
+- `backend/db/schema.sql` 是唯一 Schema 事实源，不创建 `migrations/`、分片 Schema 或自动迁移；
+- `docs/openapi/swagger.json` 由 Swaggo 注解生成，前端只消费生成客户端；业务响应保持 `code`、`message`、`data`，成功业务码为 `0`；
+- 前端继续使用 Next.js App Router、React、TypeScript、Tailwind CSS、现有 Radix 组合组件、Zustand、Axios、Recharts 与 GSAP；
+- 全文检索使用 PostgreSQL FTS、`pg_trgm`、结构化筛选和高亮，不引入 Elasticsearch、向量检索、Embedding 或 RAG；
+- Codex 通过 Go Worker 内的受控 CLI Adapter 执行；不新增 Python 微服务。现有 Provider 与 Embedding 路径在替换验收和回滚演练完成前不得删除；
+- 认证沿用现有身份、会话、JWT 与服务端 RBAC，不引入 Keycloak；
+- PostgreSQL 是业务事实源，MinIO 保存原始证据，本地 Vault 保存人类可读知识投影，Redis 只承载短期状态与协同。
+
+## 五个交付计划
+
+| 编号 | Design | PRD | Plan | 24 周覆盖 | 状态 |
+|---:|---|---|---|---|---|
+| 001 | [HotKey 产品需求分析与总体架构](../design/001-HotKey产品需求分析与总体架构设计.md) | [PRD](../prd/001-HotKey产品需求分析与总体架构.md) | [Plan](001-HotKey产品需求分析与总体架构计划.md) | M0 与跨阶段约束 | planned |
+| 002 | [监控、来源采集与证据链](../design/002-监控来源采集与证据链设计.md) | [PRD](../prd/002-监控来源采集与证据链.md) | [Plan](002-监控来源采集与证据链计划.md) | M1–M2 | planned |
+| 003 | [智能研判、事件热度与人工治理](../design/003-智能研判事件热度与人工治理设计.md) | [PRD](../prd/003-智能研判事件热度与人工治理.md) | [Plan](003-智能研判事件热度与人工治理计划.md) | M3 | planned |
+| 004 | [通知、报告、知识投影与检索](../design/004-通知报告知识投影与检索设计.md) | [PRD](../prd/004-通知报告知识投影与检索.md) | [Plan](004-通知报告知识投影与检索计划.md) | M4 | planned |
+| 005 | [安全、运维、质量与交付](../design/005-安全运维质量与交付设计.md) | [PRD](../prd/005-安全运维质量与交付.md) | [Plan](005-安全运维质量与交付计划.md) | M5–发布观察 | planned |
+
+## 24 周重排
+
+| 周次 | 里程碑 | 主要范围 | 可验收出口 |
+|---:|---|---|---|
+| W1–W2 | M0 审计、范围与设计门禁 | 现状盘点、当前/目标差距、P0/P1 冻结、架构冲突清零、追踪矩阵、候选基线与开工检查 | G0–G3 通过；Design/PRD 已批准且 W3 首批 Plan 可进入执行 |
+| W3–W6 | M1 薄垂直切片 | `Monitor → RSS → Evidence → Event → UI`，含 River 幂等、MinIO 原始证据和 PostgreSQL 事实链 | 一个真实 RSS 来源完成可重复端到端验收 |
+| W7–W10 | M2 真实多来源 | RSS、Hacker News、X 官方来源；Rights、Credential、Quota、Checkpoint、部分成功和恢复 | 三来源真实授权冒烟；单来源失败不阻塞其余结果 |
+| W11–W14 | M3 智能与热点 | Go Worker 内 Codex CLI Adapter、结构校验、Evidence 白名单、事件聚类、确定性 Heat、降级与人工治理 | Codex 可用和不可用两条路径均通过；错误输出不污染事实 |
+| W15–W18 | M4 交付与知识 | WebSocket/REST 重放、日报与审批冻结、Vault 投影、PostgreSQL 全文检索、重建对账 | 通知、报告、知识和检索形成完整证据闭环 |
+| W19–W21 | M5 治理与恢复 | 保留删除、审计、指标告警、容量、跨域安全收敛、备份恢复与回滚演练 | G5 前置运维材料和恢复证据就绪，可进入 W22 RC；不得表述为 G5 已通过 |
+| W22 | RC | 全量 CI、契约、跨端 E2E、故障注入、性能与安全回归 | 无未处置 P0 缺陷，发布候选清单闭合 |
+| W23 | UAT 与缓冲 | 真实用户故事、可访问性、来源授权复核、缺陷修正与复验 | UAT 签字；所有豁免有责任人和期限 |
+| W24 | 发布与观察 | 生产预检、灰度、发布、回滚窗口、指标观察和复盘 | G6 通过；Acceptance 留存长期证据 |
+
+以下能力不进入本轮 24 周承诺：评论正文与会话树、周报、新增或扩展邮件交付、更多来源、通用浏览器采集、Kafka/Temporal/Elasticsearch、Python Agent 服务、Keycloak、Kubernetes 高可用和多地域部署。既有邮件能力只保持兼容，不扩大 P0；其他候选能力必须另立同编号三件套并重新评估人力与周期。
+
+## 关键依赖与责任门禁
+
+| 截止点 | 必须就绪 | 未就绪处理 |
+|---|---|---|
+| W2 / G2 | RSS/HN/X 的正式授权、配额、保留/删除义务和责任人；若 X 尚不可用，必须有明确 Go/No-Go | 回到 PRD 调整 P0 来源范围，不得用 Mock 冒充真实验收 |
+| W10 / M3 前 | Codex 受信 Runner、认证注入、版本、预算、Sandbox/网络边界和回滚责任人 | 阻断 Codex 写路径，确定性链路继续；不得跳过 Live 门禁宣称可用 |
+| W14 / M4 前 | Vault 根位置、备份介质、单写者/冲突责任人和人工区域恢复方式 | 只允许隔离目录投影，不开放正式知识发布 |
+| W18 / M5 前 | Retention、恢复、发布、回滚、UAT、值班和事故响应责任人 | 不进入 G5 前置收敛，不以 W24 日期覆盖责任缺口 |
+| W21 / RC 前 | Operations 001–006 的参数、隔离命令、成功输出、停止条件和回滚步骤 | 不进入 W22 RC；`planned` Runbook 不得冒充已演练 `active` 手册 |
+
+## G0–G6 门禁
+
+| 门禁 | 进入条件 | 退出条件 | 阻断规则 |
+|---|---|---|---|
+| G0 现状可信 | 仓库、Schema、OpenAPI、运行角色和基线命令可读取 | 当前实现、目标、差距和未知项均有证据；禁用架构不再被描述为当前能力 | 现状无法复现或仍混用交付包假设时阻断 |
+| G1 设计接受 | Design 为 `proposed` | Design 为 `accepted`；关键取舍、安全、降级、迁移和回滚已评审 | 架构冲突、来源权利或事实源不清时阻断 |
+| G2 范围批准 | PRD 为 `draft` | PRD 为 `approved`；P0 FR/NFR 到 AC 覆盖率 100%，P1 已移出 24 周承诺 | 无可测试 AC、容量环境未定义或外部授权无负责人时阻断 |
+| G3 开工就绪 | Design accepted、PRD approved、Plan planned | 变更文件、测试先行步骤、SPEC、CHECKLIST、数据/契约顺序和回滚齐全，Plan 才可改为 `in_progress` | 任何 P0 AC 无 TASK/SPEC/CHK 映射时阻断 |
+| G4 实现完成 | Plan in_progress | 目标测试、架构检查、Schema、OpenAPI、生成客户端和构建通过；实现与 SPEC 一致 | 放宽断言、手改生成物或静默改 Schema 时阻断 |
+| G5 发布候选 | G4 通过 | E2E、性能、安全、故障恢复、备份恢复、Runbook 和回滚演练有证据 | 强制检查项未完成或只有目标描述没有结果时阻断 |
+| G6 验收归档 | UAT 与发布观察完成 | Acceptance 为 `passed`；PRD=`implemented`、Plan=`completed`，长期证据可复查 | 未关闭 P0 缺陷、未验证回滚或证据不可重放时阻断 |
+
+## 三件套状态推进
+
+```text
+Design: proposed ──G1──> accepted ───────────────> superseded
+PRD:    draft    ──G2──> approved ───────G6─────> implemented
+Plan:   planned  ──G3──> in_progress ────G6─────> completed
+```
+
+`blocked` 只表示执行期存在明确阻塞，不能替代范围决策。需求取消时 PRD 使用 `cancelled`，Plan 不得假装 `completed`。实现完成后由同编号 Acceptance 保存命令、结果、人工证据、已知限制和回滚验证；Plan 中勾选的检查项本身不是长期验收证据。
+
+## 追踪与变更纪律
+
+- PRD 的每个 `AC-NNN-xxx` 至少映射到一个 `TASK-NNN-Sxx-Txx`、一个 `SPEC-NNN-领域-xxx` 和一个 `CHK-NNN-Gx-xxx`；
+- SPEC 领域只使用 `API`、`DATA`、`JOB`、`UI`、`SEC`、`OBS`、`OPS`；
+- CHECKLIST 必须写明 AC 映射和预期证据；勾选后将实际证据转录到 Acceptance；
+- 行为范围变化先更新 Design/PRD，再更新 Plan；实施细节变化只可在不扩大 PRD 的前提下更新 SPEC；
+- Schema、OpenAPI、生成客户端、Compose 或运行入口变化时，源文件、生成物、测试和正式文档必须同批更新；
+- 当前与目标必须分栏描述。候选性能指标只有在测试数据、硬件、命令和结果一并保存后才能升级为发布 SLO。

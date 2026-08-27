@@ -172,7 +172,7 @@ go run ./cmd/hotkey
 
 > **配置加载与工作目录：** 后端从进程工作目录读取 `.env`（生产环境叠加 `.env.prod`，进程环境变量优先级最高）。GoLand 运行 `cmd/hotkey` 时，请把工作目录设为 `backend/` 以便读取 `backend/.env`；相对路径配置（如 `HOTKEY_VAULT_PATH`）按工作目录解析，建议填写绝对路径。
 
-首个用户通过 Web 正常完成邮箱验证和注册，默认角色为 viewer；随后由数据库操作员按 [首管理员数据库指定操作](../docs/operations/009-首管理员数据库指定操作.md) 的一次性事务将该用户提升为 admin。启动过程不读取管理员邮箱或密码，也不需要额外的用户引导命令。
+首个用户通过 Web 正常完成邮箱验证和注册，默认角色为 viewer；随后由数据库操作员通过经评审、留有审计记录的一次性事务将该用户提升为 admin。新文档基线尚未验收这项生产操作，正式部署前必须按 [Operations 索引](../docs/operations/README.md) 补充并演练专用手册。启动过程不读取管理员邮箱或密码，也不需要额外的用户引导命令。
 
 确认服务可用：
 
@@ -256,7 +256,7 @@ GitHub Actions 对 `main` 和 Pull Request 直接执行这些原生命令，并�
 
 HotKey 正处于积极开发阶段，核心端到端链路已经实现，接口和部署方式在 1.0 前仍可能调整。当前更适合技术预览、自托管评估和共同建设，而不是直接作为无人值守的关键生产系统。
 
-已完成工作的长期证据位于 [`docs/acceptance/archive/`](../docs/acceptance/archive/README.md)。路线与功能建议通过 [GitHub Issues](https://github.com/StephenQiu30/hotkey-server/issues) 公开讨论；外部依赖和生产备份恢复仍需在具体部署环境按 [Operations 手册](../docs/operations/README.md) 演练。
+重新立项基线的长期完成证据统一进入 [Acceptance 索引](../docs/acceptance/README.md)；当前没有可证明新基线已完成的验收文件。路线与功能建议通过 [GitHub Issues](https://github.com/StephenQiu30/hotkey-server/issues) 公开讨论；外部依赖和生产备份恢复仍需在具体部署环境按 [Operations 手册](../docs/operations/README.md) 演练。
 
 ## 文档导航
 

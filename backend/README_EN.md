@@ -134,7 +134,7 @@ Run the `cmd/hotkey` main package directly in GoLand, or use the single equivale
 go run ./cmd/hotkey
 ```
 
-The first user completes normal email verification and registration as a viewer. A database operator then follows the one-time transaction in the [initial administrator database procedure](../docs/operations/009-首管理员数据库指定操作.md) to promote that registered user. Startup does not read an administrator email or password and requires no separate user-bootstrap command.
+The first user completes normal email verification and registration as a viewer. A database operator then promotes that user through a reviewed, auditable one-time transaction. The rebuilt documentation baseline has not yet accepted this production procedure; before a production deployment, add and rehearse a dedicated runbook through the [operations index](../docs/operations/README.md). Startup does not read an administrator email or password and requires no separate user-bootstrap command.
 
 Verify the runtime:
 
@@ -205,7 +205,7 @@ The complete CI suite requires a disposable PostgreSQL database and a dedicated 
 
 HotKey is under active development. The core end-to-end workflow is implemented, but APIs and deployment details may still change before 1.0. It is best suited for technical previews, self-hosted evaluation, and collaborative development rather than unattended critical production workloads.
 
-Long-lived acceptance evidence is available in [`docs/acceptance/archive/`](../docs/acceptance/archive/README.md). Roadmap and feature proposals are discussed publicly in [GitHub Issues](https://github.com/StephenQiu30/hotkey-server/issues). External dependencies, backups, and restores must still be exercised in each deployment environment using the [operations guides](../docs/operations/README.md).
+Long-lived evidence for the rebuilt baseline belongs in the [acceptance index](../docs/acceptance/README.md); no acceptance file currently proves that the new baseline is implemented. Roadmap and feature proposals are discussed publicly in [GitHub Issues](https://github.com/StephenQiu30/hotkey-server/issues). External dependencies, backups, and restores must still be exercised in each deployment environment using the [operations guides](../docs/operations/README.md).
 
 ## Documentation
 
