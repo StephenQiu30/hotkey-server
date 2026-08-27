@@ -57,6 +57,7 @@ import {
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { MonitorStatus, UserRole } from "@/lib/domainEnums";
 import { monitorStatusLabel } from "@/lib/domainPresentation";
+import { HotKeyAPIError } from "@/lib/request";
 import { sourceTypeLabel } from "@/lib/sourceLabels";
 import {
   deleteMonitorsId,
@@ -138,6 +139,7 @@ export default function MonitorsPage() {
   const [scans, setScans] = useState<Record<number, ScanState>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
   const [busyID, setBusyID] = useState<number>();
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -170,6 +172,7 @@ export default function MonitorsPage() {
     async (cursor: string | undefined, pageNumber: number) => {
       setLoading(true);
       setLoadError(undefined);
+      setForbidden(false);
       try {
         const [monitorResult, sourceResult] = await Promise.all([
           getMonitors({ limit: pageSize, ...(cursor ? { cursor } : {}) }),
@@ -188,6 +191,7 @@ export default function MonitorsPage() {
           )
         );
       } catch (reason) {
+        setForbidden(reason instanceof HotKeyAPIError && reason.status === 403);
         setLoadError(reason instanceof Error ? reason.message : "监控加载失败");
       } finally {
         setLoading(false);
@@ -369,9 +373,24 @@ export default function MonitorsPage() {
       ) : null}
 
       {loading ? (
-        <div className="flex h-72 items-center justify-center">
+        <div
+          role="status"
+          aria-label="正在加载监控"
+          className="flex h-72 items-center justify-center"
+        >
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
+      ) : forbidden ? (
+        <Card
+          role="alert"
+          aria-label="权限不足"
+          className="border border-border bg-card p-8 text-center"
+        >
+          <p className="font-medium">权限不足</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            当前账号没有查看监控与扫描记录的权限，请联系管理员。
+          </p>
+        </Card>
       ) : loadError ? (
         <Card
           role="alert"

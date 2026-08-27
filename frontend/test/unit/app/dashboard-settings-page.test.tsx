@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MonitorsPage from "@/app/dashboard/settings/page";
+import { HotKeyAPIError } from "@/lib/request";
 import { useAuthStore } from "@/stores/authStore";
 
 const mocks = vi.hoisted(() => ({
@@ -141,6 +142,46 @@ describe("MonitorsPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows an accessible loading state while the monitor request is pending", () => {
+    mocks.getMonitors.mockReturnValue(new Promise(() => undefined));
+    render(<MonitorsPage />);
+
+    expect(
+      screen.getByRole("status", { name: "正在加载监控" })
+    ).toBeInTheDocument();
+  });
+
+  it("shows an explicit empty state without management actions for a viewer", async () => {
+    useAuthStore.setState({
+      user: { role: "viewer" } as HotKeyAPI.UserResponse,
+    });
+    mocks.getMonitors.mockResolvedValueOnce({ data: { items: [] } });
+    render(<MonitorsPage />);
+
+    expect(await screen.findByText("还没有热点监控")).toBeInTheDocument();
+    expect(screen.getByText("当前没有可查看的监控。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新建监控" })).not.toBeInTheDocument();
+  });
+
+  it("keeps viewer read-only and grants only scanning to an editor", async () => {
+    useAuthStore.setState({
+      user: { role: "viewer" } as HotKeyAPI.UserResponse,
+    });
+    const { unmount } = render(<MonitorsPage />);
+    expect(await screen.findByRole("heading", { name: "Claude" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "立即扫描 Claude" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑 Claude" })).not.toBeInTheDocument();
+    unmount();
+
+    useAuthStore.setState({
+      user: { role: "editor" } as HotKeyAPI.UserResponse,
+    });
+    render(<MonitorsPage />);
+    expect(await screen.findByRole("button", { name: "立即扫描 Claude" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑 Claude" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "暂停" })).not.toBeInTheDocument();
+  });
+
   it("creates and publishes a monitor in one user action with simple fields", async () => {
     const user = userEvent.setup();
     mocks.getMonitors.mockResolvedValueOnce({ data: { items: [] } });
@@ -246,5 +287,17 @@ describe("MonitorsPage", () => {
       "network unavailable"
     );
     expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
+  it("shows a dedicated forbidden state without presenting a retry action", async () => {
+    mocks.getMonitors.mockRejectedValue(
+      new HotKeyAPIError(403, "当前账号没有执行此操作的权限")
+    );
+    render(<MonitorsPage />);
+
+    expect(
+      await screen.findByRole("alert", { name: "权限不足" })
+    ).toHaveTextContent("当前账号没有查看监控与扫描记录的权限");
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
   });
 });
