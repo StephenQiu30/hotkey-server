@@ -24,6 +24,7 @@ var codexCLIArgumentVector = []string{
 }
 
 const (
+	codexCLISafePath              = "/usr/local/bin:/usr/bin:/bin"
 	defaultCodexCLITimeout        = 30 * time.Second
 	defaultCodexCLIOutputBytes    = 1 << 20
 	defaultCodexCLIConcurrentRuns = 1
@@ -84,7 +85,8 @@ func NewCodexCLIAdapter(executable string) (*CodexCLIAdapter, error) {
 func NewCodexCLIAdapterWithOptions(options CodexCLIAdapterOptions) (*CodexCLIAdapter, error) {
 	executable := strings.TrimSpace(options.Executable)
 	workspaceRoot := strings.TrimSpace(options.WorkspaceRoot)
-	if executable == "" || workspaceRoot == "" || options.Timeout <= 0 || options.Timeout > maxCodexCLITimeout ||
+	if executable == "" || !filepath.IsAbs(executable) || workspaceRoot == "" || !filepath.IsAbs(workspaceRoot) ||
+		options.Timeout <= 0 || options.Timeout > maxCodexCLITimeout ||
 		options.MaxOutputBytes <= 0 || options.MaxOutputBytes > maxCodexCLIOutputBytes ||
 		options.MaxConcurrent <= 0 || options.MaxConcurrent > maxCodexCLIConcurrentRuns {
 		return nil, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
@@ -133,12 +135,16 @@ func (adapter *CodexCLIAdapter) Run(ctx context.Context, request CodexCLIProcess
 	if err := os.Chmod(workspace, 0o700); err != nil {
 		return CodexCLIProcessResult{}, intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
 	}
+	if err := materializeCodexCLIRuntimeDirectories(workspace); err != nil {
+		return CodexCLIProcessResult{}, err
+	}
 	if err := materializeCodexCLIInputs(workspace, request.Inputs); err != nil {
 		return CodexCLIProcessResult{}, err
 	}
 
 	command := exec.Command(adapter.executable, codexCLIArgumentVector...)
 	command.Dir = workspace
+	command.Env = codexCLIEnvironment(workspace)
 	command.Stdin = bytes.NewReader(request.Prompt)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdout := newCodexCLILimitedBuffer(adapter.maxOutputBytes)
@@ -170,6 +176,27 @@ func (adapter *CodexCLIAdapter) Run(ctx context.Context, request CodexCLIProcess
 		return CodexCLIProcessResult{}, intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
 	}
 	return CodexCLIProcessResult{Stdout: stdout.bytes()}, nil
+}
+
+func materializeCodexCLIRuntimeDirectories(workspace string) error {
+	for _, name := range []string{"tmp", "codex-home"} {
+		if err := os.Mkdir(filepath.Join(workspace, name), 0o700); err != nil {
+			return intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
+		}
+	}
+	return nil
+}
+
+func codexCLIEnvironment(workspace string) []string {
+	return []string{
+		"HOME=" + workspace,
+		"TMPDIR=" + filepath.Join(workspace, "tmp"),
+		"CODEX_HOME=" + filepath.Join(workspace, "codex-home"),
+		"PATH=" + codexCLISafePath,
+		"LANG=C.UTF-8",
+		"LC_ALL=C.UTF-8",
+		"NO_COLOR=1",
+	}
 }
 
 func validateCodexCLIInputs(inputs []CodexCLIInput) error {

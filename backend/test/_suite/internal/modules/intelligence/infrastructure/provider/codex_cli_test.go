@@ -67,6 +67,9 @@ func TestCodexCLIAdapterRejectsInvalidExecutableAndEmptyPromptBeforeStartingProc
 	if _, err := NewCodexCLIAdapter(" "); err == nil {
 		t.Fatal("empty executable was accepted")
 	}
+	if _, err := NewCodexCLIAdapter("codex"); err == nil {
+		t.Fatal("PATH-resolved executable was accepted")
+	}
 	adapter, err := NewCodexCLIAdapter(filepath.Join(t.TempDir(), "missing-codex"))
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +118,11 @@ fi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(strings.TrimSpace(string(workingDirectory)), workspaceRoot+string(os.PathSeparator)) {
+	resolvedWorkspaceRoot, err := filepath.EvalSymlinks(workspaceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(string(workingDirectory)), resolvedWorkspaceRoot+string(os.PathSeparator)) {
 		t.Fatalf("working directory %q is outside isolated root", workingDirectory)
 	}
 	mode, err := os.ReadFile(filepath.Join(fixtureDirectory, "input-mode"))
@@ -283,6 +290,82 @@ printf '{"ok":true}'
 		}
 	}
 	waitForFile(t, filepath.Join(fixtureDirectory, "started-second"), time.Second)
+	assertDirectoryEmpty(t, workspaceRoot)
+}
+
+func TestCodexCLIAdapterBuildsExplicitEnvironmentWithoutWorkerSecrets(t *testing.T) {
+	fixtureDirectory := t.TempDir()
+	workspaceRoot := filepath.Join(fixtureDirectory, "workspaces")
+	if err := os.Mkdir(workspaceRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	secrets := map[string]string{
+		"HOTKEY_DATABASE_URL":            "postgres://secret-database",
+		"HOTKEY_TEST_DSN":                "postgres://secret-test-database",
+		"X_API_TOKEN":                    "secret-source-token",
+		"HOTKEY_JWT_SECRET":              "secret-jwt-signing-value",
+		"MINIO_ROOT_PASSWORD":            "secret-object-store-value",
+		"HOTKEY_REQUEST_COOKIE":          "secret-user-cookie",
+		"OPENAI_API_KEY":                 "secret-provider-key",
+		"DEEPSEEK_API_KEY":               "secret-provider-key-two",
+		"AWS_ACCESS_KEY_ID":              "secret-cloud-access-key",
+		"AWS_SECRET_ACCESS_KEY":          "secret-cloud-access-value",
+		"GOOGLE_APPLICATION_CREDENTIALS": "/secret/cloud/credentials.json",
+	}
+	for name, value := range secrets {
+		t.Setenv(name, value)
+	}
+	fakeExecutable := writeCodexCLIFixture(t, fixtureDirectory, `#!/bin/sh
+set -eu
+fixture_directory=$(dirname "$0")
+cat >/dev/null
+env | sort > "$fixture_directory/environment"
+printf '%s\n%s\n%s\n%s\n' "$HOME" "$TMPDIR" "$CODEX_HOME" "$PATH" > "$fixture_directory/safe-environment"
+printf '{"ok":true}'
+`)
+	adapter, err := NewCodexCLIAdapterWithOptions(CodexCLIAdapterOptions{
+		Executable:     fakeExecutable,
+		WorkspaceRoot:  workspaceRoot,
+		Timeout:        time.Second,
+		MaxOutputBytes: 1024,
+		MaxConcurrent:  1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.Run(context.Background(), CodexCLIProcessRequest{Prompt: []byte("environment")}); err != nil {
+		t.Fatal(err)
+	}
+	environment, err := os.ReadFile(filepath.Join(fixtureDirectory, "environment"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, secret := range secrets {
+		if strings.Contains(string(environment), name+"=") || strings.Contains(string(environment), secret) {
+			t.Fatalf("child environment leaked %s", name)
+		}
+	}
+	allowedNames := map[string]bool{
+		"HOME": true, "TMPDIR": true, "CODEX_HOME": true, "PATH": true,
+		"LANG": true, "LC_ALL": true, "NO_COLOR": true,
+		"PWD": true, "OLDPWD": true, "SHLVL": true, "_": true,
+	}
+	for _, entry := range strings.Split(strings.TrimSpace(string(environment)), "\n") {
+		name, _, found := strings.Cut(entry, "=")
+		if !found || !allowedNames[name] {
+			t.Fatalf("child environment contains non-whitelisted entry %q", entry)
+		}
+	}
+	safeEnvironment, err := os.ReadFile(filepath.Join(fixtureDirectory, "safe-environment"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(safeEnvironment)), "\n")
+	if len(lines) != 4 || !strings.HasPrefix(lines[0], workspaceRoot+string(os.PathSeparator)) ||
+		!strings.HasPrefix(lines[1], lines[0]+string(os.PathSeparator)) ||
+		!strings.HasPrefix(lines[2], lines[0]+string(os.PathSeparator)) || lines[3] != codexCLISafePath {
+		t.Fatalf("safe environment = %#v", lines)
+	}
 	assertDirectoryEmpty(t, workspaceRoot)
 }
 
