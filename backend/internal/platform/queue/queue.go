@@ -114,7 +114,7 @@ func (job Job) Validate() error {
 
 func kindUsesSemanticDurableArgs(kind string) bool {
 	return kind == KindCollectSource || kind == KindGenerateSourceDocument || kind == KindAnalyzeMonitorIntent || kind == KindEvaluatePublishedDocumentMatches ||
-		kind == KindBackfillPublishedMonitorMatches || kind == KindProjectAcceptedDocumentMatch || kind == KindExtractAutomaticClaimEvidence
+		kind == KindBackfillPublishedMonitorMatches || kind == KindProjectAcceptedDocumentMatch || kind == KindExtractAutomaticClaimEvidence || kind == KindRecomputeAIRun
 }
 
 func validSemanticDurableArgs(args json.RawMessage) bool {
@@ -208,6 +208,90 @@ RETURNING id`, kind, []byte(uniqueKey)).Scan(&id)
 		return 0, databaserepository.MapError(err)
 	}
 	return 0, fmt.Errorf("%w: job state %s cannot be reactivated", sharedrepository.ErrConflict, state)
+}
+
+// Reactivation describes the durable job selected by ReactivateByID. Running
+// jobs are returned unchanged so callers can retry later without creating a
+// duplicate execution. Terminal jobs receive one additional bounded attempt.
+type Reactivation struct {
+	ID            int64
+	Kind          string
+	PreviousState string
+	Changed       bool
+}
+
+type JobReference struct {
+	ID   int64
+	Kind string
+}
+
+// FindJobReference returns only the bounded identity used by recovery guards.
+// It never exposes args or River metadata.
+func (store *Store) FindJobReference(ctx context.Context, id int64) (JobReference, error) {
+	if store == nil || store.runtime == nil {
+		return JobReference{}, sharedrepository.ErrUnavailable
+	}
+	if id <= 0 {
+		return JobReference{}, fmt.Errorf("%w: invalid job id", sharedrepository.ErrInvalidInput)
+	}
+	var reference JobReference
+	reference.ID = id
+	var executor sqlQueryer = store.runtime.SQL
+	if transaction, ok := database.TransactionFromContext(ctx); ok {
+		executor = transaction.SQL
+	}
+	if err := executor.QueryRowContext(ctx, `SELECT kind FROM river_job WHERE id=$1`, id).Scan(&reference.Kind); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return JobReference{}, fmt.Errorf("%w: job not found", sharedrepository.ErrNotFound)
+		}
+		return JobReference{}, databaserepository.MapError(err)
+	}
+	return reference, nil
+}
+
+// ReactivateByID safely makes one known durable job available again while
+// preserving its attempt counter and river_job_attempt history.
+func (store *Store) ReactivateByID(ctx context.Context, id int64) (Reactivation, error) {
+	if store == nil || store.runtime == nil {
+		return Reactivation{}, sharedrepository.ErrUnavailable
+	}
+	if id <= 0 {
+		return Reactivation{}, fmt.Errorf("%w: invalid job id", sharedrepository.ErrInvalidInput)
+	}
+	if _, nested := database.TransactionFromContext(ctx); nested {
+		return Reactivation{}, database.ErrNestedTransaction
+	}
+	var result Reactivation
+	err := store.runtime.WithinTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		var state string
+		var maxAttempts int
+		if err := transaction.SQL.QueryRowContext(ctx, `SELECT kind,state,max_attempts FROM river_job WHERE id=$1 FOR UPDATE`, id).Scan(&result.Kind, &state, &maxAttempts); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: job not found", sharedrepository.ErrNotFound)
+			}
+			return databaserepository.MapError(err)
+		}
+		result.ID = id
+		result.PreviousState = state
+		switch state {
+		case "running":
+			return nil
+		case "available":
+			_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET scheduled_at=now(),finalized_at=NULL WHERE id=$1`, id)
+			result.Changed = err == nil
+			return databaserepository.MapError(err)
+		case "completed", "discarded", "cancelled":
+			if maxAttempts >= 25 {
+				return fmt.Errorf("%w: job attempt limit reached", sharedrepository.ErrConflict)
+			}
+			_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state='available',max_attempts=max_attempts+1,scheduled_at=now(),finalized_at=NULL WHERE id=$1`, id)
+			result.Changed = err == nil
+			return databaserepository.MapError(err)
+		default:
+			return fmt.Errorf("%w: job state %s cannot be reactivated", sharedrepository.ErrConflict, state)
+		}
+	})
+	return result, err
 }
 
 type sqlQueryer interface {

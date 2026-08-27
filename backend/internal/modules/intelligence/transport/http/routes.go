@@ -20,3 +20,13 @@ func RegisterRoutes(router *gin.Engine, service modelProfileService, authenticat
 	profiles.DELETE("/:id", httptransport.Wrap(handler.Delete))
 	profiles.POST("/:id/restore", httptransport.Wrap(handler.Restore))
 }
+
+// RegisterAIRunRoutes mounts the administrator-only recovery control plane.
+func RegisterAIRunRoutes(router *gin.Engine, service aiRunRecomputeService, authenticator httptransport.Authenticator) {
+	if router == nil {
+		return
+	}
+	handler := NewAIRunHandler(service)
+	runs := router.Group("/api/v1/ai/runs", httptransport.RequireAuthentication(authenticator), httptransport.RequireRoles(httptransport.RoleAdmin))
+	runs.POST("/:id/recompute", httptransport.Wrap(handler.Recompute))
+}

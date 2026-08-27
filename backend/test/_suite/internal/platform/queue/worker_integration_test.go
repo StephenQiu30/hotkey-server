@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	sharedrequestcontext "github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
@@ -33,8 +34,10 @@ func TestWorkerRoundTripsSemanticDurableArgsWithoutGenericPayload(t *testing.T) 
 		t.Fatal(err)
 	}
 	var received Job
-	worker := NewWorker(runtime, map[string]Handler{KindGenerateSourceDocument: func(_ context.Context, job Job) error {
+	var owningJobID int64
+	worker := NewWorker(runtime, map[string]Handler{KindGenerateSourceDocument: func(ctx context.Context, job Job) error {
 		received = job
+		owningJobID = sharedrequestcontext.JobID(ctx)
 		return nil
 	}})
 	if claimed, err := worker.RunOnce(ctx); err != nil || !claimed {
@@ -42,6 +45,9 @@ func TestWorkerRoundTripsSemanticDurableArgsWithoutGenericPayload(t *testing.T) 
 	}
 	if !sameJSONObject(t, received.DurableArgs, args) || received.Payload != (Payload{}) {
 		t.Fatalf("received durable job = %#v", received)
+	}
+	if owningJobID <= 0 || owningJobID != received.ID {
+		t.Fatalf("owning job context = %d, job ID = %d", owningJobID, received.ID)
 	}
 	var stored []byte
 	if err := runtime.SQL.QueryRowContext(ctx, `SELECT args FROM river_job WHERE unique_key=$1`, []byte("source-document-71")).Scan(&stored); err != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	databaserepository "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database/repository"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
+	sharedrequestcontext "github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
 )
 
 type Handler func(context.Context, Job) error
@@ -74,7 +75,8 @@ func (worker *Worker) RunOnce(ctx context.Context) (bool, error) {
 	if handler == nil {
 		return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, NewPermanentError(fmt.Errorf("no handler registered for %q", kind)))
 	}
-	return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, handler(ctx, job))
+	handlerCtx := sharedrequestcontext.WithJobID(ctx, id)
+	return true, worker.finish(ctx, id, kind, attempt+1, maxAttempts, handler(handlerCtx, job))
 }
 
 func (worker *Worker) finish(ctx context.Context, id int64, kind string, attempt, maxAttempts int, handlerErr error) error {

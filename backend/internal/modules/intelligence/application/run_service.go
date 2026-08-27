@@ -10,6 +10,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 	sharedclock "github.com/StephenQiu30/hotkey-server/backend/internal/shared/clock"
+	sharedrequestcontext "github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
 )
 
 const (
@@ -96,6 +97,7 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 			RuntimeVersion: StructuredRuntimeVersion, ModelProfileID: profile.ID,
 			PromptVersion: input.PromptVersion, InputSchemaVersion: input.InputSchemaVersion, SchemaVersion: input.SchemaVersion,
 			ParametersVersion: input.ParametersVersion, InputHash: input.InputHash, EvidenceSetHash: input.EvidenceSetHash, Now: service.now(),
+			OwningJobID: owningJobID(ctx),
 		})
 		if err != nil {
 			if code, known := domain.CodeOf(err); known && (code == domain.CodeAIModelUnavailable || code == domain.CodeAIBudgetExhausted) {
@@ -185,6 +187,14 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 		return pending, nil
 	}
 	return StructuredExecutionResult{Status: AnalysisStatusPending, ReasonCode: AnalysisReasonModelUnavailable}, nil
+}
+
+func owningJobID(ctx context.Context) *int64 {
+	id := sharedrequestcontext.JobID(ctx)
+	if id <= 0 {
+		return nil
+	}
+	return &id
 }
 
 func structuredExecutionTargetValid(taskType domain.TaskType, targetType string) bool {

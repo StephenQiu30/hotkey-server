@@ -65,7 +65,7 @@ UPDATE ai_runs
 SET status=$1::varchar, attempt=$2, retry_after=$3, lease_expires_at=$4,
 	started_at=CASE WHEN $1::varchar='running' THEN COALESCE(started_at,$5) ELSE started_at END
 WHERE id=$6
-RETURNING id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
+RETURNING id,owning_job_id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
 		  structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at`,
 			string(target), attempt, retryAfter, lease, now, runID,
 		).Scan(runScanTargets(&transitioned)...); err != nil {
@@ -194,7 +194,7 @@ func (repository *Repository) releaseInFlight(ctx context.Context, runID int64, 
 UPDATE ai_runs
 SET status=$1,reserved_cost=0,error_code=$2,lease_expires_at=NULL,finished_at=$3
 WHERE id=$4
-RETURNING id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
+RETURNING id,owning_job_id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
 		  structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at`,
 			string(terminal), code, now, runID,
 		).Scan(runScanTargets(&released)...); err != nil {

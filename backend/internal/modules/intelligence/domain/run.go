@@ -25,6 +25,7 @@ const (
 // application contracts. It intentionally excludes provider SDK payloads.
 type Run struct {
 	ID, ModelProfileID, ModelProfileVersion, TargetID, TargetVersion int64
+	OwningJobID                                                      *int64
 	TaskType                                                         TaskType
 	WorkspaceKey, SkillID, TargetType, RuntimeVersion                string
 	ModelVersion, ReuseKey                                           string

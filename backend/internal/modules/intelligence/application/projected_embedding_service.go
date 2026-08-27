@@ -72,6 +72,7 @@ func (service *EmbeddingService) ExecuteProjectedEmbedding(ctx context.Context, 
 			ModelProfileID: profile.ID, PromptVersion: input.PromptVersion, InputSchemaVersion: input.InputSchemaVersion,
 			SchemaVersion: input.SchemaVersion, ParametersVersion: input.ParametersVersion,
 			InputHash: input.InputHash, EvidenceSetHash: input.EvidenceSetHash, Now: service.runService.now(),
+			OwningJobID: owningJobID(ctx),
 		})
 		if err != nil {
 			if code, known := intelligencedomain.CodeOf(err); known && (code == intelligencedomain.CodeAIModelUnavailable || code == intelligencedomain.CodeAIBudgetExhausted) {

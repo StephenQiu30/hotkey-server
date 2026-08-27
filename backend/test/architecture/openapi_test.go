@@ -187,6 +187,7 @@ func TestOpenAPIContract(t *testing.T) {
 		"/api/v1/ai/model-profiles":                                                {"get": {"200", "401", "403", "503"}, "post": {"201", "400", "401", "403", "503"}},
 		"/api/v1/ai/model-profiles/{id}":                                           {"get": {"200", "400", "401", "403", "503"}, "patch": {"200", "400", "401", "403", "409", "503"}, "delete": {"200", "400", "401", "403", "409", "503"}},
 		"/api/v1/ai/model-profiles/{id}/restore":                                   {"post": {"200", "400", "401", "403", "409", "503"}},
+		"/api/v1/ai/runs/{id}/recompute":                                          {"post": {"202", "400", "401", "403", "404", "409", "503"}},
 		"/api/v1/micro-events":                                                     {"get": {"200", "400", "401", "503"}},
 		"/api/v1/micro-events/{id}":                                                {"get": {"200", "400", "401", "404"}},
 		"/api/v1/micro-events/{id}/evidence":                                       {"get": {"200", "400", "401", "404"}, "post": {"200", "201", "400", "401", "403", "409"}},

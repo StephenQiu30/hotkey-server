@@ -13,6 +13,12 @@ required property without making explicit null impossible to bind. */
     weight?: number;
   };
 
+  type AIRunRecomputeResponse = {
+    created?: boolean;
+    job_id?: number;
+    run_id?: number;
+  };
+
   type ApprovalRequest = {
     approval: "approved" | "rejected";
     /** Gin must not apply required directly to this nullable wrapper: both an
@@ -1435,6 +1441,12 @@ probability or a cross-channel relevance percentage. */
     version?: number;
   };
 
+  type ModelProfileResultHttpAIRunRecomputeResponse = {
+    code?: number;
+    data?: AIRunRecomputeResponse;
+    message?: string;
+  };
+
   type ModelProfileResultHttpModelProfileListResponse = {
     code?: number;
     data?: ModelProfileListResponse;
@@ -1727,6 +1739,11 @@ probability or a cross-channel relevance percentage. */
 
   type postAiModelProfilesIdRestoreParams = {
     /** model profile ID */
+    id: number;
+  };
+
+  type postAiRunsIdRecomputeParams = {
+    /** AI run ID */
     id: number;
   };
 

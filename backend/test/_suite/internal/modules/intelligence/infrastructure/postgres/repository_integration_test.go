@@ -9,6 +9,7 @@ import (
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
@@ -20,8 +21,16 @@ func TestRepositoryClaimsOneReusableRunAndReservesBudget(t *testing.T) {
 	if err := repository.CreateProfile(context.Background(), &profile); err != nil {
 		t.Fatalf("CreateProfile() error = %v", err)
 	}
+	ownerID, _, err := queue.NewStore(runtime).Enqueue(context.Background(), queue.Job{
+		Kind: queue.KindNormalizeContent, UniqueKey: "AI-run-owner", Payload: queue.Payload{EntityID: 1, EntityVersion: 1},
+		ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1,
+	})
+	if err != nil {
+		t.Fatalf("enqueue owner: %v", err)
+	}
 
 	claim := testClaim(profile)
+	claim.OwningJobID = &ownerID
 	first, err := repository.Claim(context.Background(), claim)
 	if err != nil {
 		t.Fatalf("Claim() first error = %v", err)
@@ -31,6 +40,13 @@ func TestRepositoryClaimsOneReusableRunAndReservesBudget(t *testing.T) {
 	}
 	if first.Run.WorkspaceKey != claim.WorkspaceKey || first.Run.SkillID != claim.SkillID || first.Run.TargetVersion != claim.TargetVersion || first.Run.RuntimeVersion != claim.RuntimeVersion {
 		t.Fatalf("Claim() execution identity = %#v, want exact persisted identity", first.Run)
+	}
+	if first.Run.OwningJobID == nil || *first.Run.OwningJobID != ownerID {
+		t.Fatalf("Claim() owning job = %#v, want %d", first.Run.OwningJobID, ownerID)
+	}
+	loaded, err := repository.FindRun(context.Background(), first.Run.ID)
+	if err != nil || loaded.OwningJobID == nil || *loaded.OwningJobID != ownerID {
+		t.Fatalf("FindRun() = %#v / %v, want owner %d", loaded, err, ownerID)
 	}
 	var workspaceKey, skillID, runtimeVersion string
 	var targetVersion int64

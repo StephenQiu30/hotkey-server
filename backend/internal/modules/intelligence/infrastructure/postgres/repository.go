@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
 type Repository struct{ runtime *database.Runtime }
@@ -51,6 +53,7 @@ type ClaimInput struct {
 	TaskType                                                            intelligencedomain.TaskType
 	WorkspaceKey, SkillID, TargetType, RuntimeVersion                   string
 	TargetID, TargetVersion, ModelProfileID                             int64
+	OwningJobID                                                         *int64
 	PromptVersion, InputSchemaVersion, SchemaVersion, ParametersVersion string
 	InputHash, EvidenceSetHash                                          string
 	Now                                                                 time.Time
@@ -68,6 +71,9 @@ func (repository *Repository) Claim(ctx context.Context, input ClaimInput) (Clai
 	if !input.TaskType.Valid() || strings.TrimSpace(input.WorkspaceKey) == "" || strings.TrimSpace(input.SkillID) == "" ||
 		strings.TrimSpace(input.TargetType) == "" || strings.TrimSpace(input.RuntimeVersion) == "" || input.TargetID <= 0 ||
 		input.TargetVersion <= 0 || input.ModelProfileID <= 0 {
+		return ClaimResult{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
+	if input.OwningJobID != nil && *input.OwningJobID <= 0 {
 		return ClaimResult{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
 	}
 	if input.Now.IsZero() {
@@ -127,15 +133,16 @@ func (repository *Repository) Claim(ctx context.Context, input ClaimInput) (Clai
 			TargetID: input.TargetID, TargetVersion: input.TargetVersion, RuntimeVersion: input.RuntimeVersion, ModelProfileID: profile.ID,
 			ModelProfileVersion: profile.Version, ModelVersion: profile.ModelVersion, ReuseKey: reuseKey,
 			Status: intelligencedomain.RunStatusQueued, ReservedCost: profile.MaxCost, LeaseExpiresAt: &lease,
+			OwningJobID: input.OwningJobID,
 		}
 		if err := transaction.SQL.QueryRowContext(ctx, `
 INSERT INTO ai_runs (
- workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,prompt_version,schema_version,input_hash,status,
+ owning_job_id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,prompt_version,schema_version,input_hash,status,
  model_profile_version,model_version,parameters_version,input_schema_version,evidence_set_hash,reuse_key,
  attempt,max_attempts,budget_day,reserved_cost,lease_expires_at
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'queued',$12,$13,$14,$15,$16,$17,1,$18,$19,$20,$21)
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'queued',$13,$14,$15,$16,$17,$18,1,$19,$20,$21,$22)
 RETURNING id`,
-			input.WorkspaceKey, input.SkillID, string(input.TaskType), input.TargetType, input.TargetID, input.TargetVersion, input.RuntimeVersion,
+			input.OwningJobID, input.WorkspaceKey, input.SkillID, string(input.TaskType), input.TargetType, input.TargetID, input.TargetVersion, input.RuntimeVersion,
 			profile.ID, input.PromptVersion, input.SchemaVersion, input.InputHash,
 			profile.Version, profile.ModelVersion, input.ParametersVersion, input.InputSchemaVersion, input.EvidenceSetHash, reuseKey,
 			profile.MaxAttempts, budgetDay, profile.MaxCost, lease,
@@ -182,7 +189,7 @@ func findReusableRun(ctx context.Context, queryer interface {
 }, reuseKey string) (intelligencedomain.Run, bool, error) {
 	var run intelligencedomain.Run
 	err := queryer.QueryRowContext(ctx, `
-SELECT id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
+SELECT id,owning_job_id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
 	   structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at
 FROM ai_runs WHERE reuse_key = $1 AND status = 'succeeded'`, reuseKey).Scan(
 		runScanTargets(&run)...,
@@ -196,15 +203,58 @@ FROM ai_runs WHERE reuse_key = $1 AND status = 'succeeded'`, reuseKey).Scan(
 	return run, true, nil
 }
 
+// FindRun loads the bounded execution fact used by administrator recovery.
+// It deliberately excludes prompts, provider payloads and credentials.
+func (repository *Repository) FindRun(ctx context.Context, id int64) (intelligencedomain.Run, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return intelligencedomain.Run{}, sharedrepository.ErrUnavailable
+	}
+	if id <= 0 {
+		return intelligencedomain.Run{}, fmt.Errorf("%w: invalid AI run id", sharedrepository.ErrInvalidInput)
+	}
+	var run intelligencedomain.Run
+	err := repository.queryRow(ctx, `
+SELECT id,owning_job_id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
+       structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at
+FROM ai_runs WHERE id=$1`, id).Scan(runScanTargets(&run)...)
+	if errors.Is(err, sql.ErrNoRows) {
+		return intelligencedomain.Run{}, fmt.Errorf("%w: AI run not found", sharedrepository.ErrNotFound)
+	}
+	if err != nil {
+		return intelligencedomain.Run{}, fmt.Errorf("find AI run: %w", err)
+	}
+	return run, nil
+}
+
 // runScanTargets keeps nullable persistence details explicit while the domain
 // value remains free of SQL types.
 func runScanTargets(run *intelligencedomain.Run) []any {
 	return []any{
-		&run.ID, &run.WorkspaceKey, &run.SkillID, &run.TaskType, &run.TargetType, &run.TargetID, &run.TargetVersion, &run.RuntimeVersion,
+		&run.ID, newRunOwningJobID(run), &run.WorkspaceKey, &run.SkillID, &run.TaskType, &run.TargetType, &run.TargetID, &run.TargetVersion, &run.RuntimeVersion,
 		&run.ModelProfileID, &run.ModelProfileVersion,
 		&run.ModelVersion, &run.ReuseKey, &run.Status, newRunStructuredResult(run), &run.Tokens, &run.LatencyMS, &run.ReservedCost, &run.Cost,
 		newRunErrorCode(run), newRunLease(run),
 	}
+}
+
+type runOwningJobIDScanner struct{ run *intelligencedomain.Run }
+
+func newRunOwningJobID(run *intelligencedomain.Run) *runOwningJobIDScanner {
+	return &runOwningJobIDScanner{run: run}
+}
+
+func (scanner *runOwningJobIDScanner) Scan(value any) error {
+	if value == nil {
+		scanner.run.OwningJobID = nil
+		return nil
+	}
+	var nullable sql.NullInt64
+	if err := nullable.Scan(value); err != nil {
+		return err
+	}
+	jobID := nullable.Int64
+	scanner.run.OwningJobID = &jobID
+	return nil
 }
 
 type runStructuredResultScanner struct{ run *intelligencedomain.Run }
@@ -334,7 +384,7 @@ UPDATE ai_runs
 SET status = $1, cost = $2::numeric, reserved_cost = 0, error_code = $3,
     lease_expires_at = NULL, finished_at = $4
 WHERE id = $5
-RETURNING id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
+RETURNING id,owning_job_id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
 		  structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at`,
 			string(status), actualCost, errorCode, now, runID,
 		).Scan(runScanTargets(&settled)...); err != nil {
@@ -400,7 +450,7 @@ UPDATE ai_runs
 SET status='succeeded',structured_result=$1::jsonb,tokens=$2,cost=$3::numeric,
     latency_ms=$4,reserved_cost=0,error_code=NULL,lease_expires_at=NULL,finished_at=$5
 WHERE id=$6
-RETURNING id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
+RETURNING id,owning_job_id,workspace_key,skill_id,task_type,target_type,target_id,target_version,runtime_version,model_profile_id,model_profile_version,model_version,reuse_key,status,
           structured_result,tokens,latency_ms,reserved_cost::text,cost::text,error_code,lease_expires_at`,
 			completion.Result, tokens, locked.ReservedCost, completion.LatencyMS, completion.FinishedAt, completion.RunID,
 		).Scan(runScanTargets(&completed)...); err != nil {

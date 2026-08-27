@@ -11,6 +11,7 @@ import (
 
 	ingestionjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/jobs"
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
+	intelligencejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/jobs"
 	sourcejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/jobs"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/config"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
@@ -27,11 +28,13 @@ func TestDefaultP0HandlersExposeTheMultiSourceHotspotCoreChain(t *testing.T) {
 		Collect:              &sourcejobs.CollectHandler{},
 		Normalize:            &ingestionjobs.NormalizeHandler{},
 		AnalyzeMonitorIntent: &monitorIntentAnalysisHandler{},
+		RecomputeAIRun:       &intelligencejobs.AIRunRecomputeHandler{},
 	})
 	want := map[string]bool{
 		"collect_source":         true,
 		"normalize_content":      true,
 		"analyze_monitor_intent": true,
+		"recompute_ai_run":       true,
 	}
 	if len(handlers) != len(want) {
 		t.Fatalf("default P0 handler count = %d, want %d", len(handlers), len(want))

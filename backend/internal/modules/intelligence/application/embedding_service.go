@@ -66,6 +66,7 @@ func (service *EmbeddingService) Execute(ctx context.Context, input EmbeddingExe
 			RuntimeVersion: StructuredRuntimeVersion, ModelProfileID: profile.ID,
 			PromptVersion: input.PromptVersion, InputSchemaVersion: input.InputSchemaVersion, SchemaVersion: input.SchemaVersion,
 			ParametersVersion: input.ParametersVersion, InputHash: input.InputHash, EvidenceSetHash: input.EvidenceSetHash, Now: service.runService.now(),
+			OwningJobID: owningJobID(ctx),
 		})
 		if err != nil {
 			if code, known := domain.CodeOf(err); known && (code == domain.CodeAIModelUnavailable || code == domain.CodeAIBudgetExhausted) {

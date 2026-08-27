@@ -395,6 +395,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/ai/runs/{id}/recompute": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ai"
+                ],
+                "summary": "Recompute a failed AI run",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "AI run ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-http_AIRunRecomputeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/auth/email-verifications": {
             "post": {
                 "consumes": [
@@ -7493,6 +7562,22 @@ const docTemplate = `{
                 }
             }
         },
+        "http.AIRunRecomputeResponse": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "boolean"
+                },
+                "job_id": {
+                    "type": "integer",
+                    "example": 92
+                },
+                "run_id": {
+                    "type": "integer",
+                    "example": 41
+                }
+            }
+        },
         "http.ApprovalRequest": {
             "type": "object",
             "required": [
@@ -10560,6 +10645,20 @@ const docTemplate = `{
                 "version": {
                     "type": "integer",
                     "example": 1
+                }
+            }
+        },
+        "http.ModelProfileResult-http_AIRunRecomputeResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.AIRunRecomputeResponse"
+                },
+                "message": {
+                    "type": "string"
                 }
             }
         },

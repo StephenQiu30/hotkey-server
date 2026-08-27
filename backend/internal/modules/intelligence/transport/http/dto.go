@@ -19,6 +19,12 @@ type ModelProfileResult[T any] struct {
 
 type EmptyResponse struct{}
 
+type AIRunRecomputeResponse struct {
+	RunID   int64 `json:"run_id" example:"41"`
+	JobID   int64 `json:"job_id" example:"92"`
+	Created bool  `json:"created"`
+}
+
 // CreateModelProfileRequest is the only write path for credential_ref. Its
 // value is validated as a reference, not resolved by this transport.
 type CreateModelProfileRequest struct {

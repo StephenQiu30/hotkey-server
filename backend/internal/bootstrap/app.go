@@ -27,6 +27,7 @@ import (
 	ingestiontransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/transport/http"
 	intelligenceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/application"
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
+	intelligencejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/jobs"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 	intelligenceprovider "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/provider"
 	intelligencetransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/transport/http"
@@ -179,6 +180,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				notificationpostgres.NewRepository,
 				newNotificationService,
 				newQueueStore,
+				intelligencejobs.NewAIRunRecomputeScheduler,
+				newAIRunRecomputeService,
 				exposeCollectionTargetReader,
 				sourcejobs.NewCollectionRetryActivator,
 				sourcejobs.NewManualCollectionActivator,
@@ -287,6 +290,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					notificationjobs.NewEmailDispatcher,
 					newMonitorIntentAnalysisHandler,
 					ingestionjobs.NewPublishedDocumentMatchEvaluationHandler,
+					newAIRunRecomputeHandler,
 					newP0Handlers,
 					newQueueWorker, exposeWorkerRunner, exposeCollectionDueReader, newCollectionScheduler, exposeCollectionSchedulerRunner,
 				),
@@ -341,6 +345,14 @@ func newAIProviderRegistry(cfg config.Config, logger *zap.Logger) *intelligencea
 
 func newAIRunService(runs *intelligencepostgres.Repository, providers *intelligenceapplication.ProviderRegistry, schemas *intelligenceapplication.SchemaRegistry) (*intelligenceapplication.RunService, error) {
 	return intelligenceapplication.NewRunService(intelligenceapplication.RunServiceDependencies{Runs: runs, Providers: providers, Schemas: schemas, Clock: sharedclock.System{}})
+}
+
+func newAIRunRecomputeService(runs *intelligencepostgres.Repository, scheduler *intelligencejobs.AIRunRecomputeScheduler) (*intelligenceapplication.AIRunRecomputeService, error) {
+	return intelligenceapplication.NewAIRunRecomputeService(runs, scheduler)
+}
+
+func newAIRunRecomputeHandler(runs *intelligencepostgres.Repository, jobs *queue.Store) *intelligencejobs.AIRunRecomputeHandler {
+	return intelligencejobs.NewAIRunRecomputeHandler(runs, jobs)
 }
 
 func newAIEmbeddingService(runs *intelligencepostgres.Repository, providers *intelligenceapplication.ProviderRegistry, runService *intelligenceapplication.RunService) (*intelligenceapplication.EmbeddingService, error) {
@@ -404,8 +416,9 @@ func registerIngestionRoutes(
 	ingestiontransport.RegisterContentLineageFeedbackRoutes(router, contentLineageFeedback, authenticator)
 }
 
-func registerIntelligenceRoutes(router *gin.Engine, service *intelligenceapplication.ModelProfileService, authenticator httptransport.Authenticator) {
+func registerIntelligenceRoutes(router *gin.Engine, service *intelligenceapplication.ModelProfileService, recompute *intelligenceapplication.AIRunRecomputeService, authenticator httptransport.Authenticator) {
 	intelligencetransport.RegisterRoutes(router, service, authenticator)
+	intelligencetransport.RegisterAIRunRoutes(router, recompute, authenticator)
 }
 
 func registerMicroEventRoutes(router *gin.Engine, queries *eventapplication.MicroEventQueryService, governance *eventapplication.MicroEventGovernanceService, evidence *eventapplication.ClaimEvidenceService, authenticator httptransport.Authenticator) {
@@ -512,6 +525,7 @@ type p0HandlerParams struct {
 	ProjectAcceptedDocumentMatch     *ingestionjobs.AcceptedDocumentMatchProjectionHandler  `optional:"true"`
 	ExtractAutomaticClaimEvidence    *eventjobs.AutomaticClaimEvidenceHandler               `optional:"true"`
 	RefreshXMetrics                  *sourcejobs.XMetricRefreshHandler                      `optional:"true"`
+	RecomputeAIRun                   *intelligencejobs.AIRunRecomputeHandler
 }
 
 func newP0Handlers(params p0HandlerParams) map[string]queue.Handler {
@@ -519,6 +533,7 @@ func newP0Handlers(params p0HandlerParams) map[string]queue.Handler {
 		queue.KindCollectSource:        params.Collect.Handle,
 		queue.KindNormalizeContent:     params.Normalize.Handle,
 		queue.KindAnalyzeMonitorIntent: params.AnalyzeMonitorIntent.Handle,
+		queue.KindRecomputeAIRun:       params.RecomputeAIRun.Handle,
 	}
 	if params.GenerateSourceDocument != nil {
 		handlers[queue.KindGenerateSourceDocument] = params.GenerateSourceDocument.Handle

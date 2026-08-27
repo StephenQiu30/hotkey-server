@@ -79,6 +79,45 @@ func TestReactivateByUniqueKeyPreservesAttemptHistory(t *testing.T) {
 	}
 }
 
+func TestReactivateByIDReopensCompletedJobWithoutErasingHistory(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(runtime)
+	job := Job{Kind: KindNormalizeContent, UniqueKey: "recompute-owner", Payload: Payload{EntityID: 2, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}
+	id, _, err := store.Enqueue(ctx, job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE river_job SET state='completed',attempt=1,finalized_at=now() WHERE id=$1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO river_job_attempt(job_id,attempt,error) VALUES($1,1,'retryable')`, id); err != nil {
+		t.Fatal(err)
+	}
+	activation, err := store.ReactivateByID(ctx, id)
+	if err != nil || !activation.Changed || activation.PreviousState != "completed" || activation.Kind != KindNormalizeContent {
+		t.Fatalf("ReactivateByID() = %#v / %v", activation, err)
+	}
+	var state string
+	var attempt, maxAttempts, history int
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT state,attempt,max_attempts FROM river_job WHERE id=$1`, id).Scan(&state, &attempt, &maxAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM river_job_attempt WHERE job_id=$1`, id).Scan(&history); err != nil {
+		t.Fatal(err)
+	}
+	if state != "available" || attempt != 1 || maxAttempts != 4 || history != 1 {
+		t.Fatalf("reactivated state=%s attempt=%d max=%d history=%d", state, attempt, maxAttempts, history)
+	}
+}
+
 func TestReactivateByUniqueKeyRejectsUnsafeStatesAndRollsBack(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))
