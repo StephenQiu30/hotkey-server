@@ -86,14 +86,8 @@ docker compose --env-file .env.prod -f docker-compose-prod.yml up --build --deta
 
 ```bash
 cd backend
-go run ./test/runner vet ./...
-go run ./test/runner test ./... -count=1
-go build ./...
-sh test/tools/validate-architecture.sh
-sh test/tools/validate-repository.sh
-sh test/tools/verify-database-runtime.sh
-sh test/tools/verify-schema.sh
-go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+make openapi  # 契约变更时重新生成后端与发布 OpenAPI
+make ci       # 后端完整验收；需要隔离的 PostgreSQL 与 Redis 测试环境
 
 cd ../frontend
 npm run openapi:check

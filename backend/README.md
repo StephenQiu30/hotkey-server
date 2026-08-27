@@ -232,12 +232,11 @@ GoLand 共享运行配置采用 [JetBrains 官方 Run/Debug 配置模型](https:
 常用命令：
 
 ```bash
-go run ./test/runner vet ./...                         # 静态检查
-go run ./test/runner test ./... -count=1              # 单元与集成测试
-go build ./...                                         # 构建检查
-sh test/tools/validate-architecture.sh                 # 架构约束
-sh test/tools/validate-repository.sh                   # 仓库约束
-sh test/tools/verify-schema.sh                         # Schema 幂等验证
+make openapi     # 从 Swaggo 注解同步生成运行时与发布 OpenAPI
+make vet         # 静态检查
+make test        # 单元与集成测试
+make build       # 构建检查
+make architecture repository  # 架构与仓库约束
 ```
 
 完整 CI 需要可丢弃的 PostgreSQL 测试库和独立 Redis DB：
@@ -245,12 +244,10 @@ sh test/tools/verify-schema.sh                         # Schema 幂等验证
 ```bash
 export HOTKEY_TEST_DSN='postgres://hotkey:hotkey@localhost:5432/hotkey_test?sslmode=disable'
 export HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15'
-go run ./test/runner test ./... -count=1
-sh test/tools/verify-database-runtime.sh
-sh test/tools/verify-schema.sh
+make ci
 ```
 
-GitHub Actions 对 `main` 和 Pull Request 直接执行这些原生命令，并额外检查 OpenAPI 漂移和依赖漏洞；完整命令以 [CI 工作流](../.github/workflows/ci.yml) 为准。
+`make ci` 是本地与 GitHub Actions 共用的后端验收入口，覆盖 OpenAPI 漂移、数据库行为、测试、构建、Schema、架构边界与依赖漏洞。
 
 ## 项目状态
 

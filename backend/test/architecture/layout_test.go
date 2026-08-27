@@ -333,6 +333,65 @@ func TestRepositoryUsesSingleAgentRules(t *testing.T) {
 	}
 }
 
+func TestBackendMakefileIsCanonicalAcceptanceEntryPoint(t *testing.T) {
+	backendRoot := repositoryRoot(t)
+	root := filepath.Clean(filepath.Join(backendRoot, ".."))
+
+	makefile, err := os.ReadFile(filepath.Join(backendRoot, "Makefile"))
+	if err != nil {
+		t.Fatalf("read backend Makefile: %v", err)
+	}
+	makefileText := string(makefile)
+	for _, fragment := range []string{
+		"test-env:",
+		"openapi:",
+		"openapi-check: openapi",
+		"vet:",
+		"test: test-env",
+		"build:",
+		"architecture:",
+		"repository:",
+		"database-runtime: test-env",
+		"schema: test-env",
+		"vulnerability:",
+		"ci: openapi-check vet database-runtime test build architecture repository schema vulnerability",
+	} {
+		if !strings.Contains(makefileText, fragment) {
+			t.Errorf("backend Makefile must contain %q", fragment)
+		}
+	}
+
+	workflow, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatalf("read CI workflow: %v", err)
+	}
+	workflowText := string(workflow)
+	if !strings.Contains(workflowText, "run: make ci") {
+		t.Error("backend CI must execute the canonical make ci entry point")
+	}
+	for _, duplicate := range []string{
+		"go run ./test/runner vet ./...",
+		"go run ./test/runner test ./... -count=1",
+		"sh test/tools/verify-database-runtime.sh",
+	} {
+		if strings.Contains(workflowText, duplicate) {
+			t.Errorf("backend CI duplicates Makefile command %q", duplicate)
+		}
+	}
+
+	for _, relative := range []string{"README.md", "README_EN.md"} {
+		readme, err := os.ReadFile(filepath.Join(root, relative))
+		if err != nil {
+			t.Fatalf("read %s: %v", relative, err)
+		}
+		for _, command := range []string{"make openapi", "make ci"} {
+			if !strings.Contains(string(readme), command) {
+				t.Errorf("%s must document %q", relative, command)
+			}
+		}
+	}
+}
+
 func TestRepositoryKeepsCommonConfigurationAtRoot(t *testing.T) {
 	root := filepath.Clean(filepath.Join(repositoryRoot(t), ".."))
 	rootOnlyFiles := map[string]struct{}{

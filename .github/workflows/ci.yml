@@ -64,36 +64,8 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      - name: OpenAPI contract acceptance
-        run: |
-          HOTKEY_OPENAPI_EXCLUDE='internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go,internal/modules/knowledge/transport/http,internal/modules/report'
-          go run github.com/swaggo/swag/cmd/swag init --generalInfo cmd/hotkey/main.go --parseInternal --tags '!events,!radar' --exclude "$HOTKEY_OPENAPI_EXCLUDE" --output openapi --outputTypes go --packageName openapi
-          go run github.com/swaggo/swag/cmd/swag init --generalInfo cmd/hotkey/main.go --parseInternal --tags '!events,!radar' --exclude "$HOTKEY_OPENAPI_EXCLUDE" --output ../docs/openapi --outputTypes json --packageName openapi
-          go test ./test/architecture -run 'Test(OpenAPIContract|GeneratedOpenAPIRegistryMatchesCommittedArtifact)$' -count=1
-          git -C .. diff --exit-code -- backend/openapi/docs.go docs/openapi/swagger.json
-
-      - name: Static analysis acceptance
-        run: go run ./test/runner vet ./...
-
-      - name: Database runtime acceptance
-        run: sh test/tools/verify-database-runtime.sh
-
-      - name: Unit and integration test acceptance
-        run: go run ./test/runner test ./... -count=1
-
-      - name: Build acceptance
-        run: go build ./...
-
-      - name: Architecture and repository acceptance
-        run: |
-          sh test/tools/validate-architecture.sh
-          sh test/tools/validate-repository.sh
-
-      - name: Schema acceptance
-        run: sh test/tools/verify-schema.sh
-
-      - name: Production dependency vulnerability acceptance
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+      - name: Canonical backend acceptance
+        run: make ci
 
   frontend-acceptance:
     name: Frontend test acceptance
