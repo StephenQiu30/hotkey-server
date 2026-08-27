@@ -354,7 +354,7 @@ func TestBackendMakefileIsCanonicalAcceptanceEntryPoint(t *testing.T) {
 		"database-runtime: test-env",
 		"schema: test-env",
 		"vulnerability:",
-		"ci: openapi-check vet database-runtime test build architecture repository schema vulnerability",
+		"ci: openapi-check vet build architecture repository database-runtime schema test vulnerability",
 	} {
 		if !strings.Contains(makefileText, fragment) {
 			t.Errorf("backend Makefile must contain %q", fragment)
