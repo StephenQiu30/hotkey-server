@@ -10,6 +10,7 @@ import (
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/scheduler"
 )
 
 type CollectionTargetReader interface {
@@ -36,20 +37,31 @@ func (handler *CollectHandler) Handle(ctx context.Context, job queue.Job) error 
 	if err := queue.ValidateHandlerJob(job, queue.KindCollectSource); err != nil {
 		return queue.NewPermanentError(err)
 	}
-	payload := job.Payload
-	triggerType := sourcedomain.CollectionTriggerType(payload.TriggerType)
-	if triggerType == "" {
-		triggerType = sourcedomain.CollectionTriggerSchedule
+	args, err := scheduler.DecodeCollectionJobArgs(job.DurableArgs)
+	if err != nil {
+		return queue.NewPermanentError(err)
 	}
+	triggerType := sourcedomain.CollectionTriggerType(args.TriggerType)
 	resolve := func(transactionCtx context.Context) (sourcedomain.CollectionRequest, error) {
-		targets, err := handler.targets.ListForCollection(transactionCtx, payload.EntityID, payload.EntityVersion, payload.InputHash, payload.WindowStart, payload.WindowEnd, triggerType)
+		targets, err := handler.targets.ListForCollection(transactionCtx, args.SourceConnectionID, args.MonitorVersionID, args.InputHash, args.WindowStart, args.WindowEnd, triggerType)
 		if err != nil {
 			return sourcedomain.CollectionRequest{}, err
+		}
+		exactPublication := false
+		for _, target := range targets {
+			if target.MonitorID == args.MonitorID && target.MonitorConfigVersionID == args.MonitorVersionID &&
+				target.CompiledProfileID == args.CompiledProfileID {
+				exactPublication = true
+				break
+			}
+		}
+		if !exactPublication {
+			return sourcedomain.CollectionRequest{}, fmt.Errorf("collection publication identity is no longer eligible")
 		}
 		planner := sourceapplication.QueryPlanner{}
 		requests := make([]sourcedomain.CollectionRequest, 0, len(targets))
 		for _, target := range targets {
-			request, err := planner.Plan(target, payload.WindowStart, payload.WindowEnd)
+			request, err := planner.Plan(target, args.WindowStart, args.WindowEnd)
 			if err != nil {
 				return sourcedomain.CollectionRequest{}, err
 			}
@@ -66,11 +78,11 @@ func (handler *CollectHandler) Handle(ctx context.Context, job queue.Job) error 
 		groups[0].TriggerType = triggerType
 		return groups[0], nil
 	}
-	_, err := handler.collections.CollectResolvedWithSuccessHook(ctx, payload.EntityID, payload.InputHash, resolve, func(transactionCtx context.Context, runID int64) error {
+	_, err = handler.collections.CollectResolvedWithSuccessHook(ctx, args.SourceConnectionID, args.InputHash, resolve, func(transactionCtx context.Context, runID int64) error {
 		_, _, err := handler.jobs.Enqueue(transactionCtx, queue.Job{
 			Kind:        queue.KindNormalizeContent,
-			UniqueKey:   queue.StableJobKey(queue.KindNormalizeContent, runID, 1, payload.InputHash),
-			Payload:     queue.Payload{EntityID: runID, EntityVersion: 1, WindowStart: payload.WindowStart, WindowEnd: payload.WindowEnd, InputHash: payload.InputHash},
+			UniqueKey:   queue.StableJobKey(queue.KindNormalizeContent, runID, 1, args.InputHash),
+			Payload:     queue.Payload{EntityID: runID, EntityVersion: 1, WindowStart: args.WindowStart, WindowEnd: args.WindowEnd, InputHash: args.InputHash},
 			ScheduledAt: job.ScheduledAt, MaxAttempts: 3, Priority: 2,
 		})
 		return err

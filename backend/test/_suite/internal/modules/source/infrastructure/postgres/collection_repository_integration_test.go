@@ -558,7 +558,8 @@ func collectionRequestForRepository(t *testing.T, runtime *database.Runtime, nam
 			t.Fatalf("create source checkpoint: %v", err)
 		}
 		targets = append(targets, domain.PublishedCollectionTarget{
-			MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configID, SourceConnectionID: connection.ID,
+			MonitorID: monitorID, MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configID,
+			CompiledProfileID: configID + 100000, SourceConnectionID: connection.ID,
 			QuerySignature: signature, Terms: []domain.CollectionTerm{{Value: "climate"}}, Languages: []string{"en"},
 			CollectionInterval: 5 * time.Minute,
 			Checkpoint:         domain.CollectionCheckpoint{ID: checkpointID, Version: checkpointVersion, MonitorSourceID: monitorSourceID, QueryHash: signature, NextPollAt: windowStart},

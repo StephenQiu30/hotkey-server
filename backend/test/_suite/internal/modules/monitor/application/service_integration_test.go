@@ -146,8 +146,8 @@ WHERE source.config_version_id = $1`, publishedConfig.ID).Scan(&checkpointQueryH
 		t.Fatalf("stale Resume code=%d", appCode(err))
 	}
 	dueAfterResume, err := monitorpostgres.NewPublishedCollectionTargetReader(runtime).ListDue(ctx, time.Now().UTC().Add(time.Minute))
-	if err != nil || len(dueAfterResume) != 1 || dueAfterResume[0].MonitorConfigVersionID != publishedConfig.ID {
-		t.Fatalf("resumed due targets = %#v/%v, want published config %d", dueAfterResume, err, publishedConfig.ID)
+	if err != nil || len(dueAfterResume) != 0 {
+		t.Fatalf("legacy publication without ready compiled profile became due after resume: %#v/%v", dueAfterResume, err)
 	}
 
 	firstDraftMonitor, secondDraft, err := monitors.ReplaceDraft(ctx, monitorapplication.ReplaceDraftInput{Subject: monitorEditor(admin.UserID), MonitorID: created.ID, Expected: monitordomain.ExpectedVersions{MonitorVersion: resumed.Version, DraftVersion: nil}, Draft: monitorDraft(connection.ID)})

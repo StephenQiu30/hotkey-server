@@ -28,14 +28,21 @@ func (activator *ManualCollectionActivator) Enqueue(ctx context.Context, command
 	if err := command.Validate(); err != nil {
 		return false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
+	args := scheduler.CollectionJobArgs{
+		MonitorID: command.MonitorID, MonitorVersionID: command.ConfigVersionID,
+		CompiledProfileID: command.CompiledProfileID, SourceConnectionID: command.SourceConnectionID,
+		WindowStart: command.WindowStart.UTC(), WindowEnd: command.WindowEnd.UTC(),
+		InputHash: command.QuerySignature, TriggerType: string(sourcedomain.CollectionTriggerManual),
+	}
+	encoded, err := scheduler.EncodeCollectionJobArgs(args)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
 	_, created, err := activator.jobs.Enqueue(ctx, queue.Job{
-		Kind:      queue.KindCollectSource,
-		UniqueKey: scheduler.ManualCollectionUniqueKey(command.SourceConnectionID, command.QuerySignature, command.ScheduledAt),
-		Payload: queue.Payload{
-			EntityID: command.SourceConnectionID, EntityVersion: command.ConfigVersionID,
-			WindowStart: command.WindowStart.UTC(), WindowEnd: command.WindowEnd.UTC(),
-			InputHash: command.QuerySignature, TriggerType: string(sourcedomain.CollectionTriggerManual),
-		},
+		Kind: queue.KindCollectSource,
+		UniqueKey: scheduler.ManualCollectionUniqueKey(command.MonitorID, command.ConfigVersionID,
+			command.CompiledProfileID, command.SourceConnectionID, command.ScheduledAt),
+		DurableArgs: encoded,
 		ScheduledAt: command.ScheduledAt.UTC(), MaxAttempts: 3, Priority: 2,
 	})
 	return created, err

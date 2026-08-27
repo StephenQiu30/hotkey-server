@@ -22,7 +22,7 @@ func TestJobRepositoryListsCancelsAndRetriesSafeProjection(t *testing.T) {
 	}
 	store := queue.NewStore(runtime)
 	jobID, created, err := store.Enqueue(context.Background(), queue.Job{
-		Kind: queue.KindCollectSource, UniqueKey: "operations-job-integration", Payload: queue.Payload{EntityID: 1, EntityVersion: 1, InputHash: "operations"},
+		Kind: queue.KindNormalizeContent, UniqueKey: "operations-job-integration", Payload: queue.Payload{EntityID: 1, EntityVersion: 1, InputHash: "operations"},
 		ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1,
 	})
 	if err != nil || !created || jobID <= 0 {

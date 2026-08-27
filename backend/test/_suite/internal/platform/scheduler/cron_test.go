@@ -18,12 +18,12 @@ func (fake *fakeEnqueuer) Enqueue(_ context.Context, job queue.Job) (int64, bool
 func TestEnqueueDueUsesStableJobEnvelope(t *testing.T) {
 	now := time.Date(2026, 7, 17, 9, 0, 0, 0, time.UTC)
 	fake := &fakeEnqueuer{}
-	id, created, err := EnqueueDue(context.Background(), fake, DueSource{ID: 9, NextPoll: now.Add(-time.Minute), QueryHash: "query-v1"}, "collect_source", 2, now, now.Add(-time.Hour), now)
+	id, created, err := EnqueueDue(context.Background(), fake, DueSource{ID: 9, NextPoll: now.Add(-time.Minute), QueryHash: "query-v1"}, queue.KindNormalizeContent, 2, now, now.Add(-time.Hour), now)
 	if err != nil || id != 1 || !created || len(fake.jobs) != 1 {
 		t.Fatalf("EnqueueDue() = %d/%t/%v", id, created, err)
 	}
 	job := fake.jobs[0]
-	if job.UniqueKey != UniqueKey("collect_source", 9, 2, now.Add(-time.Hour), now) || job.Payload.EntityID != 9 || job.Payload.InputHash != "query-v1" {
+	if job.UniqueKey != UniqueKey(queue.KindNormalizeContent, 9, 2, now.Add(-time.Hour), now) || job.Payload.EntityID != 9 || job.Payload.InputHash != "query-v1" {
 		t.Fatalf("job envelope = %#v", job)
 	}
 }

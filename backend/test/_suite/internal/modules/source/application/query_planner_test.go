@@ -147,7 +147,8 @@ func TestQueryPlannerGroupRequestsRejectsDriftFromPublishedTarget(t *testing.T) 
 
 func plannerTarget(monitorSourceID, configVersionID, sourceConnectionID int64, signature string) domain.PublishedCollectionTarget {
 	return domain.PublishedCollectionTarget{
-		MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configVersionID, SourceConnectionID: sourceConnectionID,
+		MonitorID: configVersionID + 1000, MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configVersionID,
+		CompiledProfileID: configVersionID + 2000, SourceConnectionID: sourceConnectionID,
 		QuerySignature: signature, Terms: []domain.CollectionTerm{{Value: "climate"}}, Languages: []string{"en"},
 		CollectionInterval: 5 * time.Minute,
 		Checkpoint:         domain.CollectionCheckpoint{MonitorSourceID: monitorSourceID, QueryHash: signature, NextPollAt: time.Date(2026, time.July, 16, 7, 55, 0, 0, time.UTC)},

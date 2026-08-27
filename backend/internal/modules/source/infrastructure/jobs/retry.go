@@ -69,9 +69,21 @@ func (activator *CollectionRetryActivator) Reactivate(ctx context.Context, retry
 			return fmt.Errorf("%w: collection target set changed", sharedrepository.ErrConflict)
 		}
 	}
-	uniqueKey := scheduler.CollectionUniqueKey(run.SourceConnectionID, run.QuerySignature, run.WindowStart, run.WindowEnd)
+	var representative sourcedomain.PublishedCollectionTarget
+	for _, target := range targets {
+		if target.MonitorConfigVersionID == minimumConfigVersionID {
+			representative = target
+			break
+		}
+	}
+	if representative.MonitorID <= 0 || representative.CompiledProfileID <= 0 {
+		return fmt.Errorf("%w: collection publication identity is unavailable", sharedrepository.ErrConflict)
+	}
+	uniqueKey := scheduler.CollectionUniqueKey(representative.MonitorID, representative.MonitorConfigVersionID,
+		representative.CompiledProfileID, run.SourceConnectionID, run.WindowStart, run.WindowEnd)
 	if triggerType == sourcedomain.CollectionTriggerManual {
-		uniqueKey = scheduler.ManualCollectionUniqueKey(run.SourceConnectionID, run.QuerySignature, run.ScheduledAt)
+		uniqueKey = scheduler.ManualCollectionUniqueKey(representative.MonitorID, representative.MonitorConfigVersionID,
+			representative.CompiledProfileID, run.SourceConnectionID, run.ScheduledAt)
 	}
 	_, err = activator.jobs.ReactivateByUniqueKey(ctx, queue.KindCollectSource, uniqueKey)
 	if err != nil {

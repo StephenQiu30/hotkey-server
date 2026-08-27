@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/scheduler"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
@@ -141,9 +143,13 @@ func (pipeline *pipelineAcceptance) handlers() map[string]queue.Handler {
 }
 
 func (pipeline *pipelineAcceptance) collect(ctx context.Context, job queue.Job) error {
-	source, ok := pipeline.sources[job.Payload.EntityID]
+	args, err := scheduler.DecodeCollectionJobArgs(job.DurableArgs)
+	if err != nil {
+		return queue.NewPermanentError(err)
+	}
+	source, ok := pipeline.sources[args.SourceConnectionID]
 	if !ok {
-		return queue.NewPermanentError(fmt.Errorf("unknown fixture source %d", job.Payload.EntityID))
+		return queue.NewPermanentError(fmt.Errorf("unknown fixture source %d", args.SourceConnectionID))
 	}
 	if source.failure != "" {
 		return queue.NewRetryableError(errors.New(source.failure))
@@ -151,7 +157,10 @@ func (pipeline *pipelineAcceptance) collect(ctx context.Context, job queue.Job) 
 	if err := pipeline.record(ctx, queue.KindCollectSource, source.contentID, "captured"); err != nil {
 		return err
 	}
-	return pipeline.enqueue(ctx, queue.KindNormalizeContent, source.contentID, job)
+	return pipeline.enqueue(ctx, queue.KindNormalizeContent, source.contentID, queue.Job{
+		Payload:     queue.Payload{WindowStart: args.WindowStart, WindowEnd: args.WindowEnd},
+		ScheduledAt: job.ScheduledAt, Priority: job.Priority,
+	})
 }
 
 func (pipeline *pipelineAcceptance) normalize(ctx context.Context, job queue.Job) error {
@@ -207,13 +216,20 @@ func (pipeline *pipelineAcceptance) enqueue(ctx context.Context, kind string, en
 }
 
 func (pipeline *pipelineAcceptance) collectJob(sourceID int64, signature string, now time.Time) queue.Job {
+	hash := sha256.Sum256([]byte(signature))
+	inputHash := fmt.Sprintf("%x", hash[:])
+	args, err := scheduler.EncodeCollectionJobArgs(scheduler.CollectionJobArgs{
+		MonitorID: sourceID, MonitorVersionID: 1, CompiledProfileID: sourceID + 1000,
+		SourceConnectionID: sourceID, WindowStart: now.Add(-5 * time.Minute), WindowEnd: now,
+		InputHash: inputHash, TriggerType: "schedule",
+	})
+	if err != nil {
+		panic(err)
+	}
 	return queue.Job{
-		Kind:      queue.KindCollectSource,
-		UniqueKey: fmt.Sprintf("fixture:collect:%d:%s", sourceID, signature),
-		Payload: queue.Payload{
-			EntityID: sourceID, EntityVersion: 1,
-			WindowStart: now.Add(-5 * time.Minute), WindowEnd: now, InputHash: signature,
-		},
+		Kind:        queue.KindCollectSource,
+		UniqueKey:   fmt.Sprintf("fixture:collect:%d:%s", sourceID, signature),
+		DurableArgs: args,
 		ScheduledAt: now.Add(-time.Second), MaxAttempts: 3, Priority: 1,
 	}
 }

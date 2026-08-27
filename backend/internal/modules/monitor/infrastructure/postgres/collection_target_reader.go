@@ -68,8 +68,10 @@ func (reader *PublishedCollectionTargetReader) listPublishedTargets(ctx context.
 	}
 	rows, err := queryer.QueryContext(ctx, `
 SELECT
+    monitor.id,
     monitor_source.id,
     config_version.id,
+    compiled_profile.id,
     monitor_source.source_connection_id,
     monitor_source.query_signature,
     COALESCE(monitor_source.query_override, ''),
@@ -98,7 +100,7 @@ JOIN source_connections AS source_connection
   ON source_connection.id = monitor_source.source_connection_id
 JOIN source_checkpoints AS checkpoint
   ON checkpoint.monitor_source_id = monitor_source.id
-LEFT JOIN monitor_compiled_profiles AS compiled_profile
+JOIN monitor_compiled_profiles AS compiled_profile
   ON compiled_profile.monitor_id=monitor.id
  AND compiled_profile.purpose='published'
  AND compiled_profile.monitor_version_id=config_version.id
@@ -112,24 +114,12 @@ LEFT JOIN LATERAL (
             SELECT clause.value,(clause.operator='must_not') AS excluded,
                    clause.normalized_value,0 AS term_order,clause.ordinal::bigint AS ordinal
             FROM monitor_compiled_clauses AS clause
-            WHERE compiled_profile.id IS NOT NULL
-              AND clause.compiled_profile_id=compiled_profile.id
+            WHERE clause.compiled_profile_id=compiled_profile.id
               AND clause.field IN ('term','phrase','action','location')
             UNION ALL
             SELECT alias.alias,false,alias.normalized_alias,1,alias.ordinal::bigint
             FROM monitor_compiled_entity_aliases AS alias
-            WHERE compiled_profile.id IS NOT NULL
-              AND alias.compiled_profile_id=compiled_profile.id
-            UNION ALL
-            SELECT rule.value,
-                   (rule.rule_type='exclude_keyword' OR rule.operator='not_equals'),
-                   lower(btrim(rule.value)),2,
-                   (32767-rule.priority)::bigint*1000000+rule.id
-            FROM monitor_rules AS rule
-            WHERE compiled_profile.id IS NULL
-              AND rule.config_version_id=config_version.id
-              AND rule.enabled AND rule.approval_status='approved'
-              AND rule.rule_type IN ('keyword','phrase','entity','exclude_keyword')
+            WHERE alias.compiled_profile_id=compiled_profile.id
         ) AS candidate
         ORDER BY candidate.excluded,candidate.normalized_value,candidate.term_order,candidate.ordinal
     ) AS selected
@@ -201,8 +191,12 @@ func (reader *PublishedCollectionTargetReader) ListDueCollections(ctx context.Co
 		windowStart := target.Checkpoint.NextPollAt.UTC()
 		windowEnd := windowStart.Add(target.CollectionInterval)
 		key := collectionKey{sourceID: target.SourceConnectionID, signature: target.QuerySignature, windowStart: windowStart.UnixNano(), windowEnd: windowEnd.UnixNano()}
-		candidate := platformscheduler.CollectionDueSource{SourceConnectionID: target.SourceConnectionID, ConfigVersionID: target.MonitorConfigVersionID, QuerySignature: target.QuerySignature, NextPollAt: windowStart, CollectionInterval: target.CollectionInterval}
-		if existing, ok := byKey[key]; !ok || candidate.ConfigVersionID < existing.ConfigVersionID {
+		candidate := platformscheduler.CollectionDueSource{
+			MonitorID: target.MonitorID, MonitorVersionID: target.MonitorConfigVersionID,
+			CompiledProfileID: target.CompiledProfileID, SourceConnectionID: target.SourceConnectionID,
+			QuerySignature: target.QuerySignature, NextPollAt: windowStart, CollectionInterval: target.CollectionInterval,
+		}
+		if existing, ok := byKey[key]; !ok || candidate.MonitorVersionID < existing.MonitorVersionID {
 			byKey[key] = candidate
 		}
 	}
@@ -263,25 +257,27 @@ func (reader *PublishedCollectionTargetReader) ListForCollection(ctx context.Con
 }
 
 type publishedCollectionTargetRow struct {
-	monitorSourceID, monitorConfigVersionID, sourceConnectionID int64
-	querySignature, queryOverride                               string
-	languagesJSON, regionsJSON                                  []byte
-	collectionIntervalSeconds                                   int
-	checkpointID, checkpointVersion                             int64
-	checkpointQueryHash, checkpointCursor, checkpointETag       string
-	checkpointLastModified                                      string
-	highWatermark, lastFetchedAt                                sql.NullTime
-	lastSuccessfulRun                                           sql.NullInt64
-	nextPollAt                                                  time.Time
-	consecutiveFailures                                         int
-	termValue                                                   sql.NullString
-	termExcluded                                                sql.NullBool
+	monitorID, monitorSourceID, monitorConfigVersionID    int64
+	compiledProfileID, sourceConnectionID                 int64
+	querySignature, queryOverride                         string
+	languagesJSON, regionsJSON                            []byte
+	collectionIntervalSeconds                             int
+	checkpointID, checkpointVersion                       int64
+	checkpointQueryHash, checkpointCursor, checkpointETag string
+	checkpointLastModified                                string
+	highWatermark, lastFetchedAt                          sql.NullTime
+	lastSuccessfulRun                                     sql.NullInt64
+	nextPollAt                                            time.Time
+	consecutiveFailures                                   int
+	termValue                                             sql.NullString
+	termExcluded                                          sql.NullBool
 }
 
 func scanPublishedCollectionTarget(rows *sql.Rows) (publishedCollectionTargetRow, error) {
 	var row publishedCollectionTargetRow
 	err := rows.Scan(
-		&row.monitorSourceID, &row.monitorConfigVersionID, &row.sourceConnectionID, &row.querySignature, &row.queryOverride,
+		&row.monitorID, &row.monitorSourceID, &row.monitorConfigVersionID, &row.compiledProfileID,
+		&row.sourceConnectionID, &row.querySignature, &row.queryOverride,
 		&row.languagesJSON, &row.regionsJSON, &row.collectionIntervalSeconds,
 		&row.checkpointID, &row.checkpointVersion, &row.checkpointQueryHash, &row.checkpointCursor, &row.checkpointETag,
 		&row.checkpointLastModified, &row.highWatermark, &row.lastSuccessfulRun, &row.lastFetchedAt, &row.nextPollAt,
@@ -316,7 +312,8 @@ func (row publishedCollectionTargetRow) target() (sourcedomain.PublishedCollecti
 		checkpoint.LastFetchedAt = &value
 	}
 	return sourcedomain.PublishedCollectionTarget{
-		MonitorSourceID: row.monitorSourceID, MonitorConfigVersionID: row.monitorConfigVersionID,
+		MonitorID: row.monitorID, MonitorSourceID: row.monitorSourceID,
+		MonitorConfigVersionID: row.monitorConfigVersionID, CompiledProfileID: row.compiledProfileID,
 		SourceConnectionID: row.sourceConnectionID, QuerySignature: row.querySignature, QueryOverride: row.queryOverride,
 		Languages: languages, Regions: regions, CollectionInterval: time.Duration(row.collectionIntervalSeconds) * time.Second,
 		Checkpoint: checkpoint,

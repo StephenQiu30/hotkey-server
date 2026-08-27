@@ -24,7 +24,7 @@ func TestEnqueueUsesStableKindAndKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewStore(runtime)
-	job := Job{Kind: "collect_source", UniqueKey: "stable-key", Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}
+	job := Job{Kind: KindNormalizeContent, UniqueKey: "stable-key", Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}
 	firstID, firstCreated, err := store.Enqueue(ctx, job)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func TestReactivateByUniqueKeyPreservesAttemptHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewStore(runtime)
-	job := Job{Kind: KindCollectSource, UniqueKey: "retry-history", Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}
+	job := Job{Kind: KindNormalizeContent, UniqueKey: "retry-history", Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}
 	id, _, err := store.Enqueue(ctx, job)
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func TestReactivateByUniqueKeyRejectsUnsafeStatesAndRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewStore(runtime)
-	job := Job{Kind: KindCollectSource, UniqueKey: "retry-conflict", Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}
+	job := Job{Kind: KindNormalizeContent, UniqueKey: "retry-conflict", Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}
 	id, _, err := store.Enqueue(ctx, job)
 	if err != nil {
 		t.Fatal(err)

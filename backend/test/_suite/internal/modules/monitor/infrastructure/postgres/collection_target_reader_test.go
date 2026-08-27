@@ -2,7 +2,6 @@ package postgres_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"strings"
 	"testing"
@@ -22,7 +21,7 @@ func TestPublishedCollectionTargetReaderUsesCallerTransactionForRetryCheckpoint(
 	windowStart := time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)
 	windowEnd := windowStart.Add(time.Hour)
 	future := windowEnd.Add(time.Hour)
-	seeded := seedCollectionTarget(t, runtime.SQL, "transaction-retry", "active", true, true, true, false, future)
+	seeded := seedCollectionTarget(t, runtime, "transaction-retry", "active", true, true, true, false, future)
 	reader := monitorpostgres.NewPublishedCollectionTargetReader(runtime)
 	rollback := errors.New("rollback transaction-scoped checkpoint")
 	err := runtime.WithinTransaction(context.Background(), func(ctx context.Context, transaction database.Transaction) error {
@@ -55,14 +54,14 @@ func TestPublishedCollectionTargetReaderReturnsOnlyDueActivePublishedEnabledTarg
 	defer func() { _ = runtime.Close() }()
 	now := time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)
 
-	due := seedCollectionTarget(t, runtime.SQL, "due", "active", true, true, true, false, now.Add(-time.Minute))
-	_ = seedCollectionTarget(t, runtime.SQL, "paused", "paused", true, true, true, false, now.Add(-time.Minute))
-	_ = seedCollectionTarget(t, runtime.SQL, "disabled-association", "active", true, false, true, false, now.Add(-time.Minute))
-	_ = seedCollectionTarget(t, runtime.SQL, "draft", "draft", false, true, true, false, now.Add(-time.Minute))
-	_ = seedCollectionTarget(t, runtime.SQL, "future", "active", true, true, true, false, now.Add(time.Minute))
-	_ = seedCollectionTarget(t, runtime.SQL, "disabled-connection", "active", true, true, false, false, now.Add(-time.Minute))
-	_ = seedCollectionTarget(t, runtime.SQL, "archived-connection", "active", true, true, true, true, now.Add(-time.Minute))
-	nonX := seedCollectionTargetForSource(t, runtime.SQL, "non-x-core", sourcedomain.SourceTypeRSS, "active", true, true, true, false, now.Add(-time.Minute))
+	due := seedCollectionTarget(t, runtime, "due", "active", true, true, true, false, now.Add(-time.Minute))
+	_ = seedCollectionTarget(t, runtime, "paused", "paused", true, true, true, false, now.Add(-time.Minute))
+	_ = seedCollectionTarget(t, runtime, "disabled-association", "active", true, false, true, false, now.Add(-time.Minute))
+	_ = seedCollectionTarget(t, runtime, "draft", "draft", false, true, true, false, now.Add(-time.Minute))
+	_ = seedCollectionTarget(t, runtime, "future", "active", true, true, true, false, now.Add(time.Minute))
+	_ = seedCollectionTarget(t, runtime, "disabled-connection", "active", true, true, false, false, now.Add(-time.Minute))
+	_ = seedCollectionTarget(t, runtime, "archived-connection", "active", true, true, true, true, now.Add(-time.Minute))
+	nonX := seedCollectionTargetForSource(t, runtime, "non-x-core", sourcedomain.SourceTypeRSS, "active", true, true, true, false, now.Add(-time.Minute))
 
 	var before int
 	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM collection_runs`).Scan(&before); err != nil {
@@ -83,7 +82,9 @@ func TestPublishedCollectionTargetReaderReturnsOnlyDueActivePublishedEnabledTarg
 		t.Fatalf("ListDue() targets = %#v, want due X and RSS targets", targets)
 	}
 	target := targets[0]
-	if target.MonitorSourceID != due.monitorSourceID || target.MonitorConfigVersionID != due.configID || target.SourceConnectionID != due.sourceID {
+	if target.MonitorID != due.monitorID || target.MonitorSourceID != due.monitorSourceID ||
+		target.MonitorConfigVersionID != due.configID || target.CompiledProfileID != due.compiledProfileID ||
+		target.SourceConnectionID != due.sourceID {
 		t.Fatalf("target identity = %#v, want immutable source/config/connection IDs %#v", target, due)
 	}
 	if target.QuerySignature != strings.Repeat("a", 64) || target.Checkpoint.MonitorSourceID != due.monitorSourceID || !target.Checkpoint.NextPollAt.Equal(now.Add(-time.Minute)) {
@@ -103,6 +104,34 @@ func TestPublishedCollectionTargetReaderReturnsOnlyDueActivePublishedEnabledTarg
 	}
 	if !foundRSS {
 		t.Fatalf("ListDue() targets = %#v, want enabled published RSS target", targets)
+	}
+}
+
+func TestCollectionSchedulerSkipsPublishedMonitorWithoutReadyCompiledProfile(t *testing.T) {
+	runtime := monitorRepositoryRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	now := time.Date(2026, time.August, 27, 8, 0, 0, 0, time.UTC)
+	seedCollectionTargetWithoutReadyProfile(t, runtime, "published-without-profile", "active", true, true, true, false, now.Add(-5*time.Minute))
+	seedCollectionTargetWithBuildingProfile(t, runtime, "published-building-profile", "active", true, true, true, false, now.Add(-5*time.Minute))
+
+	reader := monitorpostgres.NewPublishedCollectionTargetReader(runtime)
+	targets, err := reader.ListDue(context.Background(), now)
+	if err != nil {
+		t.Fatalf("ListDue(): %v", err)
+	}
+	if len(targets) != 0 {
+		t.Fatalf("published monitor without ready compiled profile became due: %#v", targets)
+	}
+	created, err := platformscheduler.NewCollectionScheduler(reader, queue.NewStore(runtime)).RunOnce(context.Background(), now)
+	if err != nil {
+		t.Fatalf("RunOnce(): %v", err)
+	}
+	var jobs int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM river_job WHERE kind='collect_source'`).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if created != 0 || jobs != 0 {
+		t.Fatalf("unready publication queued work: created=%d jobs=%d", created, jobs)
 	}
 }
 
@@ -219,7 +248,7 @@ func TestCollectionSchedulerEnqueuesDueSourceWithoutWritingCollectionFacts(t *te
 	runtime := monitorRepositoryRuntime(t)
 	defer func() { _ = runtime.Close() }()
 	now := time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)
-	seedCollectionTarget(t, runtime.SQL, "scheduler", "active", true, true, true, false, now.Add(-5*time.Minute))
+	seeded := seedCollectionTarget(t, runtime, "scheduler", "active", true, true, true, false, now.Add(-5*time.Minute))
 	reader := monitorpostgres.NewPublishedCollectionTargetReader(runtime)
 	store := queue.NewStore(runtime)
 	collectionScheduler := platformscheduler.NewCollectionScheduler(reader, store)
@@ -241,24 +270,46 @@ func TestCollectionSchedulerEnqueuesDueSourceWithoutWritingCollectionFacts(t *te
 	if jobs != 1 || runs != 0 {
 		t.Fatalf("scheduler facts = jobs=%d collection_runs=%d, want 1/0", jobs, runs)
 	}
+	var encoded []byte
+	if err := runtime.SQL.QueryRow(`SELECT args FROM river_job WHERE kind='collect_source'`).Scan(&encoded); err != nil {
+		t.Fatal(err)
+	}
+	args, err := platformscheduler.DecodeCollectionJobArgs(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if args.MonitorID != seeded.monitorID || args.MonitorVersionID != seeded.configID ||
+		args.CompiledProfileID != seeded.compiledProfileID || args.SourceConnectionID != seeded.sourceID ||
+		args.InputHash != strings.Repeat("a", 64) || args.TriggerType != "schedule" {
+		t.Fatalf("persisted collection job args = %#v", args)
+	}
 }
 
 type seededCollectionTarget struct {
-	sourceID, monitorSourceID, configID int64
+	monitorID, sourceID, monitorSourceID, configID, compiledProfileID int64
 }
 
-func seedCollectionTarget(t *testing.T, runtime interface {
-	QueryRow(string, ...any) *sql.Row
-	Exec(string, ...any) (sql.Result, error)
-}, suffix, monitorStatus string, published, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted bool, nextPollAt time.Time) seededCollectionTarget {
+func seedCollectionTarget(t *testing.T, runtime *database.Runtime, suffix, monitorStatus string, published, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted bool, nextPollAt time.Time) seededCollectionTarget {
 	t.Helper()
-	return seedCollectionTargetForSource(t, runtime, suffix, sourcedomain.SourceTypeX, monitorStatus, published, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted, nextPollAt)
+	return seedCollectionTargetForSourceState(t, runtime, suffix, sourcedomain.SourceTypeX, monitorStatus, published, true, true, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted, nextPollAt)
 }
 
-func seedCollectionTargetForSource(t *testing.T, runtime interface {
-	QueryRow(string, ...any) *sql.Row
-	Exec(string, ...any) (sql.Result, error)
-}, suffix string, sourceType sourcedomain.SourceType, monitorStatus string, published, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted bool, nextPollAt time.Time) seededCollectionTarget {
+func seedCollectionTargetWithoutReadyProfile(t *testing.T, runtime *database.Runtime, suffix, monitorStatus string, published, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted bool, nextPollAt time.Time) seededCollectionTarget {
+	t.Helper()
+	return seedCollectionTargetForSourceState(t, runtime, suffix, sourcedomain.SourceTypeX, monitorStatus, published, false, false, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted, nextPollAt)
+}
+
+func seedCollectionTargetWithBuildingProfile(t *testing.T, runtime *database.Runtime, suffix, monitorStatus string, published, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted bool, nextPollAt time.Time) seededCollectionTarget {
+	t.Helper()
+	return seedCollectionTargetForSourceState(t, runtime, suffix, sourcedomain.SourceTypeX, monitorStatus, published, true, false, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted, nextPollAt)
+}
+
+func seedCollectionTargetForSource(t *testing.T, runtime *database.Runtime, suffix string, sourceType sourcedomain.SourceType, monitorStatus string, published, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted bool, nextPollAt time.Time) seededCollectionTarget {
+	t.Helper()
+	return seedCollectionTargetForSourceState(t, runtime, suffix, sourceType, monitorStatus, published, true, true, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted, nextPollAt)
+}
+
+func seedCollectionTargetForSourceState(t *testing.T, runtime *database.Runtime, suffix string, sourceType sourcedomain.SourceType, monitorStatus string, published, stageProfile, readyProfile, monitorSourceEnabled, sourceConnectionEnabled, sourceConnectionDeleted bool, nextPollAt time.Time) seededCollectionTarget {
 	t.Helper()
 	var result seededCollectionTarget
 	endpoint, authType := sourcedomain.XRecentSearchEndpoint, sourcedomain.AuthTypeBearer
@@ -266,25 +317,24 @@ func seedCollectionTargetForSource(t *testing.T, runtime interface {
 	if sourceType == sourcedomain.SourceTypeRSS {
 		endpoint, authType, credentialRef = "https://feeds.example.test/collection", sourcedomain.AuthTypeNone, nil
 	}
-	if err := runtime.QueryRow(`INSERT INTO source_connections (source_type, name, endpoint, auth_type, credential_ref, config, enabled, health_status) VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, $6, 'unknown') RETURNING id`, sourceType, "collection source "+suffix, endpoint, authType, credentialRef, sourceConnectionEnabled).Scan(&result.sourceID); err != nil {
+	if err := runtime.SQL.QueryRow(`INSERT INTO source_connections (source_type, name, endpoint, auth_type, credential_ref, config, enabled, health_status) VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, $6, 'unknown') RETURNING id`, sourceType, "collection source "+suffix, endpoint, authType, credentialRef, sourceConnectionEnabled).Scan(&result.sourceID); err != nil {
 		t.Fatalf("seed %s source: %v", suffix, err)
 	}
 	if sourceConnectionDeleted {
-		if _, err := runtime.Exec(`UPDATE source_connections SET enabled = false, deleted_at = now() WHERE id = $1`, result.sourceID); err != nil {
+		if _, err := runtime.SQL.Exec(`UPDATE source_connections SET enabled = false, deleted_at = now() WHERE id = $1`, result.sourceID); err != nil {
 			t.Fatalf("archive %s source: %v", suffix, err)
 		}
 	}
-	var monitorID int64
-	if err := runtime.QueryRow(`INSERT INTO monitors (name, status) VALUES ($1, 'draft') RETURNING id`, "collection monitor "+suffix).Scan(&monitorID); err != nil {
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitors (name, status) VALUES ($1, 'draft') RETURNING id`, "collection monitor "+suffix).Scan(&result.monitorID); err != nil {
 		t.Fatalf("seed %s monitor: %v", suffix, err)
 	}
-	if err := runtime.QueryRow(`INSERT INTO monitor_config_versions (monitor_id, revision, state, timezone, languages, regions, collection_interval_seconds, relevance_threshold, event_threshold, retention_days) VALUES ($1, 1, 'draft', 'UTC', ARRAY['en'], ARRAY[]::text[], 300, 60, 0, 30) RETURNING id`, monitorID).Scan(&result.configID); err != nil {
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitor_config_versions (monitor_id, revision, state, timezone, languages, regions, collection_interval_seconds, relevance_threshold, event_threshold, retention_days) VALUES ($1, 1, 'draft', 'UTC', ARRAY['en'], ARRAY[]::text[], 300, 60, 0, 30) RETURNING id`, result.monitorID).Scan(&result.configID); err != nil {
 		t.Fatalf("seed %s config: %v", suffix, err)
 	}
-	if _, err := runtime.Exec(`UPDATE monitors SET draft_config_version_id = $1 WHERE id = $2`, result.configID, monitorID); err != nil {
+	if _, err := runtime.SQL.Exec(`UPDATE monitors SET draft_config_version_id = $1 WHERE id = $2`, result.configID, result.monitorID); err != nil {
 		t.Fatalf("set %s draft pointer: %v", suffix, err)
 	}
-	if err := runtime.QueryRow(`INSERT INTO monitor_sources (config_version_id, source_connection_id, query_signature, enabled) VALUES ($1, $2, $3, $4) RETURNING id`, result.configID, result.sourceID, strings.Repeat("a", 64), monitorSourceEnabled).Scan(&result.monitorSourceID); err != nil {
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitor_sources (config_version_id, source_connection_id, query_signature, enabled) VALUES ($1, $2, $3, $4) RETURNING id`, result.configID, result.sourceID, strings.Repeat("a", 64), monitorSourceEnabled).Scan(&result.monitorSourceID); err != nil {
 		t.Fatalf("seed %s monitor source: %v", suffix, err)
 	}
 	for _, rule := range []struct {
@@ -297,20 +347,66 @@ func seedCollectionTargetForSource(t *testing.T, runtime interface {
 		{"exclude_keyword", "contains", "spam", "approved"},
 		{"keyword", "contains", "pending", "pending"},
 	} {
-		if _, err := runtime.Exec(`INSERT INTO monitor_rules (config_version_id, rule_type, operator, value, weight, approval_status, enabled) VALUES ($1, $2, $3, $4, 0, $5, true)`, result.configID, rule.ruleType, rule.operator, rule.value, rule.approval); err != nil {
+		if _, err := runtime.SQL.Exec(`INSERT INTO monitor_rules (config_version_id, rule_type, operator, value, weight, approval_status, enabled) VALUES ($1, $2, $3, $4, 0, $5, true)`, result.configID, rule.ruleType, rule.operator, rule.value, rule.approval); err != nil {
 			t.Fatalf("seed %s rule: %v", suffix, err)
 		}
 	}
+	if published && stageProfile {
+		result.compiledProfileID = seedReadyCollectionCompiledProfile(t, runtime, result.monitorID, result.configID, nextPollAt)
+	}
 	if published {
-		if _, err := runtime.Exec(`UPDATE monitor_config_versions SET state = 'published', config_hash = $1, published_at = $2 WHERE id = $3`, strings.Repeat("b", 64), nextPollAt.Add(-time.Hour), result.configID); err != nil {
+		if _, err := runtime.SQL.Exec(`UPDATE monitor_config_versions SET state = 'published', config_hash = $1, published_at = $2 WHERE id = $3`, strings.Repeat("b", 64), nextPollAt.Add(-time.Hour), result.configID); err != nil {
 			t.Fatalf("publish %s config: %v", suffix, err)
 		}
-		if _, err := runtime.Exec(`UPDATE monitors SET status = $1, draft_config_version_id = NULL, published_config_version_id = $2 WHERE id = $3`, monitorStatus, result.configID, monitorID); err != nil {
+		if _, err := runtime.SQL.Exec(`UPDATE monitors SET status = $1, draft_config_version_id = NULL, published_config_version_id = $2 WHERE id = $3`, monitorStatus, result.configID, result.monitorID); err != nil {
 			t.Fatalf("publish %s monitor: %v", suffix, err)
 		}
+		if readyProfile {
+			if _, err := runtime.SQL.Exec(`UPDATE monitor_compiled_profiles SET status='ready',profile_hash=$2,ready_at=$3 WHERE id=$1`, result.compiledProfileID, strings.Repeat("d", 64), nextPollAt.Add(-time.Hour)); err != nil {
+				t.Fatalf("ready %s compiled profile: %v", suffix, err)
+			}
+		}
 	}
-	if _, err := runtime.Exec(`INSERT INTO source_checkpoints (monitor_source_id, query_hash, next_poll_at) VALUES ($1, $2, $3)`, result.monitorSourceID, strings.Repeat("a", 64), nextPollAt); err != nil {
+	if _, err := runtime.SQL.Exec(`INSERT INTO source_checkpoints (monitor_source_id, query_hash, next_poll_at) VALUES ($1, $2, $3)`, result.monitorSourceID, strings.Repeat("a", 64), nextPollAt); err != nil {
 		t.Fatalf("seed %s checkpoint: %v", suffix, err)
 	}
 	return result
+}
+
+func seedReadyCollectionCompiledProfile(t *testing.T, runtime *database.Runtime, monitorID, configID int64, now time.Time) int64 {
+	t.Helper()
+	var draftID, revisionID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_intent_drafts (monitor_id,config_version_id) VALUES ($1,$2) RETURNING id`, monitorID, configID).Scan(&draftID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_intent_draft_revisions (draft_id,monitor_id,config_version_id,resource_version,objective)
+VALUES ($1,$2,$3,1,'track climate') RETURNING id`, draftID, monitorID, configID).Scan(&revisionID); err != nil {
+		t.Fatal(err)
+	}
+	previewID, _ := createUnavailablePreviewCompiledProfile(t, runtime, intentRepositoryFixture{
+		monitorID: monitorID, configID: configID, draftID: draftID,
+	}, now.Add(-2*time.Hour), []monitorapplication.CompiledIntentClauseDTO{
+		{Operator: "must", Field: "term", Value: "climate", NormalizedValue: "climate", Origin: "intent_clause"},
+		{Operator: "must_not", Field: "term", Value: "spam", NormalizedValue: "spam", Origin: "intent_clause"},
+	}, nil)
+	var profileID int64
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_compiled_profiles (
+  monitor_id,purpose,config_version_id,monitor_version_id,source_preview_compiled_profile_id,intent_revision_id,
+  compiler_version,matching_algorithm_version,lexical_algorithm_version,semantic_algorithm_version,
+  structured_algorithm_version,search_normalization_profile_version,semantic_state,semantic_unavailable_reason
+) VALUES ($1,'published',$2,$2,$3,$4,'monitor-intent-compiler-v1','rrf-k60-v1','fts-trgm-dice-v1',
+          'halfvec-cosine-v1','entity-hard-rule-v1','canonical-nfc-plaintext-v1','unavailable','semantic_model_unavailable')
+RETURNING id`, monitorID, configID, previewID, revisionID).Scan(&profileID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_compiled_clauses (compiled_profile_id,ordinal,operator,field,value,normalized_value,origin)
+SELECT $1,ordinal,operator,field,value,normalized_value,origin
+FROM monitor_compiled_clauses WHERE compiled_profile_id=$2`, profileID, previewID); err != nil {
+		t.Fatal(err)
+	}
+	return profileID
 }

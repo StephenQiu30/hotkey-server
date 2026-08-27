@@ -118,7 +118,8 @@ func collectionHTTPFailedRun(t *testing.T, runtime *database.Runtime) (domain.Co
 	request := domain.CollectionRequest{
 		SourceConnectionID: connection.ID, QuerySignature: signature, Query: "safe query should not leave source", Languages: []string{"en"},
 		WindowStart: windowStart, WindowEnd: windowStart.Add(time.Hour), Targets: []domain.PublishedCollectionTarget{{
-			MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configID, SourceConnectionID: connection.ID, QuerySignature: signature,
+			MonitorID: monitorID, MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configID,
+			CompiledProfileID: configID + 100000, SourceConnectionID: connection.ID, QuerySignature: signature,
 			Terms: []domain.CollectionTerm{{Value: "safe"}}, Languages: []string{"en"}, CollectionInterval: 5 * time.Minute,
 			Checkpoint: domain.CollectionCheckpoint{ID: checkpointID, Version: checkpointVersion, MonitorSourceID: monitorSourceID, QueryHash: signature, NextPollAt: windowStart},
 		}},

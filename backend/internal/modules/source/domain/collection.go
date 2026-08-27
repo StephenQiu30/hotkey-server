@@ -403,8 +403,10 @@ func CompileCollectionQuery(override string, terms []CollectionTerm) (string, er
 // PublishedCollectionTarget is the Source-facing projection of one immutable
 // published Monitor association. It is deliberately not a Monitor record.
 type PublishedCollectionTarget struct {
+	MonitorID              int64
 	MonitorSourceID        int64
 	MonitorConfigVersionID int64
+	CompiledProfileID      int64
 	SourceConnectionID     int64
 	QuerySignature         string
 	QueryOverride          string
@@ -416,7 +418,8 @@ type PublishedCollectionTarget struct {
 }
 
 func (target PublishedCollectionTarget) Validate() error {
-	if target.MonitorSourceID <= 0 || target.MonitorConfigVersionID <= 0 || target.SourceConnectionID <= 0 {
+	if target.MonitorID <= 0 || target.MonitorSourceID <= 0 || target.MonitorConfigVersionID <= 0 ||
+		target.CompiledProfileID <= 0 || target.SourceConnectionID <= 0 {
 		return fmt.Errorf("published collection target ownership is required")
 	}
 	if !validSHA256(target.QuerySignature) {
@@ -534,8 +537,10 @@ type ManualCollectionTargetReader interface {
 }
 
 type ManualCollectionCommand struct {
+	MonitorID          int64
 	SourceConnectionID int64
 	ConfigVersionID    int64
+	CompiledProfileID  int64
 	QuerySignature     string
 	WindowStart        time.Time
 	WindowEnd          time.Time
@@ -543,7 +548,8 @@ type ManualCollectionCommand struct {
 }
 
 func (command ManualCollectionCommand) Validate() error {
-	if command.SourceConnectionID <= 0 || command.ConfigVersionID <= 0 || !validSHA256(command.QuerySignature) {
+	if command.MonitorID <= 0 || command.SourceConnectionID <= 0 || command.ConfigVersionID <= 0 ||
+		command.CompiledProfileID <= 0 || !validSHA256(command.QuerySignature) {
 		return fmt.Errorf("manual collection identity is invalid")
 	}
 	if command.WindowStart.IsZero() || command.WindowEnd.IsZero() || !command.WindowEnd.After(command.WindowStart) || command.ScheduledAt.IsZero() {

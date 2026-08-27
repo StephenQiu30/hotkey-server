@@ -56,7 +56,7 @@ func TestJobKeepsGenericPayloadAndSemanticDurableArgsMutuallyExclusive(t *testin
 		}()},
 		{name: "generic kind with semantic args", job: func() Job {
 			job := base
-			job.Kind = KindCollectSource
+			job.Kind = KindNormalizeContent
 			job.DurableArgs = validArgs
 			return job
 		}()},

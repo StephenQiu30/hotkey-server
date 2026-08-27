@@ -600,7 +600,8 @@ func collectRunThroughSourcePolicy(t *testing.T, runtime *database.Runtime, allo
 		t.Fatalf("create source checkpoint: %v", err)
 	}
 	target := sourcedomain.PublishedCollectionTarget{
-		MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configID, SourceConnectionID: connection.ID, QuerySignature: signature,
+		MonitorID: monitorID, MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configID,
+		CompiledProfileID: configID + 100000, SourceConnectionID: connection.ID, QuerySignature: signature,
 		Terms: []sourcedomain.CollectionTerm{{Value: "policy"}}, Languages: []string{"en"}, CollectionInterval: 5 * time.Minute,
 		Checkpoint: sourcedomain.CollectionCheckpoint{ID: checkpointID, Version: checkpointVersion, MonitorSourceID: monitorSourceID, QueryHash: signature, NextPollAt: now},
 	}

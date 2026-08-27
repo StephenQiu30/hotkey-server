@@ -158,6 +158,9 @@ VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.Monit
 	if _, err := runtime.SQL.Exec(`UPDATE monitors SET status = 'active', published_config_version_id = $1 WHERE id = $2`, target.MonitorConfigVersionID, monitorID); err != nil {
 		t.Fatalf("activate monitor: %v", err)
 	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitor_compiled_profiles SET status='ready',profile_hash=repeat('d',64),ready_at=now() WHERE id=$1`, target.CompiledProfileID); err != nil {
+		t.Fatalf("ready manual compiled profile: %v", err)
+	}
 
 	store := queue.NewStore(runtime)
 	manuals, err := sourcejobs.NewManualCollectionActivator(store)
@@ -209,15 +212,9 @@ VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.Monit
 		t.Fatal(err)
 	}
 	manualWindowStart := now.Add(-target.CollectionInterval)
-	err = handler.Handle(context.Background(), queue.Job{
-		Kind:      queue.KindCollectSource,
-		UniqueKey: scheduler.ManualCollectionUniqueKey(request.SourceConnectionID, request.QuerySignature, now),
-		Payload: queue.Payload{
-			EntityID: request.SourceConnectionID, EntityVersion: target.MonitorConfigVersionID,
-			InputHash: request.QuerySignature, WindowStart: manualWindowStart, WindowEnd: now, TriggerType: "manual",
-		},
-		ScheduledAt: now, MaxAttempts: 3, Priority: 2,
-	})
+	manualRequest := request
+	manualRequest.WindowStart, manualRequest.WindowEnd = manualWindowStart, now
+	err = handler.Handle(context.Background(), collectionQueueJob(t, manualRequest, now, domain.CollectionTriggerManual))
 	if err != nil {
 		t.Fatalf("manual collect handler: %v", err)
 	}
@@ -505,6 +502,9 @@ UPDATE monitors SET status = 'active', published_config_version_id = $1
 WHERE id = (SELECT monitor_id FROM monitor_config_versions WHERE id = $1)`, request.Targets[0].MonitorConfigVersionID); err != nil {
 		t.Fatalf("activate monitor: %v", err)
 	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitor_compiled_profiles SET status='ready',profile_hash=repeat('d',64),ready_at=now() WHERE id=$1`, request.Targets[0].CompiledProfileID); err != nil {
+		t.Fatalf("ready compiled profile: %v", err)
+	}
 	runs := sourcepostgres.NewCollectionRepository(runtime)
 	run, _, err := runs.CreateOrReuseRun(context.Background(), request)
 	if err != nil {
@@ -517,12 +517,7 @@ WHERE id = (SELECT monitor_id FROM monitor_config_versions WHERE id = $1)`, requ
 		t.Fatal(err)
 	}
 	store := queue.NewStore(runtime)
-	job := queue.Job{
-		Kind:        queue.KindCollectSource,
-		UniqueKey:   scheduler.CollectionUniqueKey(request.SourceConnectionID, request.QuerySignature, request.WindowStart, request.WindowEnd),
-		Payload:     queue.Payload{EntityID: request.SourceConnectionID, EntityVersion: request.Targets[0].MonitorConfigVersionID, InputHash: request.QuerySignature, WindowStart: request.WindowStart, WindowEnd: request.WindowEnd},
-		ScheduledAt: request.WindowStart, MaxAttempts: 3, Priority: 1,
-	}
+	job := collectionQueueJob(t, request, request.WindowStart, domain.CollectionTriggerSchedule)
 	jobID, _, err := store.Enqueue(context.Background(), job)
 	if err != nil {
 		t.Fatal(err)
@@ -607,6 +602,9 @@ UPDATE monitors SET status = 'active', published_config_version_id = $1
 WHERE id = (SELECT monitor_id FROM monitor_config_versions WHERE id = $1)`, target.MonitorConfigVersionID); err != nil {
 			t.Fatalf("activate monitor: %v", err)
 		}
+		if _, err := runtime.SQL.Exec(`UPDATE monitor_compiled_profiles SET status='ready',profile_hash=repeat('d',64),ready_at=now() WHERE id=$1`, target.CompiledProfileID); err != nil {
+			t.Fatalf("ready compiled profile: %v", err)
+		}
 	}
 	runs := sourcepostgres.NewCollectionRepository(runtime)
 	run, _, err := runs.CreateOrReuseRun(context.Background(), request)
@@ -622,15 +620,7 @@ WHERE id = (SELECT monitor_id FROM monitor_config_versions WHERE id = $1)`, targ
 		t.Fatal(err)
 	}
 	store := queue.NewStore(runtime)
-	jobID, _, err := store.Enqueue(context.Background(), queue.Job{
-		Kind:      queue.KindCollectSource,
-		UniqueKey: scheduler.CollectionUniqueKey(request.SourceConnectionID, request.QuerySignature, request.WindowStart, request.WindowEnd),
-		Payload: queue.Payload{
-			EntityID: request.SourceConnectionID, EntityVersion: request.Targets[0].MonitorConfigVersionID,
-			InputHash: request.QuerySignature, WindowStart: request.WindowStart, WindowEnd: request.WindowEnd,
-		},
-		ScheduledAt: request.WindowStart, MaxAttempts: 3, Priority: 1,
-	})
+	jobID, _, err := store.Enqueue(context.Background(), collectionQueueJob(t, request, request.WindowStart, domain.CollectionTriggerSchedule))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1178,14 +1168,108 @@ func collectionRequestForService(t *testing.T, runtime *database.Runtime, name s
 		if err := runtime.SQL.QueryRow(`INSERT INTO source_checkpoints (monitor_source_id, query_hash, next_poll_at) VALUES ($1, $2, $3) RETURNING id, version`, monitorSourceID, signature, windowStart).Scan(&checkpointID, &checkpointVersion); err != nil {
 			t.Fatalf("create source checkpoint: %v", err)
 		}
+		compiledProfileID := stageCollectionCompiledProfile(t, runtime, monitorID, configID, suffix)
 		targets = append(targets, domain.PublishedCollectionTarget{
-			MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configID, SourceConnectionID: connection.ID,
+			MonitorID: monitorID, MonitorSourceID: monitorSourceID, MonitorConfigVersionID: configID,
+			CompiledProfileID: compiledProfileID, SourceConnectionID: connection.ID,
 			QuerySignature: signature, Terms: []domain.CollectionTerm{{Value: "climate"}}, Languages: []string{"en"},
 			CollectionInterval: 5 * time.Minute,
 			Checkpoint:         domain.CollectionCheckpoint{ID: checkpointID, Version: checkpointVersion, MonitorSourceID: monitorSourceID, QueryHash: signature, NextPollAt: windowStart},
 		})
 	}
 	return domain.CollectionRequest{SourceConnectionID: connection.ID, QuerySignature: signature, Query: "climate", Languages: []string{"en"}, WindowStart: windowStart, WindowEnd: windowStart.Add(time.Hour), Targets: targets}
+}
+
+func stageCollectionCompiledProfile(t *testing.T, runtime *database.Runtime, monitorID, configID int64, suffix string) int64 {
+	t.Helper()
+	var draftID, revisionID, riverJobID, previewRunID, previewProfileID, publishedProfileID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO monitor_intent_drafts (monitor_id,config_version_id) VALUES ($1,$2) RETURNING id`, monitorID, configID).Scan(&draftID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_intent_draft_revisions (draft_id,monitor_id,config_version_id,resource_version,objective)
+VALUES ($1,$2,$3,1,'track climate') RETURNING id`, draftID, monitorID, configID).Scan(&revisionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO river_job (kind,args,state,max_attempts,priority,scheduled_at,unique_key)
+VALUES ('analyze_monitor_intent','{}'::jsonb,'completed',3,3,now(),convert_to($1,'UTF8')) RETURNING id`, "collection-profile-"+suffix).Scan(&riverJobID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_intent_analysis_runs (
+  monitor_id,draft_id,draft_resource_version,kind,input_hash,profile_version,sample_limit,request_hash,
+  idempotency_key,river_job_id,status,queued_at,started_at
+) VALUES ($1,$2,1,'preview',repeat('a',64),'preview-v1',25,repeat('b',64),$3,$4,'running',now(),now())
+RETURNING id`, monitorID, draftID, "collection-profile-"+suffix, riverJobID).Scan(&previewRunID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_compiled_profiles (
+  monitor_id,purpose,config_version_id,preview_run_id,draft_id,draft_resource_version,intent_revision_id,
+  compiler_version,matching_algorithm_version,lexical_algorithm_version,semantic_algorithm_version,
+  structured_algorithm_version,search_normalization_profile_version,semantic_state,semantic_unavailable_reason
+) VALUES ($1,'preview',$2,$3,$4,1,$5,'monitor-intent-compiler-v1','rrf-k60-v1','fts-trgm-dice-v1',
+          'halfvec-cosine-v1','entity-hard-rule-v1','canonical-nfc-plaintext-v1','unavailable','semantic_model_unavailable')
+RETURNING id`, monitorID, configID, previewRunID, draftID, revisionID).Scan(&previewProfileID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_compiled_clauses (compiled_profile_id,ordinal,operator,field,value,normalized_value,origin)
+VALUES ($1,0,'must','term','climate','climate','intent_clause')`, previewProfileID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitor_compiled_profiles SET status='ready',profile_hash=repeat('9',64),ready_at=now() WHERE id=$1`, previewProfileID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO monitor_compiled_profiles (
+  monitor_id,purpose,config_version_id,monitor_version_id,source_preview_compiled_profile_id,intent_revision_id,
+  compiler_version,matching_algorithm_version,lexical_algorithm_version,semantic_algorithm_version,
+  structured_algorithm_version,search_normalization_profile_version,semantic_state,semantic_unavailable_reason
+) VALUES ($1,'published',$2,$2,$3,$4,'monitor-intent-compiler-v1','rrf-k60-v1','fts-trgm-dice-v1',
+          'halfvec-cosine-v1','entity-hard-rule-v1','canonical-nfc-plaintext-v1','unavailable','semantic_model_unavailable')
+RETURNING id`, monitorID, configID, previewProfileID, revisionID).Scan(&publishedProfileID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_compiled_clauses (compiled_profile_id,ordinal,operator,field,value,normalized_value,origin)
+VALUES ($1,0,'must','term','climate','climate','intent_clause')`, publishedProfileID); err != nil {
+		t.Fatal(err)
+	}
+	return publishedProfileID
+}
+
+func collectionQueueJob(t *testing.T, request domain.CollectionRequest, scheduledAt time.Time, trigger domain.CollectionTriggerType) queue.Job {
+	t.Helper()
+	representative := request.Targets[0]
+	for _, target := range request.Targets[1:] {
+		if target.MonitorConfigVersionID < representative.MonitorConfigVersionID {
+			representative = target
+		}
+	}
+	args := scheduler.CollectionJobArgs{
+		MonitorID: representative.MonitorID, MonitorVersionID: representative.MonitorConfigVersionID,
+		CompiledProfileID: representative.CompiledProfileID, SourceConnectionID: request.SourceConnectionID,
+		WindowStart: request.WindowStart, WindowEnd: request.WindowEnd, InputHash: request.QuerySignature,
+		TriggerType: string(trigger),
+	}
+	encoded, err := scheduler.EncodeCollectionJobArgs(args)
+	if err != nil {
+		t.Fatalf("EncodeCollectionJobArgs(): %v", err)
+	}
+	uniqueKey := scheduler.CollectionUniqueKey(args.MonitorID, args.MonitorVersionID, args.CompiledProfileID,
+		args.SourceConnectionID, args.WindowStart, args.WindowEnd)
+	priority := 1
+	if trigger == domain.CollectionTriggerManual {
+		uniqueKey = scheduler.ManualCollectionUniqueKey(args.MonitorID, args.MonitorVersionID, args.CompiledProfileID,
+			args.SourceConnectionID, scheduledAt)
+		priority = 2
+	}
+	return queue.Job{
+		Kind: queue.KindCollectSource, UniqueKey: uniqueKey, DurableArgs: encoded,
+		ScheduledAt: scheduledAt, MaxAttempts: 3, Priority: priority,
+	}
 }
 
 type collectionConnectorRegistryFake struct{ connector domain.Connector }

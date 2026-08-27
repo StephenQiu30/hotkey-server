@@ -22,7 +22,7 @@ func TestJobRepositoryRuntimeOverviewCountsSafeQueueStates(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := queue.NewStore(runtime)
-	if _, _, err := store.Enqueue(ctx, queue.Job{Kind: queue.KindCollectSource, UniqueKey: "overview-a", Payload: queue.Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 2, Priority: 1}); err != nil {
+	if _, _, err := store.Enqueue(ctx, queue.Job{Kind: queue.KindNormalizeContent, UniqueKey: "overview-a", Payload: queue.Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 2, Priority: 1}); err != nil {
 		t.Fatal(err)
 	}
 	overview, err := operationspostgres.NewJobRepository(runtime).RuntimeOverview(ctx)

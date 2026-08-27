@@ -190,8 +190,10 @@ func TestPublishedCollectionTargetBindsCheckpointToImmutableConfiguration(t *tes
 
 	now := time.Date(2026, time.July, 16, 8, 0, 0, 0, time.UTC)
 	target := PublishedCollectionTarget{
+		MonitorID:              21,
 		MonitorSourceID:        31,
 		MonitorConfigVersionID: 41,
+		CompiledProfileID:      45,
 		SourceConnectionID:     51,
 		QuerySignature:         strings.Repeat("b", 64),
 		Terms:                  []CollectionTerm{{Value: "climate"}},

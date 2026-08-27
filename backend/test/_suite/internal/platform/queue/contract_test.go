@@ -33,7 +33,7 @@ func TestPayloadRequiresVersionedBoundedEnvelope(t *testing.T) {
 
 func TestJobRejectsUnknownKindAndUnboundedKey(t *testing.T) {
 	base := Job{
-		Kind:        KindCollectSource,
+		Kind:        KindNormalizeContent,
 		UniqueKey:   "stable-key",
 		Payload:     Payload{EntityID: 1, EntityVersion: 1},
 		ScheduledAt: time.Now().UTC(),

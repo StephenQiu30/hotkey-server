@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ func createUnavailablePreviewCompiledProfile(t *testing.T, runtime *database.Run
 		t.Fatal(err)
 	}
 	reservation := intentPreviewReservation(fixture, now)
-	reservation.IdempotencyKey = "preview.compiled." + strings.Repeat("x", 8)
+	reservation.IdempotencyKey = fmt.Sprintf("preview.compiled.%d.%d", fixture.monitorID, fixture.draftID)
 	reserved, err := repository.ReserveAndEnqueue(context.Background(), reservation)
 	if err != nil {
 		t.Fatalf("reserve preview: %v", err)

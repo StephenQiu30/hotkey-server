@@ -129,8 +129,10 @@ func (service *CollectionControlService) Manual(ctx context.Context, input Manua
 		signature string
 	}
 	type group struct {
-		configVersionID int64
-		interval        time.Duration
+		monitorID         int64
+		configVersionID   int64
+		compiledProfileID int64
+		interval          time.Duration
 	}
 	var summary domain.ManualCollectionSummary
 	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
@@ -145,7 +147,10 @@ func (service *CollectionControlService) Manual(ctx context.Context, input Manua
 		groups := make(map[groupKey]group, len(targets))
 		for _, target := range targets {
 			key := groupKey{sourceID: target.SourceConnectionID, signature: target.QuerySignature}
-			candidate := group{configVersionID: target.MonitorConfigVersionID, interval: target.CollectionInterval}
+			candidate := group{
+				monitorID: target.MonitorID, configVersionID: target.MonitorConfigVersionID,
+				compiledProfileID: target.CompiledProfileID, interval: target.CollectionInterval,
+			}
 			if current, ok := groups[key]; !ok || candidate.configVersionID < current.configVersionID {
 				groups[key] = candidate
 			}
@@ -154,7 +159,8 @@ func (service *CollectionControlService) Manual(ctx context.Context, input Manua
 		summary.CooldownUntil = now.Truncate(5 * time.Minute).Add(5 * time.Minute)
 		for key, item := range groups {
 			created, err := service.manuals.Enqueue(transactionCtx, domain.ManualCollectionCommand{
-				SourceConnectionID: key.sourceID, ConfigVersionID: item.configVersionID, QuerySignature: key.signature,
+				MonitorID: item.monitorID, SourceConnectionID: key.sourceID, ConfigVersionID: item.configVersionID,
+				CompiledProfileID: item.compiledProfileID, QuerySignature: key.signature,
 				WindowStart: now.Add(-item.interval), WindowEnd: now, ScheduledAt: now,
 			})
 			if err != nil {
