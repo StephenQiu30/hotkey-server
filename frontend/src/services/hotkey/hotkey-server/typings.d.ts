@@ -644,7 +644,9 @@ required property without making explicit null impossible to bind. */
 
   type EventHeatV2ResponseDTO = {
     acceleration?: number;
+    available_weight?: number;
     coverage?: number;
+    heat_profile_version?: string;
     heat_score?: number;
     id?: number;
     independent_lineage_root_count?: number;
@@ -653,6 +655,7 @@ required property without making explicit null impossible to bind. */
     reason_codes?: string[];
     recency?: number;
     velocity?: number;
+    warming_up?: boolean;
     window_ended_at?: string;
     window_started_at?: string;
   };

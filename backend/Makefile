@@ -58,4 +58,4 @@ recovery-evidence:
 vulnerability:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 
-ci: openapi-check vet database-runtime test build architecture repository schema vulnerability
+ci: openapi-check vet build architecture repository database-runtime schema test vulnerability
