@@ -141,14 +141,24 @@ FROM document_version_embeddings WHERE id=$7`, indexedAt, overlongProfileID, ove
 	if err != nil {
 		t.Fatalf("NewHybridDocumentRecallReader() error = %v", err)
 	}
-	lexicalHits, err := reader.RecallLexical(context.Background(), ingestionapplication.LexicalRecallQueryDTO{
+	capturedAt := documentVersionCapturedAt(73)
+	lexicalQuery := ingestionapplication.LexicalRecallQueryDTO{
 		ConfigVersionID: 1, CompiledProfileID: 1, SearchNormalizationProfileVersion: "canonical-search-v1",
+		Must: []ingestionapplication.RecallFilterDTO{
+			{Operator: "must", Field: "language", Value: "EN"},
+			{Operator: "must", Field: "source", Value: fmt.Sprint(fixture.sourceID)},
+			{Operator: "must", Field: "action", Value: "Launch"},
+			{Operator: "must", Field: "location", Value: "San Francisco"},
+			{Operator: "must", Field: "region", Value: "US"},
+			{Operator: "must", Field: "time_window", Value: capturedAt.Add(-time.Minute).Format(time.RFC3339) + "/" + capturedAt.Add(time.Minute).Format(time.RFC3339)},
+		},
 		Should: []ingestionapplication.RecallFilterDTO{
 			{Operator: "should", Field: "term", Value: "not-present"},
 			{Operator: "should", Field: "term", Value: "authorized"},
 		},
 		AlgorithmVersion: ingestionapplication.LexicalRecallAlgorithmVersion, Limit: ingestionapplication.LexicalRecallLimit,
-	})
+	}
+	lexicalHits, err := reader.RecallLexical(context.Background(), lexicalQuery)
 	if err != nil || len(lexicalHits) != 1 || lexicalHits[0].DocumentVersionID != fixture.persisted.DocumentVersion.ID || lexicalHits[0].Rank != 1 {
 		t.Fatalf("RecallLexical() = %#v/%v", lexicalHits, err)
 	}
@@ -194,6 +204,10 @@ WHERE table_schema='public' AND table_name IN ('document_version_search_indexes'
 		fixture.persisted.DocumentVersion.ContentSHA256, "store_derived", "deny", nil, nil, fixture.persisted.DocumentVersion.ID)
 	insertDocumentRightsDecisionWithOutcome(t, runtime, revocationPolicy, fixture.persisted.DocumentVersion.ID,
 		fixture.persisted.DocumentVersion.ContentSHA256, "embed_local", "deny", nil, nil, fixture.persisted.DocumentVersion.ID)
+	revokedHits, err := reader.RecallLexical(context.Background(), lexicalQuery)
+	if err != nil || len(revokedHits) != 0 {
+		t.Fatalf("RecallLexical(revoked before projection scrub) = %#v/%v", revokedHits, err)
+	}
 	scrubbedAt := time.Now().UTC().Truncate(time.Microsecond)
 	if _, err := runtime.SQL.Exec(`
 UPDATE document_version_search_indexes SET lifecycle_state='tombstoned',
