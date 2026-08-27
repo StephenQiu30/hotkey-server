@@ -18,6 +18,13 @@ import (
 type rawObjectClientFake struct {
 	objects map[string]rawObjectFixture
 	puts    int
+	removes int
+}
+
+func (client *rawObjectClientFake) RemoveObject(_ context.Context, bucket, objectKey string, _ miniosdk.RemoveObjectOptions) error {
+	client.removes++
+	delete(client.objects, bucket+"/"+objectKey)
+	return nil
 }
 
 type rawObjectFixture struct {
@@ -134,6 +141,56 @@ func TestRawEvidenceStoreValidatesDeclaredPayloadBeforeClientCall(t *testing.T) 
 	}
 	if client.puts != 0 {
 		t.Fatalf("invalid object reached MinIO client: %d puts", client.puts)
+	}
+}
+
+func TestRawEvidenceStoreDeleteIfMatchesVerifiesIdentityAndIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	client := &rawObjectClientFake{}
+	store := newRawEvidenceStore(client, "evidence")
+	object := rawStoreObject(42, "raw response")
+	if _, err := store.PutIfAbsent(context.Background(), object); err != nil {
+		t.Fatal(err)
+	}
+	command := application.DeleteRawEvidenceObjectCommand{
+		SnapshotID: 9, SourceConnectionID: object.SourceConnectionID, EvidenceKey: object.EvidenceKey,
+		ObjectKey: object.ObjectKey, PayloadSHA256: object.PayloadSHA256,
+	}
+	first, err := store.DeleteIfMatches(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Deleted || first.AlreadyMissing || client.removes != 1 || len(client.objects) != 0 {
+		t.Fatalf("first delete = %#v removes=%d objects=%d", first, client.removes, len(client.objects))
+	}
+	second, err := store.DeleteIfMatches(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Deleted || !second.AlreadyMissing || client.removes != 1 {
+		t.Fatalf("idempotent delete = %#v removes=%d", second, client.removes)
+	}
+}
+
+func TestRawEvidenceStoreDeleteIfMatchesFailsClosedOnManifestMismatch(t *testing.T) {
+	t.Parallel()
+
+	client := &rawObjectClientFake{}
+	store := newRawEvidenceStore(client, "evidence")
+	object := rawStoreObject(42, "raw response")
+	if _, err := store.PutIfAbsent(context.Background(), object); err != nil {
+		t.Fatal(err)
+	}
+	command := application.DeleteRawEvidenceObjectCommand{
+		SnapshotID: 9, SourceConnectionID: object.SourceConnectionID, EvidenceKey: object.EvidenceKey,
+		ObjectKey: object.ObjectKey, PayloadSHA256: strings.Repeat("f", 64),
+	}
+	if _, err := store.DeleteIfMatches(context.Background(), command); !errors.Is(err, domain.ErrRawEvidenceConflict) {
+		t.Fatalf("DeleteIfMatches() error = %v, want conflict", err)
+	}
+	if client.removes != 0 || len(client.objects) != 1 {
+		t.Fatalf("mismatched object was deleted: removes=%d objects=%d", client.removes, len(client.objects))
 	}
 }
 

@@ -2,6 +2,26 @@ package bootstrap
 
 import "testing"
 
+func TestParseRawEvidenceRetentionFlagsRequiresExplicitBoundedApply(t *testing.T) {
+	command, err := parseRawEvidenceRetentionFlags([]string{"--batch-size", "25", "--apply", "--confirm-delete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command.BatchSize != 25 || !command.Apply || !command.ConfirmDelete {
+		t.Fatalf("unexpected raw evidence retention command: %#v", command)
+	}
+	for _, args := range [][]string{
+		{"--batch-size", "0", "--apply", "--confirm-delete"},
+		{"--batch-size", "101", "--apply", "--confirm-delete"},
+		{"--batch-size", "1", "--confirm-delete"},
+		{"--batch-size", "1", "--apply"},
+	} {
+		if _, err := parseRawEvidenceRetentionFlags(args); err == nil {
+			t.Fatalf("parseRawEvidenceRetentionFlags(%v) error=nil", args)
+		}
+	}
+}
+
 func TestEvidenceLineageBackfillFlagsSeparateDryRunFromConfirmedApply(t *testing.T) {
 	dryRun, err := parseEvidenceLineageBackfillFlags([]string{"--phase", "source", "--batch-size", "200", "--dry-run"})
 	if err != nil {

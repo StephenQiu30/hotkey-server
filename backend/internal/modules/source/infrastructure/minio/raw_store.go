@@ -26,6 +26,45 @@ const (
 type rawObjectClient interface {
 	StatObject(context.Context, string, string, miniosdk.StatObjectOptions) (miniosdk.ObjectInfo, error)
 	PutObject(context.Context, string, string, io.Reader, int64, miniosdk.PutObjectOptions) (miniosdk.UploadInfo, error)
+	RemoveObject(context.Context, string, string, miniosdk.RemoveObjectOptions) error
+}
+
+// DeleteIfMatches removes only the immutable object named by an already
+// claimed retention candidate. A missing object is an idempotent success, but
+// any extant manifest mismatch fails closed and leaves the object untouched.
+func (store *RawEvidenceStore) DeleteIfMatches(ctx context.Context, command application.DeleteRawEvidenceObjectCommand) (application.DeleteRawEvidenceObjectResult, error) {
+	probe := application.DeleteRawEvidenceObjectResult{
+		ObjectKey: command.ObjectKey, PayloadSHA256: command.PayloadSHA256, Deleted: true,
+	}
+	if err := probe.ValidateAgainst(command); err != nil {
+		return application.DeleteRawEvidenceObjectResult{}, err
+	}
+	if store == nil || store.client == nil || store.bucket == "" {
+		return application.DeleteRawEvidenceObjectResult{}, errors.New("Source raw evidence store is not initialized")
+	}
+	object, err := store.client.StatObject(ctx, store.bucket, command.ObjectKey, miniosdk.StatObjectOptions{})
+	if err != nil {
+		if rawObjectMissing(err) {
+			return application.DeleteRawEvidenceObjectResult{
+				ObjectKey: command.ObjectKey, PayloadSHA256: command.PayloadSHA256, AlreadyMissing: true,
+			}, nil
+		}
+		return application.DeleteRawEvidenceObjectResult{}, fmt.Errorf("head Source raw evidence object before delete: %w", err)
+	}
+	record, err := rawObjectRecordFromInfo(command.ObjectKey, object)
+	if err != nil || record.SourceConnectionID != command.SourceConnectionID || record.EvidenceKey != command.EvidenceKey ||
+		record.ObjectKey != command.ObjectKey || record.PayloadSHA256 != command.PayloadSHA256 {
+		return application.DeleteRawEvidenceObjectResult{}, domain.ErrRawEvidenceConflict
+	}
+	if err := store.client.RemoveObject(ctx, store.bucket, command.ObjectKey, miniosdk.RemoveObjectOptions{}); err != nil {
+		return application.DeleteRawEvidenceObjectResult{}, fmt.Errorf("delete Source raw evidence object: %w", err)
+	}
+	if _, err := store.client.StatObject(ctx, store.bucket, command.ObjectKey, miniosdk.StatObjectOptions{}); err == nil {
+		return application.DeleteRawEvidenceObjectResult{}, errors.New("Source raw evidence object remained after delete")
+	} else if !rawObjectMissing(err) {
+		return application.DeleteRawEvidenceObjectResult{}, fmt.Errorf("verify Source raw evidence object delete: %w", err)
+	}
+	return probe, nil
 }
 
 // rawObjectManifest is the MinIO-specific write record. It remains private so
