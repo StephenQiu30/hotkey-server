@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go,internal/modules/knowledge/transport/http,internal/modules/report
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance source-resource-limit-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -46,6 +46,14 @@ source-resource-limit-acceptance: test-env
 		./internal/modules/source/infrastructure/x \
 		./internal/modules/source/infrastructure/postgres \
 		-run '^(TestExternalRequestBudgetContractsRejectUnboundedOrAmbiguousFacts|TestRSSResourceLimitProfileFreezesEightFiniteDimensions|TestRSSResourceLimitsStopBeforeTheNextExternalOrEvidenceSideEffect|TestRSSResourceLimitsBoundConnectReadAndWallClock|TestRSSResourceLimitProfileRejectsMissingOrUnboundedDimensions|TestHackerNewsResourceLimitProfileFreezesEightFiniteDimensions|TestHackerNewsResourceLimitsStopBeforeNextExternalOrEvidenceSideEffect|TestHackerNewsResourceLimitsBoundConnectReadAndWallClock|TestHackerNewsResourceLimitProfileRejectsMissingOrUnboundedDimensions|TestXResourceLimitProfileFreezesEightFiniteDimensions|TestXResourceLimitsStopBeforeNextExternalOrEvidenceSideEffect|TestXResourceLimitOrderingValidatesInputAndCredentialBeforeBudgetOrNetwork|TestXResourceLimitsBoundConnectReadAndWallClock|TestXResourceLimitProfileRejectsMissingOrUnboundedDimensions|TestExternalRequestBudgetEnforcesUTCSourceProfileQuotaAtomically|TestCollectionServiceFailureRetainsCursorAndPersistsRetryState|TestCollectionServicePersistsAuthenticationAndPermanentFailures)$$' \
+		-count=1 -v
+
+monitor-publication-acceptance: test-env
+	$(GO) run ./test/runner test -p=1 \
+		./internal/modules/monitor/domain \
+		./internal/modules/monitor/application \
+		./internal/modules/monitor/infrastructure/postgres \
+		-run '^(TestMonitorStateTransitionsFollowPublishedStateMachine|TestPublishedIntentVersionKeepsImmutableApprovedSnapshot|TestMonitorServicePublishesImmutableConfigurationAndCoordinatesSourceLifecycle|TestMonitorServiceFirstDraftAndPublishConcurrencyAndAuditRollback|TestIntentCompilerPersistsExactPreviewProfileWithApprovedFactsOnly|TestCompiledIntentProfileHashIsStableAcrossEquivalentPreviewRuns|TestIntentPublicationStagesExactPreviewFactsAndCompletesPublishedProfile|TestIntentRepositoryPersistsExactPreviewCompiledProfileIdempotently|TestIntentPublicationRepositoryPromotesSuccessfulExactPreviewInsidePublishTransaction|TestCollectionSchedulerSkipsPublishedMonitorWithoutReadyCompiledProfile|TestPublishedCollectionTargetReaderPrefersExactCompiledIntentOverLegacyRules|TestCollectionSchedulerEnqueuesDueSourceWithoutWritingCollectionFacts)$$' \
 		-count=1 -v
 
 build:
