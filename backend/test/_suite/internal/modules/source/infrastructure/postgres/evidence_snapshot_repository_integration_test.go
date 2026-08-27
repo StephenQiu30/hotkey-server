@@ -14,8 +14,10 @@ import (
 
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
+	sourcejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/jobs"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
@@ -288,6 +290,62 @@ SELECT EXISTS (
 	}
 	if leaked {
 		t.Fatal("raw body marker entered evidence persistence tables")
+	}
+}
+
+func TestEvidenceObservationCommitAtomicallyLeavesOneRecoverableDocumentJob(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	ctx := context.Background()
+	scheduler, err := sourcejobs.NewSourceDocumentGenerationScheduler(queue.NewStore(runtime))
+	if err != nil {
+		t.Fatalf("NewSourceDocumentGenerationScheduler(): %v", err)
+	}
+	repository, err := sourcepostgres.NewEvidenceSnapshotRepository(runtime, scheduler)
+	if err != nil {
+		t.Fatalf("NewEvidenceSnapshotRepository(): %v", err)
+	}
+	fixture := newEvidenceRepositoryFixture(t, runtime.SQL, "observation-crash-recovery")
+	persisted, err := repository.Reserve(ctx, fixture.Reservation)
+	if err != nil {
+		t.Fatalf("Reserve(): %v", err)
+	}
+	observation := evidenceObservation(fixture, "recoverable-entry", "Recoverable", digestValue("recoverable selected entry"))
+	commit := sourceapplication.CommitEvidenceSnapshotCommand{
+		SnapshotID: persisted.ID, StoreResult: storeResult(persisted),
+		Observations:                  []sourceapplication.SourceObservationDTO{observation},
+		DocumentGenerationScheduledAt: time.Now().UTC(),
+	}
+	committed, err := repository.Commit(ctx, commit)
+	if err != nil {
+		t.Fatalf("Commit(): %v", err)
+	}
+	if len(committed.EvidenceReferences) != 1 {
+		t.Fatalf("committed references = %#v", committed.EvidenceReferences)
+	}
+	assertObservationDocumentJob(t, runtime, committed.EvidenceReferences[0].EvidenceReferenceID, 1)
+
+	// A process may exit immediately after this transaction commits. Replaying
+	// the same immutable commit must preserve both facts and the single job.
+	if _, err := repository.Commit(ctx, commit); err != nil {
+		t.Fatalf("Commit(retry): %v", err)
+	}
+	assertEvidenceFactCounts(t, runtime.SQL, fixture.SourceID, 1, 1)
+	assertObservationDocumentJob(t, runtime, committed.EvidenceReferences[0].EvidenceReferenceID, 1)
+}
+
+func assertObservationDocumentJob(t *testing.T, runtime *database.Runtime, evidenceReferenceID int64, wantCount int) {
+	t.Helper()
+	var count int
+	var state string
+	if err := runtime.SQL.QueryRow(`
+SELECT count(*),COALESCE(min(state),'')
+FROM river_job
+WHERE kind=$1 AND unique_key=$2`, queue.KindGenerateSourceDocument, []byte(sourcejobs.SourceDocumentGenerationUniqueKey(evidenceReferenceID))).Scan(&count, &state); err != nil {
+		t.Fatalf("read source document job: %v", err)
+	}
+	if count != wantCount || state != "available" {
+		t.Fatalf("source document job = count %d state %q, want %d/available", count, state, wantCount)
 	}
 }
 

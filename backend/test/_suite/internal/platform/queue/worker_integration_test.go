@@ -192,7 +192,7 @@ func TestWorkerClassifiesPermanentAndCancelledFailures(t *testing.T) {
 	}
 }
 
-func TestWorkerReclaimsExpiredRunningJobs(t *testing.T) {
+func TestWorkerRecoversExpiredClaimsAndTerminatesExhaustedLease(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))
 	if err != nil {
@@ -206,19 +206,39 @@ func TestWorkerReclaimsExpiredRunningJobs(t *testing.T) {
 	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-stale", Payload: Payload{EntityID: 1, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-stale-exhausted", Payload: Payload{EntityID: 2, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 1, Priority: 1}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'running', attempt = 1, attempted_at = now() - interval '2 minutes' WHERE unique_key = $1`, []byte("worker-stale")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'running', attempt = 1, attempted_at = now() - interval '2 minutes' WHERE unique_key = $1`, []byte("worker-stale-exhausted")); err != nil {
 		t.Fatal(err)
 	}
 	worker := NewWorker(runtime, nil)
 	reclaimed, err := worker.ReclaimStale(ctx, time.Minute)
-	if err != nil || reclaimed != 1 {
-		t.Fatalf("ReclaimStale() = %d/%v, want 1/nil", reclaimed, err)
+	if err != nil || reclaimed != 2 {
+		t.Fatalf("ReclaimStale() = %d/%v, want 2/nil", reclaimed, err)
 	}
-	var state string
-	if err := runtime.SQL.QueryRowContext(ctx, `SELECT state FROM river_job WHERE unique_key = $1`, []byte("worker-stale")).Scan(&state); err != nil {
+	var recoverableState, exhaustedState string
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT state FROM river_job WHERE unique_key = $1`, []byte("worker-stale")).Scan(&recoverableState); err != nil {
 		t.Fatal(err)
 	}
-	if state != "available" {
-		t.Fatalf("reclaimed state = %q, want available", state)
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT state FROM river_job WHERE unique_key = $1`, []byte("worker-stale-exhausted")).Scan(&exhaustedState); err != nil {
+		t.Fatal(err)
+	}
+	if recoverableState != "available" || exhaustedState != "discarded" {
+		t.Fatalf("reclaimed states = %q/%q, want available/discarded", recoverableState, exhaustedState)
+	}
+	var leaseFailures int
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM river_job_attempt WHERE error='lease_expired'`).Scan(&leaseFailures); err != nil {
+		t.Fatal(err)
+	}
+	if leaseFailures != 2 {
+		t.Fatalf("lease-expiry attempt facts = %d, want 2", leaseFailures)
+	}
+	second, err := worker.ReclaimStale(ctx, time.Minute)
+	if err != nil || second != 0 {
+		t.Fatalf("idempotent ReclaimStale() = %d/%v, want 0/nil", second, err)
 	}
 }

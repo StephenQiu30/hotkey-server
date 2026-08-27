@@ -148,9 +148,42 @@ func (worker *Worker) ReclaimStale(ctx context.Context, timeout time.Duration) (
 	if timeout <= 0 {
 		return 0, fmt.Errorf("reclaim timeout must be positive")
 	}
-	result, err := worker.runtime.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'available', scheduled_at = now() WHERE state = 'running' AND attempted_at < now() - $1::interval AND attempt < max_attempts`, timeout.String())
-	if err != nil {
-		return 0, databaserepository.MapError(err)
-	}
-	return result.RowsAffected()
+	var resolved int64
+	err := worker.runtime.WithinTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+		// A process can exit after the durable claim but before finish records an
+		// attempt. Preserve that lease expiry as a bounded, non-sensitive fact.
+		if _, err := transaction.SQL.ExecContext(ctx, `
+INSERT INTO river_job_attempt (job_id,attempt,error)
+SELECT id,attempt,'lease_expired'
+FROM river_job
+WHERE state='running' AND attempted_at < now() - $1::interval
+ON CONFLICT (job_id,attempt) DO NOTHING`, timeout.String()); err != nil {
+			return databaserepository.MapError(err)
+		}
+		requeued, err := transaction.SQL.ExecContext(ctx, `
+UPDATE river_job
+SET state='available',scheduled_at=now(),finalized_at=NULL
+WHERE state='running' AND attempted_at < now() - $1::interval AND attempt < max_attempts`, timeout.String())
+		if err != nil {
+			return databaserepository.MapError(err)
+		}
+		discarded, err := transaction.SQL.ExecContext(ctx, `
+UPDATE river_job
+SET state='discarded',finalized_at=now()
+WHERE state='running' AND attempted_at < now() - $1::interval AND attempt >= max_attempts`, timeout.String())
+		if err != nil {
+			return databaserepository.MapError(err)
+		}
+		requeuedCount, err := requeued.RowsAffected()
+		if err != nil {
+			return databaserepository.MapError(err)
+		}
+		discardedCount, err := discarded.RowsAffected()
+		if err != nil {
+			return databaserepository.MapError(err)
+		}
+		resolved = requeuedCount + discardedCount
+		return nil
+	})
+	return resolved, err
 }
