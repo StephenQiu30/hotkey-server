@@ -13,6 +13,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
 	sharedclock "github.com/StephenQiu30/hotkey-server/backend/internal/shared/clock"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 )
 
 func newMonitorIntentCompiler(repository *monitorpostgres.IntentRepository, embeddings *compiledIntentEmbeddingProducerAdapter) (*monitorapplication.IntentCompiler, error) {
@@ -54,8 +55,8 @@ func newPublishedDocumentMatchService(recall *ingestionapplication.HybridRecallS
 	return ingestionapplication.NewPublishedDocumentMatchService(recall, repository, repository, reranker, sharedclock.System{})
 }
 
-func newDocumentMatchRepository(runtime *database.Runtime, scheduler *ingestionjobs.AcceptedDocumentMatchProjectionScheduler) (*ingestionpostgres.DocumentMatchRepository, error) {
-	return ingestionpostgres.NewDocumentMatchRepository(runtime, scheduler)
+func newDocumentMatchRepository(runtime *database.Runtime, codec *pagination.Codec, scheduler *ingestionjobs.AcceptedDocumentMatchProjectionScheduler) (*ingestionpostgres.DocumentMatchRepository, error) {
+	return ingestionpostgres.NewDocumentMatchRepositoryWithCursorCodec(runtime, codec, scheduler)
 }
 
 func newRelevanceCalibrationService(repository *ingestionpostgres.DocumentMatchRepository, reranker *ingestionapplication.RankSignalDocumentMatchReranker) (*ingestionapplication.RelevanceCalibrationService, error) {

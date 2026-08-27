@@ -10,7 +10,6 @@ import (
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	databaserepository "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database/repository"
-	sharedpagination "github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
@@ -20,7 +19,7 @@ func (repository *DocumentMatchRepository) ListDocumentMatches(ctx context.Conte
 		return ingestionapplication.DocumentMatchPageResult{}, ingestionapplication.ErrInvalidDocumentMatchContract
 	}
 	fingerprint := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("document-match-list-v1:%d:%s", query.MonitorID, query.EffectiveDecision))))
-	cursor, err := sharedpagination.Decode(query.Cursor, "document_match_decision_id", true, fingerprint)
+	cursor, err := repository.cursorCodec.Decode(query.Cursor, "document_match_decision_id", true, fingerprint)
 	if err != nil {
 		return ingestionapplication.DocumentMatchPageResult{}, fmt.Errorf("%w: document match cursor", sharedrepository.ErrInvalidInput)
 	}
@@ -91,7 +90,7 @@ LIMIT $4`, query.MonitorID, cursor.ID, query.EffectiveDecision, query.Limit+1)
 	}
 	if len(result.Items) > query.Limit {
 		result.Items = result.Items[:query.Limit]
-		result.NextCursor, err = sharedpagination.Encode(
+		result.NextCursor, err = repository.cursorCodec.Encode(
 			"document_match_decision_id", true, fingerprint, result.Items[len(result.Items)-1].Automatic.ID,
 		)
 		if err != nil {

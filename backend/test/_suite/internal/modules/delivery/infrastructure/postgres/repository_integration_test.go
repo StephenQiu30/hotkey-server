@@ -4,11 +4,13 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/delivery/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
@@ -75,6 +77,9 @@ func TestDeliveryRepositoryIsIdempotentAndAppendsAttempts(t *testing.T) {
 	page, err := repository.ListSubscriptions(ctx, userID, domain.SubscriptionListQuery{Limit: 2})
 	if err != nil || len(page.Items) != 2 || page.NextCursor == "" {
 		t.Fatalf("ListSubscriptions(first page) = %#v/%v", page, err)
+	}
+	if _, err := repository.ListSubscriptions(ctx, userID+999, domain.SubscriptionListQuery{Cursor: page.NextCursor, Limit: 2}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("cross-user subscription cursor error = %v", err)
 	}
 	nextPage, err := repository.ListSubscriptions(ctx, userID, domain.SubscriptionListQuery{Cursor: page.NextCursor, Limit: 20})
 	if err != nil || len(nextPage.Items) != 2 || nextPage.NextCursor != "" {

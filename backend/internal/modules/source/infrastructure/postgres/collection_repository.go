@@ -22,7 +22,10 @@ import (
 // CollectionRepository owns Source's collection run, capture and checkpoint
 // tables. It deliberately has no Monitor joins: immutable target inputs are
 // supplied by Source's PublishedCollectionTargetReader port.
-type CollectionRepository struct{ runtime *database.Runtime }
+type CollectionRepository struct {
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
+}
 
 var _ domain.CollectionRepository = (*CollectionRepository)(nil)
 
@@ -36,7 +39,11 @@ const (
 )
 
 func NewCollectionRepository(runtime *database.Runtime) *CollectionRepository {
-	return &CollectionRepository{runtime: runtime}
+	return NewCollectionRepositoryWithCursorCodec(runtime, sourceTestCursorCodec(runtime, "collections"))
+}
+
+func NewCollectionRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *CollectionRepository {
+	return &CollectionRepository{runtime: runtime, cursorCodec: codec}
 }
 
 func (repository *CollectionRepository) CreateOrReuseRun(ctx context.Context, request domain.CollectionRequest) (domain.CollectionRun, bool, error) {
@@ -146,7 +153,7 @@ func (repository *CollectionRepository) ListRuns(ctx context.Context, query doma
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
 		return domain.CollectionRunPage{}, sharedrepository.ErrUnavailable
 	}
-	limit, cursorID, err := collectionRunListParameters(query)
+	limit, cursorID, err := repository.collectionRunListParameters(query)
 	if err != nil {
 		return domain.CollectionRunPage{}, err
 	}
@@ -188,7 +195,7 @@ LIMIT $2`, cursorID, limit+1)
 		return page, nil
 	}
 	page.Items = page.Items[:limit]
-	nextCursor, err := pagination.Encode("id", false, collectionRunListFingerprint, page.Items[len(page.Items)-1].ID)
+	nextCursor, err := repository.cursorCodec.Encode("id", false, collectionRunListFingerprint, page.Items[len(page.Items)-1].ID)
 	if err != nil {
 		return domain.CollectionRunPage{}, fmt.Errorf("%w: encode collection run cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
@@ -213,7 +220,7 @@ func (repository *CollectionRepository) ListUnboundCaptured(ctx context.Context,
 	if err := query.Validate(); err != nil {
 		return domain.CapturedItemPage{}, fmt.Errorf("%w: captured item query: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	limit, cursorID, err := capturedItemListParameters(query)
+	limit, cursorID, err := repository.capturedItemListParameters(query)
 	if err != nil {
 		return domain.CapturedItemPage{}, err
 	}
@@ -257,7 +264,7 @@ LIMIT $4`, query.RunID, statuses, cursorID, limit+1)
 		return page, nil
 	}
 	page.Items = page.Items[:limit]
-	page.NextCursor, err = pagination.Encode("id", false, collectionCaptureFingerprint, page.Items[len(page.Items)-1].ID)
+	page.NextCursor, err = repository.cursorCodec.Encode("id", false, collectionCaptureFingerprint, page.Items[len(page.Items)-1].ID)
 	if err != nil {
 		return domain.CapturedItemPage{}, fmt.Errorf("%w: encode captured item cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
@@ -972,7 +979,7 @@ ORDER BY id ASC`, runID)
 	return targets, nil
 }
 
-func collectionRunListParameters(query domain.CollectionRunListQuery) (int, int64, error) {
+func (repository *CollectionRepository) collectionRunListParameters(query domain.CollectionRunListQuery) (int, int64, error) {
 	limit := query.Limit
 	if limit == 0 {
 		limit = collectionRunListDefaultLimit
@@ -980,14 +987,14 @@ func collectionRunListParameters(query domain.CollectionRunListQuery) (int, int6
 	if limit < 1 || limit > collectionRunListMaximumLimit {
 		return 0, 0, fmt.Errorf("%w: collection run limit must be 1-%d", sharedrepository.ErrInvalidInput, collectionRunListMaximumLimit)
 	}
-	cursor, err := pagination.Decode(query.Cursor, "id", false, collectionRunListFingerprint)
+	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", false, collectionRunListFingerprint)
 	if err != nil {
 		return 0, 0, fmt.Errorf("%w: collection run cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
 	return limit, cursor.ID, nil
 }
 
-func capturedItemListParameters(query domain.CapturedItemQuery) (int, int64, error) {
+func (repository *CollectionRepository) capturedItemListParameters(query domain.CapturedItemQuery) (int, int64, error) {
 	limit := query.Limit
 	if limit == 0 {
 		limit = collectionCaptureDefaultLimit
@@ -995,7 +1002,7 @@ func capturedItemListParameters(query domain.CapturedItemQuery) (int, int64, err
 	if limit < 1 || limit > collectionCaptureMaximumLimit {
 		return 0, 0, fmt.Errorf("%w: captured item limit must be from 1 to %d", sharedrepository.ErrInvalidInput, collectionCaptureMaximumLimit)
 	}
-	cursor, err := pagination.Decode(query.Cursor, "id", false, collectionCaptureFingerprint)
+	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", false, collectionCaptureFingerprint)
 	if err != nil {
 		return 0, 0, fmt.Errorf("%w: captured item cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}

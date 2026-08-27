@@ -10,7 +10,6 @@ import (
 
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
@@ -49,7 +48,7 @@ func (repository *RightsManagementRepository) ListRightsPolicies(ctx context.Con
 	if !repository.available() {
 		return sourceapplication.ListRightsPoliciesRepositoryResultDTO{}, sharedrepository.ErrUnavailable
 	}
-	limit, cursorID, fingerprint, err := rightsProjectionPageParameters("policies", query.SourceEndpointID, query.Cursor, query.Limit)
+	limit, cursorID, fingerprint, err := repository.rightsProjectionPageParameters("policies", query.SourceEndpointID, query.Cursor, query.Limit)
 	if err != nil {
 		return sourceapplication.ListRightsPoliciesRepositoryResultDTO{}, err
 	}
@@ -81,7 +80,7 @@ LIMIT $3`, query.SourceEndpointID, cursorID, limit+1)
 	result := sourceapplication.ListRightsPoliciesRepositoryResultDTO{Items: items}
 	if len(items) > limit {
 		result.Items = items[:limit]
-		result.NextCursor, err = pagination.Encode("id", true, fingerprint, result.Items[len(result.Items)-1].ID)
+		result.NextCursor, err = repository.cursorCodec.Encode("id", true, fingerprint, result.Items[len(result.Items)-1].ID)
 		if err != nil {
 			return sourceapplication.ListRightsPoliciesRepositoryResultDTO{}, fmt.Errorf("%w: encode rights policy cursor: %v", sharedrepository.ErrConstraint, err)
 		}
@@ -93,7 +92,7 @@ func (repository *RightsManagementRepository) ListRightsDecisionBatches(ctx cont
 	if !repository.available() {
 		return sourceapplication.ListRightsDecisionBatchesRepositoryResultDTO{}, sharedrepository.ErrUnavailable
 	}
-	limit, cursorID, fingerprint, err := rightsProjectionPageParameters("decision-batches", query.SourceEndpointID, query.Cursor, query.Limit)
+	limit, cursorID, fingerprint, err := repository.rightsProjectionPageParameters("decision-batches", query.SourceEndpointID, query.Cursor, query.Limit)
 	if err != nil {
 		return sourceapplication.ListRightsDecisionBatchesRepositoryResultDTO{}, err
 	}
@@ -159,7 +158,7 @@ ORDER BY batch.id DESC,decision.action,decision.id`, query.SourceEndpointID, cur
 		result.Items = append(result.Items, batch.record.applicationDTO(batch.decisions))
 	}
 	if len(accumulated) > limit {
-		result.NextCursor, err = pagination.Encode("id", true, fingerprint, result.Items[len(result.Items)-1].ID)
+		result.NextCursor, err = repository.cursorCodec.Encode("id", true, fingerprint, result.Items[len(result.Items)-1].ID)
 		if err != nil {
 			return sourceapplication.ListRightsDecisionBatchesRepositoryResultDTO{}, fmt.Errorf("%w: encode rights decision batch cursor: %v", sharedrepository.ErrConstraint, err)
 		}
@@ -327,12 +326,12 @@ func projectRightsActionEvaluation(action string, records []rightsActionEvaluati
 	return result, nil
 }
 
-func rightsProjectionPageParameters(kind string, sourceEndpointID int64, encodedCursor string, limit int) (int, int64, string, error) {
+func (repository *RightsManagementRepository) rightsProjectionPageParameters(kind string, sourceEndpointID int64, encodedCursor string, limit int) (int, int64, string, error) {
 	if sourceEndpointID <= 0 || limit < 1 || limit > 100 || len(encodedCursor) > rightsProjectionMaximumCursorSize || strings.TrimSpace(encodedCursor) != encodedCursor {
 		return 0, 0, "", fmt.Errorf("%w: rights projection page is invalid", sharedrepository.ErrInvalidInput)
 	}
 	fingerprint := fmt.Sprintf("source-endpoint:%d:rights:%s", sourceEndpointID, kind)
-	cursor, err := pagination.Decode(encodedCursor, "id", true, fingerprint)
+	cursor, err := repository.cursorCodec.Decode(encodedCursor, "id", true, fingerprint)
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("%w: rights projection cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}

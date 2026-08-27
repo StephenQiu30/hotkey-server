@@ -25,14 +25,21 @@ const (
 // ContentRepository owns ingestion's Content, source-author, asset and
 // metric-snapshot facts. Source collection state is deliberately outside this
 // adapter's table boundary.
-type ContentRepository struct{ runtime *database.Runtime }
+type ContentRepository struct {
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
+}
 
 var _ sourcedomain.XMetricRefreshCandidateReader = (*ContentRepository)(nil)
 
 var _ ingestiondomain.ContentRepository = (*ContentRepository)(nil)
 
 func NewContentRepository(runtime *database.Runtime) *ContentRepository {
-	return &ContentRepository{runtime: runtime}
+	return NewContentRepositoryWithCursorCodec(runtime, ingestionTestCursorCodec(runtime, "contents"))
+}
+
+func NewContentRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *ContentRepository {
+	return &ContentRepository{runtime: runtime, cursorCodec: codec}
 }
 
 func (repository *ContentRepository) ListXMetricRefreshCandidates(ctx context.Context, query sourcedomain.XMetricRefreshCandidateQuery) ([]sourcedomain.XMetricRefreshCandidate, error) {
@@ -343,7 +350,7 @@ func (repository *ContentRepository) ListActive(ctx context.Context, query inges
 	if !repository.available() {
 		return ingestiondomain.ContentPage{}, sharedrepository.ErrUnavailable
 	}
-	query, cursorID, fingerprint, err := contentListParameters(query)
+	query, cursorID, fingerprint, err := repository.contentListParameters(query)
 	if err != nil {
 		return ingestiondomain.ContentPage{}, err
 	}
@@ -369,7 +376,7 @@ func (repository *ContentRepository) ListActive(ctx context.Context, query inges
 	}
 	if len(page.Items) > query.Limit {
 		page.Items = page.Items[:query.Limit]
-		page.NextCursor, err = pagination.Encode(string(query.Sort), true, fingerprint, page.Items[len(page.Items)-1].ID)
+		page.NextCursor, err = repository.cursorCodec.Encode(string(query.Sort), true, fingerprint, page.Items[len(page.Items)-1].ID)
 		if err != nil {
 			return ingestiondomain.ContentPage{}, fmt.Errorf("%w: encode content cursor: %v", sharedrepository.ErrInvalidInput, err)
 		}
@@ -599,7 +606,7 @@ func (repository *ContentRepository) available() bool {
 	return repository != nil && repository.runtime != nil && repository.runtime.SQL != nil
 }
 
-func contentListParameters(query ingestiondomain.ContentListQuery) (ingestiondomain.ContentListQuery, int64, string, error) {
+func (repository *ContentRepository) contentListParameters(query ingestiondomain.ContentListQuery) (ingestiondomain.ContentListQuery, int64, string, error) {
 	query = query.Normalized()
 	if query.Limit == 0 {
 		query.Limit = contentListDefaultLimit
@@ -611,7 +618,7 @@ func contentListParameters(query ingestiondomain.ContentListQuery) (ingestiondom
 	if err != nil {
 		return ingestiondomain.ContentListQuery{}, 0, "", fmt.Errorf("%w: content shape: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	cursor, err := pagination.Decode(query.Cursor, string(query.Sort), true, fingerprint)
+	cursor, err := repository.cursorCodec.Decode(query.Cursor, string(query.Sort), true, fingerprint)
 	if err != nil {
 		return ingestiondomain.ContentListQuery{}, 0, "", fmt.Errorf("%w: content cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}

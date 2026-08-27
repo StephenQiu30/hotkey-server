@@ -16,11 +16,13 @@ import (
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	databaserepository "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database/repository"
+	sharedpagination "github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
 type DocumentMatchRepository struct {
 	runtime                     *database.Runtime
+	cursorCodec                 *sharedpagination.Codec
 	acceptedProjectionScheduler ingestionapplication.AcceptedDocumentMatchProjectionScheduler
 }
 
@@ -32,13 +34,20 @@ var (
 )
 
 func NewDocumentMatchRepository(runtime *database.Runtime, schedulers ...ingestionapplication.AcceptedDocumentMatchProjectionScheduler) (*DocumentMatchRepository, error) {
+	return NewDocumentMatchRepositoryWithCursorCodec(runtime, ingestionTestCursorCodec(runtime, "document-matches"), schedulers...)
+}
+
+func NewDocumentMatchRepositoryWithCursorCodec(runtime *database.Runtime, codec *sharedpagination.Codec, schedulers ...ingestionapplication.AcceptedDocumentMatchProjectionScheduler) (*DocumentMatchRepository, error) {
 	if runtime == nil || runtime.SQL == nil {
 		return nil, fmt.Errorf("document match database runtime is required")
+	}
+	if codec == nil {
+		return nil, fmt.Errorf("document match cursor codec is required")
 	}
 	if len(schedulers) > 1 || len(schedulers) == 1 && schedulers[0] == nil {
 		return nil, fmt.Errorf("accepted document match projection scheduler is invalid")
 	}
-	repository := &DocumentMatchRepository{runtime: runtime}
+	repository := &DocumentMatchRepository{runtime: runtime, cursorCodec: codec}
 	if len(schedulers) == 1 {
 		repository.acceptedProjectionScheduler = schedulers[0]
 	}

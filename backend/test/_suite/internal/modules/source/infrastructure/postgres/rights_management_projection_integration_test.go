@@ -45,14 +45,32 @@ func TestRightsManagementProjectionReadsEndpointHistoryWithBoundCursors(t *testi
 		firstPage.Items[0].RecordedByUserID != actorID || firstPage.Items[0].CreatedAt.IsZero() {
 		t.Fatalf("first policy page = %#v", firstPage)
 	}
+	tamperedCursor := "A" + firstPage.NextCursor[1:]
+	if firstPage.NextCursor[0] == 'A' {
+		tamperedCursor = "B" + firstPage.NextCursor[1:]
+	}
+	if _, err := repository.ListRightsPolicies(ctx, sourceapplication.ListRightsPoliciesRepositoryDTO{
+		SourceEndpointID: sourceID, Cursor: tamperedCursor, Limit: 1,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("tampered policy cursor error = %v", err)
+	}
+	concurrentPolicyRequest := rightsManagementPolicyRequest(sourceID, actorID, "policy.projection.history.concurrent", rightsFixtureDigest("projection-policy-concurrent"), 44)
+	concurrentPolicy, err := repository.CreateRightsPolicy(ctx, concurrentPolicyRequest)
+	if err != nil {
+		t.Fatalf("create concurrent projection policy: %v", err)
+	}
 	secondPage, err := repository.ListRightsPolicies(ctx, sourceapplication.ListRightsPoliciesRepositoryDTO{
 		SourceEndpointID: sourceID, Cursor: firstPage.NextCursor, Limit: 1,
 	})
 	if err != nil {
 		t.Fatalf("ListRightsPolicies(second): %v", err)
 	}
-	if len(secondPage.Items) != 1 || secondPage.Items[0].ID != firstPolicy.Policy.ID {
+	if len(secondPage.Items) != 1 || secondPage.Items[0].ID != firstPolicy.Policy.ID || secondPage.Items[0].ID == concurrentPolicy.Policy.ID {
 		t.Fatalf("second policy page = %#v", secondPage)
+	}
+	freshPage, err := repository.ListRightsPolicies(ctx, sourceapplication.ListRightsPoliciesRepositoryDTO{SourceEndpointID: sourceID, Limit: 1})
+	if err != nil || len(freshPage.Items) != 1 || freshPage.Items[0].ID != concurrentPolicy.Policy.ID {
+		t.Fatalf("fresh policy page after concurrent insert = %#v / %v", freshPage, err)
 	}
 	if _, err := repository.ListRightsPolicies(ctx, sourceapplication.ListRightsPoliciesRepositoryDTO{
 		SourceEndpointID: otherSourceID, Cursor: firstPage.NextCursor, Limit: 1,

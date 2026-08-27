@@ -26,11 +26,24 @@ const (
 	monitorListFingerprint  = "monitors"
 )
 
-type Repository struct{ runtime *database.Runtime }
+type Repository struct {
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
+}
 
 var _ domain.MonitorRepository = (*Repository)(nil)
 
-func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }
+func NewRepository(runtime *database.Runtime) *Repository {
+	seed := "monitor:unavailable"
+	if runtime != nil && runtime.Pool != nil {
+		seed = "monitor:" + runtime.Pool.Config().ConnString()
+	}
+	return NewRepositoryWithCursorCodec(runtime, pagination.NewTestCodec(seed))
+}
+
+func NewRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *Repository {
+	return &Repository{runtime: runtime, cursorCodec: codec}
+}
 
 func (repository *Repository) Create(ctx context.Context, monitor *domain.Monitor, config *domain.MonitorConfigVersion, rules []domain.MonitorRule, sources []domain.MonitorSource) error {
 	if monitor == nil || config == nil {
@@ -74,7 +87,7 @@ func (repository *Repository) List(ctx context.Context, query domain.MonitorList
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
 		return nil, "", sharedrepository.ErrUnavailable
 	}
-	limit, cursorID, err := monitorListParameters(query)
+	limit, cursorID, err := repository.monitorListParameters(query)
 	if err != nil {
 		return nil, "", err
 	}
@@ -107,7 +120,7 @@ func (repository *Repository) List(ctx context.Context, query domain.MonitorList
 	if query.PublishedOnly {
 		fingerprint += "-published"
 	}
-	nextCursor, err := pagination.Encode("id", false, fingerprint, monitors[len(monitors)-1].ID)
+	nextCursor, err := repository.cursorCodec.Encode("id", false, fingerprint, monitors[len(monitors)-1].ID)
 	if err != nil {
 		return nil, "", fmt.Errorf("%w: encode monitor cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
@@ -339,7 +352,7 @@ func (repository *Repository) ListActivePublished(ctx context.Context) ([]domain
 	return result, nil
 }
 
-func monitorListParameters(query domain.MonitorListQuery) (int, int64, error) {
+func (repository *Repository) monitorListParameters(query domain.MonitorListQuery) (int, int64, error) {
 	limit := query.Limit
 	if limit == 0 {
 		limit = monitorListDefaultLimit
@@ -351,7 +364,7 @@ func monitorListParameters(query domain.MonitorListQuery) (int, int64, error) {
 	if query.PublishedOnly {
 		fingerprint += "-published"
 	}
-	cursor, err := pagination.Decode(query.Cursor, "id", false, fingerprint)
+	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", false, fingerprint)
 	if err != nil {
 		return 0, 0, fmt.Errorf("%w: monitor cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}

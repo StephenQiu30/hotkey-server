@@ -70,7 +70,10 @@ GROUP BY d.id, s.recipient, r.title, r.summary`, deliveryID).Scan(&recipient, &t
 	return deliveryapplication.MailMessage{To: recipient, Subject: title, Text: text, HTML: "<html><body>" + paragraphs + "</body></html>"}, attempts, nil
 }
 
-type Repository struct{ runtime *database.Runtime }
+type Repository struct {
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
+}
 
 var _ interface {
 	SaveSubscription(context.Context, domain.Subscription) error
@@ -88,7 +91,17 @@ var _ interface {
 	Message(context.Context, int64) (deliveryapplication.MailMessage, int, error)
 } = (*Repository)(nil)
 
-func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }
+func NewRepository(runtime *database.Runtime) *Repository {
+	seed := "delivery:unavailable"
+	if runtime != nil && runtime.Pool != nil {
+		seed = "delivery:" + runtime.Pool.Config().ConnString()
+	}
+	return NewRepositoryWithCursorCodec(runtime, pagination.NewTestCodec(seed))
+}
+
+func NewRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *Repository {
+	return &Repository{runtime: runtime, cursorCodec: codec}
+}
 
 func (repository *Repository) GetEnabledSubscription(ctx context.Context, subscriptionID int64) (domain.Subscription, error) {
 	if repository == nil || repository.runtime == nil || subscriptionID <= 0 {
@@ -171,7 +184,7 @@ func (repository *Repository) ListSubscriptions(ctx context.Context, userID int6
 	if err := query.Validate(); err != nil {
 		return domain.SubscriptionPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	cursor, err := pagination.Decode(query.Cursor, "id", true, subscriptionListFingerprint(userID))
+	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", true, subscriptionListFingerprint(userID))
 	if err != nil {
 		return domain.SubscriptionPage{}, fmt.Errorf("%w: subscription cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
@@ -196,7 +209,7 @@ LIMIT $3`, userID, cursor.ID, query.Limit+1)
 		return domain.SubscriptionPage{}, databaserepository.MapError(err)
 	}
 	if len(page.Items) > query.Limit {
-		page.NextCursor, err = pagination.Encode("id", true, subscriptionListFingerprint(userID), page.Items[query.Limit-1].ID)
+		page.NextCursor, err = repository.cursorCodec.Encode("id", true, subscriptionListFingerprint(userID), page.Items[query.Limit-1].ID)
 		if err != nil {
 			return domain.SubscriptionPage{}, fmt.Errorf("encode subscription cursor: %w", err)
 		}

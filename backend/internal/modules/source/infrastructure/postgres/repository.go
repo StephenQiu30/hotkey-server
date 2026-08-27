@@ -29,14 +29,23 @@ const (
 // Repository owns only source_connections. The Monitor module supplies its
 // own usage reader in Task 4 instead of allowing this adapter to join tables
 // it does not own.
-type Repository struct{ runtime *database.Runtime }
+type Repository struct {
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
+}
 
 var _ domain.SourceConnectionRepository = (*Repository)(nil)
 var _ domain.MetricSourceContextRepository = (*Repository)(nil)
 var _ domain.BilibiliWebhookRepository = (*Repository)(nil)
 var _ domain.XMetricRefreshScheduleReader = (*Repository)(nil)
 
-func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }
+func NewRepository(runtime *database.Runtime) *Repository {
+	return NewRepositoryWithCursorCodec(runtime, sourceTestCursorCodec(runtime, "connections"))
+}
+
+func NewRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *Repository {
+	return &Repository{runtime: runtime, cursorCodec: codec}
+}
 
 func (repository *Repository) ListXMetricRefreshSchedules(ctx context.Context) ([]domain.XMetricRefreshSchedule, error) {
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
@@ -162,7 +171,7 @@ func (repository *Repository) List(ctx context.Context, query domain.SourceConne
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
 		return nil, "", sharedrepository.ErrUnavailable
 	}
-	limit, cursorID, err := sourceListParameters(query)
+	limit, cursorID, err := repository.sourceListParameters(query)
 	if err != nil {
 		return nil, "", err
 	}
@@ -196,7 +205,7 @@ LIMIT $2`, cursorID, limit+1)
 		return connections, "", nil
 	}
 	connections = connections[:limit]
-	nextCursor, err := pagination.Encode("id", false, sourceListFingerprint, connections[len(connections)-1].ID)
+	nextCursor, err := repository.cursorCodec.Encode("id", false, sourceListFingerprint, connections[len(connections)-1].ID)
 	if err != nil {
 		return nil, "", fmt.Errorf("%w: encode source cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
@@ -406,7 +415,7 @@ ON CONFLICT (event_digest) DO NOTHING`, webhook.Digest, webhook.Event, webhook.O
 // exercise archival without sharing application clock state.
 var timeNowUTC = func() time.Time { return time.Now().UTC() }
 
-func sourceListParameters(query domain.SourceConnectionListQuery) (int, int64, error) {
+func (repository *Repository) sourceListParameters(query domain.SourceConnectionListQuery) (int, int64, error) {
 	limit := query.Limit
 	if limit == 0 {
 		limit = sourceListDefaultLimit
@@ -414,7 +423,7 @@ func sourceListParameters(query domain.SourceConnectionListQuery) (int, int64, e
 	if limit < 1 || limit > sourceListMaximumLimit {
 		return 0, 0, fmt.Errorf("%w: source list limit must be from 1 to %d", sharedrepository.ErrInvalidInput, sourceListMaximumLimit)
 	}
-	cursor, err := pagination.Decode(query.Cursor, "id", false, sourceListFingerprint)
+	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", false, sourceListFingerprint)
 	if err != nil {
 		return 0, 0, fmt.Errorf("%w: source list cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}

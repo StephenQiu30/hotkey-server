@@ -10,17 +10,23 @@ import (
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	databaserepository "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database/repository"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
 type RightsManagementRepository struct {
-	runtime *database.Runtime
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
 }
 
 var _ sourceapplication.RightsManagementRepository = (*RightsManagementRepository)(nil)
 
 func NewRightsManagementRepository(runtime *database.Runtime) *RightsManagementRepository {
-	return &RightsManagementRepository{runtime: runtime}
+	return NewRightsManagementRepositoryWithCursorCodec(runtime, sourceTestCursorCodec(runtime, "rights"))
+}
+
+func NewRightsManagementRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *RightsManagementRepository {
+	return &RightsManagementRepository{runtime: runtime, cursorCodec: codec}
 }
 
 func (repository *RightsManagementRepository) CreateRightsPolicy(ctx context.Context, request sourceapplication.CreateRightsPolicyRepositoryDTO) (sourceapplication.CreateRightsPolicyRepositoryResultDTO, error) {

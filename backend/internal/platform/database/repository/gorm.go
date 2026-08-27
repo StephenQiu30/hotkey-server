@@ -20,20 +20,28 @@ const (
 // GORMCRUD 是通用 CRUD 契约的窄实现。
 // 它只允许使用 model.PersistenceFor 注册的表，禁止请求输入覆盖表名、版本、删除和游标规则。
 type GORMCRUD[T any] struct {
-	db   *gorm.DB
-	meta model.Persistence
+	db          *gorm.DB
+	meta        model.Persistence
+	cursorCodec *pagination.Codec
 }
 
 // NewGORMCRUD 为一个已注册的权威表映射创建仓储。
 func NewGORMCRUD[T any](db *gorm.DB, table string) (*GORMCRUD[T], error) {
+	return NewGORMCRUDWithCursorCodec[T](db, table, pagination.NewTestCodec("gorm:"+table))
+}
+
+func NewGORMCRUDWithCursorCodec[T any](db *gorm.DB, table string, codec *pagination.Codec) (*GORMCRUD[T], error) {
 	if db == nil {
 		return nil, fmt.Errorf("%w: GORM database is required", sharedrepository.ErrInvalidInput)
+	}
+	if codec == nil {
+		return nil, fmt.Errorf("%w: cursor codec is required", sharedrepository.ErrInvalidInput)
 	}
 	meta, found := model.PersistenceFor(table)
 	if !found {
 		return nil, fmt.Errorf("%w: unregistered table %q", sharedrepository.ErrInvalidInput, table)
 	}
-	return &GORMCRUD[T]{db: db, meta: meta}, nil
+	return &GORMCRUD[T]{db: db, meta: meta, cursorCodec: codec}, nil
 }
 
 func (r *GORMCRUD[T]) Create(ctx context.Context, value *T) error {
@@ -73,7 +81,7 @@ func (r *GORMCRUD[T]) List(ctx context.Context, query sharedrepository.PageQuery
 	if !slices.Contains(r.meta.AllowedSort, sort) || sort != r.meta.KeyColumn {
 		return sharedrepository.PageResult[T]{}, fmt.Errorf("%w: sort %q is not allowed", sharedrepository.ErrInvalidInput, sort)
 	}
-	cursor, err := pagination.Decode(query.Cursor, sort, query.Descending, query.FilterFingerprint)
+	cursor, err := r.cursorCodec.Decode(query.Cursor, sort, query.Descending, query.FilterFingerprint)
 	if err != nil {
 		return sharedrepository.PageResult[T]{}, mapCursorError(err)
 	}
@@ -105,7 +113,7 @@ func (r *GORMCRUD[T]) List(ctx context.Context, query sharedrepository.PageQuery
 	if !found || identified.GetID() <= 0 {
 		return sharedrepository.PageResult[T]{}, fmt.Errorf("%w: cursor model must expose an id", sharedrepository.ErrInvalidInput)
 	}
-	next, err := pagination.Encode(sort, query.Descending, query.FilterFingerprint, identified.GetID())
+	next, err := r.cursorCodec.Encode(sort, query.Descending, query.FilterFingerprint, identified.GetID())
 	if err != nil {
 		return sharedrepository.PageResult[T]{}, fmt.Errorf("encode next cursor: %w", err)
 	}
