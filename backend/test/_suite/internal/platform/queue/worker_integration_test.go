@@ -136,6 +136,32 @@ func TestWorkerSchedulesRetryWithExponentialBackoff(t *testing.T) {
 	assertWorkerRetrySchedule(t, runtime, "worker-backoff", 2, now.Add(2*time.Minute))
 }
 
+func TestWorkerNeverRetriesBeforeProviderReset(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(runtime)
+	if _, _, err := store.Enqueue(ctx, Job{Kind: KindRunRetention, UniqueKey: "worker-provider-reset", Payload: Payload{EntityID: 4, EntityVersion: 1}, ScheduledAt: time.Now().UTC(), MaxAttempts: 3, Priority: 1}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, time.August, 27, 9, 0, 0, 0, time.UTC)
+	resetAt := now.Add(15 * time.Minute)
+	worker := NewWorker(runtime, map[string]Handler{KindRunRetention: func(context.Context, Job) error {
+		return NewRetryableErrorAt(errors.New("provider rate limit"), resetAt)
+	}})
+	worker.now = func() time.Time { return now }
+	if claimed, err := worker.RunOnce(ctx); err != nil || !claimed {
+		t.Fatalf("RunOnce() = %t/%v", claimed, err)
+	}
+	assertWorkerRetrySchedule(t, runtime, "worker-provider-reset", 1, resetAt)
+}
+
 func assertWorkerRetrySchedule(t *testing.T, runtime *database.Runtime, key string, wantAttempt int, wantScheduledAt time.Time) {
 	t.Helper()
 	var state string

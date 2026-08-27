@@ -161,7 +161,7 @@ FOR EACH ROW EXECUTE FUNCTION reject_collection_rollback_item();`); err != nil {
 	if err := runtime.SQL.QueryRow(`SELECT target_status FROM collection_run_targets WHERE collection_run_id = $1`, run.ID).Scan(&targetStatus); err != nil {
 		t.Fatalf("read rolled back target: %v", err)
 	}
-	if itemCount != 0 || reconciliationCount != 0 || cursor != "" || runStatus != "running" || targetStatus != "queued" {
+	if itemCount != 0 || reconciliationCount != 0 || cursor != "" || runStatus != "running" || targetStatus != "running" {
 		t.Fatalf("rollback state = items=%d reconcile=%d cursor=%q run=%q target=%q", itemCount, reconciliationCount, cursor, runStatus, targetStatus)
 	}
 }

@@ -227,7 +227,14 @@ func (reader *PublishedCollectionTargetReader) ListForCollection(ctx context.Con
 		targets []sourcedomain.PublishedCollectionTarget
 		err     error
 	)
-	if triggerType == sourcedomain.CollectionTriggerManual {
+	retryableWindow := false
+	if triggerType != sourcedomain.CollectionTriggerManual {
+		retryableWindow, err = reader.retryableCollectionWindowDue(ctx, sourceConnectionID, querySignature, windowStart, windowEnd, triggerType)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if triggerType == sourcedomain.CollectionTriggerManual || retryableWindow {
 		targets, err = reader.listPublishedTargets(ctx, "monitor_source.source_connection_id = $1 AND monitor_source.query_signature = $2", sourceConnectionID, querySignature)
 	} else {
 		targets, err = reader.ListDue(ctx, windowEnd.UTC())
@@ -240,7 +247,7 @@ func (reader *PublishedCollectionTargetReader) ListForCollection(ctx context.Con
 		if target.SourceConnectionID != sourceConnectionID || target.QuerySignature != querySignature {
 			continue
 		}
-		if triggerType != sourcedomain.CollectionTriggerManual && !target.Checkpoint.NextPollAt.UTC().Equal(windowStart.UTC()) {
+		if triggerType != sourcedomain.CollectionTriggerManual && !retryableWindow && !target.Checkpoint.NextPollAt.UTC().Equal(windowStart.UTC()) {
 			continue
 		}
 		// The scheduler stores the smallest config version for a shared source
@@ -254,6 +261,24 @@ func (reader *PublishedCollectionTargetReader) ListForCollection(ctx context.Con
 		return nil, fmt.Errorf("%w: collection target not found", sharedrepository.ErrNotFound)
 	}
 	return matched, nil
+}
+
+func (reader *PublishedCollectionTargetReader) retryableCollectionWindowDue(ctx context.Context, sourceConnectionID int64, querySignature string, windowStart, windowEnd time.Time, triggerType sourcedomain.CollectionTriggerType) (bool, error) {
+	if reader == nil || reader.runtime == nil || reader.runtime.SQL == nil {
+		return false, sharedrepository.ErrUnavailable
+	}
+	var due bool
+	err := reader.runtime.SQL.QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1 FROM collection_runs
+  WHERE source_connection_id=$1 AND query_signature=$2 AND window_start=$3 AND window_end=$4
+    AND trigger_type=$5 AND status='failed' AND error_code IN ('rate_limited','temporary')
+    AND (retry_after IS NULL OR retry_after <= now())
+)`, sourceConnectionID, querySignature, windowStart.UTC(), windowEnd.UTC(), string(triggerType)).Scan(&due)
+	if err != nil {
+		return false, databaserepository.MapError(err)
+	}
+	return due, nil
 }
 
 type publishedCollectionTargetRow struct {

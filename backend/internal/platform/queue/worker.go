@@ -95,6 +95,9 @@ func (worker *Worker) finish(ctx context.Context, id int64, kind string, attempt
 			return databaserepository.MapError(err)
 		}
 		retryAt := worker.now().UTC().Add(retryBackoff(attempt))
+		if requested, ok := RetryAt(handlerErr); ok && requested.After(retryAt) {
+			retryAt = requested
+		}
 		_, err := transaction.SQL.ExecContext(ctx, `UPDATE river_job SET state = 'available', scheduled_at = $2, finalized_at = NULL WHERE id = $1`, id, retryAt)
 		return databaserepository.MapError(err)
 	})

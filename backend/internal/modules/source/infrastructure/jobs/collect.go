@@ -78,7 +78,7 @@ func (handler *CollectHandler) Handle(ctx context.Context, job queue.Job) error 
 		groups[0].TriggerType = triggerType
 		return groups[0], nil
 	}
-	_, err = handler.collections.CollectResolvedWithSuccessHook(ctx, args.SourceConnectionID, args.InputHash, resolve, func(transactionCtx context.Context, runID int64) error {
+	run, err := handler.collections.CollectResolvedWithSuccessHook(ctx, args.SourceConnectionID, args.InputHash, resolve, func(transactionCtx context.Context, runID int64) error {
 		_, _, err := handler.jobs.Enqueue(transactionCtx, queue.Job{
 			Kind:        queue.KindNormalizeContent,
 			UniqueKey:   queue.StableJobKey(queue.KindNormalizeContent, runID, 1, args.InputHash),
@@ -89,6 +89,9 @@ func (handler *CollectHandler) Handle(ctx context.Context, job queue.Job) error 
 	})
 	if err != nil {
 		if sourcedomain.IsCollectionRetryable(err) {
+			if run.RetryAfter != nil {
+				return queue.NewRetryableErrorAt(err, *run.RetryAfter)
+			}
 			return queue.NewRetryableError(err)
 		}
 		return queue.NewPermanentError(err)

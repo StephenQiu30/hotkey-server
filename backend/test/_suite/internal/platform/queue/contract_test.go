@@ -65,4 +65,12 @@ func TestErrorClassificationPreservesPermanentAndCancellation(t *testing.T) {
 	if !IsCancelled(NewCancelledError(errors.New("cancelled"))) {
 		t.Fatal("cancelled error was not classified as cancelled")
 	}
+	retryAt := time.Date(2026, time.August, 27, 9, 30, 0, 0, time.UTC)
+	deferred := NewRetryableErrorAt(errors.New("rate limited"), retryAt)
+	if got, ok := RetryAt(deferred); !ok || !got.Equal(retryAt) || !IsRetryable(deferred) {
+		t.Fatalf("deferred retry = %s/%t retryable=%t", got, ok, IsRetryable(deferred))
+	}
+	if _, ok := RetryAt(NewRetryableError(errors.New("temporary"))); ok {
+		t.Fatal("ordinary retry unexpectedly supplied a retry-at time")
+	}
 }

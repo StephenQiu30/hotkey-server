@@ -296,12 +296,98 @@ func TestCollectionServiceFailureRetainsCursorAndPersistsRetryState(t *testing.T
 	}
 }
 
+func TestCollectionWorkerDefersRateLimitAndReplaysFailedWindowOnceDue(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "automatic-rate-limit-retry", 1)
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO monitor_rules (config_version_id,rule_type,operator,value,origin,approval_status)
+VALUES ($1,'keyword','contains','climate','user','approved')`, request.Targets[0].MonitorConfigVersionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE monitor_config_versions SET state='published',published_at=now(),config_hash=repeat('a',64)
+WHERE id=$1`, request.Targets[0].MonitorConfigVersionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE monitors SET status='active',published_config_version_id=$1
+WHERE id=(SELECT monitor_id FROM monitor_config_versions WHERE id=$1)`, request.Targets[0].MonitorConfigVersionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitor_compiled_profiles SET status='ready',profile_hash=repeat('d',64),ready_at=now() WHERE id=$1`, request.Targets[0].CompiledProfileID); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	resetAt := now.Add(15 * time.Minute)
+	connector := &collectionConnectorFake{
+		results: []domain.FetchResult{{RateLimit: domain.RateLimit{RetryAfter: &resetAt}}, {NextCursor: "recovered-cursor"}},
+		errors:  []error{domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("provider detail")), nil},
+	}
+	store := queue.NewStore(runtime)
+	job := collectionQueueJob(t, request, now.Add(-time.Minute), domain.CollectionTriggerSchedule)
+	jobID, _, err := store.Enqueue(context.Background(), job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
+		Connectors: collectionConnectorRegistryFake{connector: connector}, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := sourcejobs.NewCollectHandler(service, monitorpostgres.NewPublishedCollectionTargetReader(runtime), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := queue.NewWorker(runtime, map[string]queue.Handler{queue.KindCollectSource: handler.Handle})
+	if worked, err := worker.RunOnce(context.Background()); err != nil || !worked {
+		t.Fatalf("RunOnce(rate limit) = %t/%v", worked, err)
+	}
+	var runID int64
+	var runStatus, jobState string
+	var scheduledAt time.Time
+	if err := runtime.SQL.QueryRow(`SELECT id,status FROM collection_runs WHERE source_connection_id=$1 AND query_signature=$2`, request.SourceConnectionID, request.QuerySignature).Scan(&runID, &runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT state,scheduled_at FROM river_job WHERE id=$1`, jobID).Scan(&jobState, &scheduledAt); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "failed" || jobState != "available" || !scheduledAt.Equal(resetAt) || connector.calls.Load() != 1 {
+		t.Fatalf("deferred retry facts = run %q job %q at %s calls %d", runStatus, jobState, scheduledAt, connector.calls.Load())
+	}
+
+	// Advance the durable reset boundary without sleeping. The same run/window
+	// must be claimed and completed; no duplicate collection run is created.
+	if _, err := runtime.SQL.Exec(`UPDATE collection_runs SET retry_after=now()-interval '1 second' WHERE id=$1`, runID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE river_job SET scheduled_at=now()-interval '1 second' WHERE id=$1`, jobID); err != nil {
+		t.Fatal(err)
+	}
+	if worked, err := worker.RunOnce(context.Background()); err != nil || !worked {
+		t.Fatalf("RunOnce(recovered) = %t/%v", worked, err)
+	}
+	var runCount int
+	if err := runtime.SQL.QueryRow(`SELECT count(*),min(status) FROM collection_runs WHERE source_connection_id=$1 AND query_signature=$2`, request.SourceConnectionID, request.QuerySignature).Scan(&runCount, &runStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT state FROM river_job WHERE id=$1`, jobID).Scan(&jobState); err != nil {
+		t.Fatal(err)
+	}
+	if runCount != 1 || runStatus != "succeeded" || jobState != "completed" || connector.calls.Load() != 2 {
+		t.Fatalf("recovered retry facts = runs %d status %q job %q calls %d", runCount, runStatus, jobState, connector.calls.Load())
+	}
+}
+
 func TestCollectionServicePersistsAuthenticationAndPermanentFailures(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		kind domain.CollectionErrorKind
 	}{
 		{name: "authentication", kind: domain.CollectionErrorAuthentication},
+		{name: "parse", kind: domain.CollectionErrorParse},
 		{name: "permanent", kind: domain.CollectionErrorPermanent},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -333,6 +419,9 @@ func TestCollectionServicePersistsAuthenticationAndPermanentFailures(t *testing.
 			}
 			if cursor != "must-stay" || errorCode != string(test.kind) {
 				t.Fatalf("failure persistence = cursor=%q error_code=%q, want retained cursor and %q", cursor, errorCode, test.kind)
+			}
+			if replayed, replayErr := service.Collect(context.Background(), request); replayErr != nil || replayed.Status != domain.CollectionRunFailed || connector.calls.Load() != 1 {
+				t.Fatalf("non-retryable replay = %#v/%v calls=%d, want same failed run without another request", replayed, replayErr, connector.calls.Load())
 			}
 		})
 	}
@@ -1284,6 +1373,8 @@ type collectionConnectorFake struct {
 	mu       sync.Mutex
 	result   domain.FetchResult
 	err      error
+	results  []domain.FetchResult
+	errors   []error
 	health   domain.HealthResult
 }
 
@@ -1292,10 +1383,21 @@ func (connector *collectionConnectorFake) Validate(context.Context, domain.Sourc
 }
 
 func (connector *collectionConnectorFake) Fetch(_ context.Context, request domain.FetchRequest) (domain.FetchResult, error) {
-	connector.calls.Add(1)
+	call := int(connector.calls.Add(1)) - 1
 	connector.mu.Lock()
+	defer connector.mu.Unlock()
 	connector.requests = append(connector.requests, request)
-	connector.mu.Unlock()
+	if call < len(connector.results) || call < len(connector.errors) {
+		var result domain.FetchResult
+		var err error
+		if call < len(connector.results) {
+			result = connector.results[call]
+		}
+		if call < len(connector.errors) {
+			err = connector.errors[call]
+		}
+		return result, err
+	}
 	return connector.result, connector.err
 }
 

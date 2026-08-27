@@ -3,6 +3,7 @@ package queue
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 // P0 job kinds are deliberately finite. Each handler consumes either the
@@ -55,8 +56,9 @@ var (
 )
 
 type classifiedError struct {
-	kind  error
-	cause error
+	kind    error
+	cause   error
+	retryAt *time.Time
 }
 
 func (err *classifiedError) Error() string {
@@ -81,6 +83,15 @@ func (err *classifiedError) Is(target error) bool {
 }
 
 func NewRetryableError(cause error) error { return newClassifiedError(ErrRetryable, cause) }
+func NewRetryableErrorAt(cause error, retryAt time.Time) error {
+	err := newClassifiedError(ErrRetryable, cause)
+	classified, _ := err.(*classifiedError)
+	if classified != nil && !retryAt.IsZero() {
+		value := retryAt.UTC()
+		classified.retryAt = &value
+	}
+	return err
+}
 func NewPermanentError(cause error) error { return newClassifiedError(ErrPermanent, cause) }
 func NewCancelledError(cause error) error { return newClassifiedError(ErrCancelled, cause) }
 
@@ -94,3 +105,11 @@ func newClassifiedError(kind, cause error) error {
 func IsRetryable(err error) bool { return errors.Is(err, ErrRetryable) }
 func IsPermanent(err error) bool { return errors.Is(err, ErrPermanent) }
 func IsCancelled(err error) bool { return errors.Is(err, ErrCancelled) }
+
+func RetryAt(err error) (time.Time, bool) {
+	var classified *classifiedError
+	if !errors.As(err, &classified) || classified == nil || classified.retryAt == nil {
+		return time.Time{}, false
+	}
+	return classified.retryAt.UTC(), true
+}

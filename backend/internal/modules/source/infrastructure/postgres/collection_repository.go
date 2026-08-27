@@ -102,9 +102,9 @@ WHERE source_connection_id = $1 AND query_signature = $2 AND window_start = $3 A
 	return run, created, nil
 }
 
-// StartRun atomically claims a queued run or a bounded stale running run
-// before the application starts I/O. A caller that observes a fresh running or
-// completed run must reuse its durable state instead of issuing another fetch.
+// StartRun atomically claims a queued run, a due retryable failed run, or a
+// bounded stale running run before the application starts I/O. Authentication,
+// parse, rights/policy and other permanent failures are never auto-retried.
 func (repository *CollectionRepository) StartRun(ctx context.Context, runID int64, staleBefore time.Time) (domain.CollectionRun, bool, error) {
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
 		return domain.CollectionRun{}, false, sharedrepository.ErrUnavailable
@@ -121,14 +121,25 @@ func (repository *CollectionRepository) StartRun(ctx context.Context, runID int6
 		}
 		candidate, err := scanCollectionRun(transaction.SQL.QueryRowContext(ctx, `
 UPDATE collection_runs
-SET status = 'running', started_at = now(), updated_at = now()
+SET status = 'running', started_at = now(), finished_at = NULL, retry_after = NULL,
+    candidate_count = 0, accepted_count = 0, rejected_count = 0, error_code = NULL,
+    updated_at = now()
 WHERE id = $1
   AND (status = 'queued'
+       OR (status = 'failed' AND error_code IN ('rate_limited','temporary')
+           AND (retry_after IS NULL OR retry_after <= now()))
        OR (status = 'running' AND $2::timestamptz IS NOT NULL
            AND (started_at IS NULL OR started_at <= $2)))
 RETURNING `+collectionRunColumns, runID, staleAt))
 		if err == nil {
 			run, started = candidate, true
+			if _, err := transaction.SQL.ExecContext(ctx, `
+UPDATE collection_run_targets
+SET target_status='running',candidate_count=0,accepted_count=0,rejected_count=0,
+    error_code=NULL,updated_at=now()
+WHERE collection_run_id=$1`, runID); err != nil {
+				return databaserepository.MapError(err)
+			}
 			return nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
