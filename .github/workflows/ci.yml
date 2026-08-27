@@ -15,10 +15,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  backend-static-acceptance:
+    name: Backend static acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: OpenAPI, vet, build and repository acceptance
+        run: make ci-static
+
   backend-acceptance:
     name: Backend test acceptance
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -64,8 +89,31 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      - name: Canonical backend acceptance
-        run: make ci
+      - name: Database, schema and full test acceptance
+        run: make ci-runtime
+
+  backend-vulnerability-acceptance:
+    name: Backend vulnerability acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Go dependency vulnerability acceptance
+        run: make ci-vulnerability
 
   worker-recovery-acceptance:
     name: Worker recovery acceptance
@@ -251,7 +299,7 @@ jobs:
     name: Fresh-container browser smoke acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    needs: [backend-acceptance, worker-recovery-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance]
+    needs: [backend-static-acceptance, backend-acceptance, backend-vulnerability-acceptance, worker-recovery-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance]
     env:
       HOTKEY_CONTAINER_PREFIX: hotkey-ci-${{ github.run_id }}
 

@@ -354,7 +354,10 @@ func TestBackendMakefileIsCanonicalAcceptanceEntryPoint(t *testing.T) {
 		"database-runtime: test-env",
 		"schema: test-env",
 		"vulnerability:",
-		"ci: openapi-check vet build architecture repository database-runtime schema test vulnerability",
+		"ci-static: openapi-check vet build architecture repository",
+		"ci-runtime: database-runtime schema test",
+		"ci-vulnerability: vulnerability",
+		"ci: ci-static ci-runtime ci-vulnerability",
 	} {
 		if !strings.Contains(makefileText, fragment) {
 			t.Errorf("backend Makefile must contain %q", fragment)
@@ -366,8 +369,13 @@ func TestBackendMakefileIsCanonicalAcceptanceEntryPoint(t *testing.T) {
 		t.Fatalf("read CI workflow: %v", err)
 	}
 	workflowText := string(workflow)
-	if !strings.Contains(workflowText, "run: make ci") {
-		t.Error("backend CI must execute the canonical make ci entry point")
+	for _, command := range []string{"run: make ci-static", "run: make ci-runtime", "run: make ci-vulnerability"} {
+		if !strings.Contains(workflowText, command) {
+			t.Errorf("backend CI must execute canonical parallel entry point %q", command)
+		}
+	}
+	if strings.Contains(workflowText, "run: make ci\n") {
+		t.Error("backend CI must keep independent acceptance gates parallel")
 	}
 	for _, duplicate := range []string{
 		"go run ./test/runner vet ./...",
