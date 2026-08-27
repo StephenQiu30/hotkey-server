@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -348,6 +349,33 @@ func TestOpenAPIContract(t *testing.T) {
 	assertDraftExpectedVersionOpenAPI(t, document.Definitions)
 	assertMonitorDraftDefaultsOpenAPI(t, document.Definitions)
 	assertSimpleMonitorResponseOpenAPI(t, document.Definitions)
+	assertExactResultEnvelopeDefinitions(t, document.Definitions)
+}
+
+func assertExactResultEnvelopeDefinitions(t *testing.T, definitions map[string]struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+	Required   []string                   `json:"required"`
+}) {
+	t.Helper()
+	want := []string{"code", "data", "message"}
+	found := 0
+	for name, definition := range definitions {
+		if !strings.HasPrefix(name, "http.") || (!strings.Contains(name, "Result-") && name != "http.Result-http_Capabilities") {
+			continue
+		}
+		found++
+		fields := make([]string, 0, len(definition.Properties))
+		for field := range definition.Properties {
+			fields = append(fields, field)
+		}
+		sort.Strings(fields)
+		if !reflect.DeepEqual(fields, want) {
+			t.Errorf("%s fields = %v, want only %v", name, fields, want)
+		}
+	}
+	if found == 0 {
+		t.Fatal("published OpenAPI has no Result envelope definitions")
+	}
 }
 
 func assertSimpleMonitorResponseOpenAPI(t *testing.T, definitions map[string]struct {

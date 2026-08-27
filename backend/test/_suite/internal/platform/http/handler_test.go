@@ -37,6 +37,12 @@ func TestResultAlwaysHasCodeMessageAndData(t *testing.T) {
 			data:   map[string]any{"id": "monitor-1"},
 		},
 		{
+			name:   "accepted",
+			write:  func(c *gin.Context) { Accepted(c, map[string]string{"job_id": "job-1"}) },
+			status: stdhttp.StatusAccepted,
+			data:   map[string]any{"job_id": "job-1"},
+		},
+		{
 			name:   "empty",
 			write:  Empty,
 			status: stdhttp.StatusOK,
@@ -90,6 +96,7 @@ func TestWriteErrorStatusMatrix(t *testing.T) {
 		{"internal", errors.New("postgres password=secret"), stdhttp.StatusInternalServerError, sharederrors.CodeInternal},
 		{"bad gateway", sharederrors.New(sharederrors.CodeBadGateway, stdhttp.StatusBadGateway, "ignored"), stdhttp.StatusBadGateway, sharederrors.CodeBadGateway},
 		{"unavailable", sharederrors.New(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, "ignored"), stdhttp.StatusServiceUnavailable, sharederrors.CodeUnavailable},
+		{"wrapped unavailable", sharederrors.Wrap(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, "", errors.New("postgres password=secret")), stdhttp.StatusServiceUnavailable, sharederrors.CodeUnavailable},
 		{"deadline", context.DeadlineExceeded, stdhttp.StatusGatewayTimeout, sharederrors.CodeDeadlineExceeded},
 	} {
 		test := test
@@ -104,7 +111,7 @@ func TestWriteErrorStatusMatrix(t *testing.T) {
 				t.Fatalf("status = %d, want %d", response.Code, test.status)
 			}
 			assertJSONResultShape(t, response, test.code, "", nil)
-			if string(response.Body.Bytes()) == "" || string(response.Body.Bytes()) == "postgres password=secret" {
+			if string(response.Body.Bytes()) == "" || strings.Contains(response.Body.String(), "password=secret") {
 				t.Fatal("response leaked internal error")
 			}
 		})
