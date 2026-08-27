@@ -114,7 +114,7 @@ fi
 		Prompt: []byte("normal"),
 		Inputs: []CodexCLIInput{{Name: "context.json", Content: []byte(`{"evidence_ids":["ev-1"]}`)}},
 	})
-	if err != nil || string(result.Stdout) != `{"ok":true}` {
+	if err != nil || string(result.Stdout) != `{"ok":true}` || result.DurationMicros <= 0 || result.PeakRSSBytes <= 0 || result.ProcessCPUTimeMicros < 0 {
 		t.Fatalf("result=%q err=%v", result.Stdout, err)
 	}
 	workingDirectory, err := os.ReadFile(filepath.Join(fixtureDirectory, "cwd"))

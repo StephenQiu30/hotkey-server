@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -58,7 +59,10 @@ type CodexCLIProcessRequest struct {
 // CodexCLIProcessResult contains only stdout for the downstream JSONL
 // validation boundary. Raw stderr never crosses the infrastructure adapter.
 type CodexCLIProcessResult struct {
-	Stdout []byte
+	Stdout               []byte
+	DurationMicros       int64
+	ProcessCPUTimeMicros int64
+	PeakRSSBytes         int64
 }
 
 // CodexCLIAdapter starts the Codex executable directly with a fixed argument
@@ -160,6 +164,7 @@ func (adapter *CodexCLIAdapter) Run(ctx context.Context, request CodexCLIProcess
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdout := newCodexCLILimitedBuffer(adapter.maxOutputBytes)
 	command.Stdout = stdout
+	startedAt := time.Now()
 	if err := command.Start(); err != nil {
 		var executableError *exec.Error
 		if stdErrors.As(err, &executableError) || stdErrors.Is(err, os.ErrNotExist) {
@@ -186,7 +191,26 @@ func (adapter *CodexCLIAdapter) Run(ctx context.Context, request CodexCLIProcess
 	if err != nil {
 		return CodexCLIProcessResult{}, intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
 	}
-	return CodexCLIProcessResult{Stdout: stdout.bytes()}, nil
+	return CodexCLIProcessResult{
+		Stdout: stdout.bytes(), DurationMicros: time.Since(startedAt).Microseconds(),
+		ProcessCPUTimeMicros: command.ProcessState.UserTime().Microseconds() + command.ProcessState.SystemTime().Microseconds(),
+		PeakRSSBytes:         codexCLIProcessPeakRSSBytes(command.ProcessState),
+	}, nil
+}
+
+func codexCLIProcessPeakRSSBytes(state *os.ProcessState) int64 {
+	if state == nil {
+		return 0
+	}
+	usage, ok := state.SysUsage().(*syscall.Rusage)
+	if !ok || usage.Maxrss <= 0 {
+		return 0
+	}
+	peak := int64(usage.Maxrss)
+	if runtime.GOOS != "darwin" {
+		peak *= 1024
+	}
+	return peak
 }
 
 func codexCLIArguments(request CodexCLIProcessRequest) []string {

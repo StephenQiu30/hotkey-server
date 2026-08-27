@@ -98,3 +98,37 @@ func TestS04CollectionCapacityEvidenceCoversTheApprovedWorkload(t *testing.T) {
 		t.Error("collection capacity checklist was completed without approved real-source and fixed-environment evidence")
 	}
 }
+
+func TestCodexCapacityEvidenceKeepsSyntheticAndLiveApprovalSeparate(t *testing.T) {
+	repository := filepath.Clean(filepath.Join(repositoryRoot(t), ".."))
+	contracts := map[string][]string{
+		"backend/test/tools/codex-capacity-baseline/main.go": {
+			`Version: "hotkey-codex-capacity-v1"`,
+			`Approval: "required"`,
+			`PercentileAlgorithm: "nearest-rank-ceiling"`,
+			`[]int{2, 3, 4}`,
+			`[]string{"content.relevance.v1", "event.brief.v1"}`,
+			"ProcessCPUTimeMicros",
+			"PeakRSSBytes",
+			"os.O_WRONLY|os.O_CREATE|os.O_EXCL",
+		},
+		"backend/Makefile": {"codex-capacity-baseline:"},
+		"docs/operations/004-可观测性SLO与事件响应.md": {
+			"make codex-capacity-baseline",
+			"Fake 模式只验证进程、测量和报告契约",
+			"Live 模式也只产生 `candidate` 报告，不自动批准并发",
+		},
+	}
+	for relative, required := range contracts {
+		payload := readRepositoryFile(t, repository, relative)
+		for _, fragment := range required {
+			if !strings.Contains(payload, fragment) {
+				t.Errorf("%s is missing Codex capacity evidence contract %q", relative, fragment)
+			}
+		}
+	}
+	plan := readRepositoryFile(t, repository, "docs/plans/003-智能研判事件热度与人工治理计划.md")
+	if !strings.Contains(plan, "- [ ] `CHK-003-G3-001`") {
+		t.Error("Codex capacity checklist was completed without an approved trusted-runner live calibration")
+	}
+}
