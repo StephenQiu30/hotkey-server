@@ -41,6 +41,24 @@ describe("AuthGuard", () => {
     window.history.replaceState({}, "", `/dashboard/events?${navigation.query}`);
   });
 
+  it("announces the initializing state instead of rendering a blank screen", () => {
+    navigation.auth = {
+      status: AuthStatus.Initializing,
+      user: null,
+    };
+
+    render(
+      <AuthGuard>
+        <main>private</main>
+      </AuthGuard>,
+    );
+
+    expect(
+      screen.getByRole("status", { name: "正在验证访问权限" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("private")).not.toBeInTheDocument();
+  });
+
   it("redirects an unauthenticated visitor while preserving the safe return target", async () => {
     render(
       <AuthGuard>
@@ -75,6 +93,9 @@ describe("AuthGuard", () => {
     );
 
     expect(screen.queryByText("administrator page")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("alert", { name: "权限不足" }),
+    ).toHaveTextContent("当前账号没有访问此页面的权限");
     await waitFor(() => {
       expect(navigation.replace).toHaveBeenCalledWith("/dashboard");
     });
@@ -96,6 +117,9 @@ describe("AuthGuard", () => {
     );
 
     expect(screen.queryByText("administrator page")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("alert", { name: "权限不足" }),
+    ).toHaveTextContent("当前账号没有访问此页面的权限");
     await waitFor(() => {
       expect(navigation.replace).toHaveBeenCalledWith("/dashboard");
     });

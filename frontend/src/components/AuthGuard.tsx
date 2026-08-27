@@ -3,10 +3,15 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldAlert } from "lucide-react";
 import { AuthStatus } from "@/lib/domainEnums";
 import { createLoginRedirect } from "@/lib/safeRedirect";
 import { canAccessDashboardRoute } from "@/lib/dashboardAccess";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const status = useAuthStore((s) => s.status);
@@ -29,13 +34,32 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (status === AuthStatus.Initializing) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div
+        role="status"
+        aria-label="正在验证访问权限"
+        className="flex min-h-screen items-center justify-center bg-background"
+      >
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="sr-only">正在验证访问权限</span>
       </div>
     );
   }
 
-  if (status === AuthStatus.Unauthenticated || accessDenied) {
+  if (accessDenied) {
+    return (
+      <main className="app-page" tabIndex={-1}>
+        <Alert aria-label="权限不足" className="mx-auto max-w-2xl">
+          <ShieldAlert />
+          <AlertTitle>权限不足</AlertTitle>
+          <AlertDescription>
+            当前账号没有访问此页面的权限，正在返回工作台。
+          </AlertDescription>
+        </Alert>
+      </main>
+    );
+  }
+
+  if (status === AuthStatus.Unauthenticated) {
     return null;
   }
 

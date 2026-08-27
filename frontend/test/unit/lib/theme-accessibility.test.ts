@@ -51,6 +51,14 @@ describe("dashboard theme accessibility", () => {
   it("provides a global reduced-motion fallback", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("transition-duration: 0.01ms !important");
+    expect(css).toContain("animation-duration: 0.01ms !important");
+  });
+
+  it("preserves a usable mobile viewport and touch targets", () => {
+    expect(css).toMatch(/body\s*{[\s\S]*?min-width:\s*320px;/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*768px\)/);
+    expect(css).toMatch(/min-height:\s*44px;/);
+    expect(css).toMatch(/min-width:\s*44px;/);
   });
 
   it("keeps explicit card separators and exposes an accessible skip link", () => {
