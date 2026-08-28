@@ -66,6 +66,9 @@ func TestSafeCoreKeepsFixedLogSchemaUnderAdversarialCardinality(t *testing.T) {
 		if fields["route"] != "/api/v1/users" || fields["failure_code"] != "internal_error" {
 			t.Fatalf("sanitized fields = %#v", fields)
 		}
+		if fields["trace_id"] != "4bf92f3577b34da6a3ce929d0e0e4736" || !strings.HasPrefix(fields["request_id"].(string), "request-") {
+			t.Fatalf("approved correlation fields = %#v", fields)
+		}
 		encoded, err := json.Marshal(fields)
 		if err != nil {
 			t.Fatalf("marshal log fields: %v", err)
@@ -89,8 +92,8 @@ func TestSafeCoreHashesStacksAndRejectsUnapprovedMessages(t *testing.T) {
 		t.Fatalf("log count = %d, want 2", len(entries))
 	}
 	stackDigest, ok := entries[0].ContextMap()["stack_sha256"].(string)
-	if !ok || len(stackDigest) != 64 || strings.Contains(stackDigest, secret) {
-		t.Fatalf("stack digest = %#v, want 64-character digest", stackDigest)
+	if !ok || stackDigest != "6953dcf4e2406789df378e2ece7490de2769b735a9a05e1c721a7735b89daca1" {
+		t.Fatalf("stack digest = %#v, want fixed golden digest", stackDigest)
 	}
 	if entries[1].Message != rejectedMessage {
 		t.Fatalf("unapproved message = %q, want %q", entries[1].Message, rejectedMessage)
