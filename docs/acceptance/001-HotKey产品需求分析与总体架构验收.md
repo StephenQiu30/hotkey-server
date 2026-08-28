@@ -10,7 +10,7 @@ canonical_path: docs/acceptance/001-HotKey产品需求分析与总体架构验�
 design: docs/design/001-HotKey产品需求分析与总体架构设计.md
 prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 plan: docs/plans/001-HotKey产品需求分析与总体架构计划.md
-verified_revision: "428e411e0572e5d880c90a7968334a68af7bcf1d"
+verified_revision: "3dcf6717c5d1e3f64f20d4276c99111c244d69a4"
 verification_date: "2026-08-29"
 ---
 
@@ -18,7 +18,7 @@ verification_date: "2026-08-29"
 
 ## 结论
 
-本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界和非向量检索/人工知识保护五组可复核证据；完整四角色 UAT、人工键盘矩阵、PostgreSQL/MinIO/Vault/River 联合恢复、全范围关键写入矩阵和全范围游标矩阵仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
+本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护和日报列表游标六组可复核证据；完整四角色 UAT、人工键盘矩阵、PostgreSQL/MinIO/Vault/River 联合恢复、全范围关键写入矩阵和全范围游标矩阵仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
 
 本文件只关闭证据完整的局部门禁，不将浏览器 Fixture、自动化测试或候选性能结果扩大解释为完整 P0 发布验收。
 
@@ -27,11 +27,11 @@ verification_date: "2026-08-29"
 | 项目 | 实际值 |
 |---|---|
 | 验证日期 | 2026-08-29（Asia/Shanghai） |
-| 代码基线 | `428e411e0572e5d880c90a7968334a68af7bcf1d` |
+| 代码基线 | `3dcf6717c5d1e3f64f20d4276c99111c244d69a4` |
 | 本机环境 | macOS 26.6.2、Apple arm64、Go 1.26.5、Node.js 24.19.0、uv 0.11.32 |
 | 项目运行 | 根 `docker-compose.yml`；Go Core、Python Agent、Web、PostgreSQL、Redis、MinIO 共 6 个服务均为 `healthy`；API `/healthz` 与 Web 首页均返回 HTTP 200 |
 | 自动化环境 | 本机既有工具链与可丢弃测试库；GitHub Actions Ubuntu Runner 与隔离 PostgreSQL、Redis、MinIO、Fresh Compose Project |
-| 远端证据 | [GitHub Actions 33191750283](https://github.com/StephenQiu30/hotkey-server/actions/runs/33191750283)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose、Fresh-container browser 与最终 `All acceptance gates` 全部 `success` |
+| 远端证据 | [GitHub Actions 33196636569](https://github.com/StephenQiu30/hotkey-server/actions/runs/33196636569)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose、Fresh-container browser 与最终 `All acceptance gates` 全部 `success` |
 
 ## P0 主故事现状矩阵
 
@@ -69,7 +69,7 @@ verification_date: "2026-08-29"
 - 映射：`CHK-001-G3-001`、`AC-001-005`；
 - 结果：通过；
 - 证据：`make ci-static` 重新生成并比较 `backend/openapi/docs.go` 与 `docs/openapi/swagger.json`，执行统一 Result/Transport、唯一 Schema、仓库与架构检查；`make ci-runtime` 在可丢弃 PostgreSQL/Redis 上执行数据库运行时、Schema 空库/幂等/兼容检查和后端全量串行测试；前端 `npm run openapi:check` 证明生成客户端无漂移；
-- 结果摘要：上述本机命令通过；远端运行 `33191750283` 的 Backend static、Backend test 与 Frontend 三个独立 Job 均为 `success`。
+- 结果摘要：上述本机命令通过；远端运行 `33196636569` 的 Backend static、Backend test 与 Frontend 三个独立 Job 均为 `success`。
 
 ### `EV-001-004`：降级与 Agent 建议边界
 
@@ -87,6 +87,15 @@ verification_date: "2026-08-29"
 - 人工区域证据：`TestUpdateVaultDocumentPreservesHumanRegionByteForByte`、`TestRecoverVaultDocumentUsesOnlyProtectedHumanRegionSources`、`TestVaultRecoveryRestoresMissingFileFromRevisionSnapshot` 和冲突停止测试证明自动区域可重建，人工区域只能从当前 Vault、受保护 Knowledge Revision 或批准备份恢复；
 - 迁移边界：`TestExistingEmbeddingPathRemainsAnExplicitMigrationInventory` 保留旧 Provider/Embedding/pgvector 为受控迁移清单，未在缺少替换、灰度和回滚证据时删除。
 
+### `EV-001-006`：日报列表签名游标与浏览器门禁稳定性
+
+- 映射：`CHK-001-G3-004`、`AC-001-010`；
+- 结果：日报列表子项通过，`CHK-001-G3-004` 仍不关闭；
+- 代码证据：提交 `654ac3ac106e5dd1cd77a29878dff0da1414c1cc` 将日报列表游标改为短期有效的签名不透明字符串，并绑定 `type`、`status` 筛选；篡改、过期或跨筛选复用统一拒绝为无效输入，OpenAPI 与生成客户端同步从整数契约改为字符串契约；
+- 测试证据：`TestReportListCursorIsSignedBoundExpiringAndStableAcrossConcurrentInsert` 在 PostgreSQL 上验证非数字签名、篡改拒绝、筛选绑定、过期拒绝，以及并发新增期间连续遍历无重复、无越权泄漏且不遗漏原快照结果；HTTP 契约测试证明游标按不透明字符串透传；
+- CI 证据：提交 `3dcf6717c5d1e3f64f20d4276c99111c244d69a4` 为浏览器 Axe 扫描增加视觉状态稳定等待，`TestBrowserCIA11yAuditsWaitForVisualStateToSettle` 固化该门禁；远端运行 `33196636569` 的 Fresh-container browser、Backend test 和最终聚合门禁均为 `success`；
+- 边界：本证据只关闭日报列表子项，不能替代其他 P0 列表的同排序值、并发新增、连续遍历、越权、篡改与过期统一矩阵。
+
 ## AC 结果
 
 | AC | 结果 | 说明 |
@@ -100,7 +109,7 @@ verification_date: "2026-08-29"
 | `AC-001-007` | passed | 见 `EV-001-004` |
 | `AC-001-008` | passed | 见 `EV-001-005` |
 | `AC-001-009` | partial | 多个关键写入已有授权、幂等、版本、冲突和审计测试，但尚无全 P0 写入口统一矩阵 |
-| `AC-001-010` | partial | 签名/过期游标与部分列表已覆盖，但尚无全部 P0 列表的并列排序、并发新增和越权游标统一矩阵 |
+| `AC-001-010` | partial | 日报列表已覆盖签名、过期、筛选绑定、篡改拒绝和并发新增期间连续遍历；尚无全部 P0 列表的统一矩阵 |
 
 ## 实际命令与结果摘要
 
@@ -109,10 +118,10 @@ backend: make ci
 frontend: npm run openapi:check; npm run typecheck; npm run test:unit; npm audit --omit=dev --audit-level=high; npm run build
 agent: uv run ruff format --check .; uv run ruff check .; uv run mypy src; uv run pytest; uv run pip-audit
 repository: docker compose -f docker-compose.yml config --quiet; docker compose --env-file .env.prod -f docker-compose-prod.yml config --quiet; git diff --check
-specialized: make agent-degradation-acceptance; make agent-skill-contract-acceptance; make report-publication-acceptance; make m4-fault-recovery-acceptance
+specialized: make agent-degradation-acceptance; make agent-skill-contract-acceptance; make report-publication-acceptance; make m4-fault-recovery-acceptance; go run ./test/runner test ./test/architecture -count=1
 ```
 
-本机全量结果通过；Python Agent 为 41 项测试通过且覆盖率 97.57%，固定代码基线的前端为 48 个文件、244 项测试通过，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33191750283` 的 8 个执行 Job 和最终聚合门禁全部通过。记录期间并行出现但未纳入本验收提交的前端工作区改动不计入该基线。
+本机全量结果通过；Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33196636569` 的 8 个执行 Job 和最终聚合门禁全部通过，其中 Backend test 为 9 分 19 秒，Fresh-container browser 为 3 分 10 秒。记录期间并行出现但未纳入本验收提交的前端工作区改动不计入该基线。
 
 ## 未完成项与停止条件
 
@@ -120,14 +129,14 @@ specialized: make agent-degradation-acceptance; make agent-skill-contract-accept
 - `CHK-001-G2-001`：等待完整人工键盘/焦点矩阵，不以自动 Tab 与 WCAG 扫描替代；
 - `CHK-001-G3-002`：等待同一隔离恢复副本上的联合恢复、对账和真实 RPO/RTO；
 - `CHK-001-G3-003`：等待所有 P0 关键写入口的统一副作用、事实计数和追加审计矩阵；
-- `CHK-001-G3-004`：等待所有 P0 列表的并列排序、并发新增、连续遍历和越权/过期游标矩阵。
+- `CHK-001-G3-004`：日报列表子项已完成；等待其余 P0 列表的并列排序、并发新增、连续遍历和越权/篡改/过期游标矩阵。
 
 以上任一项缺失时，本 Acceptance 不得改为 `passed`，001 Plan/PRD 不得改为 `completed/implemented`。
 
 ## 影响与回滚验证
 
-- Schema、OpenAPI、运行配置和部署拓扑：无变更；
-- 运行影响：无；项目继续由根 Compose 运行，测试继续使用本机锁定工具链和可丢弃测试服务；
+- Schema、运行配置和部署拓扑：无变更；OpenAPI 的日报 `cursor`/`next_cursor` 从整数改为不透明字符串；
+- 运行影响：日报列表拒绝篡改、过期或跨筛选复用的游标；项目继续由根 Compose 运行，测试继续使用本机锁定工具链和可丢弃测试服务；
 - 回滚：若证据引用失效，回退本文件对应 EV 和 Plan 勾选即可，不删除业务事实、对象、Vault 内容或任务历史；架构契约会在引用的测试、命令或门禁状态漂移时失败；
 - 已知限制：本文件固定的代码基线早于记录本文件的提交；记录提交由同一 CI 再验证，但不以无法实现的“提交自引用哈希”冒充证据。
 
