@@ -187,6 +187,13 @@ type microEventListCursor struct {
 	ID             int64     `json:"id"`
 }
 
+type microEventEvidenceCursor struct {
+	Version      int       `json:"v"`
+	MicroEventID int64     `json:"event_id"`
+	AsOf         time.Time `json:"as_of"`
+	ID           int64     `json:"id"`
+}
+
 func microEventFilterFingerprint(query eventapplication.MicroEventListQuery) string {
 	statuses := append([]string(nil), query.Statuses...)
 	sourceTypes := append([]string(nil), query.SourceTypes...)
@@ -233,6 +240,22 @@ func decodeMicroEventListCursor(codec *pagination.Codec, value, expectedSort, ex
 		cursor.Filter != expectedFilter || cursor.AsOf.IsZero() || cursor.EventStartedAt.IsZero() || cursor.ID <= 0 ||
 		!validHeat || !validRelevance {
 		return microEventListCursor{}, eventapplication.ErrInvalidMicroEventQuery
+	}
+	return cursor, nil
+}
+
+func encodeMicroEventEvidenceCursor(codec *pagination.Codec, cursor microEventEvidenceCursor) (string, error) {
+	cursor.Version = 1
+	return codec.Seal("micro_event_evidence_list", cursor)
+}
+
+func decodeMicroEventEvidenceCursor(codec *pagination.Codec, value string, expectedMicroEventID int64) (microEventEvidenceCursor, error) {
+	var cursor microEventEvidenceCursor
+	if err := codec.Open(value, "micro_event_evidence_list", &cursor); err != nil {
+		return microEventEvidenceCursor{}, fmt.Errorf("%w: micro-event evidence cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	if cursor.Version != 1 || cursor.MicroEventID != expectedMicroEventID || cursor.AsOf.IsZero() || cursor.ID <= 0 {
+		return microEventEvidenceCursor{}, fmt.Errorf("%w: micro-event evidence cursor shape", sharedrepository.ErrInvalidInput)
 	}
 	return cursor, nil
 }
@@ -496,6 +519,18 @@ GROUP BY sentence.id ORDER BY sentence.ordinal`, summary.ID)
 }
 
 func (repository *MicroEventQueryPostgresRepository) ListMicroEventEvidence(ctx context.Context, query eventapplication.MicroEventEvidenceQuery) (eventapplication.MicroEventEvidencePageDTO, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || repository.cursorCodec == nil || repository.now == nil ||
+		query.MicroEventID <= 0 || query.Limit < 1 || query.Limit > 100 {
+		return eventapplication.MicroEventEvidencePageDTO{}, eventapplication.ErrInvalidMicroEventQuery
+	}
+	cursor := microEventEvidenceCursor{MicroEventID: query.MicroEventID, AsOf: repository.now().UTC()}
+	if query.Cursor != "" {
+		decoded, err := decodeMicroEventEvidenceCursor(repository.cursorCodec, query.Cursor, query.MicroEventID)
+		if err != nil {
+			return eventapplication.MicroEventEvidencePageDTO{}, err
+		}
+		cursor = decoded
+	}
 	rows, err := repository.queryExecutor(ctx).QueryContext(ctx, `
 WITH projection AS (
  SELECT evidence.*,claim.version AS claim_version,claim.micro_event_id,claim.subject,claim.predicate,claim.object,
@@ -515,7 +550,7 @@ WITH projection AS (
   WHERE member.document_version_id=evidence.document_version_id AND member.active
   HAVING count(*)=1
  ) AS lineage ON true
- WHERE claim.micro_event_id=$1 AND evidence.id>$2
+ WHERE claim.micro_event_id=$1 AND evidence.id>$2 AND evidence.created_at<=$3
 )
 SELECT id,version,claim_id,claim_version,document_version_id,text_quote_selector_id,content_family_id,lineage_root_document_version_id,
        lineage_decision_id,member_version,subject,predicate,object,relation,
@@ -526,7 +561,7 @@ SELECT id,version,claim_id,claim_version,document_version_id,text_quote_selector
        CASE WHEN citable THEN selector_version END,CASE WHEN citable THEN markdown_anchor END,
        source_record_url_snapshot,canonical_url_snapshot,publisher_name_snapshot,content_origin_name_snapshot,
        published_at_snapshot,captured_at_snapshot,extraction_schema_version,decision_origin,created_at
-FROM projection ORDER BY id LIMIT $4`, query.MicroEventID, query.CursorID, query.AsOf.UTC(), query.Limit+1)
+FROM projection ORDER BY id LIMIT $4`, query.MicroEventID, cursor.ID, cursor.AsOf, query.Limit+1)
 	if err != nil {
 		return eventapplication.MicroEventEvidencePageDTO{}, databaserepository.MapError(err)
 	}
@@ -564,7 +599,12 @@ FROM projection ORDER BY id LIMIT $4`, query.MicroEventID, query.CursorID, query
 	page := eventapplication.MicroEventEvidencePageDTO{Items: items}
 	if len(page.Items) > query.Limit {
 		page.Items = page.Items[:query.Limit]
-		page.NextCursorID = page.Items[len(page.Items)-1].ID
+		page.NextCursor, err = encodeMicroEventEvidenceCursor(repository.cursorCodec, microEventEvidenceCursor{
+			MicroEventID: query.MicroEventID, AsOf: cursor.AsOf, ID: page.Items[len(page.Items)-1].ID,
+		})
+		if err != nil {
+			return eventapplication.MicroEventEvidencePageDTO{}, fmt.Errorf("encode micro-event evidence cursor: %w", err)
+		}
 	}
 	return page, nil
 }

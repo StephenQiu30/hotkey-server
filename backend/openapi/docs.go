@@ -2642,9 +2642,9 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "type": "integer",
-                        "description": "exclusive evidence cursor",
-                        "name": "cursor_id",
+                        "type": "string",
+                        "description": "opaque evidence snapshot cursor",
+                        "name": "cursor",
                         "in": "query"
                     },
                     {
@@ -11624,8 +11624,8 @@ const docTemplate = `{
                         "$ref": "#/definitions/http.ClaimEvidenceResponseDTO"
                     }
                 },
-                "next_cursor_id": {
-                    "type": "integer"
+                "next_cursor": {
+                    "type": "string"
                 }
             }
         },

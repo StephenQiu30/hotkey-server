@@ -11,6 +11,7 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 	contracts := map[string][]string{
 		"internal/modules/event/infrastructure/postgres/micro_event_query_repository.go": {
 			`codec.Seal("micro_event_list"`, `codec.Open(value, "micro_event_list"`,
+			`codec.Seal("micro_event_evidence_list"`, `codec.Open(value, "micro_event_evidence_list"`,
 		},
 		"internal/modules/ingestion/transport/http/relevance.go": {
 			`codec.Seal("relevance_match_list"`, `codec.Open(raw, "relevance_match_list"`,

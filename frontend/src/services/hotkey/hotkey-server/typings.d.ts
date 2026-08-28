@@ -811,8 +811,8 @@ required property without making explicit null impossible to bind. */
   type getMicroEventsIdEvidenceParams = {
     /** micro-event ID */
     id: number;
-    /** exclusive evidence cursor */
-    cursor_id?: number;
+    /** opaque evidence snapshot cursor */
+    cursor?: string;
     /** page size */
     limit?: number;
   };
@@ -1405,7 +1405,7 @@ probability or a cross-channel relevance percentage. */
 
   type MicroEventEvidencePageResponseDTO = {
     items?: ClaimEvidenceResponseDTO[];
-    next_cursor_id?: number;
+    next_cursor?: string;
   };
 
   type MicroEventGovernanceRequestDTO = {

@@ -6,12 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
@@ -204,13 +206,16 @@ WHERE evidence.id=$1`, firstResult.Evidence.ID).
 		detail.Members[1].ContentFamilyID <= 0 || detail.Members[1].MembershipDecisionID <= 0 || detail.Members[1].Version <= 0 {
 		t.Fatalf("Get(v2) = %#v / %v", detail, err)
 	}
-	evidencePage, err := queryService.Evidence(ctx, eventapplication.MicroEventEvidenceQuery{MicroEventID: firstAssignment.Event.ID, Limit: 10, AsOf: now})
+	evidenceQueryNow := now
+	queryRepository.now = func() time.Time { return evidenceQueryNow }
+	evidencePage, err := queryService.Evidence(ctx, eventapplication.MicroEventEvidenceQuery{MicroEventID: firstAssignment.Event.ID, Limit: 10})
 	if err != nil || len(evidencePage.Items) != 3 || evidencePage.Items[0].ClaimVersion != 1 ||
 		evidencePage.Items[0].Availability != "ready" || evidencePage.Items[0].ExactQuote == nil {
 		t.Fatalf("Evidence(v2) = %#v / %v", evidencePage, err)
 	}
 	insertClaimEvidenceQuoteDeny(t, runtime, first, now)
-	evidenceAfterDeny, err := queryService.Evidence(ctx, eventapplication.MicroEventEvidenceQuery{MicroEventID: firstAssignment.Event.ID, Limit: 10, AsOf: now.Add(time.Minute)})
+	evidenceQueryNow = now.Add(time.Minute)
+	evidenceAfterDeny, err := queryService.Evidence(ctx, eventapplication.MicroEventEvidenceQuery{MicroEventID: firstAssignment.Event.ID, Limit: 10})
 	if err != nil || evidenceAfterDeny.Items[0].Availability != "rights_unavailable" || evidenceAfterDeny.Items[0].ExactQuote != nil ||
 		evidenceAfterDeny.Items[1].Availability != "rights_unavailable" || evidenceAfterDeny.Items[2].Availability != "ready" {
 		t.Fatalf("Evidence(after deny) = %#v / %v", evidenceAfterDeny, err)
@@ -229,6 +234,119 @@ WHERE evidence.id=$1`, firstResult.Evidence.ID).
 		t.Fatal("append-only claim evidence feedback accepted delete")
 	} else {
 		assertMicroEventGovernanceSQLState(t, err, "23514")
+	}
+}
+
+func TestMicroEventEvidenceCursorIsSignedBoundExpiringAndSnapshotStable(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+
+	fixture := seedMicroEventAssignmentFixture(t, runtime, "evidence-cursor", "accepted")
+	microRepository, _ := NewMicroEventRepository(runtime)
+	microService, _ := eventapplication.NewMicroEventService(microRepository)
+	assignment, err := microService.Assign(ctx, eventapplication.AssignContentFamilyToMicroEventCommand{
+		ContentFamilyID: fixture.familyID, DocumentMatchDecisionID: fixture.matchDecisionID,
+		ClusteringProfileVersion: eventapplication.CanonicalMicroEventClusteringProfileVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorID, firstSelectorID := attachClaimEvidenceQuoteFixture(t, runtime, fixture, "cursor-first")
+	claimRepository, _ := NewClaimEvidencePostgresRepository(runtime)
+	claimService, _ := eventapplication.NewClaimEvidenceService(claimRepository)
+	base := time.Now().UTC().Truncate(time.Microsecond)
+	firstEvidence, err := claimService.Record(ctx, manualClaimEvidenceCommand(assignment.Event.ID, assignment.Event.Version,
+		fixture.documentVersionID, firstSelectorID, actorID, "asserts", "evidence-cursor-first", base.Add(-3*time.Minute)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, secondSelectorID := attachClaimEvidenceQuoteFixture(t, runtime, fixture, "cursor-second")
+	secondEvidence, err := claimService.Correct(ctx, eventapplication.CorrectClaimEvidenceCommand{
+		OriginalClaimEvidenceVersionID: firstEvidence.Evidence.ID, ExpectedClaimVersion: firstEvidence.Claim.Version,
+		ResultTextQuoteSelectorID: secondSelectorID, ResultRelation: "mentions", ActorUserID: actorID,
+		ReasonCode: "cursor_second_version", IdempotencyKey: "evidence-cursor-second", DecisionAt: base.Add(-2 * time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	codec, err := pagination.NewCodec("micro-event-evidence-cursor-test-secret-32-bytes", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queryRepository, err := NewMicroEventQueryPostgresRepositoryWithCursorCodec(runtime, codec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshotAt := base
+	queryRepository.now = func() time.Time { return snapshotAt }
+	queryService, _ := eventapplication.NewMicroEventQueryService(queryRepository)
+	firstPage, err := queryService.Evidence(ctx, eventapplication.MicroEventEvidenceQuery{MicroEventID: assignment.Event.ID, Limit: 1})
+	if err != nil || len(firstPage.Items) != 1 || firstPage.Items[0].ID != firstEvidence.Evidence.ID || firstPage.NextCursor == "" {
+		t.Fatalf("first evidence page = %#v / %v", firstPage, err)
+	}
+	if _, err := strconv.ParseInt(firstPage.NextCursor, 10, 64); err == nil {
+		t.Fatalf("evidence cursor is a naked integer: %q", firstPage.NextCursor)
+	}
+	tampered := "A" + firstPage.NextCursor[1:]
+	if tampered == firstPage.NextCursor {
+		tampered = "B" + firstPage.NextCursor[1:]
+	}
+	if _, err := queryService.Evidence(ctx, eventapplication.MicroEventEvidenceQuery{
+		MicroEventID: assignment.Event.ID, Limit: 1, Cursor: tampered,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("tampered evidence cursor error = %v, want invalid input", err)
+	}
+	if _, err := queryService.Evidence(ctx, eventapplication.MicroEventEvidenceQuery{
+		MicroEventID: assignment.Event.ID + 1, Limit: 1, Cursor: firstPage.NextCursor,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("cross-event evidence cursor error = %v, want invalid input", err)
+	}
+
+	_, thirdSelectorID := attachClaimEvidenceQuoteFixture(t, runtime, fixture, "cursor-third-unique")
+	var currentClaimVersion int64
+	if err := runtime.SQL.QueryRow(`SELECT version FROM claims WHERE id=$1`, firstEvidence.Claim.ID).Scan(&currentClaimVersion); err != nil {
+		t.Fatal(err)
+	}
+	thirdEvidence, err := claimService.Correct(ctx, eventapplication.CorrectClaimEvidenceCommand{
+		OriginalClaimEvidenceVersionID: secondEvidence.Evidence.ID, ExpectedClaimVersion: currentClaimVersion,
+		ResultTextQuoteSelectorID: thirdSelectorID, ResultRelation: "attributes_to", ActorUserID: actorID,
+		ReasonCode: "cursor_concurrent_version", IdempotencyKey: "evidence-cursor-third", DecisionAt: snapshotAt.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPage, err := queryService.Evidence(ctx, eventapplication.MicroEventEvidenceQuery{
+		MicroEventID: assignment.Event.ID, Limit: 1, Cursor: firstPage.NextCursor,
+	})
+	if err != nil || len(secondPage.Items) != 1 || secondPage.Items[0].ID != secondEvidence.Evidence.ID ||
+		secondPage.Items[0].ID == thirdEvidence.Evidence.ID || secondPage.NextCursor != "" {
+		t.Fatalf("snapshot-stable second evidence page = %#v / %v; concurrent=%d", secondPage, err, thirdEvidence.Evidence.ID)
+	}
+
+	expiringCodec, err := pagination.NewCodec("expiring-micro-event-evidence-cursor-secret-32b", time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiringRepository, _ := NewMicroEventQueryPostgresRepositoryWithCursorCodec(runtime, expiringCodec)
+	expiringRepository.now = func() time.Time { return snapshotAt.Add(2 * time.Second) }
+	expiringService, _ := eventapplication.NewMicroEventQueryService(expiringRepository)
+	expiringPage, err := expiringService.Evidence(ctx, eventapplication.MicroEventEvidenceQuery{MicroEventID: assignment.Event.ID, Limit: 1})
+	if err != nil || expiringPage.NextCursor == "" {
+		t.Fatalf("expiring first page = %#v / %v", expiringPage, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := expiringService.Evidence(ctx, eventapplication.MicroEventEvidenceQuery{
+		MicroEventID: assignment.Event.ID, Limit: 1, Cursor: expiringPage.NextCursor,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired evidence cursor error = %v, want invalid input", err)
 	}
 }
 

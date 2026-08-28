@@ -147,7 +147,7 @@ func (handler *MicroEventHandler) Get(c *gin.Context) error {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "micro-event ID"
-// @Param cursor_id query int false "exclusive evidence cursor"
+// @Param cursor query string false "opaque evidence snapshot cursor"
 // @Param limit query int false "page size" minimum(1) maximum(100)
 // @Success 200 {object} MicroEventV2Result[MicroEventEvidencePageResponseDTO]
 // @Failure 400 {object} MicroEventV2Result[EmptyResponse]
@@ -163,15 +163,13 @@ func (handler *MicroEventHandler) Evidence(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	cursor, err := queryCursor(c.Query("cursor_id"))
-	if err != nil {
-		return err
-	}
-	page, err := handler.queries.Evidence(c.Request.Context(), eventapplication.MicroEventEvidenceQuery{MicroEventID: id, CursorID: cursor, Limit: limit, AsOf: time.Now().UTC()})
+	page, err := handler.queries.Evidence(c.Request.Context(), eventapplication.MicroEventEvidenceQuery{
+		MicroEventID: id, Cursor: strings.TrimSpace(c.Query("cursor")), Limit: limit,
+	})
 	if err != nil {
 		return eventError(err)
 	}
-	response := MicroEventEvidencePageResponseDTO{Items: make([]ClaimEvidenceResponseDTO, len(page.Items)), NextCursorID: page.NextCursorID}
+	response := MicroEventEvidencePageResponseDTO{Items: make([]ClaimEvidenceResponseDTO, len(page.Items)), NextCursor: page.NextCursor}
 	for index, item := range page.Items {
 		response.Items[index] = claimEvidenceResponseDTO(item)
 	}

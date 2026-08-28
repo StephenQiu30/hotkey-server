@@ -54,9 +54,8 @@ type MicroEventPageDTO struct {
 
 type MicroEventEvidenceQuery struct {
 	MicroEventID int64
-	CursorID     int64
+	Cursor       string
 	Limit        int
-	AsOf         time.Time
 }
 
 type ClaimEvidenceProjectionDTO struct {
@@ -78,8 +77,8 @@ type ClaimEvidenceProjectionDTO struct {
 }
 
 type MicroEventEvidencePageDTO struct {
-	Items        []ClaimEvidenceProjectionDTO
-	NextCursorID int64
+	Items      []ClaimEvidenceProjectionDTO
+	NextCursor string
 }
 
 type MicroEventQueryRepository interface {
@@ -184,16 +183,13 @@ func (service *MicroEventQueryService) Get(ctx context.Context, id int64) (Micro
 }
 
 func (service *MicroEventQueryService) Evidence(ctx context.Context, query MicroEventEvidenceQuery) (MicroEventEvidencePageDTO, error) {
-	if service == nil || service.repository == nil || query.MicroEventID <= 0 || query.CursorID < 0 || query.Limit < 0 || query.Limit > 100 {
+	query.Cursor = strings.TrimSpace(query.Cursor)
+	if service == nil || service.repository == nil || query.MicroEventID <= 0 || len(query.Cursor) > 8192 ||
+		strings.ContainsAny(query.Cursor, "\r\n") || query.Limit < 0 || query.Limit > 100 {
 		return MicroEventEvidencePageDTO{}, ErrInvalidMicroEventQuery
 	}
 	if query.Limit == 0 {
 		query.Limit = 50
-	}
-	if query.AsOf.IsZero() {
-		query.AsOf = time.Now().UTC()
-	} else {
-		query.AsOf = query.AsOf.UTC()
 	}
 	return service.repository.ListMicroEventEvidence(ctx, query)
 }

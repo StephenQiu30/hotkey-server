@@ -128,8 +128,8 @@ type ClaimEvidenceResponseDTO struct {
 	CreatedAt                  time.Time  `json:"created_at"`
 }
 type MicroEventEvidencePageResponseDTO struct {
-	Items        []ClaimEvidenceResponseDTO `json:"items"`
-	NextCursorID int64                      `json:"next_cursor_id,omitempty"`
+	Items      []ClaimEvidenceResponseDTO `json:"items"`
+	NextCursor string                     `json:"next_cursor,omitempty"`
 }
 
 type ClaimQualifierRequestDTO struct {

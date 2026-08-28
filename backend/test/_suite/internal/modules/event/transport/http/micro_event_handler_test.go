@@ -15,8 +15,9 @@ import (
 )
 
 type microEventQueryRepositoryFake struct {
-	evidence application.MicroEventEvidencePageDTO
-	lastList application.MicroEventListQuery
+	evidence     application.MicroEventEvidencePageDTO
+	lastList     application.MicroEventListQuery
+	lastEvidence application.MicroEventEvidenceQuery
 }
 
 func (fake *microEventQueryRepositoryFake) ListMicroEvents(_ context.Context, query application.MicroEventListQuery) (application.MicroEventPageDTO, error) {
@@ -129,8 +130,29 @@ func (fake *microEventQueryRepositoryFake) GetMicroEvent(context.Context, int64)
 		ClusteringProfileVersion: "micro-event-clustering-v1"}, nil
 }
 
-func (fake *microEventQueryRepositoryFake) ListMicroEventEvidence(context.Context, application.MicroEventEvidenceQuery) (application.MicroEventEvidencePageDTO, error) {
+func (fake *microEventQueryRepositoryFake) ListMicroEventEvidence(_ context.Context, query application.MicroEventEvidenceQuery) (application.MicroEventEvidencePageDTO, error) {
+	fake.lastEvidence = query
 	return fake.evidence, nil
+}
+
+func TestMicroEventEvidenceForwardsOpaqueCursor(t *testing.T) {
+	repository := &microEventQueryRepositoryFake{evidence: application.MicroEventEvidencePageDTO{NextCursor: "opaque.signed"}}
+	queries, governance, evidence := newMicroEventHTTPServices(t, repository)
+	router := gin.New()
+	RegisterMicroEventRoutes(router, queries, governance, evidence, microEventViewerAuthenticator{})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/micro-events/7/evidence?cursor=opaque.signed&limit=1", nil)
+	request.Header.Set("Authorization", "Bearer viewer")
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("evidence status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if repository.lastEvidence.MicroEventID != 7 || repository.lastEvidence.Cursor != "opaque.signed" || repository.lastEvidence.Limit != 1 {
+		t.Fatalf("evidence query = %#v", repository.lastEvidence)
+	}
+	if body := recorder.Body.String(); !strings.Contains(body, `"next_cursor":"opaque.signed"`) || strings.Contains(body, "next_cursor_id") {
+		t.Fatalf("evidence response did not preserve the opaque cursor contract: %s", body)
+	}
 }
 
 func (fake *microEventQueryRepositoryFake) GetMicroEventSummary(context.Context, int64, int64) (*application.EvidenceSummaryDTO, error) {
