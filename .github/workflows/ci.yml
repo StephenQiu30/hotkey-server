@@ -299,11 +299,20 @@ jobs:
         run: docker compose --env-file .env.prod -f docker-compose-prod.yml config --quiet
 
   browser-smoke-acceptance:
-    name: Fresh-container browser smoke acceptance
+    name: Fresh-container browser business-flow acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
       HOTKEY_CONTAINER_PREFIX: hotkey-ci-${{ github.run_id }}
+      HOTKEY_BROWSER_API_ORIGIN: http://127.0.0.1:8866
+      HOTKEY_BROWSER_WEB_ORIGIN: http://127.0.0.1:8010
+      HOTKEY_BROWSER_EMAIL: browser-e2e-sentinel@example.test
+      HOTKEY_BROWSER_ANALYST_EMAIL: browser-empty-state@example.test
+      HOTKEY_BROWSER_PASSWORD: BrowserFixture-Only-2026!
+      HOTKEY_BROWSER_MONITOR_ID: 910001
+      HOTKEY_BROWSER_RUN_ID: browser-${{ github.run_id }}-${{ github.run_attempt }}
+      HOTKEY_BROWSER_FIXTURE_BODY: BrowserAcceptanceTopic2026 HOTKEY_BODY_SENTINEL_7f4b9c2a mail-list-one@example.test,mail-list-two@example.test /Users/hotkey-ci/private-vault/report.md
+      HOTKEY_BROWSER_ARTIFACT_DIR: /tmp
 
     steps:
       - name: Check out source
@@ -329,23 +338,110 @@ jobs:
           curl --fail --silent http://127.0.0.1:8866/readyz
           curl --fail --silent http://127.0.0.1:8866/metrics | grep 'hotkey_runtime_metrics_collection_success'
 
+      - name: Prepare same-fixture report approval story
+        run: |
+          docker exec -i "$HOTKEY_CONTAINER_PREFIX-postgres" \
+            psql -U hotkey -d hotkey -v fixture_run_id="$HOTKEY_BROWSER_RUN_ID" \
+            < backend/test/fixtures/browser-acceptance/seed.sql
+          node frontend/test/browser/prepare-business-flow.mjs > /tmp/hotkey-browser-fixture.json
+          report_id="$(node -e "const value=require('/tmp/hotkey-browser-fixture.json'); if (!Number.isSafeInteger(value.reportID)) process.exit(1); process.stdout.write(String(value.reportID))")"
+          docker exec -i "$HOTKEY_CONTAINER_PREFIX-postgres" \
+            psql -U hotkey -d hotkey -v report_id="$report_id" -v fixture_body="$HOTKEY_BROWSER_FIXTURE_BODY" \
+            < backend/test/fixtures/browser-acceptance/inject-sentinels.sql
+          HOTKEY_BROWSER_REPORT_ID="$report_id" node frontend/test/browser/submit-business-flow.mjs \
+            > /tmp/hotkey-browser-submitted.json
+          echo "HOTKEY_BROWSER_REPORT_ID=$report_id" >> "$GITHUB_ENV"
+
       - name: Install browser acceptance runtime
         run: |
           npm install --global agent-browser@0.33.2
           agent-browser install --with-deps
 
-      - name: Real browser rendering and deep-link acceptance
+      - name: Real browser notification to PostgreSQL search acceptance
         env:
           AGENT_BROWSER_SESSION: hotkey-ci
         run: |
-          agent-browser open http://127.0.0.1:8010
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser cookies clear
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser network requests --clear
+          agent-browser errors --clear
           agent-browser wait --load networkidle
-          agent-browser snapshot --compact
-          test "$(agent-browser get count 'main')" -eq 1
-          agent-browser open http://127.0.0.1:8010/dashboard/governance
-          agent-browser wait --url '**/login*'
-          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y.json
-          node -e "const report=require('/tmp/hotkey-a11y.json'); if (!report.success || (report.data?.violations ?? []).length) process.exit(1)"
+          agent-browser find label "邮箱" fill "$HOTKEY_BROWSER_EMAIL"
+          agent-browser find label "密码" fill "$HOTKEY_BROWSER_PASSWORD"
+          agent-browser find role button click --name "进入工作台" --exact
+          agent-browser wait --url '**/dashboard*'
+
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/notifications"
+          agent-browser wait --text "日报等待审批"
+          agent-browser find role link click --name "查看通知关联内容" --exact
+          agent-browser wait --url '**/dashboard/reports?report=*'
+          agent-browser wait --text "批准并冻结"
+          agent-browser find role button click --name "批准并冻结" --exact
+          agent-browser wait --text "已冻结"
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-reports.json
+
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/knowledge"
+          agent-browser wait --text "批准提案"
+          agent-browser find role button click --name "批准提案" --exact
+          agent-browser wait --text "已批准"
+          agent-browser find role button click --name "原子发布到 Vault" --exact
+          agent-browser wait --text "已应用"
+          agent-browser wait --text "已同步"
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-knowledge.json
+
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/search"
+          agent-browser find label "搜索词" fill "BrowserAcceptanceTopic2026"
+          agent-browser click 'main form button[type="submit"]'
+          agent-browser wait --text "日报 #$HOTKEY_BROWSER_REPORT_ID"
+          agent-browser wait --text "BrowserAcceptanceTopic2026"
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-search-desktop.json
+
+          agent-browser set viewport 390 844
+          agent-browser press Tab
+          agent-browser eval --json "document.querySelector('main') !== null && document.documentElement.scrollWidth <= window.innerWidth && document.activeElement !== document.body" > /tmp/hotkey-browser-viewport.json
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-search-mobile.json
+
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser find label "邮箱" fill "$HOTKEY_BROWSER_ANALYST_EMAIL"
+          agent-browser find label "密码" fill "$HOTKEY_BROWSER_PASSWORD"
+          agent-browser find role button click --name "进入工作台" --exact
+          agent-browser wait --url '**/dashboard*'
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/notifications"
+          agent-browser wait --text "暂时没有站内通知"
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-notifications-empty.json
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/knowledge"
+          agent-browser wait --text "权限不足"
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-knowledge-permission.json
+
+          agent-browser errors --json > /tmp/hotkey-browser-errors.json
+          agent-browser network requests --json > /tmp/hotkey-browser-network.json
+          node frontend/test/browser/verify-artifacts.mjs
+
+      - name: Verify database, Vault and leak-sentinel closure
+        run: |
+          docker exec -i "$HOTKEY_CONTAINER_PREFIX-postgres" \
+            psql -qAt -U hotkey -d hotkey \
+            < backend/test/fixtures/browser-acceptance/assert-business-flow.sql \
+            > /tmp/hotkey-browser-database.json
+          docker exec "$HOTKEY_CONTAINER_PREFIX-api" \
+            test -f "/var/lib/hotkey/vault/reports/report-$HOTKEY_BROWSER_REPORT_ID.md"
+          docker compose -p hotkey-ci -f docker-compose.yml logs --no-color \
+            > /tmp/hotkey-container-logs.txt
+          node frontend/test/browser/verify-no-sentinel-leak.mjs /tmp/hotkey-container-logs.txt
+
+      - name: Upload sanitized browser acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: browser-business-flow-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            /tmp/hotkey-browser-acceptance.json
+            /tmp/hotkey-browser-database.json
+            /tmp/hotkey-sentinel-scan.json
+            /tmp/hotkey-a11y-*.json
 
       - name: Close browser session
         if: always()
@@ -353,7 +449,7 @@ jobs:
 
       - name: Print container diagnostics
         if: failure()
-        run: docker compose -p hotkey-ci -f docker-compose.yml logs --no-color --tail=200
+        run: docker compose -p hotkey-ci -f docker-compose.yml ps
 
       - name: Remove fresh container stack
         if: always()

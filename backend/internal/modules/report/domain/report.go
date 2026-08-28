@@ -179,6 +179,13 @@ func ComputeInputSnapshotHash(report Report) string {
 	if report.Period.Location != nil {
 		timezone = report.Period.Location.String()
 	}
+	items := report.Items
+	// PostgreSQL readers materialize a zero-row relation as an empty slice,
+	// while a freshly built empty report may hold nil. Both represent the same
+	// immutable input set and must retain the pre-persistence hash.
+	if len(items) == 0 {
+		items = nil
+	}
 	payload, _ := json.Marshal(struct {
 		Type        ReportType `json:"type"`
 		MonitorID   *int64     `json:"monitor_id"`
@@ -190,7 +197,7 @@ func ComputeInputSnapshotHash(report Report) string {
 		Type: report.Type, MonitorID: report.MonitorID,
 		PeriodStart: report.Period.Start.UTC().Format(time.RFC3339Nano),
 		PeriodEnd:   report.Period.End.UTC().Format(time.RFC3339Nano),
-		Timezone:    timezone, Items: report.Items,
+		Timezone:    timezone, Items: items,
 	})
 	hash := sha256.Sum256(payload)
 	return hex.EncodeToString(hash[:])

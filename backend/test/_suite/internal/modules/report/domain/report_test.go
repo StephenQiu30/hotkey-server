@@ -153,6 +153,16 @@ func TestReportRevisionLifecycleAndInputSnapshotAreExplicit(t *testing.T) {
 	}
 }
 
+func TestInputSnapshotHashTreatsPersistedEmptyItemsAsTheSameSnapshot(t *testing.T) {
+	period, _ := PeriodFor(time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC), ReportDaily, time.UTC)
+	inMemory := Report{ID: 7, Version: 1, VersionNo: 1, Type: ReportDaily, Period: period, Title: "daily", Status: ReportDraft, Items: nil}
+	persisted := inMemory
+	persisted.Items = []Item{}
+	if left, right := ComputeInputSnapshotHash(inMemory), ComputeInputSnapshotHash(persisted); left != right {
+		t.Fatalf("empty report hashes differ across persistence: %q != %q", left, right)
+	}
+}
+
 func clonePublicationItems(items []Item) []Item {
 	cloned := append([]Item(nil), items...)
 	for index := range cloned {

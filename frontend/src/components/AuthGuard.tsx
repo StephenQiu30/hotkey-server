@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
 import { Loader2, ShieldAlert } from "lucide-react";
@@ -27,10 +28,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       router.replace(createLoginRedirect(pathname, window.location.search));
       return;
     }
-    if (accessDenied) {
-      router.replace("/dashboard");
-    }
-  }, [accessDenied, pathname, router, status]);
+  }, [pathname, router, status]);
 
   if (status === AuthStatus.Initializing) {
     return (
@@ -52,7 +50,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
           <ShieldAlert />
           <AlertTitle>权限不足</AlertTitle>
           <AlertDescription>
-            当前账号没有访问此页面的权限，正在返回工作台。
+            当前账号没有访问此页面的权限。
+            <Link className="ml-2 font-medium underline underline-offset-4" href="/dashboard">
+              返回工作台
+            </Link>
           </AlertDescription>
         </Alert>
       </main>

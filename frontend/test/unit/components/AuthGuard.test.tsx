@@ -76,7 +76,7 @@ describe("AuthGuard", () => {
   it.each([
     "/dashboard/users",
     "/dashboard/governance",
-  ])("redirects a non-admin away from %s without rendering the page", async (pathname) => {
+  ])("shows a stable denial state to a non-admin on %s without rendering the page", (pathname) => {
     navigation.pathname = pathname;
     navigation.query = "";
     navigation.auth = {
@@ -95,12 +95,11 @@ describe("AuthGuard", () => {
     expect(
       screen.getByRole("alert", { name: "权限不足" }),
     ).toHaveTextContent("当前账号没有访问此页面的权限");
-    await waitFor(() => {
-      expect(navigation.replace).toHaveBeenCalledWith("/dashboard");
-    });
+    expect(screen.getByRole("link", { name: "返回工作台" })).toHaveAttribute("href", "/dashboard");
+    expect(navigation.replace).not.toHaveBeenCalled();
   });
 
-  it("keeps a recognized analyst out of administrator-only routes", async () => {
+  it("keeps a recognized analyst out of administrator-only routes with a stable denial state", () => {
     navigation.pathname = "/dashboard/users";
     navigation.query = "";
     navigation.auth = {
@@ -119,9 +118,8 @@ describe("AuthGuard", () => {
     expect(
       screen.getByRole("alert", { name: "权限不足" }),
     ).toHaveTextContent("当前账号没有访问此页面的权限");
-    await waitFor(() => {
-      expect(navigation.replace).toHaveBeenCalledWith("/dashboard");
-    });
+    expect(screen.getByRole("link", { name: "返回工作台" })).toHaveAttribute("href", "/dashboard");
+    expect(navigation.replace).not.toHaveBeenCalled();
   });
 
   it("allows an analyst to open the safe source directory", () => {

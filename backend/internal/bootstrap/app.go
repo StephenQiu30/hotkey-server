@@ -200,8 +200,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				knowledgepostgres.NewRepository,
 				reportpostgres.NewRepository,
 				reportpostgres.NewCandidateReader,
-				newReportService,
 				newKnowledgeProposalService,
+				newReportArchivePlanner,
+				newReportService,
 				newKnowledgeReconciler,
 				newKnowledgeHandler,
 				newSearchAuthorizationReader,
@@ -819,8 +820,13 @@ func newKnowledgeProjectionService(writer *knowledgevault.Writer) (*knowledgeapp
 	return knowledgeapplication.NewProjectionService(writer)
 }
 
-func newReportService(repository *reportpostgres.Repository, candidates *reportpostgres.CandidateReader) (*reportapplication.Service, error) {
-	return reportapplication.NewService(repository, candidates)
+func newReportService(repository *reportpostgres.Repository, candidates *reportpostgres.CandidateReader, archive *reportArchivePlanner) (*reportapplication.Service, error) {
+	service, err := reportapplication.NewService(repository, candidates)
+	if err != nil {
+		return nil, err
+	}
+	service.SetArchivePlanner(archive)
+	return service, nil
 }
 
 type knowledgeProposalServiceParams struct {
