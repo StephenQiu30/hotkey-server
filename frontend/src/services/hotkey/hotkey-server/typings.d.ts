@@ -2652,9 +2652,13 @@ required property without making explicit null impossible to bind. */
   type RuntimeAlert = {
     affected_count?: number;
     alert_id?: string;
+    attempt_id?: number;
     event_id?: number;
     job_id?: number;
+    notification_id?: number;
     reason_code?: string;
+    resource_id?: number;
+    resource_type?: string;
     runbook_url?: string;
     severity?: string;
     trace_id?: string;

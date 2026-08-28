@@ -8534,13 +8534,25 @@ const docTemplate = `{
                 "alert_id": {
                     "type": "string"
                 },
+                "attempt_id": {
+                    "type": "integer"
+                },
                 "event_id": {
                     "type": "integer"
                 },
                 "job_id": {
                     "type": "integer"
                 },
+                "notification_id": {
+                    "type": "integer"
+                },
                 "reason_code": {
+                    "type": "string"
+                },
+                "resource_id": {
+                    "type": "integer"
+                },
+                "resource_type": {
                     "type": "string"
                 },
                 "runbook_url": {

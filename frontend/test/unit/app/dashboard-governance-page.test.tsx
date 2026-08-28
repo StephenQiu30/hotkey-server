@@ -52,17 +52,31 @@ describe("GovernancePage", () => {
       discarded_jobs: 1,
       cancelled_jobs: 0,
       queue_lag_seconds: 45,
-      alerts: [{
-        alert_id: "ALERT-RIVER-JOB-FAILED",
-        severity: "p1",
-        reason_code: "river_job_discarded",
-        runbook_url: "https://github.com/StephenQiu30/hotkey-server/blob/main/docs/operations/004-observability.md#river-alert-response",
-        job_id: 31,
-        event_id: 42,
-        trace_id: "0123456789abcdef0123456789abcdef",
-        affected_count: 1,
-        triggered_at: "2026-08-08T08:00:00Z",
-      }],
+      alerts: [
+        {
+          alert_id: "ALERT-RIVER-JOB-FAILED",
+          severity: "p1",
+          reason_code: "river_job_discarded",
+          runbook_url: "https://github.com/StephenQiu30/hotkey-server/blob/main/docs/operations/004-observability.md#river-alert-response",
+          job_id: 31,
+          event_id: 42,
+          trace_id: "0123456789abcdef0123456789abcdef",
+          affected_count: 1,
+          triggered_at: "2026-08-08T08:00:00Z",
+        },
+        {
+          alert_id: "ALERT-DELIVERY-UNKNOWN",
+          severity: "p1",
+          reason_code: "notification_delivery_unknown",
+          runbook_url: "https://github.com/StephenQiu30/hotkey-server/blob/main/docs/operations/004-observability.md#delivery-unknown-alert-response",
+          attempt_id: 91,
+          notification_id: 52,
+          resource_type: "micro_event",
+          resource_id: 43,
+          affected_count: 2,
+          triggered_at: "2026-08-08T08:01:00Z",
+        },
+      ],
     } });
     mocks.getOperationsJobs.mockResolvedValue({ data: { items: [
       { id: 31, kind: "collect_source", state: "discarded", attempt: 3, max_attempts: 3, priority: 1, resource_id: 7, failure_code: "retryable", scheduled_at: "2026-08-08T08:00:00Z", created_at: "2026-08-08T08:00:00Z" },
@@ -99,7 +113,14 @@ describe("GovernancePage", () => {
     expect(screen.getByText(/任务 #31/)).toBeInTheDocument();
     expect(screen.getByText(/事件 #42/)).toBeInTheDocument();
     expect(screen.getByText("0123456789abcdef0123456789abcdef")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "打开处置手册" })).toHaveAttribute("href", expect.stringContaining("#river-alert-response"));
+    expect(screen.getByText("ALERT-DELIVERY-UNKNOWN")).toBeInTheDocument();
+    expect(screen.getByText("影响 2 个交付")).toBeInTheDocument();
+    expect(screen.getByText(/通知 #52/)).toBeInTheDocument();
+    expect(screen.getByText(/尝试 #91/)).toBeInTheDocument();
+    expect(screen.getByText(/micro_event #43/)).toBeInTheDocument();
+    const runbookLinks = screen.getAllByRole("link", { name: "打开处置手册" });
+    expect(runbookLinks[0]).toHaveAttribute("href", expect.stringContaining("#river-alert-response"));
+    expect(runbookLinks[1]).toHaveAttribute("href", expect.stringContaining("#delivery-unknown-alert-response"));
   });
 
   it("filters jobs and confirms bounded retry or cancellation", async () => {

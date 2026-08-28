@@ -881,8 +881,8 @@ func newJobService(repository *operationspostgres.JobRepository, audit *operatio
 	return operationsapplication.NewJobService(repository, audit)
 }
 
-func newOperationsOverviewService(repository *operationspostgres.JobRepository) (*operationsapplication.OverviewService, error) {
-	return operationsapplication.NewOverviewService(repository)
+func newOperationsOverviewService(repository *operationspostgres.JobRepository, notifications *notificationpostgres.Repository) (*operationsapplication.OverviewService, error) {
+	return operationsapplication.NewOverviewService(repository, notifications)
 }
 
 func newGovernanceService(runtime *database.Runtime, store *operationspostgres.GovernanceRepository, retention *operationspostgres.RetentionRepository, audit *operationspostgres.AuditWriter) (*operationsapplication.GovernanceService, error) {

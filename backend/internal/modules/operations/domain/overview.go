@@ -5,15 +5,19 @@ import "time"
 // RuntimeAlert is an actionable, bounded projection of one operational rule.
 // It never contains River args, provider errors, source values, or user input.
 type RuntimeAlert struct {
-	AlertID       string    `json:"alert_id"`
-	Severity      string    `json:"severity"`
-	ReasonCode    string    `json:"reason_code"`
-	RunbookURL    string    `json:"runbook_url"`
-	JobID         int64     `json:"job_id"`
-	EventID       int64     `json:"event_id,omitempty"`
-	TraceID       string    `json:"trace_id,omitempty"`
-	AffectedCount int64     `json:"affected_count"`
-	TriggeredAt   time.Time `json:"triggered_at"`
+	AlertID        string    `json:"alert_id"`
+	Severity       string    `json:"severity"`
+	ReasonCode     string    `json:"reason_code"`
+	RunbookURL     string    `json:"runbook_url"`
+	JobID          int64     `json:"job_id,omitempty"`
+	EventID        int64     `json:"event_id,omitempty"`
+	TraceID        string    `json:"trace_id,omitempty"`
+	AttemptID      int64     `json:"attempt_id,omitempty"`
+	NotificationID int64     `json:"notification_id,omitempty"`
+	ResourceType   string    `json:"resource_type,omitempty"`
+	ResourceID     int64     `json:"resource_id,omitempty"`
+	AffectedCount  int64     `json:"affected_count"`
+	TriggeredAt    time.Time `json:"triggered_at"`
 }
 
 // RuntimeOverview is a safe operational projection. It intentionally exposes

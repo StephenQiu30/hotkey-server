@@ -143,9 +143,11 @@ observability-cardinality-acceptance:
 		-count=1 -v
 
 observability-alert-acceptance: test-env
-	$(GO) run ./test/runner test -p=1 \
+	$(GO) run ./test/runner test -tags=integration -p=1 \
+		./internal/modules/operations/application \
 		./internal/modules/operations/infrastructure/postgres \
-		-run '^TestJobRepositoryRuntimeOverview.*$$' \
+		./internal/modules/notification/infrastructure/postgres \
+		-run '^(TestJobRepositoryRuntimeOverview.*|TestOverviewService.*|TestRepository.*UnknownDelivery.*)$$' \
 		-count=1 -v
 
 build:

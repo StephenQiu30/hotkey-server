@@ -228,14 +228,28 @@ export function RuntimeOperationsPanel() {
                         <Badge variant="destructive">{alert.severity?.toUpperCase() ?? "P1"}</Badge>
                         <code className="text-xs font-semibold">{alert.alert_id}</code>
                         <span className="text-xs text-muted-foreground">
-                          影响 {alert.affected_count ?? 0} 个任务
+                          影响 {alert.affected_count ?? 0} 个{alert.alert_id === "ALERT-DELIVERY-UNKNOWN" ? "交付" : "任务"}
                         </span>
                       </div>
                       <p className="mt-3 font-mono text-xs text-muted-foreground">{alert.reason_code}</p>
-                      <p className="mt-2 text-sm">
-                        任务 #{alert.job_id}
-                        {alert.event_id ? ` · 事件 #${alert.event_id}` : ""}
-                      </p>
+                      {alert.job_id ? (
+                        <p className="mt-2 text-sm">
+                          任务 #{alert.job_id}
+                          {alert.event_id ? ` · 事件 #${alert.event_id}` : ""}
+                        </p>
+                      ) : null}
+                      {alert.notification_id || alert.attempt_id ? (
+                        <p className="mt-2 text-sm">
+                          {alert.notification_id ? `通知 #${alert.notification_id}` : ""}
+                          {alert.notification_id && alert.attempt_id ? " · " : ""}
+                          {alert.attempt_id ? `尝试 #${alert.attempt_id}` : ""}
+                        </p>
+                      ) : null}
+                      {alert.resource_type && alert.resource_id ? (
+                        <p className="mt-2 font-mono text-xs text-muted-foreground">
+                          {alert.resource_type} #{alert.resource_id}
+                        </p>
+                      ) : null}
                       {alert.trace_id ? (
                         <p className="mt-2 break-all font-mono text-xs" aria-label="Trace ID">
                           {alert.trace_id}
