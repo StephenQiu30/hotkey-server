@@ -36,6 +36,14 @@ func TestDocumentationLifecycleStatusesStayConsistent(t *testing.T) {
 		if planStatus == "completed" && prdStatus != "implemented" {
 			t.Errorf("%s completed Plan requires implemented PRD, got %q", docNo, prdStatus)
 		}
+		planPayload, err := os.ReadFile(planPath)
+		if err != nil {
+			t.Fatalf("read %s: %v", planPath, err)
+		}
+		completedImplementationGate := regexp.MustCompile(`(?m)^- \[x\] ` + "`" + `CHK-` + regexp.QuoteMeta(docNo) + `-G[4-6]-[0-9]{3}` + "`")
+		if planStatus == "planned" && completedImplementationGate.Match(planPayload) {
+			t.Errorf("%s planned Plan records completed G4-G6 implementation gates", docNo)
+		}
 
 		assertIndexStatus(t, filepath.Join(docsRoot, "design", "README.md"), docNo, designStatus)
 		assertIndexStatus(t, filepath.Join(docsRoot, "prd", "README.md"), docNo, prdStatus)
