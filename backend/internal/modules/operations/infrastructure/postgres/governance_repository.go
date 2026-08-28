@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"strconv"
@@ -11,13 +12,34 @@ import (
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
-type GovernanceRepository struct{ runtime *database.Runtime }
+type GovernanceRepository struct {
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
+}
+
+type auditListCursor struct {
+	Version           int    `json:"v"`
+	SubjectUserID     int64  `json:"user_id"`
+	FilterFingerprint string `json:"filter"`
+	AfterID           int64  `json:"after_id"`
+}
+
+const auditListCursorVersion = 1
 
 func NewGovernanceRepository(runtime *database.Runtime) *GovernanceRepository {
-	return &GovernanceRepository{runtime: runtime}
+	seed := "operations-governance:unavailable"
+	if runtime != nil && runtime.Pool != nil {
+		seed = "operations-governance:" + runtime.Pool.Config().ConnString()
+	}
+	return NewGovernanceRepositoryWithCursorCodec(runtime, pagination.NewTestCodec(seed))
+}
+
+func NewGovernanceRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *GovernanceRepository {
+	return &GovernanceRepository{runtime: runtime, cursorCodec: codec}
 }
 
 type governanceQueryer interface {
@@ -123,18 +145,33 @@ FROM usage CROSS JOIN budget`, start).Scan(&reserved, &settled, &budget, &consum
 }
 
 func (repository *GovernanceRepository) ListAudit(ctx context.Context, query operationsdomain.AuditQuery) (operationsdomain.AuditPage, error) {
-	if repository == nil || repository.runtime == nil {
+	if repository == nil || repository.runtime == nil || repository.cursorCodec == nil {
 		return operationsdomain.AuditPage{}, sharedrepository.ErrUnavailable
 	}
 	if query.Limit == 0 {
 		query.Limit = 50
 	}
-	if query.Limit < 1 || query.Limit > 100 || query.Cursor < 0 || len(query.Action) > 120 || len(query.ResourceType) > 64 || (query.Result != "" && query.Result != "success" && query.Result != "failure" && query.Result != "denied") {
+	if query.SubjectUserID <= 0 || query.Limit < 1 || query.Limit > 100 || len(query.Cursor) > 8192 ||
+		strings.TrimSpace(query.Cursor) != query.Cursor || strings.ContainsAny(query.Cursor, "\r\n") ||
+		len(query.Action) > 120 || strings.TrimSpace(query.Action) != query.Action || strings.ContainsAny(query.Action, "\r\n") ||
+		len(query.ResourceType) > 64 || strings.TrimSpace(query.ResourceType) != query.ResourceType || strings.ContainsAny(query.ResourceType, "\r\n") ||
+		strings.TrimSpace(query.Result) != query.Result || strings.ContainsAny(query.Result, "\r\n") ||
+		(query.Result != "" && query.Result != "success" && query.Result != "failure" && query.Result != "denied") {
 		return operationsdomain.AuditPage{}, fmt.Errorf("%w: invalid audit query", sharedrepository.ErrInvalidInput)
 	}
+	cursor := auditListCursor{
+		Version: auditListCursorVersion, SubjectUserID: query.SubjectUserID, FilterFingerprint: auditListFingerprint(query),
+	}
+	if query.Cursor != "" {
+		decoded, err := decodeAuditListCursor(repository.cursorCodec, query.Cursor, query)
+		if err != nil {
+			return operationsdomain.AuditPage{}, fmt.Errorf("%w: invalid audit cursor", sharedrepository.ErrInvalidInput)
+		}
+		cursor = decoded
+	}
 	clauses := []string{"($1::bigint = 0 OR id < $1)"}
-	args := []any{query.Cursor}
-	for column, value := range map[string]string{"action": strings.TrimSpace(query.Action), "resource_type": strings.TrimSpace(query.ResourceType), "result": strings.TrimSpace(query.Result)} {
+	args := []any{cursor.AfterID}
+	for column, value := range map[string]string{"action": query.Action, "resource_type": query.ResourceType, "result": query.Result} {
 		if value == "" {
 			continue
 		}
@@ -170,7 +207,34 @@ FROM audit_logs WHERE `+strings.Join(clauses, " AND ")+fmt.Sprintf(" ORDER BY id
 	}
 	if len(page.Items) > query.Limit {
 		page.Items = page.Items[:query.Limit]
-		page.NextCursor = page.Items[len(page.Items)-1].ID
+		cursor.AfterID = page.Items[len(page.Items)-1].ID
+		encoded, err := encodeAuditListCursor(repository.cursorCodec, cursor)
+		if err != nil {
+			return operationsdomain.AuditPage{}, sharedrepository.ErrUnavailable
+		}
+		page.NextCursor = encoded
 	}
 	return page, nil
+}
+
+func encodeAuditListCursor(cursorCodec *pagination.Codec, cursor auditListCursor) (string, error) {
+	cursor.Version = auditListCursorVersion
+	return cursorCodec.Seal("operations_audit_list", cursor)
+}
+
+func decodeAuditListCursor(cursorCodec *pagination.Codec, value string, query operationsdomain.AuditQuery) (auditListCursor, error) {
+	var cursor auditListCursor
+	if err := cursorCodec.Open(value, "operations_audit_list", &cursor); err != nil {
+		return auditListCursor{}, err
+	}
+	if cursor.Version != auditListCursorVersion || cursor.SubjectUserID != query.SubjectUserID ||
+		cursor.FilterFingerprint != auditListFingerprint(query) || cursor.AfterID <= 0 {
+		return auditListCursor{}, pagination.ErrInvalidCursor
+	}
+	return cursor, nil
+}
+
+func auditListFingerprint(query operationsdomain.AuditQuery) string {
+	digest := sha256.Sum256([]byte(query.Action + "\x00" + query.ResourceType + "\x00" + query.Result))
+	return fmt.Sprintf("%x", digest)
 }

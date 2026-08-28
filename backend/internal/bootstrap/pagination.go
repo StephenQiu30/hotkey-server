@@ -53,6 +53,10 @@ func newJobRepository(runtime *database.Runtime, codec *pagination.Codec) *opera
 	return operationspostgres.NewJobRepositoryWithCursorCodec(runtime, codec)
 }
 
+func newGovernanceRepository(runtime *database.Runtime, codec *pagination.Codec) *operationspostgres.GovernanceRepository {
+	return operationspostgres.NewGovernanceRepositoryWithCursorCodec(runtime, codec)
+}
+
 func newMicroEventQueryRepository(runtime *database.Runtime, codec *pagination.Codec) (*eventpostgres.MicroEventQueryPostgresRepository, error) {
 	return eventpostgres.NewMicroEventQueryPostgresRepositoryWithCursorCodec(runtime, codec)
 }

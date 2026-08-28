@@ -134,6 +134,7 @@ func (service *GovernanceService) Audit(ctx context.Context, subject identitydom
 	if err := requireGovernanceAdmin(subject); err != nil {
 		return operationsdomain.AuditPage{}, err
 	}
+	query.SubjectUserID = subject.UserID
 	return service.store.ListAudit(ctx, query)
 }
 

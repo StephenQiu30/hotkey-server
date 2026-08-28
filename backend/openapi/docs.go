@@ -5767,8 +5767,8 @@ const docTemplate = `{
                 "summary": "List audit logs",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "last audit ID",
+                        "type": "string",
+                        "description": "opaque signed audit cursor",
                         "name": "cursor",
                         "in": "query"
                     },
@@ -8472,7 +8472,7 @@ const docTemplate = `{
                     }
                 },
                 "next_cursor": {
-                    "type": "integer"
+                    "type": "string"
                 }
             }
         },

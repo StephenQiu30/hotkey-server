@@ -106,7 +106,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newPaginationCodec,
 				operationspostgres.NewAuditWriter,
 				newJobRepository,
-				operationspostgres.NewGovernanceRepository,
+				newGovernanceRepository,
 				operationspostgres.NewRetentionRepository,
 				operationspostgres.NewDecisionQualityRepository,
 				identitypostgres.NewUserRepository,

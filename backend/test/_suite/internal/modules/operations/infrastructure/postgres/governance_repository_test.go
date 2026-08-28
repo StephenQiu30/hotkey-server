@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
@@ -59,29 +61,80 @@ func TestGovernanceRepositoryRecordsManualSearchesWithoutProductLimit(t *testing
 	}
 }
 
-func TestGovernanceAuditQueryUsesStableFilteredCursor(t *testing.T) {
+func TestGovernanceAuditCursorIsSignedBoundExpiringAndStableAcrossConcurrentInsert(t *testing.T) {
 	ctx := context.Background()
 	runtime := governanceRuntime(t)
 	defer runtime.Close()
 	userID := governanceUser(t, runtime)
-	for index, result := range []string{"success", "failure", "success"} {
-		if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO audit_logs (actor_type,actor_id,action,resource_type,resource_id,result,before_data,after_data,ip_hash) VALUES ('user',$1,$2,'monitor',$3,$4,'{"status":"draft"}','{"status":"active"}',$5)`, userID, []string{"monitor.created", "monitor.published", "monitor.published"}[index], index+1, result, strings.Repeat("a", 64)); err != nil {
-			t.Fatal(err)
-		}
+	ids := []int64{
+		insertGovernanceAudit(t, runtime, userID, "monitor.created", "success", 1),
+		insertGovernanceAudit(t, runtime, userID, "monitor.published", "failure", 2),
+		insertGovernanceAudit(t, runtime, userID, "monitor.published", "success", 3),
 	}
-	repository := operationspostgres.NewGovernanceRepository(runtime)
-	first, err := repository.ListAudit(ctx, operationsdomain.AuditQuery{Limit: 2})
-	if err != nil || len(first.Items) != 2 || first.NextCursor == 0 || first.Items[0].ID <= first.Items[1].ID {
+	codec, err := pagination.NewCodec("operations-audit-cursor-test-secret-32-bytes", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := operationspostgres.NewGovernanceRepositoryWithCursorCodec(runtime, codec)
+	query := operationsdomain.AuditQuery{SubjectUserID: userID, Limit: 2}
+	first, err := repository.ListAudit(ctx, query)
+	if err != nil || len(first.Items) != 2 || first.NextCursor == "" || first.Items[0].ID != ids[2] || first.Items[1].ID != ids[1] {
 		t.Fatalf("first audit page = %#v/%v", first, err)
 	}
-	second, err := repository.ListAudit(ctx, operationsdomain.AuditQuery{Limit: 2, Cursor: first.NextCursor})
-	if err != nil || len(second.Items) != 1 || second.Items[0].ID >= first.NextCursor {
+	if _, err := strconv.ParseInt(first.NextCursor, 10, 64); err == nil || !strings.Contains(first.NextCursor, ".") {
+		t.Fatalf("audit cursor is not opaque and signed: %q", first.NextCursor)
+	}
+	concurrentID := insertGovernanceAudit(t, runtime, userID, "monitor.published", "success", 4)
+	query.Cursor = first.NextCursor
+	second, err := repository.ListAudit(ctx, query)
+	if err != nil || len(second.Items) != 1 || second.Items[0].ID != ids[0] || second.Items[0].ID == concurrentID || second.NextCursor != "" {
 		t.Fatalf("second audit page = %#v/%v", second, err)
 	}
-	filtered, err := repository.ListAudit(ctx, operationsdomain.AuditQuery{Limit: 10, Action: "monitor.published", Result: "success"})
-	if err != nil || len(filtered.Items) != 1 || filtered.Items[0].Action != "monitor.published" || filtered.Items[0].Result != "success" {
+	filtered, err := repository.ListAudit(ctx, operationsdomain.AuditQuery{SubjectUserID: userID, Limit: 10, Action: "monitor.published", Result: "success"})
+	if err != nil || len(filtered.Items) != 2 || filtered.Items[0].Action != "monitor.published" || filtered.Items[0].Result != "success" {
 		t.Fatalf("filtered audit page = %#v/%v", filtered, err)
 	}
+
+	tampered := "A" + first.NextCursor[1:]
+	if tampered == first.NextCursor {
+		tampered = "B" + first.NextCursor[1:]
+	}
+	for name, changed := range map[string]operationsdomain.AuditQuery{
+		"tampered":     {SubjectUserID: userID, Limit: 2, Cursor: tampered},
+		"cross filter": {SubjectUserID: userID, Limit: 2, Action: "monitor.published", Cursor: first.NextCursor},
+		"cross subject": {SubjectUserID: userID + 1, Limit: 2,
+			Cursor: first.NextCursor},
+	} {
+		if _, err := repository.ListAudit(ctx, changed); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+			t.Fatalf("%s cursor error = %v, want invalid input", name, err)
+		}
+	}
+
+	expiringCodec, err := pagination.NewCodec("expiring-audit-cursor-test-secret-32-bytes", time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiring := operationspostgres.NewGovernanceRepositoryWithCursorCodec(runtime, expiringCodec)
+	expiringQuery := operationsdomain.AuditQuery{SubjectUserID: userID, Limit: 1}
+	expiringFirst, err := expiring.ListAudit(ctx, expiringQuery)
+	if err != nil || expiringFirst.NextCursor == "" {
+		t.Fatalf("expiring first page = %#v/%v", expiringFirst, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	expiringQuery.Cursor = expiringFirst.NextCursor
+	if _, err := expiring.ListAudit(ctx, expiringQuery); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired cursor error = %v, want invalid input", err)
+	}
+}
+
+func insertGovernanceAudit(t *testing.T, runtime *database.Runtime, userID int64, action, result string, resourceID int) int64 {
+	t.Helper()
+	var id int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO audit_logs (actor_type,actor_id,action,resource_type,resource_id,result,before_data,after_data,ip_hash)
+VALUES ('user',$1,$2,'monitor',$3,$4,'{"status":"draft"}','{"status":"active"}',$5) RETURNING id`, userID, action, resourceID, result, strings.Repeat("a", 64)).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
 }
 
 func TestRetentionPreviewRunIsBoundedProtectedAndAudited(t *testing.T) {

@@ -33,11 +33,12 @@ type UsageOverview struct {
 }
 
 type AuditQuery struct {
-	Cursor       int64
-	Limit        int
-	Action       string
-	ResourceType string
-	Result       string
+	Cursor        string
+	SubjectUserID int64
+	Limit         int
+	Action        string
+	ResourceType  string
+	Result        string
 }
 
 type AuditRecord struct {
@@ -54,5 +55,5 @@ type AuditRecord struct {
 
 type AuditPage struct {
 	Items      []AuditRecord `json:"items"`
-	NextCursor int64         `json:"next_cursor,omitempty"`
+	NextCursor string        `json:"next_cursor,omitempty"`
 }

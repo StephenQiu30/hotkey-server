@@ -31,7 +31,7 @@ required property without making explicit null impossible to bind. */
 
   type AuditPage = {
     items?: AuditRecord[];
-    next_cursor?: number;
+    next_cursor?: string;
   };
 
   type AuditRecord = {
@@ -941,8 +941,8 @@ required property without making explicit null impossible to bind. */
   };
 
   type getOperationsAuditLogsParams = {
-    /** last audit ID */
-    cursor?: number;
+    /** opaque signed audit cursor */
+    cursor?: string;
     /** page size */
     limit?: number;
     /** exact action */

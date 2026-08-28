@@ -18,6 +18,9 @@ import (
 
 type governanceServiceFake struct {
 	retentionInput operationsapplication.RetentionInput
+	auditSubject   identitydomain.Subject
+	auditQuery     operationsdomain.AuditQuery
+	auditPage      operationsdomain.AuditPage
 }
 
 func (*governanceServiceFake) Usage(context.Context, identitydomain.Subject) (operationsdomain.UsageOverview, error) {
@@ -37,8 +40,13 @@ func (service *governanceServiceFake) RunRetention(_ context.Context, input oper
 	service.retentionInput = input
 	return operationsdomain.CleanupResult{DataClass: "sessions", Affected: 4, BatchSize: input.BatchSize}, nil
 }
-func (*governanceServiceFake) Audit(context.Context, identitydomain.Subject, operationsdomain.AuditQuery) (operationsdomain.AuditPage, error) {
-	return operationsdomain.AuditPage{Items: []operationsdomain.AuditRecord{{ID: 9, Action: "retention.executed", ResourceType: "retention_policy", Result: "success"}}}, nil
+func (service *governanceServiceFake) Audit(_ context.Context, subject identitydomain.Subject, query operationsdomain.AuditQuery) (operationsdomain.AuditPage, error) {
+	service.auditSubject, service.auditQuery = subject, query
+	page := service.auditPage
+	if page.Items == nil {
+		page.Items = []operationsdomain.AuditRecord{{ID: 9, Action: "retention.executed", ResourceType: "retention_policy", Result: "success"}}
+	}
+	return page, nil
 }
 
 type governanceAuthenticator struct{ role httptransport.Role }
@@ -112,6 +120,21 @@ func TestGovernanceRoutesEnforceRolesAndRejectInvalidBatch(t *testing.T) {
 	}
 	if recorder.Code != http.StatusBadRequest || result.Code != 10000 {
 		t.Fatalf("invalid batch = %d/%d", recorder.Code, result.Code)
+	}
+}
+
+func TestGovernanceAuditForwardsOpaqueSubjectBoundCursor(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &governanceServiceFake{auditPage: operationsdomain.AuditPage{NextCursor: "signed.next.cursor"}}
+	request := httptest.NewRequest(http.MethodGet, "/audit?cursor=signed.input.cursor&limit=2&action=monitor.published&resource_type=monitor&result=success", nil)
+	request.Header.Set("Authorization", "Bearer admin")
+	recorder := httptest.NewRecorder()
+	governanceRouter(service, httptransport.RoleAdmin).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"next_cursor":"signed.next.cursor"`) {
+		t.Fatalf("audit response = %d %s", recorder.Code, recorder.Body.String())
+	}
+	if service.auditSubject.UserID != 7 || service.auditQuery.SubjectUserID != 7 || service.auditQuery.Cursor != "signed.input.cursor" || service.auditQuery.Limit != 2 || service.auditQuery.Action != "monitor.published" || service.auditQuery.ResourceType != "monitor" || service.auditQuery.Result != "success" {
+		t.Fatalf("audit subject/query = %#v/%#v", service.auditSubject, service.auditQuery)
 	}
 }
 

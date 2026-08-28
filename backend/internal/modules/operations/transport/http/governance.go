@@ -186,7 +186,7 @@ func (handler *GovernanceHandler) retention(c *gin.Context, preview bool) error 
 // @Tags operations
 // @Produce json
 // @Security BearerAuth
-// @Param cursor query int false "last audit ID"
+// @Param cursor query string false "opaque signed audit cursor"
 // @Param limit query int false "page size"
 // @Param action query string false "exact action"
 // @Param resource_type query string false "exact resource type"
@@ -205,7 +205,7 @@ func (handler *GovernanceHandler) Audit(c *gin.Context) error {
 	}
 	query := domain.AuditQuery{Action: c.Query("action"), ResourceType: c.Query("resource_type"), Result: c.Query("result"), Limit: 50}
 	if raw := c.Query("cursor"); raw != "" {
-		query.Cursor, err = strconv.ParseInt(raw, 10, 64)
+		query.Cursor = raw
 	}
 	if err == nil {
 		if raw := c.Query("limit"); raw != "" {
@@ -215,6 +215,7 @@ func (handler *GovernanceHandler) Audit(c *gin.Context) error {
 	if err != nil {
 		return operationsapplication.GovernanceHTTPError(fmt.Errorf("%w: invalid audit query", sharedrepository.ErrInvalidInput))
 	}
+	query.SubjectUserID = subject.UserID
 	page, err := handler.service.Audit(c.Request.Context(), subject, query)
 	if err != nil {
 		return operationsapplication.GovernanceHTTPError(err)

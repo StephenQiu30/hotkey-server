@@ -39,8 +39,8 @@ export default function GovernancePage() {
   const [usage, setUsage] = useState<HotKeyAPI.UsageItem[]>([]);
   const [policies, setPolicies] = useState<HotKeyAPI.RetentionPolicyResponse[]>([]);
   const [audit, setAudit] = useState<HotKeyAPI.AuditRecord[]>([]);
-  const [nextCursor, setNextCursor] = useState<number>();
-  const [cursorHistory, setCursorHistory] = useState<(number | undefined)[]>([undefined]);
+  const [nextCursor, setNextCursor] = useState<string>();
+  const [cursorHistory, setCursorHistory] = useState<(string | undefined)[]>([undefined]);
   const [auditPage, setAuditPage] = useState(1);
   const [loading, setLoading] = useState(canManage);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -54,7 +54,7 @@ export default function GovernancePage() {
   const [busyPolicy, setBusyPolicy] = useState<number>();
   const previewTriggerRef = useRef<HTMLButtonElement>(null);
 
-  const auditParams = useCallback((cursor?: number) => ({
+  const auditParams = useCallback((cursor?: string) => ({
     limit: AUDIT_LIMIT,
     ...(cursor ? { cursor } : {}),
     ...(appliedFilters.action !== "all" ? { action: appliedFilters.action } : {}),
@@ -85,7 +85,7 @@ export default function GovernancePage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const loadAudit = async (cursor: number | undefined, page: number) => {
+  const loadAudit = async (cursor: string | undefined, page: number) => {
     setAuditLoading(true);
     try {
       const result = await getOperationsAuditLogs(auditParams(cursor));
