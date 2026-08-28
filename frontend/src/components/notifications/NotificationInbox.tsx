@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -16,7 +16,10 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { getNotifications } from "@/services/hotkey/hotkey-server/notifications";
+import {
+  getNotifications,
+  postNotificationsReadReceipts,
+} from "@/services/hotkey/hotkey-server/notifications";
 import {
   useNotificationStore,
   type NotificationTransport,
@@ -66,20 +69,43 @@ export function NotificationInbox() {
   const lastEventID = useNotificationStore((state) => state.lastEventID);
   const readThroughID = useNotificationStore((state) => state.readThroughID);
   const transport = useNotificationStore((state) => state.transport);
-  const markAllRead = useNotificationStore((state) => state.markAllRead);
+  const syncReadThrough = useNotificationStore((state) => state.syncReadThrough);
   const [refreshing, setRefreshing] = useState(false);
+  const readReceiptInFlight = useRef(false);
   const presentation = transportPresentation[transport];
 
   useEffect(() => {
-    if (lastEventID > readThroughID) markAllRead();
-  }, [lastEventID, markAllRead, readThroughID]);
+    if (lastEventID <= readThroughID || readReceiptInFlight.current) return;
+    readReceiptInFlight.current = true;
+    void postNotificationsReadReceipts({ read_through_id: lastEventID })
+      .then((result) => {
+        const serverCursor = result.data?.read_through_id;
+        if (!Number.isSafeInteger(serverCursor) || (serverCursor ?? -1) < 0) {
+          throw new Error("服务端已读游标无效");
+        }
+        syncReadThrough(serverCursor!);
+      })
+      .catch((reason) => {
+        toast.error(reason instanceof Error ? reason.message : "通知已读状态同步失败");
+      })
+      .finally(() => {
+        readReceiptInFlight.current = false;
+      });
+  }, [lastEventID, readThroughID, syncReadThrough]);
 
   const refresh = async () => {
     setRefreshing(true);
     try {
       const afterID = useNotificationStore.getState().lastEventID;
       const result = await getNotifications({ after_id: afterID, limit: 100 });
-      useNotificationStore.getState().ingest(result.data?.items ?? []);
+      const notificationStore = useNotificationStore.getState();
+      notificationStore.ingest(result.data?.items ?? []);
+      if (
+        Number.isSafeInteger(result.data?.read_through_id) &&
+        (result.data?.read_through_id ?? -1) >= 0
+      ) {
+        notificationStore.syncReadThrough(result.data!.read_through_id!);
+      }
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : "通知加载失败");
     } finally {

@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	notificationjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/jobs"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
@@ -88,9 +90,53 @@ VALUES ('micro_event.updated','micro_event',$1,1,$2,$3,'事件更新','新增独
 	if err != nil || replayedProjection.Created || replayedProjection.UserNotificationID != notificationID {
 		t.Fatalf("replayed outbox projection = %#v / %v", replayedProjection, err)
 	}
+	firstReceipt, err := repository.RecordNotificationReadReceipt(ctx, application.RecordNotificationReadReceiptCommand{
+		UserID: userID, ReadThroughID: notificationID,
+	})
+	if err != nil || firstReceipt.ReceiptID <= 0 || firstReceipt.ReadThroughID != notificationID || !firstReceipt.Advanced {
+		t.Fatalf("first read receipt = %#v / %v", firstReceipt, err)
+	}
+	replayedReceipt, err := repository.RecordNotificationReadReceipt(ctx, application.RecordNotificationReadReceiptCommand{
+		UserID: userID, ReadThroughID: notificationID,
+	})
+	if err != nil || replayedReceipt.ReceiptID != firstReceipt.ReceiptID || replayedReceipt.Advanced {
+		t.Fatalf("replayed read receipt = %#v / %v", replayedReceipt, err)
+	}
+
+	var secondOutboxID int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO notification_outbox_events(
+event_type,resource_type,resource_id,resource_version,monitor_id,occurred_at,title,summary,resource_status,deep_link,dedupe_key)
+VALUES ('micro_event.updated','micro_event',$1,2,$2,$3,'事件再次更新','新增第二条通知','active',$4,$5) RETURNING id`,
+		eventID, monitorID, now.Add(time.Minute), fmt.Sprintf("/dashboard/events?event=%d", eventID),
+		fmt.Sprintf("notification-fixture-second:%d", now.UnixNano())).Scan(&secondOutboxID); err != nil {
+		t.Fatal(err)
+	}
+	secondProjection, err := repository.ProjectUserNotification(ctx, application.ProjectUserNotificationCommand{OutboxEventID: secondOutboxID, OutboxVersion: 1})
+	if err != nil || !secondProjection.Created || secondProjection.UserNotificationID <= notificationID {
+		t.Fatalf("second outbox projection = %#v / %v", secondProjection, err)
+	}
+	secondReceipt, err := repository.RecordNotificationReadReceipt(ctx, application.RecordNotificationReadReceiptCommand{
+		UserID: userID, ReadThroughID: secondProjection.UserNotificationID,
+	})
+	if err != nil || !secondReceipt.Advanced || secondReceipt.ReadThroughID != secondProjection.UserNotificationID {
+		t.Fatalf("second read receipt = %#v / %v", secondReceipt, err)
+	}
+	regressed, err := repository.RecordNotificationReadReceipt(ctx, application.RecordNotificationReadReceiptCommand{
+		UserID: userID, ReadThroughID: notificationID,
+	})
+	if !errors.Is(err, sharedrepository.ErrConflict) || regressed.ReadThroughID != secondProjection.UserNotificationID {
+		t.Fatalf("regressed read receipt = %#v / %v", regressed, err)
+	}
+	unauthorized, err := repository.RecordNotificationReadReceipt(ctx, application.RecordNotificationReadReceiptCommand{
+		UserID: otherUserID, ReadThroughID: secondProjection.UserNotificationID,
+	})
+	if !errors.Is(err, sharedrepository.ErrNotFound) || unauthorized.ReadThroughID != 0 {
+		t.Fatalf("cross-user read receipt = %#v / %v", unauthorized, err)
+	}
 
 	page, err := repository.ListUserNotifications(ctx, application.ListUserNotificationsQuery{UserID: userID, Limit: 10})
-	if err != nil || len(page.Items) != 1 || page.Items[0].ID != notificationID || page.Items[0].DeepLink != fmt.Sprintf("/dashboard/events?event=%d", eventID) {
+	if err != nil || len(page.Items) != 2 || page.Items[0].ID != notificationID || page.ReadThroughID != secondProjection.UserNotificationID ||
+		page.Items[0].DeepLink != fmt.Sprintf("/dashboard/events?event=%d", eventID) {
 		t.Fatalf("owner page = %#v / %v", page, err)
 	}
 	otherPage, err := repository.ListUserNotifications(ctx, application.ListUserNotificationsQuery{UserID: otherUserID, Limit: 10})
@@ -109,6 +155,9 @@ VALUES ('micro_event.updated','micro_event',$1,1,$2,$3,'事件更新','新增独
 	}
 	if _, err := runtime.SQL.Exec(`UPDATE user_notifications SET title='mutated' WHERE id=$1`, notificationID); err == nil {
 		t.Fatal("append-only user notification accepted mutation")
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE notification_read_receipts SET read_through_id=$1 WHERE id=$2`, notificationID, secondReceipt.ReceiptID); err == nil {
+		t.Fatal("append-only notification read receipt accepted mutation")
 	}
 	if _, err := runtime.SQL.Exec(`UPDATE monitors SET status='archived' WHERE id=$1`, monitorID); err != nil {
 		t.Fatal(err)

@@ -5,10 +5,31 @@ import { AuthStatus } from "@/lib/domainEnums";
 import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 
+const mocks = vi.hoisted(() => ({
+  getNotifications: vi.fn(),
+  postNotificationsReadReceipts: vi.fn(),
+}));
+
+vi.mock("@/services/hotkey/hotkey-server/notifications", () => ({
+  getNotifications: mocks.getNotifications,
+  postNotificationsReadReceipts: mocks.postNotificationsReadReceipts,
+}));
+
 describe("NotificationsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useNotificationStore.getState().reset();
+    mocks.getNotifications.mockResolvedValue({
+      data: { items: [], next_after_id: 0, read_through_id: 0 },
+    });
+    mocks.postNotificationsReadReceipts.mockResolvedValue({
+      data: {
+        receipt_id: 1,
+        read_through_id: 3,
+        advanced: true,
+        recorded_at: "2026-08-08T00:01:00Z",
+      },
+    });
     useAuthStore.setState({
       status: AuthStatus.Authenticated,
       user: {
@@ -54,6 +75,9 @@ describe("NotificationsPage", () => {
     expect(screen.getByRole("link", { name: "管理邮件提醒" })).toHaveAttribute("href", "/dashboard/settings");
     expect(screen.queryByText(/Web Push|手机与浏览器通知/)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "报告订阅" })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.postNotificationsReadReceipts).toHaveBeenCalledWith({ read_through_id: 3 }),
+    );
     await waitFor(() => expect(useNotificationStore.getState().unreadCount).toBe(0));
     expect(useNotificationStore.getState().readThroughID).toBe(3);
   });

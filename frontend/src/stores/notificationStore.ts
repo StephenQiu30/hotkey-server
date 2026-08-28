@@ -16,7 +16,7 @@ interface NotificationState extends PersistedNotificationState {
   transport: NotificationTransport;
   initializeUser(userID: number): void;
   ingest(items: HotKeyAPI.UserNotificationResponseDTO[]): HotKeyAPI.UserNotificationResponseDTO[];
-  markAllRead(): void;
+  syncReadThrough(readThroughID: number): void;
   setTransport(transport: NotificationTransport): void;
   reset(): void;
 }
@@ -78,10 +78,11 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
     persist(current.userID, { lastEventID, readThroughID: current.readThroughID });
     return accepted;
   },
-  markAllRead: () => {
+  syncReadThrough: (readThroughID) => {
+    if (!Number.isSafeInteger(readThroughID) || readThroughID < 0) return;
     const current = get();
-    const readThroughID = Math.max(current.readThroughID, current.lastEventID);
-    set({ readThroughID, unreadCount: 0 });
+    const unreadCount = current.items.filter((item) => (item.id ?? 0) > readThroughID).length;
+    set({ readThroughID, unreadCount });
     persist(current.userID, { lastEventID: current.lastEventID, readThroughID });
   },
   setTransport: (transport) => set({ transport }),

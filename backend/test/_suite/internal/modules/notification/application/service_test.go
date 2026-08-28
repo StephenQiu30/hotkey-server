@@ -14,6 +14,8 @@ type notificationRepositoryStub struct {
 	page     ListUserNotificationsResult
 	delivery RecordNotificationDeliveryAttemptCommand
 	project  ProjectUserNotificationCommand
+	receipt  RecordNotificationReadReceiptCommand
+	read     RecordNotificationReadReceiptResult
 	err      error
 }
 
@@ -30,6 +32,11 @@ func (stub *notificationRepositoryStub) RecordDeliveryAttempt(_ context.Context,
 func (stub *notificationRepositoryStub) ProjectUserNotification(_ context.Context, command ProjectUserNotificationCommand) (ProjectUserNotificationResult, error) {
 	stub.project = command
 	return ProjectUserNotificationResult{UserNotificationID: 13, Created: true}, stub.err
+}
+
+func (stub *notificationRepositoryStub) RecordNotificationReadReceipt(_ context.Context, command RecordNotificationReadReceiptCommand) (RecordNotificationReadReceiptResult, error) {
+	stub.receipt = command
+	return stub.read, stub.err
 }
 
 func TestServiceNormalizesUserNotificationListAndPreservesIdentity(t *testing.T) {
@@ -121,5 +128,27 @@ func TestServiceProjectsOnlyAnExactVersionedOutboxFact(t *testing.T) {
 	}
 	if _, err := service.ProjectUserNotification(context.Background(), ProjectUserNotificationCommand{OutboxEventID: 11}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
 		t.Fatalf("ProjectUserNotification(invalid version) error = %v", err)
+	}
+}
+
+func TestServiceRecordsOnlyCurrentUsersMonotonicReadReceipt(t *testing.T) {
+	recordedAt := time.Date(2026, 8, 12, 2, 0, 0, 0, time.UTC)
+	repository := &notificationRepositoryStub{read: RecordNotificationReadReceiptResult{
+		ReceiptID: 3, ReadThroughID: 12, Advanced: true, RecordedAt: recordedAt,
+	}}
+	service, _ := NewService(repository)
+	result, err := service.RecordNotificationReadReceipt(context.Background(), RecordNotificationReadReceiptCommand{
+		UserID: 7, ReadThroughID: 12,
+	})
+	if err != nil || result.ReceiptID != 3 || result.ReadThroughID != 12 || !result.Advanced {
+		t.Fatalf("RecordNotificationReadReceipt() = %#v/%v", result, err)
+	}
+	if repository.receipt.UserID != 7 || repository.receipt.ReadThroughID != 12 {
+		t.Fatalf("repository receipt = %#v", repository.receipt)
+	}
+	if _, err := service.RecordNotificationReadReceipt(context.Background(), RecordNotificationReadReceiptCommand{
+		UserID: 0, ReadThroughID: 12,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("RecordNotificationReadReceipt(invalid user) error = %v", err)
 	}
 }

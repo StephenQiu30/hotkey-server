@@ -35,8 +35,9 @@ type ListUserNotificationsQuery struct {
 }
 
 type ListUserNotificationsResult struct {
-	Items       []UserNotificationDTO
-	NextAfterID int64
+	Items         []UserNotificationDTO
+	NextAfterID   int64
+	ReadThroughID int64
 }
 
 type RecordNotificationDeliveryAttemptCommand struct {
@@ -66,10 +67,23 @@ type ProjectUserNotificationResult struct {
 	Created            bool
 }
 
+type RecordNotificationReadReceiptCommand struct {
+	UserID        int64
+	ReadThroughID int64
+}
+
+type RecordNotificationReadReceiptResult struct {
+	ReceiptID     int64
+	ReadThroughID int64
+	Advanced      bool
+	RecordedAt    time.Time
+}
+
 type Repository interface {
 	ListUserNotifications(context.Context, ListUserNotificationsQuery) (ListUserNotificationsResult, error)
 	RecordDeliveryAttempt(context.Context, RecordNotificationDeliveryAttemptCommand) (RecordNotificationDeliveryAttemptResult, error)
 	ProjectUserNotification(context.Context, ProjectUserNotificationCommand) (ProjectUserNotificationResult, error)
+	RecordNotificationReadReceipt(context.Context, RecordNotificationReadReceiptCommand) (RecordNotificationReadReceiptResult, error)
 }
 
 func (service *Service) ProjectUserNotification(ctx context.Context, command ProjectUserNotificationCommand) (ProjectUserNotificationResult, error) {
@@ -111,7 +125,7 @@ func (service *Service) ListUserNotifications(ctx context.Context, query ListUse
 	if err != nil {
 		return ListUserNotificationsResult{}, err
 	}
-	if result.NextAfterID < normalized.AfterID || len(result.Items) > normalized.Limit {
+	if result.NextAfterID < normalized.AfterID || result.ReadThroughID < 0 || len(result.Items) > normalized.Limit {
 		return ListUserNotificationsResult{}, sharedrepository.ErrConstraint
 	}
 	for _, item := range result.Items {
@@ -124,6 +138,26 @@ func (service *Service) ListUserNotifications(ctx context.Context, query ListUse
 		if err := ValidateUserNotificationDTO(item); err != nil {
 			return ListUserNotificationsResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
 		}
+	}
+	return result, nil
+}
+
+func (service *Service) RecordNotificationReadReceipt(ctx context.Context, command RecordNotificationReadReceiptCommand) (RecordNotificationReadReceiptResult, error) {
+	if service == nil || service.repository == nil {
+		return RecordNotificationReadReceiptResult{}, sharedrepository.ErrUnavailable
+	}
+	if command.UserID <= 0 || command.ReadThroughID <= 0 {
+		return RecordNotificationReadReceiptResult{}, sharedrepository.ErrInvalidInput
+	}
+	result, err := service.repository.RecordNotificationReadReceipt(ctx, command)
+	if err != nil {
+		if result.ReadThroughID < 0 {
+			return RecordNotificationReadReceiptResult{}, sharedrepository.ErrConstraint
+		}
+		return result, err
+	}
+	if result.ReceiptID <= 0 || result.ReadThroughID != command.ReadThroughID || result.RecordedAt.IsZero() {
+		return RecordNotificationReadReceiptResult{}, sharedrepository.ErrConstraint
 	}
 	return result, nil
 }

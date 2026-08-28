@@ -40,7 +40,7 @@ describe("notificationStore", () => {
     expect(localStorage.getItem("hotkey.notifications.v2.7")).not.toContain("通知");
   });
 
-  it("restores per-user cursors and marks all loaded notifications read", () => {
+  it("treats local read state as cache and converges to the exact server cursor", () => {
     localStorage.setItem(
       "hotkey.notifications.v2.9",
       JSON.stringify({ lastEventID: 8, readThroughID: 5 }),
@@ -49,8 +49,28 @@ describe("notificationStore", () => {
     useNotificationStore.getState().ingest([notification(6), notification(8), notification(10)]);
     expect(useNotificationStore.getState().unreadCount).toBe(3);
 
-    useNotificationStore.getState().markAllRead();
+    useNotificationStore.getState().syncReadThrough(8);
+    expect(useNotificationStore.getState().unreadCount).toBe(1);
+    expect(useNotificationStore.getState().readThroughID).toBe(8);
+
+    useNotificationStore.getState().syncReadThrough(10);
     expect(useNotificationStore.getState().unreadCount).toBe(0);
     expect(useNotificationStore.getState().readThroughID).toBe(10);
+  });
+
+  it("allows the authoritative server cursor to replace a forged local advance", () => {
+    localStorage.setItem(
+      "hotkey.notifications.v2.9",
+      JSON.stringify({ lastEventID: 10, readThroughID: 999 }),
+    );
+    useNotificationStore.getState().initializeUser(9);
+    useNotificationStore.getState().ingest([notification(8), notification(10)]);
+
+    useNotificationStore.getState().syncReadThrough(8);
+    expect(useNotificationStore.getState().readThroughID).toBe(8);
+    expect(useNotificationStore.getState().unreadCount).toBe(1);
+    expect(localStorage.getItem("hotkey.notifications.v2.9")).toBe(
+      JSON.stringify({ lastEventID: 10, readThroughID: 8 }),
+    );
   });
 });

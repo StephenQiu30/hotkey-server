@@ -5178,6 +5178,74 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/notifications/read-receipts": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Advance the current user's durable notification read cursor",
+                "parameters": [
+                    {
+                        "description": "monotonic visible notification cursor",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.RecordNotificationReadReceiptRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_NotificationReadReceiptResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_NotificationReadReceiptResponseDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_NotificationReadReceiptResponseDTO"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_NotificationReadReceiptResponseDTO"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.NotificationResult-http_EmptyResponseDTO"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/notifications/ws": {
             "get": {
                 "description": "Request hotkey.notifications.v1, then send one authenticate frame containing token, after_id and optional monitor_id before business data is emitted.",
@@ -11414,6 +11482,23 @@ const docTemplate = `{
                 }
             }
         },
+        "http.NotificationReadReceiptResponseDTO": {
+            "type": "object",
+            "properties": {
+                "advanced": {
+                    "type": "boolean"
+                },
+                "read_through_id": {
+                    "type": "integer"
+                },
+                "receipt_id": {
+                    "type": "integer"
+                },
+                "recorded_at": {
+                    "type": "string"
+                }
+            }
+        },
         "http.NotificationResult-http_EmptyResponseDTO": {
             "type": "object",
             "properties": {
@@ -11422,6 +11507,20 @@ const docTemplate = `{
                 },
                 "data": {
                     "$ref": "#/definitions/http.EmptyResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.NotificationResult-http_NotificationReadReceiptResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.NotificationReadReceiptResponseDTO"
                 },
                 "message": {
                     "type": "string"
@@ -11688,6 +11787,18 @@ const docTemplate = `{
                 },
                 "text_quote_selector_id": {
                     "type": "integer"
+                }
+            }
+        },
+        "http.RecordNotificationReadReceiptRequest": {
+            "type": "object",
+            "required": [
+                "read_through_id"
+            ],
+            "properties": {
+                "read_through_id": {
+                    "type": "integer",
+                    "minimum": 1
                 }
             }
         },
@@ -13477,6 +13588,9 @@ const docTemplate = `{
                     }
                 },
                 "next_after_id": {
+                    "type": "integer"
+                },
+                "read_through_id": {
                     "type": "integer"
                 }
             }

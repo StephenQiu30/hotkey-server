@@ -20,6 +20,24 @@ export async function getNotifications(
   );
 }
 
+/** Advance the current user's durable notification read cursor POST /api/v1/notifications/read-receipts */
+export async function postNotificationsReadReceipts(
+  body: HotKeyAPI.RecordNotificationReadReceiptRequest,
+  options?: RequestOptions
+) {
+  return request<HotKeyAPI.NotificationResultHttpNotificationReadReceiptResponseDTO>(
+    "/api/v1/notifications/read-receipts",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
 /** Upgrade to the authenticated notification WebSocket Request hotkey.notifications.v1, then send one authenticate frame containing token, after_id and optional monitor_id before business data is emitted. GET /api/v1/notifications/ws */
 export async function getNotificationsWs(options?: RequestOptions) {
   return request<any>("/api/v1/notifications/ws", {

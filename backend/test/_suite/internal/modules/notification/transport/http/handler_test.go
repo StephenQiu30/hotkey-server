@@ -3,14 +3,17 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"io"
 	stdhttp "net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/application"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
@@ -22,6 +25,9 @@ type notificationServiceStub struct {
 	items            []application.UserNotificationDTO
 	deliveries       []application.RecordNotificationDeliveryAttemptCommand
 	deliveryRecorded chan struct{}
+	readReceipt      application.RecordNotificationReadReceiptCommand
+	readResult       application.RecordNotificationReadReceiptResult
+	readErr          error
 	err              error
 }
 
@@ -55,6 +61,13 @@ func (stub *notificationServiceStub) RecordDeliveryAttempt(_ context.Context, co
 	return application.RecordNotificationDeliveryAttemptResult{DeliveryAttemptID: int64(len(stub.deliveries)), AttemptNo: 1}, nil
 }
 
+func (stub *notificationServiceStub) RecordNotificationReadReceipt(_ context.Context, command application.RecordNotificationReadReceiptCommand) (application.RecordNotificationReadReceiptResult, error) {
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	stub.readReceipt = command
+	return stub.readResult, stub.readErr
+}
+
 func TestListUsesAuthenticatedUserAndSafeEnvelope(t *testing.T) {
 	stub := &notificationServiceStub{items: []application.UserNotificationDTO{notificationFixture(8)}}
 	handler := mustNotificationHandler(t, stub, StreamConfig{PollInterval: time.Millisecond, HeartbeatInterval: time.Second, MaxConnections: 2})
@@ -86,6 +99,77 @@ func TestListUsesAuthenticatedUserAndSafeEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.Code != 0 || len(result.Data.Items) != 1 || result.Data.NextAfterID != 8 || result.Data.Items[0].DeepLink != "/dashboard/events?event=42" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestReadReceiptAllowsEveryAuthenticatedRoleAndUsesOnlySubjectUser(t *testing.T) {
+	for _, role := range []httptransport.Role{
+		httptransport.RoleViewer, httptransport.RoleAnalyst, httptransport.RoleEditor, httptransport.RoleAdmin,
+	} {
+		t.Run(string(role), func(t *testing.T) {
+			stub := &notificationServiceStub{readResult: application.RecordNotificationReadReceiptResult{
+				ReceiptID: 2, ReadThroughID: 9, Advanced: true,
+			}}
+			handler := mustNotificationHandler(t, stub, StreamConfig{
+				PollInterval: time.Millisecond, HeartbeatInterval: time.Second, MaxConnections: 2,
+			})
+			router := gin.New()
+			RegisterRoutes(router, handler, notificationAuthenticator{role: role})
+
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(stdhttp.MethodPost, "/api/v1/notifications/read-receipts", strings.NewReader(`{"read_through_id":9}`))
+			request.Header.Set("Authorization", "Bearer fixture")
+			request.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(response, request)
+
+			if response.Code != stdhttp.StatusOK {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			stub.mu.Lock()
+			command := stub.readReceipt
+			stub.mu.Unlock()
+			if command.UserID != 1 || command.ReadThroughID != 9 {
+				t.Fatalf("read receipt command = %#v", command)
+			}
+		})
+	}
+}
+
+func TestReadReceiptConflictReturnsCurrentServerCursor(t *testing.T) {
+	stub := &notificationServiceStub{
+		readResult: application.RecordNotificationReadReceiptResult{ReceiptID: 8, ReadThroughID: 15},
+		readErr:    sharedrepository.ErrConflict,
+	}
+	handler := mustNotificationHandler(t, stub, StreamConfig{
+		PollInterval: time.Millisecond, HeartbeatInterval: time.Second, MaxConnections: 2,
+	})
+	router := gin.New()
+	RegisterRoutes(router, handler, notificationAuthenticator{role: httptransport.RoleViewer})
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(stdhttp.MethodPost, "/api/v1/notifications/read-receipts", strings.NewReader(`{"read_through_id":9}`))
+	request.Header.Set("Authorization", "Bearer fixture")
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(response, request)
+
+	if response.Code != stdhttp.StatusConflict {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Code int `json:"code"`
+		Data struct {
+			ReadThroughID int64 `json:"read_through_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Code == 0 || result.Data.ReadThroughID != 15 {
 		t.Fatalf("result = %#v", result)
 	}
 }

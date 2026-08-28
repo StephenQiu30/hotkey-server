@@ -1690,9 +1690,22 @@ probability or a cross-channel relevance percentage. */
     items?: MonitorConfigResponse[];
   };
 
+  type NotificationReadReceiptResponseDTO = {
+    advanced?: boolean;
+    read_through_id?: number;
+    receipt_id?: number;
+    recorded_at?: string;
+  };
+
   type NotificationResultHttpEmptyResponseDTO = {
     code?: number;
     data?: EmptyResponseDTO;
+    message?: string;
+  };
+
+  type NotificationResultHttpNotificationReadReceiptResponseDTO = {
+    code?: number;
+    data?: NotificationReadReceiptResponseDTO;
     message?: string;
   };
 
@@ -2027,6 +2040,10 @@ required property without making explicit null impossible to bind. */
     relation: string;
     subject: string;
     text_quote_selector_id: number;
+  };
+
+  type RecordNotificationReadReceiptRequest = {
+    read_through_id: number;
   };
 
   type RecordRightsDecisionBatchRequestDTO = {
@@ -2657,6 +2674,7 @@ value never authorizes v2 raw evidence or document body persistence. */
   type UserNotificationPageResponseDTO = {
     items?: UserNotificationResponseDTO[];
     next_after_id?: number;
+    read_through_id?: number;
   };
 
   type UserNotificationResponseDTO = {

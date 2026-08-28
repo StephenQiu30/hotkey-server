@@ -31,6 +31,7 @@ const (
 type notificationService interface {
 	ListUserNotifications(context.Context, application.ListUserNotificationsQuery) (application.ListUserNotificationsResult, error)
 	RecordDeliveryAttempt(context.Context, application.RecordNotificationDeliveryAttemptCommand) (application.RecordNotificationDeliveryAttemptResult, error)
+	RecordNotificationReadReceipt(context.Context, application.RecordNotificationReadReceiptCommand) (application.RecordNotificationReadReceiptResult, error)
 }
 
 type StreamConfig struct {
@@ -89,6 +90,42 @@ func (handler *Handler) List(c *gin.Context) error {
 		return notificationError(err)
 	}
 	httptransport.OK(c, userNotificationPageResponse(page))
+	return nil
+}
+
+// RecordReadReceipt godoc
+//
+// @Summary Advance the current user's durable notification read cursor
+// @Tags notifications
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body RecordNotificationReadReceiptRequest true "monotonic visible notification cursor"
+// @Success 200 {object} NotificationResult[NotificationReadReceiptResponseDTO]
+// @Failure 400 {object} NotificationResult[NotificationReadReceiptResponseDTO]
+// @Failure 401 {object} NotificationResult[EmptyResponseDTO]
+// @Failure 404 {object} NotificationResult[NotificationReadReceiptResponseDTO]
+// @Failure 409 {object} NotificationResult[NotificationReadReceiptResponseDTO]
+// @Failure 503 {object} NotificationResult[EmptyResponseDTO]
+// @Router /api/v1/notifications/read-receipts [post]
+func (handler *Handler) RecordReadReceipt(c *gin.Context) error {
+	httptransport.SetModule(c, "notification")
+	c.Header("Cache-Control", "private, no-store")
+	subject, ok := httptransport.SubjectFromContext(c)
+	if !ok {
+		return sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "")
+	}
+	var request RecordNotificationReadReceiptRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		return invalidNotificationRequest()
+	}
+	result, err := handler.service.RecordNotificationReadReceipt(c.Request.Context(), application.RecordNotificationReadReceiptCommand{
+		UserID: subject.UserID, ReadThroughID: request.ReadThroughID,
+	})
+	if err != nil {
+		return notificationReadReceiptError(err, result)
+	}
+	httptransport.OK(c, notificationReadReceiptResponse(result))
 	return nil
 }
 
@@ -330,4 +367,30 @@ func notificationError(err error) error {
 	default:
 		return fmt.Errorf("notification operation: %w", err)
 	}
+}
+
+func notificationReadReceiptError(err error, result application.RecordNotificationReadReceiptResult) error {
+	var appError *sharederrors.AppError
+	if errors.As(err, &appError) {
+		return appError
+	}
+	var response any
+	if result.ReadThroughID >= 0 {
+		response = notificationReadReceiptResponse(result)
+	}
+	var mapped *sharederrors.AppError
+	switch {
+	case errors.Is(err, sharedrepository.ErrConflict):
+		mapped = sharederrors.New(sharederrors.CodeConflict, stdhttp.StatusConflict, "notification read cursor cannot move backward")
+	case errors.Is(err, sharedrepository.ErrNotFound):
+		mapped = sharederrors.New(sharederrors.CodeNotFound, stdhttp.StatusNotFound, "notification read cursor is not visible")
+	case errors.Is(err, sharedrepository.ErrInvalidInput), errors.Is(err, sharedrepository.ErrConstraint):
+		mapped = sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "invalid notification read cursor")
+	case errors.Is(err, sharedrepository.ErrUnavailable):
+		mapped = sharederrors.New(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, "notification service unavailable")
+	default:
+		return fmt.Errorf("record notification read receipt: %w", err)
+	}
+	mapped.Data = response
+	return mapped
 }

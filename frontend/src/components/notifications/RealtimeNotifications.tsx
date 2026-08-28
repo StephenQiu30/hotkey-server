@@ -56,7 +56,7 @@ function waitForRetry(milliseconds: number, signal: AbortSignal) {
 
 async function pullNotifications(afterID: number) {
   const result = await getNotifications({ after_id: Math.max(0, afterID), limit: 100 });
-  return result.data?.items ?? [];
+  return result.data;
 }
 
 export function RealtimeNotifications() {
@@ -75,8 +75,16 @@ export function RealtimeNotifications() {
     let active = true;
 
     const ingestWithoutToast = async (afterID: number) => {
-      const items = await pullNotifications(afterID);
-      if (active) useNotificationStore.getState().ingest(items);
+      const page = await pullNotifications(afterID);
+      if (!active) return;
+      const notificationStore = useNotificationStore.getState();
+      notificationStore.ingest(page?.items ?? []);
+      if (
+        Number.isSafeInteger(page?.read_through_id) &&
+        (page?.read_through_id ?? -1) >= 0
+      ) {
+        notificationStore.syncReadThrough(page!.read_through_id!);
+      }
     };
 
     const run = async () => {

@@ -132,7 +132,79 @@ LIMIT $4`, query.UserID, query.AfterID, query.MonitorID, query.Limit)
 	if err := rows.Err(); err != nil {
 		return application.ListUserNotificationsResult{}, databaserepository.MapError(err)
 	}
+	if err := repository.runtime.SQL.QueryRowContext(ctx, `
+SELECT COALESCE(max(read_through_id),0) FROM notification_read_receipts WHERE user_id=$1`, query.UserID).Scan(&result.ReadThroughID); err != nil {
+		return application.ListUserNotificationsResult{}, databaserepository.MapError(err)
+	}
 	return result, nil
+}
+
+func (repository *Repository) RecordNotificationReadReceipt(ctx context.Context, command application.RecordNotificationReadReceiptCommand) (application.RecordNotificationReadReceiptResult, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return application.RecordNotificationReadReceiptResult{}, sharedrepository.ErrUnavailable
+	}
+	if command.UserID <= 0 || command.ReadThroughID <= 0 {
+		return application.RecordNotificationReadReceiptResult{}, sharedrepository.ErrInvalidInput
+	}
+	var result application.RecordNotificationReadReceiptResult
+	err := repository.runtime.WithinTransaction(ctx, func(transactionContext context.Context, transaction database.Transaction) error {
+		var lockedUserID int64
+		if err := transaction.SQL.QueryRowContext(transactionContext, `
+SELECT id FROM users WHERE id=$1 AND status='active' AND deleted_at IS NULL FOR UPDATE`, command.UserID).Scan(&lockedUserID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return sharedrepository.ErrNotFound
+			}
+			return databaserepository.MapError(err)
+		}
+
+		var current application.RecordNotificationReadReceiptResult
+		err := transaction.SQL.QueryRowContext(transactionContext, `
+SELECT id,read_through_id,recorded_at
+FROM notification_read_receipts WHERE user_id=$1
+ORDER BY read_through_id DESC,id DESC LIMIT 1`, command.UserID).Scan(
+			&current.ReceiptID, &current.ReadThroughID, &current.RecordedAt,
+		)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return databaserepository.MapError(err)
+		}
+		if command.ReadThroughID < current.ReadThroughID {
+			result = current
+			return sharedrepository.ErrConflict
+		}
+		if command.ReadThroughID == current.ReadThroughID {
+			result = current
+			return nil
+		}
+
+		var targetID int64
+		if err := transaction.SQL.QueryRowContext(transactionContext, `
+SELECT notification.id
+FROM user_notifications AS notification
+JOIN monitors AS monitor ON monitor.id=notification.monitor_id
+WHERE notification.id=$1 AND notification.user_id=$2
+  AND monitor.created_by=$2 AND monitor.status<>'archived' AND monitor.deleted_at IS NULL
+FOR KEY SHARE OF notification,monitor`, command.ReadThroughID, command.UserID).Scan(&targetID); err != nil {
+			result = current
+			if errors.Is(err, sql.ErrNoRows) {
+				return sharedrepository.ErrNotFound
+			}
+			return databaserepository.MapError(err)
+		}
+		var previousReceiptID any
+		if current.ReceiptID > 0 {
+			previousReceiptID = current.ReceiptID
+		}
+		if err := transaction.SQL.QueryRowContext(transactionContext, `
+INSERT INTO notification_read_receipts(user_id,read_through_id,previous_receipt_id)
+VALUES ($1,$2,$3) RETURNING id,read_through_id,recorded_at`, command.UserID, targetID, previousReceiptID).Scan(
+			&result.ReceiptID, &result.ReadThroughID, &result.RecordedAt,
+		); err != nil {
+			return databaserepository.MapError(err)
+		}
+		result.Advanced = true
+		return nil
+	})
+	return result, err
 }
 
 func (repository *Repository) ProjectUserNotification(ctx context.Context, command application.ProjectUserNotificationCommand) (application.ProjectUserNotificationResult, error) {

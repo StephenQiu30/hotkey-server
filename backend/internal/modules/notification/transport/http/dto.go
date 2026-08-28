@@ -31,8 +31,20 @@ type UserNotificationResponseDTO struct {
 }
 
 type UserNotificationPageResponseDTO struct {
-	Items       []UserNotificationResponseDTO `json:"items"`
-	NextAfterID int64                         `json:"next_after_id"`
+	Items         []UserNotificationResponseDTO `json:"items"`
+	NextAfterID   int64                         `json:"next_after_id"`
+	ReadThroughID int64                         `json:"read_through_id"`
+}
+
+type RecordNotificationReadReceiptRequest struct {
+	ReadThroughID int64 `json:"read_through_id" binding:"required,gt=0" minimum:"1"`
+}
+
+type NotificationReadReceiptResponseDTO struct {
+	ReceiptID     int64     `json:"receipt_id"`
+	ReadThroughID int64     `json:"read_through_id"`
+	Advanced      bool      `json:"advanced"`
+	RecordedAt    time.Time `json:"recorded_at"`
 }
 
 func userNotificationResponse(item application.UserNotificationDTO) UserNotificationResponseDTO {
@@ -47,9 +59,17 @@ func userNotificationResponse(item application.UserNotificationDTO) UserNotifica
 func userNotificationPageResponse(page application.ListUserNotificationsResult) UserNotificationPageResponseDTO {
 	response := UserNotificationPageResponseDTO{
 		Items: make([]UserNotificationResponseDTO, 0, len(page.Items)), NextAfterID: page.NextAfterID,
+		ReadThroughID: page.ReadThroughID,
 	}
 	for _, item := range page.Items {
 		response.Items = append(response.Items, userNotificationResponse(item))
 	}
 	return response
+}
+
+func notificationReadReceiptResponse(result application.RecordNotificationReadReceiptResult) NotificationReadReceiptResponseDTO {
+	return NotificationReadReceiptResponseDTO{
+		ReceiptID: result.ReceiptID, ReadThroughID: result.ReadThroughID,
+		Advanced: result.Advanced, RecordedAt: result.RecordedAt,
+	}
 }
