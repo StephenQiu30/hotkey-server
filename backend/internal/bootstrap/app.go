@@ -244,9 +244,13 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				})
 			})
 		}
+		routerProvider := any(httptransport.NewRouter)
+		if usesDatabase {
+			routerProvider = newAuditedHTTPRouter
+		}
 		apiOptions := []fx.Option{
 			readinessProvider,
-			fx.Provide(observability.NewMetrics, observability.NewTelemetry, httptransport.NewRouter, httptransport.NewServer),
+			fx.Provide(observability.NewMetrics, observability.NewTelemetry, routerProvider, httptransport.NewServer),
 			fx.Invoke(observability.RegisterLifecycle, httptransport.RegisterServer),
 		}
 		if usesDatabase {

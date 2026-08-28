@@ -1,7 +1,9 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	stdhttp "net/http"
@@ -466,6 +468,91 @@ func TestConfiguredAPIWiresControlPlanes(t *testing.T) {
 			t.Fatalf("legacy route %s status = %d, want %d", path, response.StatusCode, stdhttp.StatusNotFound)
 		}
 		response.Body.Close()
+	}
+}
+
+func TestConfiguredAPILoginBoundaryRejectsLimitPlusOneAndPersistsSanitizedAudit(t *testing.T) {
+	dsn := initializedBootstrapDatabase(t)
+	cfg := apiTestConfig()
+	cfg.Role, cfg.HTTPAddr, cfg.DatabaseURL = string(RoleAPI), "127.0.0.1:0", dsn
+	var server *httptransport.Server
+	app, err := NewAppWithReadiness(cfg, zap.NewNop(), httptransport.ReadinessFunc(func(context.Context) error { return nil }), fx.Populate(&server))
+	if err != nil {
+		t.Fatalf("NewAppWithReadiness() error = %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := app.Start(ctx); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer func() { _ = app.Stop(ctx) }()
+
+	runtime, err := database.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = runtime.Close() }()
+	var beforeUsers, beforeSessions int64
+	if err := runtime.SQL.QueryRow(`SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM auth_sessions)`).Scan(&beforeUsers, &beforeSessions); err != nil {
+		t.Fatal(err)
+	}
+
+	const emailCanary = "boundary-user@example.test"
+	const passwordCanary = "boundary-password-canary"
+	requestBody := []byte(`{"email":"` + emailCanary + `","password":"` + passwordCanary + `"}`)
+	for attempt := 1; attempt <= 6; attempt++ {
+		request, err := stdhttp.NewRequestWithContext(ctx, stdhttp.MethodPost, "http://"+server.Address()+"/api/v1/auth/login", bytes.NewReader(requestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Content-Type", "application/json")
+		response, err := stdhttp.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatalf("login attempt %d: %v", attempt, err)
+		}
+		var envelope struct {
+			Code int `json:"code"`
+		}
+		decodeErr := json.NewDecoder(response.Body).Decode(&envelope)
+		response.Body.Close()
+		if decodeErr != nil {
+			t.Fatalf("decode login attempt %d: %v", attempt, decodeErr)
+		}
+		wantStatus, wantCode := stdhttp.StatusUnauthorized, 20002
+		if attempt == 6 {
+			wantStatus, wantCode = stdhttp.StatusTooManyRequests, 10004
+		}
+		if response.StatusCode != wantStatus || envelope.Code != wantCode {
+			t.Fatalf("login attempt %d status/code = %d/%d, want %d/%d", attempt, response.StatusCode, envelope.Code, wantStatus, wantCode)
+		}
+	}
+
+	var afterUsers, afterSessions int64
+	if err := runtime.SQL.QueryRow(`SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM auth_sessions)`).Scan(&afterUsers, &afterSessions); err != nil {
+		t.Fatal(err)
+	}
+	if afterUsers != beforeUsers || afterSessions != beforeSessions {
+		t.Fatalf("login boundary changed business facts: users %d->%d sessions %d->%d", beforeUsers, afterUsers, beforeSessions, afterSessions)
+	}
+	var auditCount int
+	var resourceType, result, afterData, allRows, ipHash string
+	if err := runtime.SQL.QueryRow(`
+SELECT count(*), COALESCE(min(resource_type), ''), COALESCE(min(result), ''),
+       COALESCE(min(after_data::text), ''), COALESCE(string_agg(row_to_json(audit_logs)::text, ''), ''),
+       COALESCE(min(ip_hash), '')
+FROM audit_logs WHERE action='request.boundary_rejected'`).Scan(&auditCount, &resourceType, &result, &afterData, &allRows, &ipHash); err != nil {
+		t.Fatal(err)
+	}
+	if auditCount != 1 || resourceType != "request_boundary" || result != "denied" || len(ipHash) != 64 {
+		t.Fatalf("boundary audit identity = %d/%q/%q/%q", auditCount, resourceType, result, ipHash)
+	}
+	if afterData != `{"reason_code": "login_attempts_exceeded", "boundary_profile_version": "p0-request-boundaries-v1"}` {
+		t.Fatalf("boundary audit metadata = %s", afterData)
+	}
+	for _, forbidden := range []string{emailCanary, passwordCanary, "/api/v1/auth/login", "authorization"} {
+		if bytes.Contains([]byte(allRows), []byte(forbidden)) {
+			t.Fatalf("boundary audit leaked %q: %s", forbidden, allRows)
+		}
 	}
 }
 

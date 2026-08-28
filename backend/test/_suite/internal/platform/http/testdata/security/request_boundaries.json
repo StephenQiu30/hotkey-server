@@ -1,0 +1,93 @@
+{
+  "profile_version": "p0-request-boundaries-v1",
+  "stable_error_codes": {
+    "rate_limited": 10004,
+    "attempts_exceeded": 10004,
+    "concurrency_exceeded": 10004,
+    "wall_clock_exceeded": 90003
+  },
+  "entries": [
+    {
+      "class": "login",
+      "routes": [{"method": "POST", "path": "/api/v1/auth/login"}],
+      "rate": {"limit": 20, "window": "1m0s"},
+      "max_concurrent": 8,
+      "attempts": {"limit": 5, "window": "15s"},
+      "wall_clock": "10s"
+    },
+    {
+      "class": "verification",
+      "routes": [
+        {"method": "POST", "path": "/api/v1/auth/email-verifications"},
+        {"method": "POST", "path": "/api/v1/auth/email-verifications/confirm"}
+      ],
+      "rate": {"limit": 12, "window": "1m0s"},
+      "max_concurrent": 4,
+      "attempts": {"limit": 4, "window": "1m0s"},
+      "wall_clock": "10s"
+    },
+    {
+      "class": "password_reset",
+      "routes": [{"method": "POST", "path": "/api/v1/auth/password-resets/confirm"}],
+      "rate": {"limit": 10, "window": "1m0s"},
+      "max_concurrent": 4,
+      "attempts": {"limit": 4, "window": "1m0s"},
+      "wall_clock": "10s"
+    },
+    {
+      "class": "source_probe",
+      "routes": [{"method": "POST", "path": "/api/v1/source-connections/:id/health"}],
+      "rate": {"limit": 30, "window": "1m0s"},
+      "max_concurrent": 4,
+      "attempts": {"limit": 5, "window": "10s"},
+      "wall_clock": "15s"
+    },
+    {
+      "class": "collection",
+      "routes": [
+        {"method": "POST", "path": "/api/v1/monitors/:id/collect"},
+        {"method": "POST", "path": "/api/v1/collection-runs/:id/retry"}
+      ],
+      "rate": {"limit": 30, "window": "1m0s"},
+      "max_concurrent": 4,
+      "attempts": {"limit": 6, "window": "10s"},
+      "wall_clock": "15s"
+    },
+    {
+      "class": "codex",
+      "routes": [{"method": "POST", "path": "/api/v1/ai/runs/:id/recompute"}],
+      "rate": {"limit": 12, "window": "1m0s"},
+      "max_concurrent": 2,
+      "attempts": {"limit": 3, "window": "10s"},
+      "wall_clock": "15s"
+    },
+    {
+      "class": "report",
+      "routes": [
+        {"method": "POST", "path": "/api/v1/reports"},
+        {"method": "POST", "path": "/api/v1/reports/:id/preview"},
+        {"method": "POST", "path": "/api/v1/reports/:id/build"},
+        {"method": "POST", "path": "/api/v1/reports/:id/submit"},
+        {"method": "POST", "path": "/api/v1/reports/:id/approve"},
+        {"method": "POST", "path": "/api/v1/reports/:id/reject"}
+      ],
+      "rate": {"limit": 30, "window": "1m0s"},
+      "max_concurrent": 4,
+      "attempts": {"limit": 6, "window": "10s"},
+      "wall_clock": "15s"
+    },
+    {
+      "class": "operations",
+      "routes": [
+        {"method": "POST", "path": "/api/v1/operations/jobs/:id/cancel"},
+        {"method": "POST", "path": "/api/v1/operations/jobs/:id/retry"},
+        {"method": "POST", "path": "/api/v1/operations/retention-policies/:id/preview"},
+        {"method": "POST", "path": "/api/v1/operations/retention-policies/:id/run"}
+      ],
+      "rate": {"limit": 60, "window": "1m0s"},
+      "max_concurrent": 4,
+      "attempts": {"limit": 10, "window": "10s"},
+      "wall_clock": "15s"
+    }
+  ]
+}

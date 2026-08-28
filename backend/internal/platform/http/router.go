@@ -25,6 +25,20 @@ type healthData struct {
 }
 
 func NewRouter(readiness Readiness, metrics *observability.Metrics, telemetry *observability.Telemetry, logger *zap.Logger, cfg config.Config) *gin.Engine {
+	return NewRouterWithRequestBoundaryAudit(readiness, metrics, telemetry, logger, cfg, nil)
+}
+
+// NewRouterWithRequestBoundaryAudit installs the same finite P0 admission
+// matrix as NewRouter and additionally persists sanitized rejection evidence
+// through the narrow bootstrap-owned audit adapter.
+func NewRouterWithRequestBoundaryAudit(readiness Readiness, metrics *observability.Metrics, telemetry *observability.Telemetry, logger *zap.Logger, cfg config.Config, audit RequestBoundaryAudit) *gin.Engine {
+	boundary, err := NewRequestBoundaryController(RequestBoundaryControllerOptions{
+		Profiles: DefaultRequestBoundaryProfiles(), Audit: audit,
+		ClientHashKey: deriveRequestBoundaryClientHashKey(cfg.Authentication.VerificationHMACSecret),
+	})
+	if err != nil {
+		panic(err)
+	}
 	router := gin.New()
 	router.Use(
 		requestID(),
@@ -32,6 +46,7 @@ func NewRouter(readiness Readiness, metrics *observability.Metrics, telemetry *o
 		accessLog(logger, metrics),
 		recovery(logger, metrics),
 		cors(cfg.Authentication.AllowedOrigins),
+		boundary.Middleware(),
 		requestContextTimeout(cfg.RequestTimeout),
 	)
 	router.GET("/healthz", Wrap(func(c *gin.Context) error {

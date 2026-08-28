@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance m4-fault-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance m4-fault-recovery-acceptance source-resource-limit-acceptance request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -60,6 +60,16 @@ source-resource-limit-acceptance: test-env
 		./internal/modules/source/infrastructure/x \
 		./internal/modules/source/infrastructure/postgres \
 		-run '^(TestExternalRequestBudgetContractsRejectUnboundedOrAmbiguousFacts|TestRSSResourceLimitProfileFreezesEightFiniteDimensions|TestRSSResourceLimitsStopBeforeTheNextExternalOrEvidenceSideEffect|TestRSSResourceLimitsBoundConnectReadAndWallClock|TestRSSResourceLimitProfileRejectsMissingOrUnboundedDimensions|TestHackerNewsResourceLimitProfileFreezesEightFiniteDimensions|TestHackerNewsResourceLimitsStopBeforeNextExternalOrEvidenceSideEffect|TestHackerNewsResourceLimitsBoundConnectReadAndWallClock|TestHackerNewsResourceLimitProfileRejectsMissingOrUnboundedDimensions|TestXResourceLimitProfileFreezesEightFiniteDimensions|TestXResourceLimitsStopBeforeNextExternalOrEvidenceSideEffect|TestXResourceLimitOrderingValidatesInputAndCredentialBeforeBudgetOrNetwork|TestXResourceLimitsBoundConnectReadAndWallClock|TestXResourceLimitProfileRejectsMissingOrUnboundedDimensions|TestExternalRequestBudgetEnforcesUTCSourceProfileQuotaAtomically|TestCollectionServiceFailureRetainsCursorAndPersistsRetryState|TestCollectionServicePersistsAuthenticationAndPermanentFailures)$$' \
+		-count=1 -v
+
+request-boundary-acceptance: test-env
+	$(GO) run ./test/runner test -p=1 \
+		./internal/platform/http \
+		-run '^(TestP0RequestBoundaryMatrixIsVersionedFiniteAndComplete|TestFixedRequestBoundaryFixtureMatchesProductionProfilesAndStableCodes|TestRequestBoundaryRateAndAttemptDimensionsStopAtLimitPlusOne|TestRequestBoundaryConcurrencyRejectsBeforeBusinessHandler|TestRequestBoundaryWallClockCancelsAndAuditsWithoutBusinessSideEffect|TestRequestBoundaryAuditIsDeduplicatedAndContainsOnlySafeIdentifiers|TestEveryP0RequestBoundaryClassExercisesAllFourThresholdDimensions)$$' \
+		-count=1 -v
+	$(GO) run ./test/runner test -p=1 \
+		./internal/bootstrap \
+		-run '^TestConfiguredAPILoginBoundaryRejectsLimitPlusOneAndPersistsSanitizedAudit$$' \
 		-count=1 -v
 
 monitor-publication-acceptance: test-env
