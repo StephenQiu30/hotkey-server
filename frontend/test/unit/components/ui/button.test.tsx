@@ -21,4 +21,14 @@ describe("Button", () => {
       "bg-background",
     );
   });
+
+  it("keeps disabled actions legible without opacity blending", () => {
+    render(<Button variant="outline" disabled>正在同步</Button>);
+
+    expect(screen.getByRole("button", { name: "正在同步" })).toHaveClass(
+      "disabled:bg-muted",
+      "disabled:text-foreground",
+      "disabled:opacity-100",
+    );
+  });
 });
