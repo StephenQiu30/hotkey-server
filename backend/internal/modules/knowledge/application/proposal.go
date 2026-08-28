@@ -2,7 +2,10 @@ package application
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -31,7 +34,11 @@ type ContextDocumentReader interface {
 
 type Vault interface {
 	Read(string, string) ([]byte, string, error)
-	WriteAutomatic(string, string, string) (string, error)
+	CompareAndSwap(string, string, string, string) (string, error)
+}
+
+type ProposalConflictStore interface {
+	MarkProposalConflict(context.Context, int64, int64) error
 }
 
 type ProposalService struct {
@@ -132,9 +139,9 @@ func (service *ProposalService) changeStatus(ctx context.Context, proposalID, ex
 }
 
 // Apply rechecks both the database revision and the current Vault hash before
-// writing. The repository then commits document, proposal and revision rows
-// in one transaction, so a process crash cannot leave an applied proposal
-// without a durable revision record.
+// publishing through a compare-and-swap fence. The repository subsequently
+// commits document, proposal and revision rows together; reconciliation owns
+// recovery if the process stops between those two durable boundaries.
 func (service *ProposalService) Apply(ctx context.Context, proposal domain.Proposal, vault Vault) (domain.Document, error) {
 	if service == nil || service.documents == nil || vault == nil || proposal.ID <= 0 || proposal.Status != domain.ProposalApproved {
 		return domain.Document{}, sharedrepository.ErrInvalidInput
@@ -155,27 +162,49 @@ func (service *ProposalService) Apply(ctx context.Context, proposal domain.Propo
 		return domain.Document{}, err
 	}
 	if len(current) > 0 && !vaultContentMatchesBase(string(current), proposal.BaseHash) {
-		return domain.Document{}, sharedrepository.ErrConflict
+		return domain.Document{}, service.persistConflict(ctx, proposal)
 	}
-	snapshotKey := ""
-	if service.snapshot != nil {
-		merged, err := domain.MergeAutomaticRegion(string(current), proposal.ProposedBody)
-		if err != nil {
-			return domain.Document{}, err
-		}
-		snapshotKey = fmt.Sprintf("knowledge/v1/%d/%d.md", document.ID, document.RevisionNo+1)
-		if err := service.snapshot.Put(ctx, snapshotKey, merged); err != nil {
-			return domain.Document{}, err
-		}
-	}
-	if _, err := vault.WriteAutomatic(kind, key, proposal.ProposedBody); err != nil {
-		return domain.Document{}, err
-	}
-	updated, _, err := vault.Read(kind, key)
+	sourceID, err := documentSourceID(document)
 	if err != nil {
 		return domain.Document{}, err
 	}
-	contentHash := domain.HashContent("", string(updated))
+	title, err := proposalVaultTitle(proposal, document.Type, sourceID)
+	if err != nil {
+		return domain.Document{}, err
+	}
+	renderInput := domain.VaultDocumentRenderInput{
+		DocumentID: document.ID, RevisionNo: document.RevisionNo + 1, Type: document.Type,
+		SourceID: sourceID, Title: title, Generated: proposal.ProposedBody,
+	}
+	var replacement string
+	if len(current) == 0 {
+		if document.Status != domain.DocumentPlanned || document.RevisionNo != 0 || document.ContentHash != domain.HashContent("", "") {
+			return domain.Document{}, service.persistConflict(ctx, proposal)
+		}
+		replacement, err = domain.RenderVaultDocument(renderInput)
+	} else {
+		replacement, err = domain.UpdateVaultDocument(string(current), renderInput)
+	}
+	if err != nil {
+		return domain.Document{}, service.persistConflict(ctx, proposal)
+	}
+	snapshotKey := ""
+	if service.snapshot != nil {
+		snapshotKey = fmt.Sprintf("knowledge/v1/%d/%d.md", document.ID, document.RevisionNo+1)
+		if err := service.snapshot.Put(ctx, snapshotKey, replacement); err != nil {
+			return domain.Document{}, err
+		}
+	}
+	contentHash, err := vault.CompareAndSwap(kind, key, proposal.BaseHash, replacement)
+	if errors.Is(err, domain.ErrVaultConflict) {
+		return domain.Document{}, service.persistConflict(ctx, proposal)
+	}
+	if err != nil {
+		return domain.Document{}, err
+	}
+	if contentHash != domain.HashContent("", replacement) {
+		return domain.Document{}, sharedrepository.ErrUnavailable
+	}
 	generatedHash := domain.HashContent(proposal.ProposedFrontmatter, proposal.ProposedBody)
 	next := document
 	next.Version++
@@ -192,6 +221,41 @@ func (service *ProposalService) Apply(ctx context.Context, proposal domain.Propo
 		return domain.Document{}, sharedrepository.ErrUnavailable
 	}
 	return store.ApplyProposal(ctx, proposal.ID, proposal.Version, next, revision)
+}
+
+func (service *ProposalService) persistConflict(ctx context.Context, proposal domain.Proposal) error {
+	store, ok := service.proposals.(ProposalConflictStore)
+	if !ok {
+		return sharedrepository.ErrConflict
+	}
+	if err := store.MarkProposalConflict(ctx, proposal.ID, proposal.Version); err != nil && !errors.Is(err, sharedrepository.ErrConflict) {
+		return err
+	}
+	return sharedrepository.ErrConflict
+}
+
+func documentSourceID(document domain.Document) (int64, error) {
+	for _, sourceID := range []*int64{document.EventID, document.TopicID, document.ReportID} {
+		if sourceID != nil && *sourceID > 0 {
+			return *sourceID, nil
+		}
+	}
+	return 0, sharedrepository.ErrInvalidInput
+}
+
+func proposalVaultTitle(proposal domain.Proposal, documentType domain.DocumentType, sourceID int64) (string, error) {
+	frontmatter := struct {
+		Title string `json:"title"`
+	}{}
+	if proposal.ProposedFrontmatter != "" {
+		if err := json.Unmarshal([]byte(proposal.ProposedFrontmatter), &frontmatter); err != nil {
+			return "", sharedrepository.ErrInvalidInput
+		}
+	}
+	if strings.TrimSpace(frontmatter.Title) == "" {
+		return fmt.Sprintf("%s-%d", documentType, sourceID), nil
+	}
+	return frontmatter.Title, nil
 }
 
 func vaultContentMatchesBase(content, baseHash string) bool {
@@ -228,5 +292,5 @@ func documentPathParts(document domain.Document) (string, string, error) {
 }
 
 func isMissing(err error) bool {
-	return err != nil && (strings.Contains(err.Error(), "no such file") || strings.Contains(err.Error(), "not found"))
+	return err != nil && (errors.Is(err, os.ErrNotExist) || strings.Contains(err.Error(), "no such file") || strings.Contains(err.Error(), "not found"))
 }

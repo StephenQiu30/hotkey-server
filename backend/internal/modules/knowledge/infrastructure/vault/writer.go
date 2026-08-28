@@ -17,8 +17,10 @@ import (
 )
 
 type Writer struct {
-	root string
-	mu   sync.Mutex
+	root        string
+	mu          sync.Mutex
+	writeString func(*os.File, string) (int, error)
+	renameFile  func(string, string) error
 }
 
 func NewWriter(root string) *Writer {
@@ -26,7 +28,11 @@ func NewWriter(root string) *Writer {
 	if err != nil {
 		absolute = filepath.Clean(root)
 	}
-	return &Writer{root: absolute}
+	return &Writer{
+		root:        absolute,
+		writeString: func(file *os.File, content string) (int, error) { return file.WriteString(content) },
+		renameFile:  os.Rename,
+	}
 }
 
 // PutIfAbsent writes an immutable document projection without exposing an
@@ -183,30 +189,7 @@ func (writer *Writer) Write(kind, key, content string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", err
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".hotkey-*.tmp")
-	if err != nil {
-		return "", err
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if _, err := temporary.WriteString(content); err != nil {
-		temporary.Close()
-		return "", err
-	}
-	if err := temporary.Sync(); err != nil {
-		temporary.Close()
-		return "", err
-	}
-	if err := temporary.Close(); err != nil {
-		return "", err
-	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return "", err
-	}
-	return path, nil
+	return writer.writeAtomic(path, content)
 }
 
 func (writer *Writer) WriteAutomatic(kind, key, generated string) (string, error) {
@@ -228,6 +211,34 @@ func (writer *Writer) WriteAutomatic(kind, key, generated string) (string, error
 		return "", err
 	}
 	return writer.writeAtomic(path, merged)
+}
+
+// CompareAndSwap atomically replaces one human-maintainable Vault file only
+// when the bytes still match the hash observed by the application. It is the
+// writer-side fence for concurrent publishers and manual edits; a stale
+// publisher receives a stable conflict and never overwrites newer bytes.
+func (writer *Writer) CompareAndSwap(kind, key, expectedHash, replacement string) (string, error) {
+	if writer == nil || len(expectedHash) != 64 || replacement == "" {
+		return "", fmt.Errorf("invalid Vault compare-and-swap request")
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	path, err := writer.safePath(kind, key)
+	if err != nil {
+		return "", err
+	}
+	current, err := readRegularFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) || expectedHash != domain.HashContent("", "") {
+			return "", domain.ErrVaultConflict
+		}
+	} else if domain.HashContent("", string(current)) != expectedHash {
+		return "", domain.ErrVaultConflict
+	}
+	if _, err := writer.writeAtomic(path, replacement); err != nil {
+		return "", err
+	}
+	return domain.HashContent("", replacement), nil
 }
 
 func (writer *Writer) Read(kind, key string) ([]byte, string, error) {
@@ -399,7 +410,7 @@ func (writer *Writer) writeAtomic(path, content string) (string, error) {
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
-	if _, err := temporary.WriteString(content); err != nil {
+	if _, err := writer.writeString(temporary, content); err != nil {
 		_ = temporary.Close()
 		return "", err
 	}
@@ -410,10 +421,41 @@ func (writer *Writer) writeAtomic(path, content string) (string, error) {
 	if err := temporary.Close(); err != nil {
 		return "", err
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
+	if err := writer.renameFile(temporaryPath, path); err != nil {
+		return "", err
+	}
+	directory, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return "", err
+	}
+	if err := directory.Sync(); err != nil {
+		_ = directory.Close()
+		return "", err
+	}
+	if err := directory.Close(); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+func readRegularFile(path string) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return nil, domain.ErrVaultConflict
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !os.SameFile(info, opened) {
+		return nil, domain.ErrVaultConflict
+	}
+	return io.ReadAll(file)
 }
 
 type projectionManifest struct {

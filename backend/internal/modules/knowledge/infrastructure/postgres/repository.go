@@ -220,6 +220,27 @@ RETURNING id, version, document_id, base_revision_no, coalesce(base_hash, ''), p
 	return proposal, nil
 }
 
+func (repository *Repository) MarkProposalConflict(ctx context.Context, proposalID, expectedVersion int64) error {
+	if repository == nil || repository.runtime == nil || proposalID <= 0 || expectedVersion <= 0 {
+		return sharedrepository.ErrInvalidInput
+	}
+	result, err := knowledgeQueryerFor(ctx, repository.runtime).ExecContext(ctx, `
+UPDATE knowledge_change_proposals
+SET status = 'conflict', version = version + 1, reviewed_at = now(), updated_at = now()
+WHERE id = $1 AND version = $2 AND status IN ('pending','approved')`, proposalID, expectedVersion)
+	if err != nil {
+		return databaserepository.MapError(err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return databaserepository.MapError(err)
+	}
+	if changed != 1 {
+		return sharedrepository.ErrConflict
+	}
+	return nil
+}
+
 func (repository *Repository) ApplyProposal(ctx context.Context, proposalID, expectedVersion int64, document domain.Document, revision domain.Revision) (domain.Document, error) {
 	if repository == nil || repository.runtime == nil {
 		return domain.Document{}, sharedrepository.ErrUnavailable
@@ -243,10 +264,18 @@ func (repository *Repository) ApplyProposal(ctx context.Context, proposalID, exp
 		if currentVersion != document.Version-1 || currentRevision != document.RevisionNo-1 || currentHash != revision.PreviousHash {
 			return sharedrepository.ErrConflict
 		}
-		if _, err := transaction.SQL.ExecContext(transactionCtx, `UPDATE knowledge_documents SET version = $1, revision_no = $2, content_hash = $3, generated_hash = $4, status = $5, last_written_at = now(), updated_at = now() WHERE id = $6`, document.Version, document.RevisionNo, document.ContentHash, document.GeneratedHash, document.Status, document.ID); err != nil {
+		proposalResult, err := transaction.SQL.ExecContext(transactionCtx, `UPDATE knowledge_change_proposals SET status = 'applied', version = $1, applied_at = now(), updated_at = now() WHERE id = $2 AND version = $3 AND status = 'approved'`, expectedVersion+1, proposalID, expectedVersion)
+		if err != nil {
 			return databaserepository.MapError(err)
 		}
-		if _, err := transaction.SQL.ExecContext(transactionCtx, `UPDATE knowledge_change_proposals SET status = 'applied', version = $1, applied_at = now(), updated_at = now() WHERE id = $2 AND version = $3 AND status = 'approved'`, expectedVersion+1, proposalID, expectedVersion); err != nil {
+		proposalChanges, err := proposalResult.RowsAffected()
+		if err != nil {
+			return databaserepository.MapError(err)
+		}
+		if proposalChanges != 1 {
+			return sharedrepository.ErrConflict
+		}
+		if _, err := transaction.SQL.ExecContext(transactionCtx, `UPDATE knowledge_documents SET version = $1, revision_no = $2, content_hash = $3, generated_hash = $4, status = $5, last_written_at = now(), updated_at = now() WHERE id = $6`, document.Version, document.RevisionNo, document.ContentHash, document.GeneratedHash, document.Status, document.ID); err != nil {
 			return databaserepository.MapError(err)
 		}
 		if _, err := transaction.SQL.ExecContext(transactionCtx, `INSERT INTO knowledge_revisions (document_id, revision_no, source, proposal_id, previous_hash, new_hash, snapshot_object_key, frontmatter_snapshot) VALUES ($1,$2,$3,NULLIF($4,0),NULLIF($5,''),$6,NULLIF($7,''),$8::jsonb)`, revision.DocumentID, revision.RevisionNo, revision.Source, proposalID, revision.PreviousHash, revision.NewHash, revision.SnapshotObjectKey, nullableJSON(revision.Frontmatter)); err != nil {
@@ -307,6 +336,7 @@ func countReferences(document domain.Document) int {
 type knowledgeQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
 func knowledgeQueryerFor(ctx context.Context, runtime *database.Runtime) knowledgeQueryer {

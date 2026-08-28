@@ -111,3 +111,74 @@ func TestRenderVaultDocumentRejectsUnstableIdentityAndMarkerInjection(t *testing
 		})
 	}
 }
+
+func TestUpdateVaultDocumentPreservesHumanRegionByteForByte(t *testing.T) {
+	initial, err := RenderVaultDocument(VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 1, Type: DocumentReport, SourceID: 91,
+		Title: "日报 v1", Generated: "generated v1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	human := HumanRegionBegin + "\n人工笔记  \n\n- [ ] 后续核查\n" + HumanRegionEnd
+	initial = strings.Replace(initial, HumanRegionBegin+"\n"+HumanRegionEnd, human, 1)
+
+	updated, err := UpdateVaultDocument(initial, VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 2, Type: DocumentReport, SourceID: 91,
+		Title: "日报 v2", Generated: "generated v2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(updated, human) || strings.Contains(updated, "generated v1") || !strings.Contains(updated, "generated v2") {
+		t.Fatalf("updated Vault document = %q", updated)
+	}
+	if strings.Count(updated, human) != 1 {
+		t.Fatalf("human region changed or duplicated: %q", updated)
+	}
+
+	repeated, err := UpdateVaultDocument(updated, VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 2, Type: DocumentReport, SourceID: 91,
+		Title: "日报 v2", Generated: "generated v2",
+	})
+	if err != nil || repeated != updated {
+		t.Fatalf("idempotent update = %q/%v", repeated, err)
+	}
+}
+
+func TestUpdateVaultDocumentStopsOnIdentityRevisionAndMarkerConflicts(t *testing.T) {
+	initial, err := RenderVaultDocument(VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 3, Type: DocumentEvent, SourceID: 91,
+		Title: "事件", Generated: "generated",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 4, Type: DocumentEvent, SourceID: 91,
+		Title: "事件", Generated: "updated",
+	}
+	cases := map[string]struct {
+		existing string
+		mutate   func(*VaultDocumentRenderInput)
+	}{
+		"missing markers":     {existing: "# human-only\n"},
+		"duplicate auto":      {existing: initial + AutomaticRegionBegin},
+		"overlapping regions": {existing: strings.Replace(initial, HumanRegionBegin, AutomaticRegionEnd+"\n"+HumanRegionBegin, 1)},
+		"document identity":   {existing: initial, mutate: func(input *VaultDocumentRenderInput) { input.DocumentID++ }},
+		"source identity":     {existing: initial, mutate: func(input *VaultDocumentRenderInput) { input.SourceID++ }},
+		"revision skipped":    {existing: initial, mutate: func(input *VaultDocumentRenderInput) { input.RevisionNo += 2 }},
+		"revision regressed":  {existing: initial, mutate: func(input *VaultDocumentRenderInput) { input.RevisionNo = 2 }},
+	}
+	for name, fixture := range cases {
+		t.Run(name, func(t *testing.T) {
+			input := valid
+			if fixture.mutate != nil {
+				fixture.mutate(&input)
+			}
+			if _, err := UpdateVaultDocument(fixture.existing, input); err == nil {
+				t.Fatal("UpdateVaultDocument() error = nil")
+			}
+		})
+	}
+}
