@@ -7,6 +7,7 @@ import (
 	"time"
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
+	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/domain"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
@@ -106,6 +107,16 @@ type failingArchive struct{ err error }
 
 func (archive failingArchive) Prepare(context.Context, domain.Report) error { return archive.err }
 
+type reportContentSecurityAuditFake struct {
+	entries []operationsdomain.AuditEntry
+	err     error
+}
+
+func (fake *reportContentSecurityAuditFake) WriteIndependent(_ context.Context, entry operationsdomain.AuditEntry) error {
+	fake.entries = append(fake.entries, entry)
+	return fake.err
+}
+
 func TestServiceApprovalFreezesPendingRevisionAndRejectsRepeat(t *testing.T) {
 	period, err := domain.PeriodFor(time.Now().UTC(), domain.ReportDaily, time.UTC)
 	if err != nil {
@@ -187,6 +198,41 @@ func TestServiceApprovalRejectsInvalidEvidenceBeforeAnyWrite(t *testing.T) {
 	}
 	if stored := store.reports[draft.ID]; stored.Status != domain.ReportPendingApproval || stored.Version != 2 || stored.UpdatedBy != nil {
 		t.Fatalf("invalid evidence changed report: %#v", stored)
+	}
+}
+
+func TestServiceApprovalAuditsUnsafeContentWithoutPayloadOrBusinessWrite(t *testing.T) {
+	period, _ := domain.PeriodFor(time.Now().UTC(), domain.ReportDaily, time.UTC)
+	draft := citedReportDraft(period, 15)
+	draft.Status, draft.Version = domain.ReportPendingApproval, 2
+	store := &serviceStoreFake{reports: map[int64]domain.Report{draft.ID: draft}, publicationError: domain.ErrUnsafeContent}
+	audit := &reportContentSecurityAuditFake{}
+	service, err := NewService(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.WithContentSecurityAudit(audit)
+	editor := identitydomain.Subject{UserID: 7, SessionID: 70, Role: identitydomain.RoleEditor}
+	if _, err := service.ApproveRevision(context.Background(), RevisionLifecycleInput{Subject: editor, ReportID: draft.ID, ExpectedVersion: draft.Version}); !errors.Is(err, domain.ErrUnsafeContent) {
+		t.Fatalf("ApproveRevision() error = %v, want ErrUnsafeContent", err)
+	}
+	if stored := store.reports[draft.ID]; stored.Status != domain.ReportPendingApproval || stored.Version != 2 || stored.UpdatedBy != nil {
+		t.Fatalf("unsafe content changed report: %#v", stored)
+	}
+	if len(audit.entries) != 1 {
+		t.Fatalf("security audits = %d, want 1", len(audit.entries))
+	}
+	want := operationsdomain.AuditEntry{
+		ActorType: "user", ActorID: editor.UserID,
+		Action:       operationsdomain.ActionReportContentRejected,
+		ResourceType: "report", ResourceID: draft.ID,
+		After:  map[string]any{"reason_code": "report_content_unsafe"},
+		Result: operationsdomain.AuditResultDenied,
+	}
+	if got := audit.entries[0]; got.ActorType != want.ActorType || got.ActorID != want.ActorID || got.Action != want.Action ||
+		got.ResourceType != want.ResourceType || got.ResourceID != want.ResourceID || got.Result != want.Result ||
+		len(got.Before) != 0 || len(got.After) != 1 || got.After["reason_code"] != want.After["reason_code"] {
+		t.Fatalf("security audit = %#v, want sanitized %#v", got, want)
 	}
 }
 

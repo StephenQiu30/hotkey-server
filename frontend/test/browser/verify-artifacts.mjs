@@ -2,13 +2,14 @@ import { readFileSync, writeFileSync } from "node:fs";
 import process from "node:process";
 
 const artifactDirectory = process.env.HOTKEY_BROWSER_ARTIFACT_DIR || "/tmp";
-const a11yFiles = ["reports", "knowledge", "search-desktop", "search-mobile", "notifications-empty", "knowledge-permission"].map(
+const a11yFiles = ["reports", "report-content-security", "knowledge", "search-desktop", "search-mobile", "notifications-empty", "knowledge-permission"].map(
   (name) => `${artifactDirectory}/hotkey-a11y-${name}.json`,
 );
 const audits = a11yFiles.map(readJSON);
 const errors = readJSON(`${artifactDirectory}/hotkey-browser-errors.json`);
 const network = readJSON(`${artifactDirectory}/hotkey-browser-network.json`);
 const viewport = readJSON(`${artifactDirectory}/hotkey-browser-viewport.json`);
+const contentSecurity = readJSON(`${artifactDirectory}/hotkey-browser-content-security.json`);
 
 for (const [index, audit] of audits.entries()) {
   const violations = audit?.data?.violations ?? [];
@@ -58,6 +59,10 @@ if (!viewport?.success || viewport?.data?.result !== true) {
   throw new Error("mobile viewport has horizontal overflow or an invalid main landmark");
 }
 
+if (!contentSecurity?.success || contentSecurity?.data?.result !== true) {
+  throw new Error("malicious report content created an executable DOM surface");
+}
+
 const summary = {
   version: "hotkey-browser-business-flow-v1",
   run_id: process.env.HOTKEY_BROWSER_RUN_ID,
@@ -67,6 +72,7 @@ const summary = {
   failed_requests: [],
   observed_requests: requiredRequests.length,
   mobile_viewport: { width: 390, height: 844, horizontal_overflow: false },
+  malicious_report_content_inert: true,
 };
 writeFileSync(`${artifactDirectory}/hotkey-browser-acceptance.json`, `${JSON.stringify(summary, null, 2)}\n`, { flag: "wx" });
 

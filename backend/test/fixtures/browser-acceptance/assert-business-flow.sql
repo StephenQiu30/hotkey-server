@@ -15,6 +15,28 @@ BEGIN
         RAISE EXCEPTION 'browser acceptance report count mismatch';
     END IF;
 
+    IF (
+        SELECT count(*)
+        FROM reports AS report
+        WHERE report.id = 919007
+          AND report.status = 'draft'
+          AND report.published_at IS NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM report_revision_transitions AS transition
+              WHERE transition.report_id = report.id
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM report_deliveries AS delivery
+              WHERE delivery.report_id = report.id
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM knowledge_documents AS document
+              WHERE document.report_id = report.id
+          )
+    ) <> 1 THEN
+        RAISE EXCEPTION 'malicious report content created downstream facts';
+    END IF;
+
     SELECT count(*) INTO projection_count
     FROM knowledge_documents AS document
     JOIN knowledge_change_proposals AS proposal ON proposal.document_id = document.id

@@ -1,0 +1,36 @@
+{
+  "cases": [
+    {
+      "name": "html_script_tag",
+      "payload": "<script>globalThis.reportOwned=true</script>"
+    },
+    {
+      "name": "event_handler_attribute",
+      "payload": "<img src=x onerror=globalThis.reportOwned=true>"
+    },
+    {
+      "name": "markdown_javascript_url",
+      "payload": "[open](javascript:globalThis.reportOwned=true)"
+    },
+    {
+      "name": "svg_onload",
+      "payload": "<svg/onload=globalThis.reportOwned=true>"
+    },
+    {
+      "name": "svg_data_url",
+      "payload": "![x](data:image/svg+xml,<svg onload=globalThis.reportOwned=true>)"
+    },
+    {
+      "name": "html_data_url",
+      "payload": "data:text/html,<script>globalThis.reportOwned=true</script>"
+    },
+    {
+      "name": "entity_encoded_script_url",
+      "payload": "javascript&#58;globalThis.reportOwned=true"
+    },
+    {
+      "name": "percent_encoded_script_tag",
+      "payload": "%3Cscript%3EglobalThis.reportOwned=true%3C%2Fscript%3E"
+    }
+  ]
+}

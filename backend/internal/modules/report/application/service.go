@@ -24,6 +24,7 @@ type Service struct {
 	delivery      DeliveryPlanner
 	archive       ArchivePlanner
 	transactions  TransactionRunner
+	securityAudit ContentSecurityAuditWriter
 }
 
 type SnapshotReader interface {
@@ -116,6 +117,10 @@ func (service *Service) SetSubscriptionReader(reader SubscriptionReader) {
 
 func (service *Service) SetDeliveryPlanner(planner DeliveryPlanner) { service.delivery = planner }
 func (service *Service) SetArchivePlanner(planner ArchivePlanner)   { service.archive = planner }
+func (service *Service) WithContentSecurityAudit(writer ContentSecurityAuditWriter) *Service {
+	service.securityAudit = writer
+	return service
+}
 
 // BuildByID is the durable queue entry point. It rereads the current report
 // definition and a bounded event page; the queue payload contains only ID.
@@ -367,6 +372,11 @@ func (service *Service) transitionRevision(ctx context.Context, input RevisionLi
 		err = commit(ctx)
 	}
 	if err != nil {
+		if errors.Is(err, domain.ErrUnsafeContent) {
+			if auditErr := writeContentSecurityRejection(ctx, service.securityAudit, input.Subject.UserID, input.ReportID); auditErr != nil {
+				return domain.Report{}, errors.Join(err, fmt.Errorf("audit unsafe report content: %w", auditErr))
+			}
+		}
 		return domain.Report{}, err
 	}
 	return transitioned, nil

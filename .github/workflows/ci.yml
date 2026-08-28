@@ -385,6 +385,12 @@ jobs:
           agent-browser wait --fn "Array.from(document.querySelectorAll('button')).every((button) => !button.disabled && Number.parseFloat(getComputedStyle(button).opacity) >= 0.99)"
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-reports.json
 
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/reports?report=919007"
+          agent-browser wait --text "BrowserXSSFixture"
+          agent-browser wait --text "globalThis.__HOTKEY_XSS__=true"
+          agent-browser eval --json "globalThis.__HOTKEY_XSS__ !== true && document.querySelector('iframe,object,embed,svg[onload],[onload],[onerror]') === null && Array.from(document.scripts).every((script) => !script.textContent.includes('globalThis.__HOTKEY_XSS__=true')) && Array.from(document.querySelectorAll('a')).every((link) => !/^javascript:/i.test(link.getAttribute('href') || '')) && document.querySelector('[aria-label=\"日报 919007\"]')?.textContent.includes('<script>') === true" > /tmp/hotkey-browser-content-security.json
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-report-content-security.json
+
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/knowledge"
           agent-browser wait --text "批准提案"
           agent-browser find role button click --name "批准提案" --exact
@@ -454,6 +460,7 @@ jobs:
           cp /tmp/hotkey-browser-acceptance.json \
             /tmp/hotkey-browser-database.json \
             /tmp/hotkey-browser-network-summary.json \
+            /tmp/hotkey-browser-content-security.json \
             /tmp/hotkey-sentinel-scan.json \
             /tmp/hotkey-a11y-*.json \
             /tmp/hotkey-acceptance-attachments/
@@ -472,6 +479,7 @@ jobs:
             /tmp/hotkey-browser-acceptance.json
             /tmp/hotkey-browser-database.json
             /tmp/hotkey-browser-network-summary.json
+            /tmp/hotkey-browser-content-security.json
             /tmp/hotkey-sentinel-scan.json
             /tmp/hotkey-secret-surface-scan.json
             /tmp/hotkey-a11y-*.json

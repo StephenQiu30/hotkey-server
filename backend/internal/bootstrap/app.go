@@ -821,12 +821,13 @@ func newKnowledgeProjectionService(writer *knowledgevault.Writer) (*knowledgeapp
 	return knowledgeapplication.NewProjectionService(writer)
 }
 
-func newReportService(repository *reportpostgres.Repository, candidates *reportpostgres.CandidateReader, archive *reportArchivePlanner) (*reportapplication.Service, error) {
+func newReportService(repository *reportpostgres.Repository, candidates *reportpostgres.CandidateReader, archive *reportArchivePlanner, audit *operationspostgres.AuditWriter) (*reportapplication.Service, error) {
 	service, err := reportapplication.NewService(repository, candidates)
 	if err != nil {
 		return nil, err
 	}
 	service.SetArchivePlanner(archive)
+	service.WithContentSecurityAudit(audit)
 	return service, nil
 }
 
