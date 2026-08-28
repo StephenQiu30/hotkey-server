@@ -73,6 +73,27 @@ func (repository *ContentRepository) CanDisplay(ctx context.Context, query searc
 	return visible, nil
 }
 
+// ExplainSearch returns PostgreSQL's non-ANALYZE JSON plan for the exact
+// production query. Acceptance tooling must sanitize it before persistence.
+func (repository *ContentRepository) ExplainSearch(ctx context.Context, query searchdomain.Query) ([]byte, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	query = query.Normalized()
+	if err := query.Validate(); err != nil || !query.Includes(searchdomain.ResourceContent) {
+		return nil, fmt.Errorf("%w: invalid content search plan query", sharedrepository.ErrInvalidInput)
+	}
+	var plan []byte
+	err := repository.runtime.SQL.QueryRowContext(ctx, "EXPLAIN (FORMAT JSON,COSTS FALSE) "+contentLexicalSearchSQL,
+		query.Keyword, query.Entity, nullableSearchID(query.SourceConnectionID), nullableSearchID(query.MonitorID),
+		query.Status, nullableSearchTime(query.From), nullableSearchTime(query.To), query.Limit,
+	).Scan(&plan)
+	if err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	return append([]byte(nil), plan...), nil
+}
+
 func nullableSearchID(value *int64) sql.NullInt64 {
 	if value == nil {
 		return sql.NullInt64{}

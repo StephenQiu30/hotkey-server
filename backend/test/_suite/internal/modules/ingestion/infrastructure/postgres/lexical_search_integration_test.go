@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +71,12 @@ VALUES ($1,$2,'article',$3,$4,'https://example.test/lexical','zh',$5,$5,$6) RETU
 		t.Fatal(err)
 	}
 	repository := ingestionpostgres.NewContentRepository(runtime)
+	plan, err := repository.ExplainSearch(context.Background(), searchdomain.Query{
+		Keyword: "release", Types: []searchdomain.ResourceType{searchdomain.ResourceContent}, Limit: 10,
+	})
+	if err != nil || !json.Valid(plan) {
+		t.Fatalf("ExplainSearch() = %s/%v", plan, err)
+	}
 
 	queries := []searchdomain.Query{
 		{Keyword: "芯片"},

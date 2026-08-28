@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +55,12 @@ VALUES ($1,1,'proposal',$2,NULL,$3,$4::jsonb,$5)`,
 		t.Fatal(err)
 	}
 	repository := NewRepository(runtime)
+	plan, err := repository.ExplainSearch(ctx, searchdomain.Query{
+		Keyword: "release", Types: []searchdomain.ResourceType{searchdomain.ResourceKnowledge}, Limit: 10,
+	})
+	if err != nil || !json.Valid(plan) {
+		t.Fatalf("ExplainSearch() = %s/%v", plan, err)
+	}
 	queries := []searchdomain.Query{
 		{Keyword: "芯片"},
 		{Keyword: "releas"},

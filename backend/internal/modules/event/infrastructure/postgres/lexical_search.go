@@ -73,6 +73,27 @@ func (repository *MicroEventQueryPostgresRepository) CanDisplay(ctx context.Cont
 	return visible, nil
 }
 
+// ExplainSearch returns PostgreSQL's non-ANALYZE JSON plan for the exact
+// production query. Acceptance tooling must sanitize it before persistence.
+func (repository *MicroEventQueryPostgresRepository) ExplainSearch(ctx context.Context, query searchdomain.Query) ([]byte, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return nil, sharedrepository.ErrUnavailable
+	}
+	query = query.Normalized()
+	if err := query.Validate(); err != nil || !query.Includes(searchdomain.ResourceEvent) || query.SourceConnectionID != nil {
+		return nil, fmt.Errorf("%w: invalid event search plan query", sharedrepository.ErrInvalidInput)
+	}
+	var plan []byte
+	err := repository.runtime.SQL.QueryRowContext(ctx, "EXPLAIN (FORMAT JSON,COSTS FALSE) "+eventLexicalSearchSQL,
+		query.Keyword, query.Entity, eventSearchNullableID(query.MonitorID), query.Status,
+		eventSearchNullableTime(query.From), eventSearchNullableTime(query.To), query.Limit,
+	).Scan(&plan)
+	if err != nil {
+		return nil, databaserepository.MapError(err)
+	}
+	return append([]byte(nil), plan...), nil
+}
+
 func eventSearchNullableID(value *int64) sql.NullInt64 {
 	if value == nil {
 		return sql.NullInt64{}

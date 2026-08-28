@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,12 @@ INSERT INTO micro_events (
 	repository, err := NewMicroEventQueryPostgresRepository(runtime)
 	if err != nil {
 		t.Fatal(err)
+	}
+	plan, err := repository.ExplainSearch(ctx, searchdomain.Query{
+		Keyword: "release", Types: []searchdomain.ResourceType{searchdomain.ResourceEvent}, Limit: 10,
+	})
+	if err != nil || !json.Valid(plan) {
+		t.Fatalf("ExplainSearch() = %s/%v", plan, err)
 	}
 	queries := []searchdomain.Query{
 		{Keyword: "芯片"},
