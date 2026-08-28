@@ -443,7 +443,7 @@ func TestConfiguredAPIWiresControlPlanes(t *testing.T) {
 		t.Fatalf("Start() error = %v", err)
 	}
 	defer func() { _ = app.Stop(ctx) }()
-	for _, path := range []string{"/api/v1/monitors", "/api/v1/monitors/1/draft", "/api/v1/source-connections", "/api/v1/contents", "/api/v1/micro-events", "/api/v1/ai/model-profiles", "/api/v1/operations/jobs", "/api/v1/notifications"} {
+	for _, path := range []string{"/api/v1/monitors", "/api/v1/monitors/1/draft", "/api/v1/source-connections", "/api/v1/contents", "/api/v1/micro-events", "/api/v1/search?q=release", "/api/v1/ai/model-profiles", "/api/v1/operations/jobs", "/api/v1/notifications"} {
 		response, err := stdhttp.Get("http://" + server.Address() + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)

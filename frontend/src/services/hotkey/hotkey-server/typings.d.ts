@@ -924,6 +924,29 @@ required property without making explicit null impossible to bind. */
     limit?: number;
   };
 
+  type getSearchParams = {
+    /** lexical keyword */
+    q: string;
+    /** comma-separated content,event,knowledge */
+    types?: string;
+    /** source connection filter */
+    source_connection_id?: number;
+    /** monitor filter */
+    monitor_id?: number;
+    /** exact normalized entity */
+    entity?: string;
+    /** resource status */
+    status?: string;
+    /** relevance or latest */
+    sort?: "relevance" | "latest";
+    /** inclusive RFC3339 start */
+    from?: string;
+    /** inclusive RFC3339 end */
+    to?: string;
+    /** result limit */
+    limit?: number;
+  };
+
   type getSourceConnectionsIdParams = {
     /** source connection ID */
     id: number;
@@ -2366,6 +2389,37 @@ required property without making explicit null impossible to bind. */
     oldest_available_at?: string;
     queue_lag_seconds?: number;
     running_jobs?: number;
+  };
+
+  type SearchEmptyResponseDTO = true;
+
+  type SearchItemResponseDTO = {
+    id?: number;
+    occurred_at?: string;
+    score?: number;
+    snippet?: string;
+    snippet_highlight?: string;
+    status?: string;
+    title?: string;
+    title_highlight?: string;
+    type?: string;
+  };
+
+  type SearchPageResponseDTO = {
+    items?: SearchItemResponseDTO[];
+    next_cursor?: string;
+  };
+
+  type SearchResultHttpSearchEmptyResponseDTO = {
+    code?: number;
+    data?: SearchEmptyResponseDTO;
+    message?: string;
+  };
+
+  type SearchResultHttpSearchPageResponseDTO = {
+    code?: number;
+    data?: SearchPageResponseDTO;
+    message?: string;
   };
 
   type SourceConfigDTO = {

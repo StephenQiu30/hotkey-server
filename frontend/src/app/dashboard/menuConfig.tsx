@@ -32,7 +32,7 @@ export const dashboardMenuItems: MenuItem[] = [
   },
   {
     path: "/dashboard/search",
-    name: "即时搜索",
+    name: "全文检索",
     icon: <Search className="h-4 w-4" />,
   },
   {

@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -39,6 +40,7 @@ import (
 	knowledgepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/postgres"
 	knowledgevault "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/vault"
 	monitorapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/application"
+	monitordomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/domain"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
 	monitortransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/transport/http"
 	notificationapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/application"
@@ -48,6 +50,9 @@ import (
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 	operationstransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/transport/http"
+	searchapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/search/application"
+	searchdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/search/domain"
+	searchtransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/search/transport/http"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	sourceinfrastructure "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure"
 	sourcecredentialstore "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/credentialstore"
@@ -63,6 +68,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
 	sharedclock "github.com/StephenQiu30/hotkey-server/backend/internal/shared/clock"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
@@ -188,6 +194,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newKnowledgeVaultWriter,
 				newKnowledgeProjectionService,
 				knowledgepostgres.NewRepository,
+				newSearchAuthorizationReader,
+				newSearchService,
 				newTextQuoteSelectorService,
 				newAutomaticClaimEvidenceService,
 				eventjobs.NewAutomaticClaimEvidenceHandler,
@@ -251,7 +259,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newJobService,
 					newNotificationHandler,
 				),
-				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerInstantSearchRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerMicroEventRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes),
+				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerInstantSearchRoutes, registerSearchRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerMicroEventRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -436,6 +444,10 @@ func registerInstantSearchRoutes(router *gin.Engine, service *sourceapplication.
 	sourcetransport.RegisterInstantSearchRoutes(router, service, authenticator)
 }
 
+func registerSearchRoutes(router *gin.Engine, service *searchapplication.Service, authenticator httptransport.Authenticator) {
+	searchtransport.RegisterRoutes(router, service, authenticator)
+}
+
 func registerMonitorRoutes(router *gin.Engine, service *monitorapplication.Service, authenticator httptransport.Authenticator) {
 	monitortransport.RegisterRoutes(router, service, authenticator)
 }
@@ -547,6 +559,79 @@ func newCollectionControlService(runtime *database.Runtime, sources *sourcepostg
 
 func newInstantSearchService(sources *sourcepostgres.Repository, connectors *sourceinfrastructure.ConnectorRegistry) (*sourceapplication.InstantSearchService, error) {
 	return sourceapplication.NewInstantSearchService(sourceapplication.InstantSearchDependencies{Sources: sources, Connectors: connectors})
+}
+
+func newSearchService(contents *ingestionpostgres.ContentRepository, events *eventpostgres.MicroEventQueryPostgresRepository, knowledge *knowledgepostgres.Repository, authorization *searchAuthorizationReader) (*searchapplication.Service, error) {
+	return searchapplication.NewService(searchapplication.Readers{Content: contents, Event: events, Knowledge: knowledge}, authorization)
+}
+
+type searchAuthorizationReader struct {
+	users    *identitypostgres.UserRepository
+	monitors *monitorpostgres.Repository
+	sources  *sourcepostgres.Repository
+}
+
+func newSearchAuthorizationReader(users *identitypostgres.UserRepository, monitors *monitorpostgres.Repository, sources *sourcepostgres.Repository) *searchAuthorizationReader {
+	return &searchAuthorizationReader{users: users, monitors: monitors, sources: sources}
+}
+
+func (reader *searchAuthorizationReader) CurrentSearchSubject(ctx context.Context, userID int64) (searchapplication.Subject, error) {
+	if reader == nil || reader.users == nil {
+		return searchapplication.Subject{}, sharedrepository.ErrUnavailable
+	}
+	user, err := reader.users.FindByID(ctx, userID)
+	if err != nil {
+		return searchapplication.Subject{}, err
+	}
+	if !user.Active() || !user.Role.Valid() {
+		return searchapplication.Subject{}, sharedrepository.ErrNotFound
+	}
+	return searchapplication.Subject{UserID: user.ID, Role: string(user.Role)}, nil
+}
+
+func (reader *searchAuthorizationReader) SearchScopeVisible(ctx context.Context, _ searchapplication.Subject, query searchdomain.Query) (bool, error) {
+	if reader == nil || reader.monitors == nil || reader.sources == nil {
+		return false, sharedrepository.ErrUnavailable
+	}
+	if query.MonitorID != nil {
+		monitor, err := reader.monitors.FindByID(ctx, *query.MonitorID)
+		if err != nil {
+			if errors.Is(err, sharedrepository.ErrNotFound) {
+				return false, nil
+			}
+			return false, err
+		}
+		if monitor.DeletedAt != nil || monitor.PublishedConfigVersionID == nil || monitor.Status != monitordomain.MonitorStatusActive && monitor.Status != monitordomain.MonitorStatusPaused {
+			return false, nil
+		}
+	}
+	if query.SourceConnectionID != nil {
+		connection, err := reader.sources.FindByID(ctx, *query.SourceConnectionID)
+		if err != nil {
+			if errors.Is(err, sharedrepository.ErrNotFound) {
+				return false, nil
+			}
+			return false, err
+		}
+		if connection.Deleted {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (reader *searchAuthorizationReader) SearchCandidateVisible(ctx context.Context, _ searchapplication.Subject, candidate searchdomain.Candidate) (bool, error) {
+	if candidate.SourceConnectionID == 0 {
+		return true, nil
+	}
+	connection, err := reader.sources.FindByID(ctx, candidate.SourceConnectionID)
+	if err != nil {
+		if errors.Is(err, sharedrepository.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return !connection.Deleted, nil
 }
 
 type collectionServiceParams struct {

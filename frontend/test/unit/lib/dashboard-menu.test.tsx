@@ -13,7 +13,7 @@ describe("dashboard menu", () => {
       { path: "/dashboard", name: "概览" },
       { path: "/dashboard/settings", name: "监控" },
       { path: "/dashboard/sources", name: "来源" },
-      { path: "/dashboard/search", name: "即时搜索" },
+      { path: "/dashboard/search", name: "全文检索" },
       { path: "/dashboard/contents", name: "热点雷达" },
       { path: "/dashboard/events", name: "语义事件" },
     ]);

@@ -2,107 +2,86 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SearchPage from "@/app/dashboard/search/page";
+import { HotKeyAPIError } from "@/lib/request";
 
-const mocks = vi.hoisted(() => ({ postSearch: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getSearch: vi.fn() }));
 
-vi.mock("@/services/hotkey/hotkey-server/search", () => ({
-  postSearch: mocks.postSearch,
-}));
+vi.mock("@/services/hotkey/hotkey-server/search", () => ({ getSearch: mocks.getSearch }));
 
 describe("SearchPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.postSearch.mockResolvedValue({
+    mocks.getSearch.mockResolvedValue({
       data: {
-        query: "Claude",
-        searched_at: "2026-08-13T12:00:00Z",
-        results: [
-          {
-            source_type: "hacker_news",
-            source_name: "Hacker News",
-            external_id: "42",
-            content_type: "article",
-            title: "Claude 发布实时 API",
-            summary: "Anthropic 公布了新的实时能力。",
-            canonical_url: "https://example.com/claude",
-            author: "alice",
-            published_at: "2026-08-13T11:00:00Z",
-            discovered_at: "2026-08-13T12:00:00Z",
-            heat_score: 36.4,
-            quality_state: "unavailable",
-            relevance: 100,
-            relevance_reason: "标题或摘要与搜索词直接匹配",
-            keyword_mentioned: true,
-            importance: "medium",
-            metrics: { like_count: 12, comment_count: 5 },
-          },
-        ],
-        source_statuses: [
-          {
-            source_type: "hacker_news",
-            source_name: "Hacker News",
-            state: "success",
-            result_count: 1,
-          },
-          {
-            source_type: "x",
-            source_name: "X / Twitter",
-            state: "failed",
-            result_count: 0,
-            error_code: "rate_limited",
-          },
-          {
-            source_type: "duckduckgo",
-            state: "unavailable",
-            result_count: 0,
-            error_code: "not_configured",
-          },
-        ],
+        items: [{
+          type: "content",
+          id: 42,
+          title: '<svg onload="sentinel"> Release',
+          title_highlight: "&lt;svg onload=&#34;sentinel&#34;&gt; <mark>Release</mark>",
+          snippet: "芯片发布摘要",
+          snippet_highlight: "芯片发布摘要",
+          status: "active",
+          occurred_at: "2026-08-28T08:00:00Z",
+          score: 0.8,
+        }],
       },
     });
   });
 
-  it("searches configured sources and renders one flat hotspot card with explicit source states", async () => {
+  it("uses the persisted PostgreSQL read path and renders controlled highlights as React nodes", async () => {
     const user = userEvent.setup();
     render(<SearchPage />);
-
-    await user.type(screen.getByLabelText("搜索词"), "Claude");
-    await user.click(screen.getByRole("button", { name: "立即搜索" }));
-
-    await waitFor(() =>
-      expect(mocks.postSearch).toHaveBeenCalledWith({
-        query: "Claude",
-        limit: 50,
-      })
-    );
-    expect(await screen.findByRole("heading", { name: "Claude 发布实时 API" })).toBeInTheDocument();
-    expect(screen.getByText("Anthropic 公布了新的实时能力。")).toBeInTheDocument();
-    expect(screen.getByText("热度 36.4")).toBeInTheDocument();
-    expect(screen.getByText("相关性 100%")).toBeInTheDocument();
-    expect(screen.getByText("请求受限")).toBeInTheDocument();
-    expect(screen.getByText("未配置")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看原文" })).toHaveAttribute(
-      "href",
-      "https://example.com/claude"
-    );
+    await user.type(screen.getByLabelText("搜索词"), "Release");
+    await user.click(screen.getByRole("button", { name: "搜索" }));
+    await waitFor(() => expect(mocks.getSearch).toHaveBeenCalledWith({ q: "Release", limit: 50, sort: "relevance" }));
+    expect(await screen.findByRole("heading", { name: /Release/ })).toBeInTheDocument();
+    expect(document.querySelector("mark")).toHaveTextContent("Release");
+    expect(document.querySelector("svg[onload]")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Release/ })).toHaveAttribute("href", "/dashboard/contents/42");
+    expect(screen.getAllByText("内容")).toHaveLength(2);
   });
 
-  it("supports selecting a bounded source subset without creating a monitor", async () => {
+  it("supports bounded resource and object filters without invoking external instant search", async () => {
     const user = userEvent.setup();
     render(<SearchPage />);
+    await user.type(screen.getByLabelText("搜索词"), "芯片");
+    await user.click(screen.getByRole("checkbox", { name: "事件" }));
+    await user.click(screen.getByRole("checkbox", { name: "知识" }));
+    await user.click(screen.getByRole("button", { name: "高级筛选" }));
+    await user.type(screen.getByLabelText("来源 ID"), "9");
+    await user.type(screen.getByLabelText("Monitor ID"), "12");
+    await user.type(screen.getByLabelText("实体"), "Acme-42");
+    await user.click(screen.getByRole("button", { name: "搜索" }));
+    await waitFor(() => expect(mocks.getSearch).toHaveBeenCalledWith({
+      q: "芯片",
+      limit: 50,
+      sort: "relevance",
+      types: "content",
+      source_connection_id: 9,
+      monitor_id: 12,
+      entity: "Acme-42",
+    }));
+  });
 
-    await user.type(screen.getByLabelText("搜索词"), "Claude");
-    await user.click(screen.getByRole("button", { name: "选择来源" }));
-    await user.click(screen.getByRole("button", { name: "清空" }));
-    await user.click(screen.getByRole("checkbox", { name: "Hacker News" }));
-    await user.click(screen.getByRole("button", { name: "立即搜索" }));
+  it("renders loading and empty states", async () => {
+    const user = userEvent.setup();
+    let resolveSearch!: (value: unknown) => void;
+    mocks.getSearch.mockReturnValueOnce(new Promise((resolve) => { resolveSearch = resolve; }));
+    render(<SearchPage />);
+    await user.type(screen.getByLabelText("搜索词"), "missing");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByLabelText("正在加载搜索结果")).toBeInTheDocument();
+    resolveSearch({ data: { items: [] } });
+    expect(await screen.findByRole("heading", { name: "没有符合条件的结果" })).toBeInTheDocument();
+  });
 
-    await waitFor(() =>
-      expect(mocks.postSearch).toHaveBeenCalledWith({
-        query: "Claude",
-        limit: 50,
-        source_types: ["hacker_news"],
-      })
-    );
+  it("renders a distinct permission state", async () => {
+    const user = userEvent.setup();
+    mocks.getSearch.mockRejectedValueOnce(new HotKeyAPIError(403, "forbidden"));
+    render(<SearchPage />);
+    await user.type(screen.getByLabelText("搜索词"), "private");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("没有检索权限")).toBeInTheDocument();
+    expect(screen.queryByText("搜索失败")).not.toBeInTheDocument();
   });
 });

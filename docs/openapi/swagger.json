@@ -5844,6 +5844,125 @@
             }
         },
         "/api/v1/search": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "search"
+                ],
+                "summary": "Search current PostgreSQL content, event and knowledge projections",
+                "parameters": [
+                    {
+                        "maxLength": 100,
+                        "type": "string",
+                        "description": "lexical keyword",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "comma-separated content,event,knowledge",
+                        "name": "types",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "source connection filter",
+                        "name": "source_connection_id",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "monitor filter",
+                        "name": "monitor_id",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "description": "exact normalized entity",
+                        "name": "entity",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "resource status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "relevance",
+                            "latest"
+                        ],
+                        "type": "string",
+                        "description": "relevance or latest",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "inclusive RFC3339 start",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "inclusive RFC3339 end",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "result limit",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.SearchResult-http_SearchPageResponseDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.SearchResult-http_SearchEmptyResponseDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.SearchResult-http_SearchEmptyResponseDTO"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.SearchResult-http_SearchEmptyResponseDTO"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.SearchResult-http_SearchEmptyResponseDTO"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -12757,6 +12876,83 @@
                 },
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "http.SearchEmptyResponseDTO": {
+            "type": "object"
+        },
+        "http.SearchItemResponseDTO": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "occurred_at": {
+                    "type": "string"
+                },
+                "score": {
+                    "type": "number"
+                },
+                "snippet": {
+                    "type": "string"
+                },
+                "snippet_highlight": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "title_highlight": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SearchPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.SearchItemResponseDTO"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SearchResult-http_SearchEmptyResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.SearchEmptyResponseDTO"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.SearchResult-http_SearchPageResponseDTO": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.SearchPageResponseDTO"
+                },
+                "message": {
+                    "type": "string"
                 }
             }
         },

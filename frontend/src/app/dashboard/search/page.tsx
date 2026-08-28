@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
-import { ChevronDown, Loader2, Search } from "lucide-react";
+import Link from "next/link";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Clock3, Loader2, Search, SlidersHorizontal } from "lucide-react";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,163 +18,157 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PageHeader } from "@/components/dashboard/PageHeader";
-import {
-  formatHotspotTime,
-  HotspotCard,
-  importanceLabels,
-  qualityLabels,
-} from "@/components/dashboard/HotspotCard";
-import { postSearch } from "@/services/hotkey/hotkey-server/search";
-import {
-  instantSearchSourceOptions,
-  sourceTypeLabel,
-} from "@/lib/sourceLabels";
+import { HotKeyAPIError } from "@/lib/request";
+import { getSearch } from "@/services/hotkey/hotkey-server/search";
 
-type SortMode =
-  | "discovered"
-  | "published"
-  | "importance"
-  | "relevance"
-  | "heat";
+const resourceTypes = [
+  { value: "content", label: "内容" },
+  { value: "event", label: "事件" },
+  { value: "knowledge", label: "知识" },
+] as const;
 
-const importanceOrder: Readonly<Record<string, number>> = {
-  low: 1,
-  medium: 2,
-  high: 3,
-  urgent: 4,
+const resourceLabels: Readonly<Record<string, string>> = {
+  content: "内容",
+  event: "事件",
+  knowledge: "知识",
 };
 
 const statusLabels: Readonly<Record<string, string>> = {
-  success: "成功",
-  empty: "暂无结果",
-  partial: "部分成功",
-  failed: "失败",
-  unavailable: "不可用",
+  active: "有效",
+  review_pending: "待复核",
+  closed: "已关闭",
+  merged: "已合并",
 };
 
-const errorLabels: Readonly<Record<string, string>> = {
-  not_configured: "未配置",
-  rate_limited: "请求受限",
-  unavailable: "来源不可用",
-  request_failed: "请求失败",
-  invalid_configuration: "配置无效",
-};
+const highlightTokenPattern = /(<mark>|<\/mark>)/;
 
-function timeValue(value: string | undefined) {
-  if (!value) return 0;
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? 0 : parsed;
+function optionalPositiveInteger(value: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function dayBoundary(value: string, end: boolean): string | undefined {
+  if (!value) return undefined;
+  return new Date(`${value}T${end ? "23:59:59.999" : "00:00:00.000"}Z`).toISOString();
+}
+
+function decodeHighlightText(value: string): string {
+  return value
+    .replaceAll("&#34;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&amp;", "&");
+}
+
+// The server emits escaped text plus the two controlled mark tokens. Parsing
+// them into React nodes keeps every untrusted byte in a text node and avoids
+// dangerouslySetInnerHTML entirely.
+function SafeHighlight({ value, fallback }: { value?: string; fallback?: string }) {
+  const source = value || fallback || "";
+  const parts = source.split(highlightTokenPattern);
+  let marked = false;
+  const nodes: ReactNode[] = [];
+  for (const [index, part] of parts.entries()) {
+    if (part === "<mark>") {
+      marked = true;
+      continue;
+    }
+    if (part === "</mark>") {
+      marked = false;
+      continue;
+    }
+    const text = decodeHighlightText(part);
+    nodes.push(marked ? <mark key={index}>{text}</mark> : text);
+  }
+  return nodes;
+}
+
+function resultPath(item: HotKeyAPI.SearchItemResponseDTO): string | undefined {
+  if (!item.id) return undefined;
+  if (item.type === "content") return `/dashboard/contents/${item.id}`;
+  if (item.type === "event") return `/dashboard/events/${item.id}`;
+  return undefined;
+}
+
+function formatTime(value?: string): string {
+  if (!value) return "时间未知";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsed);
 }
 
 export default function SearchPage() {
-  const allSources = instantSearchSourceOptions.map((source) => source.value);
   const [query, setQuery] = useState("");
-  const [selectedSources, setSelectedSources] = useState(allSources);
-  const [showSources, setShowSources] = useState(false);
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(resourceTypes.map((item) => item.value));
+  const [showFilters, setShowFilters] = useState(false);
+  const [sourceID, setSourceID] = useState("");
+  const [monitorID, setMonitorID] = useState("");
+  const [entity, setEntity] = useState("");
+  const [status, setStatus] = useState("all");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [sort, setSort] = useState<"relevance" | "latest">("relevance");
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [error, setError] = useState<string>();
-  const [response, setResponse] = useState<HotKeyAPI.InstantSearchResponse>();
-  const [sourceFilter, setSourceFilter] = useState("all");
-  const [importanceFilter, setImportanceFilter] = useState("all");
-  const [qualityFilter, setQualityFilter] = useState("all");
-  const [publishedFrom, setPublishedFrom] = useState("");
-  const [publishedTo, setPublishedTo] = useState("");
-  const [sort, setSort] = useState<SortMode>("heat");
+  const [response, setResponse] = useState<HotKeyAPI.SearchPageResponseDTO>();
 
-  const results = useMemo(() => {
-    const from = publishedFrom ? Date.parse(`${publishedFrom}T00:00:00`) : 0;
-    const to = publishedTo
-      ? Date.parse(`${publishedTo}T23:59:59.999`)
-      : Number.POSITIVE_INFINITY;
-    return [...(response?.results ?? [])]
-      .filter(
-        (item) =>
-          (sourceFilter === "all" || item.source_type === sourceFilter) &&
-          (importanceFilter === "all" ||
-            item.importance === importanceFilter) &&
-          (qualityFilter === "all" || item.quality_state === qualityFilter) &&
-          (!item.published_at ||
-            (timeValue(item.published_at) >= from &&
-              timeValue(item.published_at) <= to))
-      )
-      .sort((left, right) => {
-        if (sort === "discovered")
-          return timeValue(right.discovered_at) - timeValue(left.discovered_at);
-        if (sort === "published")
-          return timeValue(right.published_at) - timeValue(left.published_at);
-        if (sort === "importance")
-          return (
-            (importanceOrder[right.importance ?? ""] ?? 0) -
-            (importanceOrder[left.importance ?? ""] ?? 0)
-          );
-        if (sort === "relevance")
-          return (right.relevance ?? 0) - (left.relevance ?? 0);
-        return (right.heat_score ?? 0) - (left.heat_score ?? 0);
-      });
-  }, [
-    importanceFilter,
-    publishedFrom,
-    publishedTo,
-    qualityFilter,
-    response,
-    sort,
-    sourceFilter,
-  ]);
-
-  const visibleSourceTypes = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...(response?.source_statuses ?? []).map(
-            (status) => status.source_type ?? ""
-          ),
-          ...(response?.results ?? []).map((item) => item.source_type ?? ""),
-        ])
-      ).filter(Boolean),
-    [response]
-  );
+  function toggleType(value: string) {
+    setSelectedTypes((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value],
+    );
+  }
 
   async function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalized = query.trim();
-    if (!normalized || selectedSources.length === 0) return;
+    if (!normalized || selectedTypes.length === 0) return;
     setLoading(true);
     setError(undefined);
+    setPermissionDenied(false);
     try {
-      const result = await postSearch({
-        query: normalized,
+      const parsedSourceID = optionalPositiveInteger(sourceID);
+      const parsedMonitorID = optionalPositiveInteger(monitorID);
+      const fromBoundary = dayBoundary(from, false);
+      const toBoundary = dayBoundary(to, true);
+      const result = await getSearch({
+        q: normalized,
         limit: 50,
-        ...(selectedSources.length === allSources.length
-          ? {}
-          : { source_types: selectedSources }),
+        sort,
+        ...(selectedTypes.length === resourceTypes.length ? {} : { types: selectedTypes.join(",") }),
+        ...(parsedSourceID ? { source_connection_id: parsedSourceID } : {}),
+        ...(parsedMonitorID ? { monitor_id: parsedMonitorID } : {}),
+        ...(entity.trim() ? { entity: entity.trim() } : {}),
+        ...(status === "all" ? {} : { status }),
+        ...(fromBoundary ? { from: fromBoundary } : {}),
+        ...(toBoundary ? { to: toBoundary } : {}),
       });
-      setResponse(result.data);
+      setResponse(result.data ?? { items: [] });
       setSearched(true);
     } catch (reason) {
       setResponse(undefined);
       setSearched(true);
-      setError(reason instanceof Error ? reason.message : "即时搜索失败");
+      setPermissionDenied(reason instanceof HotKeyAPIError && reason.status === 403);
+      setError(reason instanceof Error ? reason.message : "全文检索失败");
     } finally {
       setLoading(false);
     }
   }
 
-  function toggleSource(sourceType: string) {
-    setSelectedSources((current) =>
-      current.includes(sourceType)
-        ? current.filter((value) => value !== sourceType)
-        : [...current, sourceType]
-    );
-  }
+  const items = response?.items ?? [];
 
   return (
     <div className="app-page">
       <PageHeader
-        eyebrow="LIVE SEARCH"
-        title="即时搜索"
-        description="临时查询已配置的合规来源。结果不会创建监控、写入热点库或触发通知。"
+        eyebrow="POSTGRES SEARCH"
+        title="全文检索"
+        description="检索当前权限内的内容、事件与知识。结果来自 PostgreSQL 词法索引，不生成回答，也不调用向量或外部搜索。"
       />
 
       <Card className="border border-border bg-card">
@@ -180,80 +176,92 @@ export default function SearchPage() {
           <form className="space-y-4" onSubmit={search}>
             <div className="flex flex-col gap-3 sm:flex-row">
               <div className="min-w-0 flex-1">
-                <Label htmlFor="instant-search-query" className="sr-only">
-                  搜索词
-                </Label>
+                <Label htmlFor="knowledge-search-query" className="sr-only">搜索词</Label>
                 <Input
-                  id="instant-search-query"
+                  id="knowledge-search-query"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="输入公司、产品、人物或技术主题"
-                  maxLength={200}
+                  placeholder="输入关键词、实体、产品或技术主题"
+                  maxLength={100}
                 />
               </div>
               <Button
                 type="button"
                 variant="outline"
-                aria-label="选择来源"
-                aria-expanded={showSources}
-                onClick={() => setShowSources((value) => !value)}
+                aria-label="高级筛选"
+                aria-expanded={showFilters}
+                onClick={() => setShowFilters((value) => !value)}
               >
-                选择来源
-                <Badge variant="secondary">{selectedSources.length}</Badge>
-                <ChevronDown className="h-4 w-4" />
+                <SlidersHorizontal className="h-4 w-4" />
+                筛选
               </Button>
-              <Button
-                type="submit"
-                disabled={
-                  loading || !query.trim() || selectedSources.length === 0
-                }
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="h-4 w-4" />
-                )}
-                立即搜索
+              <Button type="submit" disabled={loading || !query.trim() || selectedTypes.length === 0}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                搜索
               </Button>
             </div>
 
-            {showSources ? (
-              <fieldset className="rounded-lg border border-border p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <legend className="text-sm font-medium">搜索来源</legend>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setSelectedSources([])}
-                    >
-                      清空
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setSelectedSources(allSources)}
-                    >
-                      全选
-                    </Button>
-                  </div>
+            <fieldset>
+              <legend className="mb-2 text-sm font-medium">资源类型</legend>
+              <div className="flex flex-wrap gap-4">
+                {resourceTypes.map((resource) => (
+                  <label key={resource.value} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      aria-label={resource.label}
+                      checked={selectedTypes.includes(resource.value)}
+                      onCheckedChange={() => toggleType(resource.value)}
+                    />
+                    {resource.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            {showFilters ? (
+              <fieldset className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-4">
+                <legend className="px-1 text-sm font-medium">高级筛选</legend>
+                <div className="space-y-2">
+                  <Label htmlFor="search-source-id">来源 ID</Label>
+                  <Input id="search-source-id" type="number" min={1} value={sourceID} onChange={(event) => setSourceID(event.target.value)} />
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {instantSearchSourceOptions.map((source) => (
-                    <label
-                      key={source.value}
-                      className="flex items-center gap-2 text-sm"
-                    >
-                      <Checkbox
-                        aria-label={source.label}
-                        checked={selectedSources.includes(source.value)}
-                        onCheckedChange={() => toggleSource(source.value)}
-                      />
-                      {source.label}
-                    </label>
-                  ))}
+                <div className="space-y-2">
+                  <Label htmlFor="search-monitor-id">Monitor ID</Label>
+                  <Input id="search-monitor-id" type="number" min={1} value={monitorID} onChange={(event) => setMonitorID(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="search-entity">实体</Label>
+                  <Input id="search-entity" maxLength={128} value={entity} onChange={(event) => setEntity(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="search-status">状态</Label>
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger id="search-status"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部状态</SelectItem>
+                      <SelectItem value="active">有效</SelectItem>
+                      <SelectItem value="review_pending">待复核</SelectItem>
+                      <SelectItem value="closed">已关闭</SelectItem>
+                      <SelectItem value="merged">已合并</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="search-from">开始日期</Label>
+                  <Input id="search-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="search-to">结束日期</Label>
+                  <Input id="search-to" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="search-sort">排序</Label>
+                  <Select value={sort} onValueChange={(value) => setSort(value as "relevance" | "latest")}>
+                    <SelectTrigger id="search-sort"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="relevance">相关性</SelectItem>
+                      <SelectItem value="latest">最新时间</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </fieldset>
             ) : null}
@@ -261,146 +269,63 @@ export default function SearchPage() {
         </CardContent>
       </Card>
 
-      {error ? (
+      {permissionDenied ? (
+        <Alert variant="destructive" className="mt-6">
+          <AlertTitle>没有检索权限</AlertTitle>
+          <AlertDescription>当前账号不能读取该检索范围，请联系管理员确认角色与对象权限。</AlertDescription>
+        </Alert>
+      ) : error ? (
         <Alert variant="destructive" className="mt-6">
           <AlertTitle>搜索失败</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
 
-      {response ? (
-        <section aria-labelledby="source-status-heading" className="mt-8">
-          <div className="mb-3 flex items-center justify-between gap-4">
-            <h2 id="source-status-heading" className="text-sm font-medium">
-              来源状态
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              共 {response.results?.length ?? 0} 条 · 搜索于{" "}
-              {formatHotspotTime(response.searched_at)}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {(response.source_statuses ?? []).map((status) => (
-              <div
-                key={`${status.source_type}-${status.source_name ?? ""}`}
-                className="flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs"
-              >
-                <span className="font-medium">
-                  {status.source_name || sourceTypeLabel(status.source_type)}
-                </span>
-                <span className="text-muted-foreground">
-                  {statusLabels[status.state ?? ""] ?? status.state}
-                  {status.state === "success" || status.state === "empty"
-                    ? ` · ${status.result_count ?? 0} 条`
-                    : ""}
-                </span>
-                {status.error_code ? (
-                  <Badge
-                    variant={
-                      status.state === "failed" ? "destructive" : "secondary"
-                    }
-                  >
-                    {errorLabels[status.error_code] ?? status.error_code}
-                  </Badge>
-                ) : null}
-              </div>
-            ))}
-          </div>
+      {loading ? (
+        <section aria-label="正在加载搜索结果" className="mt-6 space-y-3">
+          {[0, 1, 2].map((item) => <div key={item} className="h-28 animate-pulse rounded-xl border border-border bg-muted/40" />)}
         </section>
       ) : null}
 
-      {response?.results?.length ? (
-        <section
-          aria-label="搜索结果筛选"
-          className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-6"
-        >
-          <Select value={sourceFilter} onValueChange={setSourceFilter}>
-            <SelectTrigger aria-label="来源筛选">
-              <SelectValue placeholder="全部来源" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部来源</SelectItem>
-              {visibleSourceTypes.map((sourceType) => (
-                <SelectItem key={sourceType} value={sourceType}>
-                  {sourceTypeLabel(sourceType)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={importanceFilter} onValueChange={setImportanceFilter}>
-            <SelectTrigger aria-label="重要性筛选">
-              <SelectValue placeholder="全部重要性" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部重要性</SelectItem>
-              {Object.entries(importanceLabels).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={qualityFilter} onValueChange={setQualityFilter}>
-            <SelectTrigger aria-label="质量筛选">
-              <SelectValue placeholder="全部质量状态" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部质量状态</SelectItem>
-              {Object.entries(qualityLabels).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            aria-label="发布时间从"
-            type="date"
-            value={publishedFrom}
-            onChange={(event) => setPublishedFrom(event.target.value)}
-          />
-          <Input
-            aria-label="发布时间到"
-            type="date"
-            value={publishedTo}
-            onChange={(event) => setPublishedTo(event.target.value)}
-          />
-          <Select
-            value={sort}
-            onValueChange={(value) => setSort(value as SortMode)}
-          >
-            <SelectTrigger aria-label="排序">
-              <SelectValue placeholder="排序" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="discovered">最新发现</SelectItem>
-              <SelectItem value="published">最新发布</SelectItem>
-              <SelectItem value="importance">重要性</SelectItem>
-              <SelectItem value="relevance">相关性</SelectItem>
-              <SelectItem value="heat">热度</SelectItem>
-            </SelectContent>
-          </Select>
+      {!loading && items.length > 0 ? (
+        <section aria-label="全文检索结果" className="mt-6 space-y-4">
+          <p className="text-sm text-muted-foreground">共返回 {items.length} 条当前可见结果</p>
+          {items.map((item) => {
+            const path = resultPath(item);
+            const title = <SafeHighlight value={item.title_highlight} fallback={item.title} />;
+            return (
+              <Card key={`${item.type}-${item.id}`} className="border border-border bg-card">
+                <CardContent className="space-y-3 p-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">{resourceLabels[item.type ?? ""] ?? item.type}</Badge>
+                    {item.status ? <Badge variant="outline">{statusLabels[item.status] ?? item.status}</Badge> : null}
+                    <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock3 className="h-3.5 w-3.5" />{formatTime(item.occurred_at)}
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-semibold">
+                    {path ? <Link className="hover:underline" href={path}>{title}</Link> : title}
+                  </h2>
+                  {item.snippet || item.snippet_highlight ? (
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      <SafeHighlight value={item.snippet_highlight} fallback={item.snippet} />
+                    </p>
+                  ) : null}
+                  <p className="text-xs text-muted-foreground">相关性 {(item.score ?? 0).toFixed(3)}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
         </section>
       ) : null}
 
-      <section aria-live="polite" className="mt-6 space-y-4">
-        {results.map((card) => (
-          <HotspotCard
-            card={card}
-            key={`${card.source_type}-${card.external_id}`}
-          />
-        ))}
-
-        {searched && !loading && !error && results.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border px-6 py-14 text-center">
-            <Search className="mx-auto h-6 w-6 text-muted-foreground" />
-            <h2 className="mt-4 font-medium">没有符合条件的结果</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              查看来源状态，或调整搜索词、来源和筛选条件。
-            </p>
-          </div>
-        ) : null}
-      </section>
+      {searched && !loading && !error && items.length === 0 ? (
+        <div className="mt-6 rounded-xl border border-dashed border-border px-6 py-14 text-center">
+          <Search className="mx-auto h-6 w-6 text-muted-foreground" />
+          <h2 className="mt-4 font-medium">没有符合条件的结果</h2>
+          <p className="mt-2 text-sm text-muted-foreground">调整关键词、资源类型或高级筛选后重试。</p>
+        </div>
+      ) : null}
     </div>
   );
 }
