@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance m4-fault-recovery-acceptance source-resource-limit-acceptance request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance m4-fault-recovery-acceptance source-resource-limit-acceptance request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance secret-rotation-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -122,6 +122,17 @@ event-semantic-separation-acceptance: test-env
 		-run '^TestReportPublicationRevalidatesCitationFactsInsteadOfAggregateEvidenceState$$' \
 		-count=1 -v
 	cd ../frontend && npm run test:unit -- dashboard-events-page.test.tsx dashboard-reports-page.test.tsx
+
+secret-rotation-acceptance: test-env
+	$(GO) run ./test/runner test -p=1 \
+		./internal/platform/config \
+		./internal/modules/identity/infrastructure/security \
+		./internal/modules/identity/infrastructure/redis \
+		./internal/modules/source/infrastructure/credentialstore \
+		./internal/bootstrap \
+		-run '^(TestEnvironmentExampleDocumentsSecretRotationWindow|TestLoadUsesExplicitSecretRotationConfiguration|TestJWT.*Rotation.*|TestVerificationHMACRotation.*|TestCipherKeyringWritesCurrentVersionReadsPreviousAndRejectsItAfterRevocation|TestRotateBatch.*|TestSourceCredentialRotationCommand.*)$$' \
+		-count=1 -v
+	cd ../agent && uv run pytest
 
 build:
 	$(GO) build ./...

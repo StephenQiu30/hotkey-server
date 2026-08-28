@@ -30,6 +30,7 @@ const (
 	ActionSourceDisabled              AuditAction = "source.disabled"
 	ActionSourceArchived              AuditAction = "source.archived"
 	ActionSourceRestored              AuditAction = "source.restored"
+	ActionSourceCredentialsRotated    AuditAction = "source_credentials.rotated"
 	ActionCollectionSecurityRejected  AuditAction = "collection.security_rejected"
 	ActionRightsPolicyCreated         AuditAction = "rights_policy.created"
 	ActionRightsDecisionBatchRecorded AuditAction = "rights_decision_batch.recorded"
@@ -55,7 +56,7 @@ const (
 var allowedActions = map[AuditAction]struct{}{
 	ActionMonitorCreated: {}, ActionMonitorDraftUpdated: {}, ActionMonitorAICandidateCreated: {}, ActionMonitorAICandidateApproved: {}, ActionMonitorAICandidateRejected: {},
 	ActionMonitorPublished: {}, ActionMonitorPaused: {}, ActionMonitorResumed: {}, ActionMonitorArchived: {}, ActionMonitorRestored: {}, ActionMonitorDeleted: {},
-	ActionSourceCreated: {}, ActionSourceUpdated: {}, ActionSourceEnabled: {}, ActionSourceDisabled: {}, ActionSourceArchived: {}, ActionSourceRestored: {},
+	ActionSourceCreated: {}, ActionSourceUpdated: {}, ActionSourceEnabled: {}, ActionSourceDisabled: {}, ActionSourceArchived: {}, ActionSourceRestored: {}, ActionSourceCredentialsRotated: {},
 	ActionCollectionSecurityRejected: {},
 	ActionRightsPolicyCreated:        {}, ActionRightsDecisionBatchRecorded: {},
 	ActionMetricCapabilityDrafted: {}, ActionMetricCapabilityPublished: {}, ActionMetricCapabilityArchived: {},
@@ -133,6 +134,7 @@ var safeMetadataKeys = map[string]struct{}{
 	"compiled_profile_id": {}, "intent_revision_id": {},
 	"status": {}, "previous_status": {}, "approval_status": {}, "config_hash": {}, "published_at": {},
 	"enabled": {}, "deleted": {}, "credential_configured": {}, "affected": {}, "batch_size": {}, "decision_count": {},
+	"key_version": {}, "rotated_count": {}, "remaining_count": {},
 	"capability_source_type": {}, "capability_profile_version": {}, "capability_status": {}, "capability_profile_record_version": {}, "boundary_profile_version": {}, "reason_code": {},
 }
 
@@ -185,7 +187,7 @@ func SanitizeMetadata(metadata map[string]any) map[string]any {
 
 func validMetadataValue(key string, value any) bool {
 	switch key {
-	case "monitor_version", "draft_version", "source_version", "subscription_version", "config_version", "revision", "rule_count", "source_count", "compiled_profile_id", "intent_revision_id", "affected", "batch_size", "decision_count":
+	case "monitor_version", "draft_version", "source_version", "subscription_version", "config_version", "revision", "rule_count", "source_count", "compiled_profile_id", "intent_revision_id", "affected", "batch_size", "decision_count", "key_version", "rotated_count", "remaining_count":
 		switch value.(type) {
 		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 			return true
@@ -245,7 +247,7 @@ func validActorType(value string) bool {
 }
 
 func validResourceType(value string) bool {
-	return value == "monitor" || value == "source_connection" || value == "rights_policy" || value == "rights_decision_batch" ||
+	return value == "monitor" || value == "source_connection" || value == "source_credential_keyring" || value == "rights_policy" || value == "rights_decision_batch" ||
 		value == "metric_capability_profile" || value == "report_subscription" || value == "retention_policy" || value == "river_job" || value == "knowledge_document" || value == "collection_run" || value == "report" || value == "request_boundary"
 }
 

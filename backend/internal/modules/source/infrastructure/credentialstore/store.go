@@ -18,6 +18,15 @@ type Store struct {
 	cipher  *Cipher
 }
 
+type RotationBatchResult struct {
+	CurrentVersion int
+	Scanned        int
+	Rotated        int
+	Remaining      int64
+}
+
+var ErrRotationTransactionRequired = errors.New("source credential rotation requires a caller transaction")
+
 var _ domain.ManagedCredentialStore = (*Store)(nil)
 
 // NewStore deliberately permits an empty key so existing env-backed sources
@@ -110,4 +119,81 @@ WHERE source_connection_id = $1`, sourceID).Scan(&sealed.KeyVersion, &sealed.Non
 		return "", sharedrepository.ErrUnavailable
 	}
 	return string(plaintext), nil
+}
+
+// RotateBatch re-encrypts one bounded, locked batch with the current key. The
+// caller owns the transaction so the credential updates and sanitized audit
+// record can commit or roll back together.
+func (store *Store) RotateBatch(ctx context.Context, actorID int64, batchSize int) (RotationBatchResult, error) {
+	if store == nil || store.runtime == nil || store.cipher == nil {
+		return RotationBatchResult{}, sharedrepository.ErrUnavailable
+	}
+	if actorID <= 0 || batchSize < 1 || batchSize > 1000 {
+		return RotationBatchResult{}, sharedrepository.ErrInvalidInput
+	}
+	transaction, found := database.TransactionFromContext(ctx)
+	if !found {
+		return RotationBatchResult{}, ErrRotationTransactionRequired
+	}
+	currentVersion := store.cipher.currentVersion
+	rows, err := transaction.SQL.QueryContext(ctx, `
+SELECT source_connection_id, key_version, nonce, ciphertext
+FROM source_credentials
+WHERE key_version <> $1
+ORDER BY id
+LIMIT $2
+FOR UPDATE`, currentVersion, batchSize)
+	if err != nil {
+		return RotationBatchResult{}, databaserepository.MapError(err)
+	}
+	type candidate struct {
+		sourceID int64
+		sealed   SealedCredential
+	}
+	candidates := make([]candidate, 0, batchSize)
+	for rows.Next() {
+		var item candidate
+		if err := rows.Scan(&item.sourceID, &item.sealed.KeyVersion, &item.sealed.Nonce, &item.sealed.Ciphertext); err != nil {
+			_ = rows.Close()
+			return RotationBatchResult{}, databaserepository.MapError(err)
+		}
+		candidates = append(candidates, item)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return RotationBatchResult{}, databaserepository.MapError(err)
+	}
+	if err := rows.Close(); err != nil {
+		return RotationBatchResult{}, databaserepository.MapError(err)
+	}
+
+	result := RotationBatchResult{CurrentVersion: currentVersion, Scanned: len(candidates)}
+	for _, item := range candidates {
+		plaintext, err := store.cipher.Decrypt(item.sourceID, item.sealed)
+		if err != nil || len(plaintext) == 0 {
+			return RotationBatchResult{}, fmt.Errorf("%w: source credential rotation authentication failed", sharedrepository.ErrUnavailable)
+		}
+		rotated, encryptErr := store.cipher.Encrypt(item.sourceID, plaintext)
+		clear(plaintext)
+		if encryptErr != nil {
+			return RotationBatchResult{}, fmt.Errorf("%w: source credential rotation encryption failed", sharedrepository.ErrUnavailable)
+		}
+		updateResult, err := transaction.SQL.ExecContext(ctx, `
+UPDATE source_credentials
+SET key_version = $1, nonce = $2, ciphertext = $3, updated_by = $4, updated_at = now()
+WHERE source_connection_id = $5 AND key_version = $6`,
+			rotated.KeyVersion, rotated.Nonce, rotated.Ciphertext, actorID, item.sourceID, item.sealed.KeyVersion)
+		if err != nil {
+			return RotationBatchResult{}, databaserepository.MapError(err)
+		}
+		affected, err := updateResult.RowsAffected()
+		if err != nil || affected != 1 {
+			return RotationBatchResult{}, fmt.Errorf("%w: source credential rotation changed unexpectedly", sharedrepository.ErrConflict)
+		}
+		result.Rotated++
+	}
+	if err := transaction.SQL.QueryRowContext(ctx, `SELECT count(*) FROM source_credentials WHERE key_version <> $1`, currentVersion).Scan(&result.Remaining); err != nil {
+		return RotationBatchResult{}, databaserepository.MapError(err)
+	}
+	return result, nil
 }

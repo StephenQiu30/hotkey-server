@@ -50,6 +50,7 @@ describe("Docker Compose environment configuration", () => {
       expect(compose).toContain("condition: service_healthy");
       expect(compose).toContain("fetch('http://127.0.0.1:3000/')");
       expect(compose).toContain("HOTKEY_CORS_ALLOWED_ORIGINS:");
+      expect(compose).toContain("HOTKEY_AGENT_PREVIOUS_AUTH_TOKENS:");
     }
     expect(baseCompose).toContain(
       "http://localhost:8010,http://127.0.0.1:8010",
@@ -75,6 +76,19 @@ describe("Docker Compose environment configuration", () => {
     expect(envExample).toContain("# WEB_PORT=8010");
     expect(prodExample).toContain("# WEB_PORT=8010");
     expect(prodExample).toContain("HOTKEY_JWT_SECRET=");
+    for (const setting of [
+      "HOTKEY_JWT_KEY_ID=jwt-v1",
+      "HOTKEY_JWT_PREVIOUS_KEY_ID=",
+      "HOTKEY_JWT_PREVIOUS_SECRET=",
+      "HOTKEY_VERIFICATION_HMAC_PREVIOUS_SECRET=",
+      "HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY_VERSION=1",
+      "HOTKEY_SOURCE_CREDENTIAL_PREVIOUS_MASTER_KEY=",
+      "HOTKEY_SOURCE_CREDENTIAL_PREVIOUS_MASTER_KEY_VERSION=",
+      "HOTKEY_AGENT_PREVIOUS_AUTH_TOKENS=",
+    ]) {
+      expect(prodExample).toContain(setting);
+    }
+    expect(envExample).toContain("HOTKEY_AGENT_PREVIOUS_AUTH_TOKENS=");
   });
 
   it("documents the direct Docker Compose production command", () => {

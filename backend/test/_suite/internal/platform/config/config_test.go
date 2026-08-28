@@ -284,6 +284,26 @@ func TestLoadUsesExplicitSecretRotationConfiguration(t *testing.T) {
 	}
 }
 
+func TestEnvironmentExampleDocumentsSecretRotationWindow(t *testing.T) {
+	example, err := os.ReadFile(filepath.Join("..", "..", "..", ".env.example"))
+	if err != nil {
+		t.Fatalf("read .env.example: %v", err)
+	}
+	for _, setting := range []string{
+		"HOTKEY_JWT_KEY_ID=jwt-v1",
+		"HOTKEY_JWT_PREVIOUS_KEY_ID=",
+		"HOTKEY_JWT_PREVIOUS_SECRET=",
+		"HOTKEY_VERIFICATION_HMAC_PREVIOUS_SECRET=",
+		"HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY_VERSION=1",
+		"HOTKEY_SOURCE_CREDENTIAL_PREVIOUS_MASTER_KEY=",
+		"HOTKEY_SOURCE_CREDENTIAL_PREVIOUS_MASTER_KEY_VERSION=",
+	} {
+		if !strings.Contains(string(example), setting) {
+			t.Errorf(".env.example does not document %q", setting)
+		}
+	}
+}
+
 func TestValidateRejectsAmbiguousSecretRotationConfigurationWithoutLeakingSecrets(t *testing.T) {
 	current := strings.Repeat("current-sensitive-", 3)
 	previous := strings.Repeat("previous-sensitive-", 3)
