@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"reflect"
 	"strings"
@@ -182,6 +184,30 @@ func TestUpdateVaultDocumentPreservesHumanRegionByteForByte(t *testing.T) {
 	})
 	if err != nil || repeated != updated {
 		t.Fatalf("idempotent update = %q/%v", repeated, err)
+	}
+}
+
+func TestVaultHumanRegionSHA256HashesOnlyTheValidatedHumanBytes(t *testing.T) {
+	content, err := RenderVaultDocument(VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 1, Type: DocumentReport, SourceID: 91,
+		Title: "日报", Generated: "generated facts",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	human := HumanRegionBegin + "\n人工笔记  \n" + HumanRegionEnd
+	content = strings.Replace(content, HumanRegionBegin+"\n"+HumanRegionEnd, human, 1)
+	digest := sha256.Sum256([]byte(human))
+
+	actual, err := VaultHumanRegionSHA256(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual != hex.EncodeToString(digest[:]) {
+		t.Fatalf("human digest=%q", actual)
+	}
+	if _, err := VaultHumanRegionSHA256(strings.Replace(content, HumanRegionEnd, "", 1)); err == nil {
+		t.Fatal("malformed human region must be rejected")
 	}
 }
 

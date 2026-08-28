@@ -40,6 +40,25 @@ type VaultRecoveryResult struct {
 	Restored    bool
 }
 
+// VaultRecoveryInspection is the body-free preflight consumed by isolated
+// recovery orchestration. HumanRegionSHA256 proves which exact human bytes
+// will survive without exposing those bytes or a host path.
+type VaultRecoveryInspection struct {
+	DocumentID        int64
+	RevisionNo        int64
+	ContentHash       string
+	HumanRegionSHA256 string
+	Source            domain.VaultRecoverySource
+	Missing           bool
+}
+
+type preparedVaultRecovery struct {
+	inspection VaultRecoveryInspection
+	kind       string
+	key        string
+	content    string
+}
+
 type VaultRecoveryService struct {
 	facts    VaultRebuildFactReader
 	vault    Vault
@@ -61,65 +80,91 @@ func NewVaultRecoveryService(facts VaultRebuildFactReader, vault Vault, revision
 // identity disagreement stops for Proposal/Reconciliation instead of reading
 // an older copy and overwriting it.
 func (service *VaultRecoveryService) Recover(ctx context.Context, documentID int64) (VaultRecoveryResult, error) {
+	prepared, err := service.prepare(ctx, documentID)
+	if err != nil {
+		return VaultRecoveryResult{}, err
+	}
+	result := VaultRecoveryResult{
+		DocumentID: prepared.inspection.DocumentID, RevisionNo: prepared.inspection.RevisionNo,
+		ContentHash: prepared.inspection.ContentHash, Source: prepared.inspection.Source,
+	}
+	if !prepared.inspection.Missing {
+		return result, nil
+	}
+	receipt, err := service.vault.CompareAndSwap(prepared.kind, prepared.key, domain.HashContent("", ""), prepared.content)
+	if err != nil {
+		return VaultRecoveryResult{}, service.rejected(ctx, prepared.inspection.DocumentID, err)
+	}
+	if receipt != prepared.inspection.ContentHash {
+		return VaultRecoveryResult{}, sharedrepository.ErrUnavailable
+	}
+	result.Restored = true
+	return result, nil
+}
+
+// Inspect verifies the same protected source chain as Recover but never
+// writes. It is safe for dry-run planning and recovery catalog fencing.
+func (service *VaultRecoveryService) Inspect(ctx context.Context, documentID int64) (VaultRecoveryInspection, error) {
+	prepared, err := service.prepare(ctx, documentID)
+	if err != nil {
+		return VaultRecoveryInspection{}, err
+	}
+	return prepared.inspection, nil
+}
+
+func (service *VaultRecoveryService) prepare(ctx context.Context, documentID int64) (preparedVaultRecovery, error) {
 	if service == nil || service.facts == nil || service.vault == nil || documentID <= 0 {
-		return VaultRecoveryResult{}, sharedrepository.ErrInvalidInput
+		return preparedVaultRecovery{}, sharedrepository.ErrInvalidInput
 	}
 	fact, err := service.facts.LoadVaultRebuildFact(ctx, documentID)
 	if err != nil {
-		return VaultRecoveryResult{}, classifyVaultRecoveryConflict(err)
+		return preparedVaultRecovery{}, classifyVaultRecoveryConflict(err)
 	}
 	if err := validateVaultRebuildFact(fact, documentID); err != nil {
-		return VaultRecoveryResult{}, err
+		return preparedVaultRecovery{}, err
 	}
 	kind, key, err := documentPathParts(fact.Document)
 	if err != nil {
-		return VaultRecoveryResult{}, service.rejected(ctx, fact.Document.ID, err)
+		return preparedVaultRecovery{}, service.rejected(ctx, fact.Document.ID, err)
 	}
 
 	sources := domain.VaultRecoverySources{ExpectedHash: fact.Document.ContentHash}
 	current, _, readErr := service.vault.Read(kind, key)
 	missing := isMissing(readErr)
 	if readErr != nil && !missing {
-		return VaultRecoveryResult{}, service.rejected(ctx, fact.Document.ID, readErr)
+		return preparedVaultRecovery{}, service.rejected(ctx, fact.Document.ID, readErr)
 	}
 	if !missing {
 		sources.Current = string(current)
 	} else {
 		sources.Revision, err = service.readRevision(ctx, fact.SnapshotObjectKey)
 		if err != nil {
-			return VaultRecoveryResult{}, err
+			return preparedVaultRecovery{}, err
 		}
 		if sources.Revision == "" {
 			sources.Backup, err = service.readBackup(ctx, fact.Document)
 			if err != nil {
-				return VaultRecoveryResult{}, err
+				return preparedVaultRecovery{}, err
 			}
 		}
 	}
 
 	recovered, err := domain.RecoverVaultDocument(sources, fact.RenderInput)
 	if err != nil {
-		return VaultRecoveryResult{}, service.rejected(ctx, fact.Document.ID, err)
+		return preparedVaultRecovery{}, service.rejected(ctx, fact.Document.ID, err)
 	}
 	if domain.HashContent("", recovered.Content) != fact.Document.ContentHash {
-		return VaultRecoveryResult{}, classifyVaultRecoveryConflict(fmt.Errorf("%w: recovered bytes do not match current projection", domain.ErrVaultConflict))
+		return preparedVaultRecovery{}, classifyVaultRecoveryConflict(fmt.Errorf("%w: recovered bytes do not match current projection", domain.ErrVaultConflict))
 	}
-	result := VaultRecoveryResult{
-		DocumentID: fact.Document.ID, RevisionNo: fact.Document.RevisionNo,
-		ContentHash: fact.Document.ContentHash, Source: recovered.Source,
-	}
-	if !missing {
-		return result, nil
-	}
-	receipt, err := service.vault.CompareAndSwap(kind, key, domain.HashContent("", ""), recovered.Content)
+	humanSHA256, err := domain.VaultHumanRegionSHA256(recovered.Content)
 	if err != nil {
-		return VaultRecoveryResult{}, service.rejected(ctx, fact.Document.ID, err)
+		return preparedVaultRecovery{}, service.rejected(ctx, fact.Document.ID, err)
 	}
-	if receipt != fact.Document.ContentHash {
-		return VaultRecoveryResult{}, sharedrepository.ErrUnavailable
-	}
-	result.Restored = true
-	return result, nil
+	return preparedVaultRecovery{inspection: VaultRecoveryInspection{
+		DocumentID: fact.Document.ID, RevisionNo: fact.Document.RevisionNo,
+		ContentHash: fact.Document.ContentHash, HumanRegionSHA256: humanSHA256,
+		Source: recovered.Source, Missing: missing,
+	}, kind: kind, key: key, content: recovered.Content}, nil
 }
 
 func (service *VaultRecoveryService) rejected(ctx context.Context, documentID int64, err error) error {

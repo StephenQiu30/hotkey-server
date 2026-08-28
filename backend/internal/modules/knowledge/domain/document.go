@@ -270,6 +270,22 @@ func RecoverVaultDocument(sources VaultRecoverySources, input VaultDocumentRende
 	return VaultRecoveryResult{}, ErrVaultHumanRegionUnavailable
 }
 
+// VaultHumanRegionSHA256 returns a non-reversible recovery invariant for the
+// exact validated human-maintained region, including its boundary markers and
+// whitespace. Callers can prove that a rebuild preserved human bytes without
+// putting those bytes or an absolute Vault path into logs or evidence files.
+func VaultHumanRegionSHA256(content string) (string, error) {
+	if err := ValidateVaultMarkdown(content); err != nil {
+		return "", err
+	}
+	_, human, err := parseVaultDocument(content)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256([]byte(human))
+	return hex.EncodeToString(digest[:]), nil
+}
+
 type vaultDocumentIdentity struct {
 	documentID   int64
 	documentType DocumentType

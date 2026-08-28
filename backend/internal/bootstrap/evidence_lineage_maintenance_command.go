@@ -23,7 +23,7 @@ import (
 
 func runMaintenanceCommand(ctx context.Context, cfg config.Config, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("maintenance command is required: expected backfill-evidence-lineage, reconcile-evidence-lineage, or expire-raw-evidence")
+		return errors.New("maintenance command is required: expected backfill-evidence-lineage, reconcile-evidence-lineage, expire-raw-evidence, or recover-projections")
 	}
 	if output == nil {
 		return errors.New("maintenance output is required")
@@ -35,6 +35,8 @@ func runMaintenanceCommand(ctx context.Context, cfg config.Config, args []string
 		return runEvidenceLineageReconciliationCommand(ctx, cfg, args[1:], output)
 	case "expire-raw-evidence":
 		return runRawEvidenceRetentionCommand(ctx, cfg, args[1:], output)
+	case "recover-projections":
+		return runProjectionRecoveryCommand(ctx, cfg, args[1:], output)
 	default:
 		return fmt.Errorf("unknown maintenance command %q", args[0])
 	}

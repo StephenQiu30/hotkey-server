@@ -75,6 +75,27 @@ func TestVaultRecoveryRestoresMissingFileFromRevisionSnapshot(t *testing.T) {
 	}
 }
 
+func TestVaultRecoveryInspectionVerifiesProtectedHumanRegionWithoutWriting(t *testing.T) {
+	fact, protected := recoveryFact(t)
+	vault := &recoveryVaultFake{missing: true}
+	revision := &recoveryProtectedSourceFake{content: protected}
+	service := NewVaultRecoveryService(recoveryFactsFake{fact: fact}, vault, revision, nil)
+
+	result, err := service.Inspect(context.Background(), fact.Document.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedHumanSHA256, err := domain.VaultHumanRegionSHA256(protected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Missing || result.DocumentID != fact.Document.ID || result.RevisionNo != fact.Document.RevisionNo ||
+		result.ContentHash != fact.Document.ContentHash || result.HumanRegionSHA256 != expectedHumanSHA256 ||
+		result.Source != domain.VaultRecoveryRevision || vault.writes != 0 || revision.reads != 1 {
+		t.Fatalf("inspection=%+v vault=%+v revision=%+v", result, vault, revision)
+	}
+}
+
 func TestVaultRecoveryFallsBackToBackupOnlyWhenRevisionIsMissing(t *testing.T) {
 	fact, protected := recoveryFact(t)
 	vault := &recoveryVaultFake{missing: true}

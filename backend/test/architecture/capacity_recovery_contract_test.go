@@ -150,3 +150,59 @@ func TestCodexCapacityEvidenceKeepsSyntheticAndLiveApprovalSeparate(t *testing.T
 		t.Error("Codex candidate capacity must remain separate from the approved Python Agent baseline")
 	}
 }
+
+func TestM4ProjectionRecoveryKeepsFactsHumanRegionsAndAgentBoundary(t *testing.T) {
+	repository := filepath.Clean(filepath.Join(repositoryRoot(t), ".."))
+	contracts := map[string][]string{
+		"backend/db/schema.sql": {
+			"projection_recovery_runs",
+			"projection_recovery_runs_append_only",
+			"reject_projection_recovery_run_mutation",
+		},
+		"backend/internal/modules/operations/application/projection_recovery.go": {
+			"ProjectionRecoveryFactSnapshotDTO",
+			"VaultManualRegionFingerprintSHA256",
+			"ExpectedStartedClaimCount",
+			"ExpectedUnknownAttemptCount",
+			"ErrProjectionRecoveryIntegrity",
+		},
+		"backend/internal/modules/operations/infrastructure/postgres/projection_recovery_repository.go": {
+			"notification_outbox_events",
+			"notification_read_receipts",
+			"projection_recovery_runs",
+			"dispatch_started_at IS NULL",
+			"started_delivery_claim_requires_provider_reconciliation",
+			"queue.KindProjectKnowledge",
+			"queue.KindGenerateSourceDocument",
+		},
+		"backend/internal/modules/knowledge/application/recovery.go": {
+			"HumanRegionSHA256",
+			"func (service *VaultRecoveryService) Inspect",
+			"Inspect verifies the same protected source chain as Recover but never",
+		},
+		"backend/internal/bootstrap/projection_recovery_command.go": {
+			"--dry-run",
+			"confirm-isolated",
+			"production-egress-disabled",
+			"non-production configuration with SMTP disabled",
+		},
+		"docs/operations/002-备份恢复与重建.md": {
+			"maintenance recover-projections --dry-run",
+			"不可变恢复运行记录",
+			"started_delivery_claim_requires_provider_reconciliation",
+			"Python Agent 不参与恢复编排",
+		},
+	}
+	for relative, required := range contracts {
+		payload := readRepositoryFile(t, repository, relative)
+		for _, fragment := range required {
+			if !strings.Contains(payload, fragment) {
+				t.Errorf("%s is missing M4 projection recovery contract %q", relative, fragment)
+			}
+		}
+	}
+	plan := readRepositoryFile(t, repository, "docs/plans/004-通知报告知识投影与检索计划.md")
+	if !strings.Contains(plan, "- [ ] `CHK-004-G5-001`") {
+		t.Error("M4 recovery checklist was completed before an isolated end-to-end recovery run")
+	}
+}
