@@ -72,6 +72,7 @@ func accessLog(logger *zap.Logger, metrics *observability.Metrics) gin.HandlerFu
 		metrics.RecordHTTPRequest(c.Request.Method, route, status, duration)
 		logger.Info("HTTP request completed",
 			zap.String("request_id", RequestID(c)),
+			zap.String("trace_id", requestcontext.TraceID(c.Request.Context())),
 			zap.String("module", Module(c)),
 			zap.String("method", c.Request.Method),
 			zap.String("route", route),
@@ -91,6 +92,7 @@ func recovery(logger *zap.Logger, metrics *observability.Metrics) gin.HandlerFun
 			metrics.RecordPanic(route)
 			logger.Error("HTTP panic recovered",
 				zap.String("request_id", RequestID(c)),
+				zap.String("trace_id", requestcontext.TraceID(c.Request.Context())),
 				zap.String("module", Module(c)),
 				zap.String("route", route),
 				zap.ByteString("stack", debug.Stack()),

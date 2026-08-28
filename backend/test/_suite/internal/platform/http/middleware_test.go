@@ -208,6 +208,38 @@ func TestMiddlewareWritesRequestAndTraceIdentifiersToSharedContext(t *testing.T)
 	}
 }
 
+func TestAccessLogCarriesRequestAndTraceCorrelation(t *testing.T) {
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	exporter := tracetest.NewInMemoryExporter()
+	provider := trace.NewTracerProvider(trace.WithSyncer(exporter))
+	telemetry := &observability.Telemetry{TracerProvider: provider}
+	defer func() { _ = telemetry.Shutdown(context.Background()) }()
+	metrics, err := observability.NewMetrics()
+	if err != nil {
+		t.Fatalf("NewMetrics(): %v", err)
+	}
+	core, logs := observer.New(zap.InfoLevel)
+	router := NewRouter(ReadinessFunc(func(context.Context) error { return nil }), metrics, telemetry, zap.New(core), config.Default())
+	router.GET("/correlated", Wrap(func(c *gin.Context) error {
+		OK[any](c, nil)
+		return nil
+	}))
+
+	request := httptest.NewRequest(stdhttp.MethodGet, "/correlated", nil)
+	request.Header.Set("X-Request-ID", "correlated-request")
+	request.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	router.ServeHTTP(httptest.NewRecorder(), request)
+
+	entries := logs.FilterMessage("HTTP request completed").All()
+	if len(entries) != 1 {
+		t.Fatalf("access log count = %d, want 1", len(entries))
+	}
+	fields := entries[0].ContextMap()
+	if fields["request_id"] != "correlated-request" || fields["trace_id"] != "4bf92f3577b34da6a3ce929d0e0e4736" {
+		t.Fatalf("correlation fields = %#v", fields)
+	}
+}
+
 func newTestRouter(t *testing.T, logger *zap.Logger, cfg config.Config) (*gin.Engine, *observability.Metrics, *observability.Telemetry) {
 	t.Helper()
 	metrics, err := observability.NewMetrics()

@@ -3,6 +3,7 @@ package observability
 import (
 	stdhttp "net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -80,16 +81,22 @@ func (metrics *Metrics) RegisterCollector(collector prometheus.Collector) error 
 }
 
 func (metrics *Metrics) RecordHTTPRequest(method, route string, status int, duration time.Duration) {
-	labels := []string{method, route, strconv.Itoa(status)}
+	labels := []string{SafeHTTPMethod(method), SafeHTTPRoute(route), SafeHTTPStatus(status)}
 	metrics.httpRequests.WithLabelValues(labels...).Inc()
 	metrics.httpDuration.WithLabelValues(labels...).Observe(duration.Seconds())
 }
 
 func (metrics *Metrics) RecordPanic(route string) {
-	metrics.httpPanics.WithLabelValues(route).Inc()
+	metrics.httpPanics.WithLabelValues(SafeHTTPRoute(route)).Inc()
 }
 
 func (metrics *Metrics) SetDependencyHealth(dependency string, healthy float64) {
+	if !allowedDependencyLabels[dependency] {
+		dependency = "unknown"
+	}
+	if healthy != 1 {
+		healthy = 0
+	}
 	metrics.dependencyHealth.WithLabelValues(dependency).Set(healthy)
 }
 
@@ -97,11 +104,91 @@ func (metrics *Metrics) SetDependencyHealth(dependency string, healthy float64) 
 // low-cardinality labels. Callers must never supply source IDs, query text,
 // endpoint values or arbitrary upstream diagnostics.
 func (metrics *Metrics) RecordCollectionOperation(operation, outcome string) {
-	metrics.collectionOps.WithLabelValues(operation, outcome).Inc()
+	metrics.collectionOps.WithLabelValues(
+		boundedLabel(operation, allowedCollectionOperations),
+		boundedLabel(outcome, allowedCollectionOutcomes),
+	).Inc()
 }
 
 // RecordContentQuery accepts only stable operation/outcome labels. Content
 // IDs, source names, URL fragments and error text are deliberately excluded.
 func (metrics *Metrics) RecordContentQuery(operation, outcome string) {
-	metrics.contentQueries.WithLabelValues(operation, outcome).Inc()
+	metrics.contentQueries.WithLabelValues(
+		boundedLabel(operation, allowedContentQueryOperations),
+		boundedLabel(outcome, allowedContentQueryOutcomes),
+	).Inc()
+}
+
+var allowedAPIRouteFamilies = map[string]bool{
+	"ai": true, "auth": true, "capabilities": true, "collection-runs": true,
+	"content-lineage-decisions": true, "contents": true, "document-versions": true,
+	"hotspots": true, "knowledge": true, "metric-capability-profiles": true,
+	"micro-events": true, "monitors": true, "notifications": true, "operations": true,
+	"reports": true, "search": true, "source-connections": true, "source-endpoints": true,
+	"source-presets": true, "source-webhooks": true, "users": true,
+}
+
+var allowedDependencyLabels = map[string]bool{
+	"runtime": true, "database": true, "redis": true, "minio": true, "vault": true,
+	"worker": true, "agent": true, "codex": true, "smtp": true,
+}
+
+var allowedCollectionOperations = map[string]bool{"list": true, "manual": true, "retry": true, "health": true}
+var allowedCollectionOutcomes = map[string]bool{"success": true, "error": true, "healthy": true, "unhealthy": true}
+var allowedContentQueryOperations = map[string]bool{
+	"list_active": true, "get_active": true, "get_document": true, "delete_active": true,
+}
+var allowedContentQueryOutcomes = map[string]bool{
+	"success": true, "invalid": true, "not_found": true, "unavailable": true, "error": true,
+}
+
+// SafeHTTPMethod collapses arbitrary request methods before they reach a
+// searchable log field or Prometheus label.
+func SafeHTTPMethod(method string) string {
+	switch method {
+	case stdhttp.MethodGet, stdhttp.MethodPost, stdhttp.MethodPut, stdhttp.MethodPatch,
+		stdhttp.MethodDelete, stdhttp.MethodOptions, stdhttp.MethodHead:
+		return method
+	default:
+		return "OTHER"
+	}
+}
+
+// SafeHTTPRoute returns a finite API family instead of a concrete URL, path
+// parameter, query string or unmatched user-controlled path.
+func SafeHTTPRoute(route string) string {
+	if strings.Contains(route, "://") {
+		return "unmatched"
+	}
+	if boundary := strings.IndexAny(route, "?#"); boundary >= 0 {
+		route = route[:boundary]
+	}
+	switch route {
+	case "/healthz", "/readyz", "/metrics", "/openapi.json", "/docs", "/docs/*any":
+		return "/platform"
+	}
+	const prefix = "/api/v1/"
+	if !strings.HasPrefix(route, prefix) {
+		return "unmatched"
+	}
+	family := strings.SplitN(strings.TrimPrefix(route, prefix), "/", 2)[0]
+	if !allowedAPIRouteFamilies[family] {
+		return "/api/v1/other"
+	}
+	return prefix + family
+}
+
+// SafeHTTPStatus converts the finite HTTP status space to a stable string.
+func SafeHTTPStatus(status int) string {
+	if status < 100 || status > 599 {
+		return "other"
+	}
+	return strconv.Itoa(status)
+}
+
+func boundedLabel(value string, allowed map[string]bool) string {
+	if allowed[value] {
+		return value
+	}
+	return "unknown"
 }

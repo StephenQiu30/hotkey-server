@@ -1,0 +1,14 @@
+{
+  "version": "observability-cardinality-v1",
+  "unique_values": 1000,
+  "large_value_bytes": 4096,
+  "classes": [
+    "url",
+    "email",
+    "body",
+    "prompt",
+    "payload",
+    "dynamic_field",
+    "oversized_value"
+  ]
+}
