@@ -17,6 +17,9 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 			`codec.Seal("relevance_match_list"`, `codec.Open(raw, "relevance_match_list"`,
 			`codec.Seal("relevance_suggestion_list"`, `codec.Open(raw, "relevance_suggestion_list"`,
 		},
+		"internal/modules/ingestion/infrastructure/postgres/repository.go": {
+			"NewContentRepositoryWithCursorCodec", `cursorCodec.Seal("content_list"`, `cursorCodec.Open(query.Cursor, "content_list"`,
+		},
 		"internal/modules/report/infrastructure/postgres/repository.go": {
 			"NewRepositoryWithCursorCodec", `cursorCodec.Decode(query.Cursor, "id", true, reportListFingerprint(query))`,
 			`cursorCodec.Encode("id", true, reportListFingerprint(query)`,
@@ -34,7 +37,7 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 			"hmac.Equal", "ErrExpiredCursor", "ErrStaleCursor", "maximumEncodedCursorSize",
 		},
 		"internal/bootstrap/pagination.go": {
-			"pagination.NewCodec", "NewRepositoryWithCursorCodec", "NewMicroEventQueryPostgresRepositoryWithCursorCodec", "newReportRepository", "newJobRepository", "newGovernanceRepository",
+			"pagination.NewCodec", "NewRepositoryWithCursorCodec", "NewMicroEventQueryPostgresRepositoryWithCursorCodec", "newContentRepository", "newReportRepository", "newJobRepository", "newGovernanceRepository",
 		},
 	}
 	for relative, required := range contracts {

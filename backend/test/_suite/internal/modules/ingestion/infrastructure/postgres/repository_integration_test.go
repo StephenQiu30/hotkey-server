@@ -14,6 +14,7 @@ import (
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/postgres"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
@@ -298,6 +299,98 @@ func TestContentRepositoryListsOnlyActiveContentWithPublishedCursor(t *testing.T
 	}
 	if got := []string{first.Items[0].ExternalID, first.Items[1].ExternalID, second.Items[0].ExternalID, second.Items[1].ExternalID, third.Items[0].ExternalID}; strings.Join(got, ",") != "newest,middle,oldest,unknown-second,unknown-first" {
 		t.Fatalf("published order = %v, want known times then stable unknown-time IDs", got)
+	}
+}
+
+func TestContentCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentChanges(t *testing.T) {
+	runtime := openContentRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	codec, err := pagination.NewCodec(strings.Repeat("content-cursor-secret-", 2), time.Minute)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(): %v", err)
+	}
+	repository := ingestionpostgres.NewContentRepositoryWithCursorCodec(runtime, codec)
+	sourceID := createContentSource(t, runtime, "snapshot-cursor")
+	base := time.Date(2026, time.August, 29, 9, 0, 0, 0, time.UTC)
+	contents := make(map[string]ingestiondomain.Content, 4)
+	for _, fixture := range []struct {
+		externalID string
+		likes      int64
+	}{
+		{externalID: "highest", likes: 1_000},
+		{externalID: "boundary", likes: 100},
+		{externalID: "remaining-first", likes: 10},
+		{externalID: "remaining-second", likes: 10},
+	} {
+		input := normalizedContent(sourceID, fixture.externalID, base)
+		input.Metrics.LikeCount = sourcedomain.KnownMetric(fixture.likes)
+		stored, _, err := repository.Upsert(context.Background(), input, activeDecision())
+		if err != nil {
+			t.Fatalf("Upsert(%s): %v", fixture.externalID, err)
+		}
+		contents[fixture.externalID] = stored
+	}
+
+	query := ingestiondomain.ContentListQuery{Limit: 2, Sort: ingestiondomain.ContentSortHeat}
+	first, err := repository.ListActive(context.Background(), query)
+	if err != nil || len(first.Items) != 2 || first.NextCursor == "" {
+		t.Fatalf("ListActive(first) page/error = %#v/%v", first, err)
+	}
+	if got := []string{first.Items[0].ExternalID, first.Items[1].ExternalID}; strings.Join(got, ",") != "highest,boundary" {
+		t.Fatalf("first heat page = %v", got)
+	}
+	if strings.Count(first.NextCursor, ".") != 1 {
+		t.Fatalf("next cursor is not an opaque signed value: %q", first.NextCursor)
+	}
+
+	concurrent := normalizedContent(sourceID, "concurrent", base)
+	concurrent.Metrics.LikeCount = sourcedomain.KnownMetric(50)
+	if _, _, err := repository.Upsert(context.Background(), concurrent, activeDecision()); err != nil {
+		t.Fatalf("Upsert(concurrent): %v", err)
+	}
+	if err := repository.AppendMetricSnapshot(context.Background(), contents["boundary"].ID, base.Add(time.Minute), sourcedomain.SourceMetrics{
+		ViewCount: sourcedomain.KnownMetric(0), LikeCount: sourcedomain.KnownMetric(0),
+	}); err != nil {
+		t.Fatalf("AppendMetricSnapshot(boundary): %v", err)
+	}
+
+	query.Cursor = first.NextCursor
+	second, err := repository.ListActive(context.Background(), query)
+	if err != nil || len(second.Items) != 2 || second.NextCursor != "" {
+		t.Fatalf("ListActive(second) page/error = %#v/%v", second, err)
+	}
+	if got := []string{second.Items[0].ExternalID, second.Items[1].ExternalID}; strings.Join(got, ",") != "remaining-second,remaining-first" {
+		t.Fatalf("snapshot-stable second heat page = %v", got)
+	}
+
+	tampered := first.NextCursor[:len(first.NextCursor)-1] + "A"
+	if strings.HasSuffix(first.NextCursor, "A") {
+		tampered = first.NextCursor[:len(first.NextCursor)-1] + "B"
+	}
+	query.Cursor = tampered
+	if _, err := repository.ListActive(context.Background(), query); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("tampered cursor error = %v, want invalid input", err)
+	}
+	query.Cursor = first.NextCursor
+	query.Sort = ingestiondomain.ContentSortDiscovered
+	if _, err := repository.ListActive(context.Background(), query); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("cross-sort cursor error = %v, want invalid input", err)
+	}
+
+	shortCodec, err := pagination.NewCodec(strings.Repeat("short-content-secret-", 2), time.Millisecond)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(short): %v", err)
+	}
+	shortRepository := ingestionpostgres.NewContentRepositoryWithCursorCodec(runtime, shortCodec)
+	expiring, err := shortRepository.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 2, Sort: ingestiondomain.ContentSortHeat})
+	if err != nil || expiring.NextCursor == "" {
+		t.Fatalf("ListActive(expiring) page/error = %#v/%v", expiring, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := shortRepository.ListActive(context.Background(), ingestiondomain.ContentListQuery{
+		Limit: 2, Sort: ingestiondomain.ContentSortHeat, Cursor: expiring.NextCursor,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired cursor error = %v, want invalid input", err)
 	}
 }
 

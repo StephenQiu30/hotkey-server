@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"time"
@@ -18,9 +19,22 @@ import (
 )
 
 const (
-	contentListDefaultLimit = 50
-	contentListMaximumLimit = 200
+	contentListDefaultLimit  = 50
+	contentListMaximumLimit  = 200
+	contentListCursorVersion = 1
 )
+
+type contentListCursor struct {
+	Version           int       `json:"v"`
+	Sort              string    `json:"sort"`
+	FilterFingerprint string    `json:"filter"`
+	AsOf              time.Time `json:"as_of"`
+	ID                int64     `json:"id"`
+	HasTimestamp      bool      `json:"has_timestamp,omitempty"`
+	Timestamp         time.Time `json:"timestamp,omitempty"`
+	HasScore          bool      `json:"has_score,omitempty"`
+	Score             float64   `json:"score,omitempty"`
+}
 
 // ContentRepository owns ingestion's Content, source-author, asset and
 // metric-snapshot facts. Source collection state is deliberately outside this
@@ -350,23 +364,25 @@ func (repository *ContentRepository) ListActive(ctx context.Context, query inges
 	if !repository.available() {
 		return ingestiondomain.ContentPage{}, sharedrepository.ErrUnavailable
 	}
-	query, cursorID, fingerprint, err := repository.contentListParameters(query)
+	query, cursor, err := repository.contentListParameters(ctx, query)
 	if err != nil {
 		return ingestiondomain.ContentPage{}, err
 	}
-	statement, arguments := contentListStatement(query, cursorID)
+	statement, arguments := contentListStatement(query, cursor)
 	rows, err := repository.queryRows(ctx, statement, arguments...)
 	if err != nil {
 		return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 	page := ingestiondomain.ContentPage{Items: make([]ingestiondomain.Content, 0, query.Limit+1)}
+	boundaries := make([]contentListBoundary, 0, query.Limit+1)
 	for rows.Next() {
-		content, err := scanContentSearch(rows)
+		content, boundary, err := scanContentList(rows)
 		if err != nil {
 			return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 		}
 		page.Items = append(page.Items, content)
+		boundaries = append(boundaries, boundary)
 	}
 	if err := rows.Err(); err != nil {
 		return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
@@ -376,7 +392,12 @@ func (repository *ContentRepository) ListActive(ctx context.Context, query inges
 	}
 	if len(page.Items) > query.Limit {
 		page.Items = page.Items[:query.Limit]
-		page.NextCursor, err = repository.cursorCodec.Encode(string(query.Sort), true, fingerprint, page.Items[len(page.Items)-1].ID)
+		boundary := boundaries[query.Limit-1]
+		nextCursor, err := nextContentListCursor(cursor, page.Items[len(page.Items)-1].ID, boundary)
+		if err != nil {
+			return ingestiondomain.ContentPage{}, fmt.Errorf("%w: content cursor boundary: %v", sharedrepository.ErrConstraint, err)
+		}
+		page.NextCursor, err = repository.cursorCodec.Seal("content_list", nextCursor)
 		if err != nil {
 			return ingestiondomain.ContentPage{}, fmt.Errorf("%w: encode content cursor: %v", sharedrepository.ErrInvalidInput, err)
 		}
@@ -603,26 +624,30 @@ func (repository *ContentRepository) queryRow(ctx context.Context, query string,
 }
 
 func (repository *ContentRepository) available() bool {
-	return repository != nil && repository.runtime != nil && repository.runtime.SQL != nil
+	return repository != nil && repository.runtime != nil && repository.runtime.SQL != nil && repository.cursorCodec != nil
 }
 
-func (repository *ContentRepository) contentListParameters(query ingestiondomain.ContentListQuery) (ingestiondomain.ContentListQuery, int64, string, error) {
+func (repository *ContentRepository) contentListParameters(ctx context.Context, query ingestiondomain.ContentListQuery) (ingestiondomain.ContentListQuery, contentListCursor, error) {
 	query = query.Normalized()
 	if query.Limit == 0 {
 		query.Limit = contentListDefaultLimit
 	}
 	if query.Limit > contentListMaximumLimit || query.Validate() != nil {
-		return ingestiondomain.ContentListQuery{}, 0, "", fmt.Errorf("%w: invalid content list query", sharedrepository.ErrInvalidInput)
+		return ingestiondomain.ContentListQuery{}, contentListCursor{}, fmt.Errorf("%w: invalid content list query", sharedrepository.ErrInvalidInput)
 	}
 	fingerprint, err := query.ShapeFingerprint()
 	if err != nil {
-		return ingestiondomain.ContentListQuery{}, 0, "", fmt.Errorf("%w: content shape: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestiondomain.ContentListQuery{}, contentListCursor{}, fmt.Errorf("%w: content shape: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	cursor, err := repository.cursorCodec.Decode(query.Cursor, string(query.Sort), true, fingerprint)
-	if err != nil {
-		return ingestiondomain.ContentListQuery{}, 0, "", fmt.Errorf("%w: content cursor: %v", sharedrepository.ErrInvalidInput, err)
+	cursor := contentListCursor{Version: contentListCursorVersion, Sort: string(query.Sort), FilterFingerprint: fingerprint}
+	if query.Cursor != "" {
+		if err := repository.cursorCodec.Open(query.Cursor, "content_list", &cursor); err != nil || !validContentListCursor(cursor, query, fingerprint) {
+			return ingestiondomain.ContentListQuery{}, contentListCursor{}, fmt.Errorf("%w: invalid content cursor", sharedrepository.ErrInvalidInput)
+		}
+	} else if err := repository.queryRow(ctx, `SELECT CURRENT_TIMESTAMP`).Scan(&cursor.AsOf); err != nil {
+		return ingestiondomain.ContentListQuery{}, contentListCursor{}, databaserepository.MapError(err)
 	}
-	return query, cursor.ID, fingerprint, nil
+	return query, cursor, nil
 }
 
 type contentSQLBuilder struct{ arguments []any }
@@ -632,14 +657,15 @@ func (builder *contentSQLBuilder) bind(value any) string {
 	return fmt.Sprintf("$%d", len(builder.arguments))
 }
 
-func contentListStatement(query ingestiondomain.ContentListQuery, cursorID int64) (string, []any) {
+func contentListStatement(query ingestiondomain.ContentListQuery, cursor contentListCursor) (string, []any) {
 	builder := &contentSQLBuilder{}
 	monitorID := int64(0)
 	if query.MonitorID != nil {
 		monitorID = *query.MonitorID
 	}
 	monitor := builder.bind(monitorID)
-	conditions := []string{"c.content_status = 'active'", "c.deleted_at IS NULL"}
+	asOf := builder.bind(cursor.AsOf.UTC())
+	conditions := []string{"c.content_status = 'active'", "c.deleted_at IS NULL", "c.created_at <= " + asOf}
 	if query.Keyword != "" {
 		conditions = append(conditions, "lower(c.title || ' ' || c.excerpt) LIKE "+builder.bind(contentSearchPattern(query.Keyword))+" ESCAPE '\\'")
 	}
@@ -658,51 +684,58 @@ func contentListStatement(query ingestiondomain.ContentListQuery, cursorID int64
 	if query.Decision != nil {
 		conditions = append(conditions, "latest_match.decision = "+builder.bind(string(*query.Decision)))
 	}
-	if cursorID > 0 {
-		cursor := builder.bind(cursorID)
+	if cursor.ID > 0 {
+		cursorID := builder.bind(cursor.ID)
 		switch query.Sort {
 		case ingestiondomain.ContentSortRelevance:
-			conditions = append(conditions, `(latest_match.final_score, c.id) < (
-    SELECT previous_match.final_score, previous.id
-    FROM contents AS previous
-    JOIN LATERAL (
-        SELECT match.final_score
-        FROM monitor_matches AS match
-        WHERE match.monitor_id = `+monitor+` AND match.content_id = previous.id
-        ORDER BY match.created_at DESC, match.id DESC
-        LIMIT 1
-    ) AS previous_match ON true
-    WHERE previous.id = `+cursor+`)`)
+			conditions = append(conditions, `(latest_match.final_score, c.id) < (`+builder.bind(cursor.Score)+`::numeric, `+cursorID+`)`)
 		case ingestiondomain.ContentSortDiscovered:
-			conditions = append(conditions, `(c.fetched_at, c.id) < (
-    SELECT previous.fetched_at, previous.id FROM contents AS previous WHERE previous.id = `+cursor+`)`)
+			conditions = append(conditions, `(`+contentFetchedAtSnapshotSQL()+`, c.id) < (`+builder.bind(cursor.Timestamp.UTC())+`::timestamptz, `+cursorID+`)`)
 		case ingestiondomain.ContentSortHeat, ingestiondomain.ContentSortImportance:
-			conditions = append(conditions, `(`+contentHeatSQL("c")+`, c.id) < (
-    SELECT `+contentHeatSQL("previous")+`, previous.id FROM contents AS previous WHERE previous.id = `+cursor+`)`)
+			conditions = append(conditions, `(`+contentHeatAtSnapshotSQL()+`, c.id) < (`+builder.bind(cursor.Score)+`::numeric, `+cursorID+`)`)
 		default:
-			conditions = append(conditions, `(COALESCE(c.published_at, '-infinity'::timestamptz), c.id) < (
-	SELECT COALESCE(previous.published_at, '-infinity'::timestamptz), previous.id FROM contents AS previous WHERE previous.id = `+cursor+`)`)
+			var timestamp any
+			if cursor.HasTimestamp {
+				timestamp = cursor.Timestamp.UTC()
+			}
+			conditions = append(conditions, `(COALESCE(c.published_at, '-infinity'::timestamptz), c.id) < (COALESCE(`+builder.bind(timestamp)+`::timestamptz, '-infinity'::timestamptz), `+cursorID+`)`)
 		}
 	}
 	orderBy := "COALESCE(c.published_at, '-infinity'::timestamptz) DESC, c.id DESC"
+	orderTimestamp := "c.published_at"
+	orderScore := "NULL::double precision"
 	switch query.Sort {
 	case ingestiondomain.ContentSortDiscovered:
-		orderBy = "c.fetched_at DESC, c.id DESC"
+		orderTimestamp = contentFetchedAtSnapshotSQL()
+		orderBy = orderTimestamp + " DESC, c.id DESC"
 	case ingestiondomain.ContentSortHeat, ingestiondomain.ContentSortImportance:
-		orderBy = contentHeatSQL("c") + " DESC, c.id DESC"
+		orderTimestamp = "NULL::timestamptz"
+		orderScore = contentHeatAtSnapshotSQL() + "::double precision"
+		orderBy = contentHeatAtSnapshotSQL() + " DESC, c.id DESC"
 	case ingestiondomain.ContentSortRelevance:
+		orderTimestamp = "NULL::timestamptz"
+		orderScore = "latest_match.final_score::double precision"
 		orderBy = "latest_match.final_score DESC, c.id DESC"
 	}
-	statement := `SELECT ` + contentColumns + `,
+	statement := `SELECT ` + contentListColumnsSQL() + `,
        archived_version.document_version_id,
-       latest_match.final_score::double precision, latest_match.decision
+       latest_match.final_score::double precision, latest_match.decision,
+       ` + orderTimestamp + `, ` + orderScore + `
 FROM contents AS c
 LEFT JOIN source_authors AS author ON author.id = c.author_id
+LEFT JOIN LATERAL (
+    SELECT metric.id, metric.captured_at, metric.view_count, metric.like_count, metric.comment_count, metric.share_count
+    FROM content_metric_snapshots AS metric
+    WHERE metric.content_id = c.id AND metric.created_at <= ` + asOf + `
+    ORDER BY metric.captured_at DESC, metric.id DESC
+    LIMIT 1
+) AS snapshot_metric ON true
 ` + activeContentDocumentVersionJoin + `
 LEFT JOIN LATERAL (
     SELECT match.content_id, match.final_score, match.decision
     FROM monitor_matches AS match
     WHERE ` + monitor + ` > 0 AND match.monitor_id = ` + monitor + ` AND match.content_id = c.id
+      AND match.created_at <= ` + asOf + `
     ORDER BY match.created_at DESC, match.id DESC
     LIMIT 1
 ) AS latest_match ON true
@@ -710,6 +743,63 @@ WHERE ` + strings.Join(conditions, " AND ") + `
 ORDER BY ` + orderBy + `
 LIMIT ` + builder.bind(query.Limit+1)
 	return statement, builder.arguments
+}
+
+func validContentListCursor(cursor contentListCursor, query ingestiondomain.ContentListQuery, fingerprint string) bool {
+	validTimestamp := !cursor.HasTimestamp && cursor.Timestamp.IsZero()
+	validScore := !cursor.HasScore && cursor.Score == 0
+	switch query.Sort {
+	case ingestiondomain.ContentSortLatest, ingestiondomain.ContentSortPublished:
+		validTimestamp = !cursor.HasTimestamp && cursor.Timestamp.IsZero() || cursor.HasTimestamp && !cursor.Timestamp.IsZero()
+	case ingestiondomain.ContentSortDiscovered:
+		validTimestamp = cursor.HasTimestamp && !cursor.Timestamp.IsZero()
+	case ingestiondomain.ContentSortHeat, ingestiondomain.ContentSortImportance, ingestiondomain.ContentSortRelevance:
+		validScore = cursor.HasScore && !math.IsNaN(cursor.Score) && !math.IsInf(cursor.Score, 0) && cursor.Score >= 0 && cursor.Score <= 100
+	}
+	return cursor.Version == contentListCursorVersion && cursor.Sort == string(query.Sort) &&
+		cursor.FilterFingerprint == fingerprint && !cursor.AsOf.IsZero() && cursor.ID > 0 && validTimestamp && validScore
+}
+
+func nextContentListCursor(base contentListCursor, contentID int64, boundary contentListBoundary) (contentListCursor, error) {
+	base.ID = contentID
+	base.HasTimestamp = boundary.timestamp.Valid
+	base.Timestamp = time.Time{}
+	if boundary.timestamp.Valid {
+		base.Timestamp = boundary.timestamp.Time.UTC()
+	}
+	base.HasScore = boundary.score.Valid
+	base.Score = 0
+	if boundary.score.Valid {
+		base.Score = boundary.score.Float64
+	}
+	query := ingestiondomain.ContentListQuery{Limit: 1, Sort: ingestiondomain.ContentSort(base.Sort)}
+	if !validContentListCursor(base, query, base.FilterFingerprint) {
+		return contentListCursor{}, errors.New("invalid content list boundary")
+	}
+	return base, nil
+}
+
+func contentListColumnsSQL() string {
+	return `
+c.id, c.version, c.source_connection_id, c.external_id,
+c.content_type, c.title, c.excerpt, c.canonical_url, c.language,
+c.published_at, ` + contentFetchedAtSnapshotSQL() + `, c.dedupe_key, c.content_status,
+c.duplicate_of_id, c.dedupe_reason, c.dedupe_version,
+` + contentMetricAtSnapshotSQL("view_count") + `, ` + contentMetricAtSnapshotSQL("like_count") + `,
+` + contentMetricAtSnapshotSQL("comment_count") + `, ` + contentMetricAtSnapshotSQL("share_count") + `, c.deleted_at,
+author.external_id, author.display_name`
+}
+
+func contentFetchedAtSnapshotSQL() string {
+	return `CASE WHEN snapshot_metric.id IS NULL THEN c.fetched_at ELSE snapshot_metric.captured_at END`
+}
+
+func contentMetricAtSnapshotSQL(column string) string {
+	return `CASE WHEN snapshot_metric.id IS NULL THEN c.` + column + ` ELSE snapshot_metric.` + column + ` END`
+}
+
+func contentHeatAtSnapshotSQL() string {
+	return `hotspot_heat_score(` + contentMetricAtSnapshotSQL("view_count") + `,` + contentMetricAtSnapshotSQL("like_count") + `,` + contentMetricAtSnapshotSQL("comment_count") + `,` + contentMetricAtSnapshotSQL("share_count") + `)`
 }
 
 // contentHeatSQL delegates to the canonical database function also used by

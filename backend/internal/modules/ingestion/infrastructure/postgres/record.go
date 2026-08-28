@@ -40,14 +40,20 @@ func scanContent(scanner interface{ Scan(...any) error }) (ingestiondomain.Conte
 	return contentFromRecord(record), nil
 }
 
-func scanContentSearch(scanner interface{ Scan(...any) error }) (ingestiondomain.Content, error) {
+type contentListBoundary struct {
+	timestamp sql.NullTime
+	score     sql.NullFloat64
+}
+
+func scanContentList(scanner interface{ Scan(...any) error }) (ingestiondomain.Content, contentListBoundary, error) {
 	var record contentRecord
 	var documentVersionID sql.NullInt64
 	var relevanceScore sql.NullFloat64
 	var matchDecision sql.NullString
-	destinations := append(contentRecordDestinations(&record), &documentVersionID, &relevanceScore, &matchDecision)
+	var boundary contentListBoundary
+	destinations := append(contentRecordDestinations(&record), &documentVersionID, &relevanceScore, &matchDecision, &boundary.timestamp, &boundary.score)
 	if err := scanner.Scan(destinations...); err != nil {
-		return ingestiondomain.Content{}, err
+		return ingestiondomain.Content{}, contentListBoundary{}, err
 	}
 	content := contentFromRecord(record)
 	if documentVersionID.Valid {
@@ -62,7 +68,7 @@ func scanContentSearch(scanner interface{ Scan(...any) error }) (ingestiondomain
 		value := ingestiondomain.MatchDecision(matchDecision.String)
 		content.MatchDecision = &value
 	}
-	return content, nil
+	return content, boundary, nil
 }
 
 func scanContentWithDocumentVersion(scanner interface{ Scan(...any) error }) (ingestiondomain.Content, error) {
