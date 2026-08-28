@@ -26,7 +26,7 @@ vet:
 	$(GO) run ./test/runner vet ./...
 
 test: test-env
-	$(GO) run ./test/runner test ./... -count=1
+	$(GO) run ./test/runner test -p=1 ./... -count=1
 
 worker-recovery-acceptance: test-env minio-test-env
 	$(GO) run ./test/runner test -tags=integration -p=1 \
