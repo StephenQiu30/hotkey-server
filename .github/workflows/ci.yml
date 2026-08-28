@@ -391,6 +391,7 @@ jobs:
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-knowledge.json
 
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/search"
+          agent-browser wait --text "全文检索"
           agent-browser find label "搜索词" fill "BrowserAcceptanceTopic2026"
           agent-browser click 'main form button[type="submit"]'
           agent-browser wait --text "日报 #$HOTKEY_BROWSER_REPORT_ID"
@@ -403,6 +404,7 @@ jobs:
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-search-mobile.json
 
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser wait --text "进入工作台"
           agent-browser find label "邮箱" fill "$HOTKEY_BROWSER_ANALYST_EMAIL"
           agent-browser find label "密码" fill "$HOTKEY_BROWSER_PASSWORD"
           agent-browser find role button click --name "进入工作台" --exact
