@@ -238,8 +238,8 @@ func NormalizeCredentialReference(authType AuthType, value string) (string, erro
 }
 
 // NormalizeEndpoint enforces static SSRF protections that can be checked
-// without network access. PLAN-006 must additionally re-check DNS answers and
-// every redirect at connection time.
+// without network access. Connectors must additionally re-check DNS answers
+// and every redirect at connection time.
 func NormalizeEndpoint(sourceType SourceType, value string) (string, error) {
 	normalized := strings.TrimSpace(value)
 	if sourceType == SourceTypeHackerNews {
@@ -308,7 +308,7 @@ func NormalizeEndpoint(sourceType SourceType, value string) (string, error) {
 		return "", fmt.Errorf("RSS endpoint must use port 443")
 	}
 	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
-	if host == "" || net.ParseIP(host) != nil || !validDNSName(host) {
+	if host == "" || net.ParseIP(host) != nil || looksLikeObfuscatedIPAddress(host) || !validDNSName(host) {
 		return "", fmt.Errorf("RSS endpoint host must be a DNS name")
 	}
 	for key := range parsed.Query() {
@@ -324,6 +324,42 @@ func NormalizeEndpoint(sourceType SourceType, value string) (string, error) {
 		parsed.Host = host
 	}
 	return parsed.String(), nil
+}
+
+// looksLikeObfuscatedIPAddress rejects the legacy integer, octal and
+// hexadecimal IPv4 spellings that some URL stacks normalize to an address
+// even though net.ParseIP deliberately accepts only canonical forms. A real
+// DNS name must contain at least one non-numeric label.
+func looksLikeObfuscatedIPAddress(host string) bool {
+	labels := strings.Split(strings.ToLower(host), ".")
+	if len(labels) == 0 || len(labels) > 4 {
+		return false
+	}
+	for _, label := range labels {
+		if label == "" {
+			return false
+		}
+		digits := label
+		base := byte(10)
+		if strings.HasPrefix(label, "0x") {
+			digits = strings.TrimPrefix(label, "0x")
+			base = 16
+		}
+		if digits == "" {
+			return false
+		}
+		for index := range len(digits) {
+			character := digits[index]
+			if character >= '0' && character <= '9' {
+				continue
+			}
+			if base == 16 && character >= 'a' && character <= 'f' {
+				continue
+			}
+			return false
+		}
+	}
+	return true
 }
 
 func NormalizeSourceConfig(input map[string]any) (SourceConfig, error) {

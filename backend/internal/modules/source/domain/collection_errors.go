@@ -99,3 +99,18 @@ func SafeCollectionErrorCause(cause error) string {
 		return "collection failed (see error_kind)"
 	}
 }
+
+// CollectionSecurityRejectionReason maps connector-private failures to the
+// only low-cardinality security reason that may enter an audit row. Endpoint,
+// hostname, address and upstream response values are intentionally excluded.
+func CollectionSecurityRejectionReason(cause error) string {
+	switch SafeCollectionErrorCause(cause) {
+	case "RSS destination is not permitted",
+		"Hacker News destination is not permitted",
+		"X destination is not permitted",
+		"Foundry destination is not permitted":
+		return "ssrf_destination_not_permitted"
+	default:
+		return ""
+	}
+}

@@ -17,16 +17,18 @@ const (
 )
 
 // CollectionDependencies are intentionally separate from the administrative
-// Source Service dependencies. Collection runs do not need authorization or
-// audit writes, but they do need a Source-owned connection lookup, durable
-// collection repository and a fixed connector registry.
+// Source Service dependencies. Collection runs do not need user authorization,
+// but security rejections append an independent sanitized audit after their
+// durable failure record. Collection execution also needs a Source-owned
+// connection lookup, durable repository and fixed connector registry.
 type CollectionDependencies struct {
-	Runtime    *database.Runtime
-	Sources    domain.SourceConnectionRepository
-	Runs       domain.CollectionRepository
-	Connectors domain.CollectionConnectorRegistry
-	Evidence   CollectionEvidenceArchiver
-	Now        func() time.Time
+	Runtime       *database.Runtime
+	Sources       domain.SourceConnectionRepository
+	Runs          domain.CollectionRepository
+	Connectors    domain.CollectionConnectorRegistry
+	Evidence      CollectionEvidenceArchiver
+	SecurityAudit CollectionSecurityAuditWriter
+	Now           func() time.Time
 
 	// Logger is optionally injected for operational diagnostics. A nil logger
 	// disables failure logging, so direct constructions in tests keep working.
@@ -34,13 +36,14 @@ type CollectionDependencies struct {
 }
 
 type CollectionService struct {
-	runtime    *database.Runtime
-	sources    domain.SourceConnectionRepository
-	runs       domain.CollectionRepository
-	connectors domain.CollectionConnectorRegistry
-	evidence   CollectionEvidenceArchiver
-	now        func() time.Time
-	logger     *zap.Logger
+	runtime       *database.Runtime
+	sources       domain.SourceConnectionRepository
+	runs          domain.CollectionRepository
+	connectors    domain.CollectionConnectorRegistry
+	evidence      CollectionEvidenceArchiver
+	securityAudit CollectionSecurityAuditWriter
+	now           func() time.Time
+	logger        *zap.Logger
 }
 
 func NewCollectionService(dependencies CollectionDependencies) (*CollectionService, error) {
@@ -52,7 +55,8 @@ func NewCollectionService(dependencies CollectionDependencies) (*CollectionServi
 	}
 	return &CollectionService{
 		runtime: dependencies.Runtime, sources: dependencies.Sources, runs: dependencies.Runs,
-		connectors: dependencies.Connectors, evidence: dependencies.Evidence, now: dependencies.Now, logger: dependencies.Logger,
+		connectors: dependencies.Connectors, evidence: dependencies.Evidence, securityAudit: dependencies.SecurityAudit,
+		now: dependencies.Now, logger: dependencies.Logger,
 	}, nil
 }
 
@@ -272,10 +276,15 @@ func (service *CollectionService) fail(ctx context.Context, run domain.Collectio
 	if persistErr != nil {
 		return domain.CollectionRun{}, fmt.Errorf("persist collection failure: %w", persistErr)
 	}
+	auditErr := writeCollectionSecurityRejection(ctx, service.securityAudit, failed.ID, cause)
 	if cause == nil {
 		cause = errors.New("collection failed")
 	}
-	return failed, domain.NewCollectionError(kind, cause)
+	collectionErr := domain.NewCollectionError(kind, cause)
+	if auditErr != nil {
+		return failed, errors.Join(collectionErr, fmt.Errorf("write collection security rejection audit: %w", auditErr))
+	}
+	return failed, collectionErr
 }
 
 func captureMetadataPolicy() domain.CapturePolicy {

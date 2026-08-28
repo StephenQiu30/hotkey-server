@@ -30,6 +30,7 @@ const (
 	ActionSourceDisabled              AuditAction = "source.disabled"
 	ActionSourceArchived              AuditAction = "source.archived"
 	ActionSourceRestored              AuditAction = "source.restored"
+	ActionCollectionSecurityRejected  AuditAction = "collection.security_rejected"
 	ActionRightsPolicyCreated         AuditAction = "rights_policy.created"
 	ActionRightsDecisionBatchRecorded AuditAction = "rights_decision_batch.recorded"
 	ActionMetricCapabilityDrafted     AuditAction = "metric_capability.drafted"
@@ -53,7 +54,8 @@ var allowedActions = map[AuditAction]struct{}{
 	ActionMonitorCreated: {}, ActionMonitorDraftUpdated: {}, ActionMonitorAICandidateCreated: {}, ActionMonitorAICandidateApproved: {}, ActionMonitorAICandidateRejected: {},
 	ActionMonitorPublished: {}, ActionMonitorPaused: {}, ActionMonitorResumed: {}, ActionMonitorArchived: {}, ActionMonitorRestored: {}, ActionMonitorDeleted: {},
 	ActionSourceCreated: {}, ActionSourceUpdated: {}, ActionSourceEnabled: {}, ActionSourceDisabled: {}, ActionSourceArchived: {}, ActionSourceRestored: {},
-	ActionRightsPolicyCreated: {}, ActionRightsDecisionBatchRecorded: {},
+	ActionCollectionSecurityRejected: {},
+	ActionRightsPolicyCreated:        {}, ActionRightsDecisionBatchRecorded: {},
 	ActionMetricCapabilityDrafted: {}, ActionMetricCapabilityPublished: {}, ActionMetricCapabilityArchived: {},
 	ActionSubscriptionCreated: {}, ActionSubscriptionUpdated: {}, ActionSubscriptionTokenRotated: {}, ActionSubscriptionDeleted: {},
 	ActionJobCancelled: {}, ActionJobRetried: {},
@@ -237,7 +239,7 @@ func validActorType(value string) bool {
 
 func validResourceType(value string) bool {
 	return value == "monitor" || value == "source_connection" || value == "rights_policy" || value == "rights_decision_batch" ||
-		value == "metric_capability_profile" || value == "report_subscription" || value == "retention_policy" || value == "river_job" || value == "knowledge_document"
+		value == "metric_capability_profile" || value == "report_subscription" || value == "retention_policy" || value == "river_job" || value == "knowledge_document" || value == "collection_run"
 }
 
 func validCommandReceipt(idempotencyKey, commandFingerprint string) bool {

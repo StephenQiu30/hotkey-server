@@ -663,13 +663,14 @@ type collectionServiceParams struct {
 	Runs       *sourcepostgres.CollectionRepository
 	Connectors *sourceinfrastructure.ConnectorRegistry
 	Evidence   *sourceapplication.RawEvidenceCollectionService `optional:"true"`
+	Audit      *operationspostgres.AuditWriter
 	Logger     *zap.Logger
 }
 
 func newCollectionService(params collectionServiceParams) (*sourceapplication.CollectionService, error) {
 	return sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
 		Runtime: params.Runtime, Sources: params.Sources, Runs: params.Runs, Connectors: params.Connectors,
-		Evidence: params.Evidence, Logger: params.Logger,
+		Evidence: params.Evidence, SecurityAudit: params.Audit, Logger: params.Logger,
 	})
 }
 

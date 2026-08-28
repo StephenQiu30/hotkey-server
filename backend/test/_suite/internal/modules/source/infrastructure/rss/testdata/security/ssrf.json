@@ -1,0 +1,21 @@
+{
+  "direct_dns": [
+    {"name": "private_ipv4", "address": "10.23.45.67"},
+    {"name": "loopback_ipv4", "address": "127.0.0.1"},
+    {"name": "link_local_ipv4", "address": "169.254.169.254"},
+    {"name": "reserved_ipv4", "address": "198.18.0.23"},
+    {"name": "private_ipv6", "address": "fd00::23"},
+    {"name": "loopback_ipv6", "address": "::1"},
+    {"name": "link_local_ipv6", "address": "fe80::23"},
+    {"name": "reserved_ipv6", "address": "2001:db8::23"}
+  ],
+  "obfuscated_endpoints": [
+    "https://2130706433/feed",
+    "https://0177.0.0.1/feed",
+    "https://017700000001/feed",
+    "https://0x7f.0x0.0x0.0x1/feed",
+    "https://0x7f000001/feed",
+    "https://127.1/feed",
+    "https://[::ffff:127.0.0.1]/feed"
+  ]
+}
