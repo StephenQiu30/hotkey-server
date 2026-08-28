@@ -308,6 +308,7 @@ jobs:
       HOTKEY_BROWSER_WEB_ORIGIN: http://127.0.0.1:8010
       HOTKEY_BROWSER_EMAIL: browser-e2e-sentinel@example.test
       HOTKEY_BROWSER_ANALYST_EMAIL: browser-empty-state@example.test
+      HOTKEY_SECRET_ADMIN_EMAIL: browser-secret-admin@example.test
       HOTKEY_BROWSER_PASSWORD: BrowserFixture-Only-2026!
       HOTKEY_BROWSER_MONITOR_ID: 910001
       HOTKEY_BROWSER_RUN_ID: browser-${{ github.run_id }}-${{ github.run_attempt }}
@@ -323,11 +324,10 @@ jobs:
         with:
           node-version: 24
 
-      - name: Prepare CI-only development environment
+      - name: Generate masked synthetic secret canaries
         run: |
           cp backend/.env.example backend/.env
-          sed -i 's/^HOTKEY_JWT_SECRET=.*/HOTKEY_JWT_SECRET=ci-jwt-secret-0123456789abcdef0123456789abcdef/' backend/.env
-          sed -i 's/^HOTKEY_VERIFICATION_HMAC_SECRET=.*/HOTKEY_VERIFICATION_HMAC_SECRET=ci-verification-secret-0123456789abcdef0123456789abcdef/' backend/.env
+          node frontend/test/security/generate-secret-canaries.mjs "$GITHUB_ENV" backend/.env
 
       - name: Start a fresh container stack
         run: docker compose -p hotkey-ci -f docker-compose.yml up --build --detach --wait --wait-timeout 240
@@ -351,6 +351,9 @@ jobs:
           HOTKEY_BROWSER_REPORT_ID="$report_id" node frontend/test/browser/submit-business-flow.mjs \
             > /tmp/hotkey-browser-submitted.json
           echo "HOTKEY_BROWSER_REPORT_ID=$report_id" >> "$GITHUB_ENV"
+
+      - name: Exercise credential and HTTP error surfaces
+        run: node frontend/test/security/exercise-secret-surfaces.mjs
 
       - name: Install browser acceptance runtime
         run: |
@@ -433,6 +436,31 @@ jobs:
             > /tmp/hotkey-container-logs.txt
           node frontend/test/browser/verify-no-sentinel-leak.mjs /tmp/hotkey-container-logs.txt
 
+      - name: Export database secret surfaces
+        run: |
+          docker exec -i "$HOTKEY_CONTAINER_PREFIX-postgres" \
+            psql -qAt -U hotkey -d hotkey \
+            < backend/test/fixtures/browser-acceptance/export-secret-surfaces.sql \
+            > /tmp/hotkey-secret-database-surfaces.txt
+
+      - name: Copy frontend and Vault delivery surfaces
+        run: |
+          mkdir -p /tmp/hotkey-frontend-runtime /tmp/hotkey-acceptance-attachments
+          docker cp "$HOTKEY_CONTAINER_PREFIX-web":/app/server.js /tmp/hotkey-frontend-runtime/server.js
+          docker cp "$HOTKEY_CONTAINER_PREFIX-web":/app/.next /tmp/hotkey-frontend-runtime/.next
+          docker cp "$HOTKEY_CONTAINER_PREFIX-web":/app/public /tmp/hotkey-frontend-runtime/public
+          docker cp "$HOTKEY_CONTAINER_PREFIX-api":"/var/lib/hotkey/vault/reports/report-$HOTKEY_BROWSER_REPORT_ID.md" \
+            /tmp/hotkey-vault-delivery.md
+          cp /tmp/hotkey-browser-acceptance.json \
+            /tmp/hotkey-browser-database.json \
+            /tmp/hotkey-browser-network-summary.json \
+            /tmp/hotkey-sentinel-scan.json \
+            /tmp/hotkey-a11y-*.json \
+            /tmp/hotkey-acceptance-attachments/
+
+      - name: Scan synthetic secrets across outbound surfaces
+        run: node frontend/test/security/verify-secret-surfaces.mjs
+
       - name: Upload sanitized browser acceptance evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -445,6 +473,7 @@ jobs:
             /tmp/hotkey-browser-database.json
             /tmp/hotkey-browser-network-summary.json
             /tmp/hotkey-sentinel-scan.json
+            /tmp/hotkey-secret-surface-scan.json
             /tmp/hotkey-a11y-*.json
 
       - name: Close browser session

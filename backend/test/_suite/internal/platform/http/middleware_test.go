@@ -145,6 +145,14 @@ func TestTraceContextExtractsInboundParentAndSetsRequestID(t *testing.T) {
 	request := httptest.NewRequest(stdhttp.MethodGet, "/trace", nil)
 	request.Header.Set("X-Request-ID", requestID)
 	request.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	secretCanaries := []string{
+		"fixture-trace-bearer-secret-0123456789",
+		"fixture-trace-cookie-secret-0123456789",
+		"fixture-trace-api-key-secret-0123456789",
+	}
+	request.Header.Set("Authorization", "Bearer "+secretCanaries[0])
+	request.Header.Set("Cookie", "hotkey_refresh="+secretCanaries[1])
+	request.Header.Set("X-API-Key", secretCanaries[2])
 	router.ServeHTTP(httptest.NewRecorder(), request)
 
 	spans := exporter.GetSpans()
@@ -156,6 +164,15 @@ func TestTraceContextExtractsInboundParentAndSetsRequestID(t *testing.T) {
 	}
 	if !hasAttribute(spans[0].Attributes, "http.request_id", requestID) {
 		t.Fatal("span is missing http.request_id")
+	}
+	encodedAttributes, err := json.Marshal(spans[0].Attributes)
+	if err != nil {
+		t.Fatalf("marshal trace attributes: %v", err)
+	}
+	for _, secret := range secretCanaries {
+		if strings.Contains(string(encodedAttributes), secret) {
+			t.Fatalf("trace attributes leaked a synthetic secret: %s", encodedAttributes)
+		}
 	}
 }
 

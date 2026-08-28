@@ -58,3 +58,36 @@ func TestBackendCIPreservesCanonicalCoverageAcrossParallelGates(t *testing.T) {
 		t.Error("browser smoke must finish anonymous login bootstrap before resetting captured network and page errors")
 	}
 }
+
+func TestBrowserCIEnforcesSyntheticSecretScanningBeforeEvidenceUpload(t *testing.T) {
+	backend := repositoryRoot(t)
+	repository := filepath.Clean(filepath.Join(backend, ".."))
+	workflow := readRepositoryFile(t, repository, ".github/workflows/ci.yml")
+	browserStart := strings.Index(workflow, "  browser-smoke-acceptance:")
+	finalStart := strings.Index(workflow, "  all-acceptance:")
+	if browserStart < 0 || finalStart <= browserStart {
+		t.Fatal("CI must preserve the browser acceptance job")
+	}
+	browserWorkflow := workflow[browserStart:finalStart]
+	for _, fragment := range []string{
+		"Generate masked synthetic secret canaries",
+		"Exercise credential and HTTP error surfaces",
+		"Export database secret surfaces",
+		"Copy frontend and Vault delivery surfaces",
+		"Scan synthetic secrets across outbound surfaces",
+		"frontend/test/security/verify-secret-surfaces.mjs",
+		"backend/test/fixtures/browser-acceptance/export-secret-surfaces.sql",
+		"/tmp/hotkey-secret-surface-scan.json",
+	} {
+		if !strings.Contains(browserWorkflow, fragment) {
+			t.Errorf("browser CI must retain synthetic secret acceptance fragment %q", fragment)
+		}
+	}
+	generate := strings.Index(browserWorkflow, "Generate masked synthetic secret canaries")
+	start := strings.Index(browserWorkflow, "Start a fresh container stack")
+	scan := strings.Index(browserWorkflow, "Scan synthetic secrets across outbound surfaces")
+	upload := strings.Index(browserWorkflow, "Upload sanitized browser acceptance evidence")
+	if generate < 0 || start <= generate || scan <= start || upload <= scan {
+		t.Error("secret canaries must be injected before startup and every surface scanned before evidence upload")
+	}
+}
