@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -115,6 +116,35 @@ func TestAgentQualityCommandRequiresExplicitTrustedRuntimeInputs(t *testing.T) {
 	}
 	if builderCalled {
 		t.Fatal("provider builder ran before command validation")
+	}
+}
+
+func TestAgentQualityCommandRequiresPairedFinitePricingForBothTracks(t *testing.T) {
+	valid := agentQualityCommandOptions{
+		DatasetPath: "fixture.json", BaselineRuntime: "openai", BaselineModelName: "baseline",
+		BaselineModelVersion: "baseline-v1", AgentModelName: "agent", AgentModelVersion: "agent-v1",
+		Timeout: time.Minute, BaselineInputUSDPerMillionTokens: 1, BaselineOutputUSDPerMillionTokens: 2,
+		AgentInputUSDPerMillionTokens: 3, AgentOutputUSDPerMillionTokens: 4,
+	}
+	if err := validateAgentQualityCommandOptions(valid, 0, &strings.Builder{}, func(context.Context, config.Config, agentQualityCommandOptions) (intelligenceapplication.ShadowQualityTrack, intelligenceapplication.ShadowQualityTrack, error) {
+		return intelligenceapplication.ShadowQualityTrack{}, intelligenceapplication.ShadowQualityTrack{}, nil
+	}); err != nil {
+		t.Fatalf("valid paired pricing rejected: %v", err)
+	}
+	for _, mutate := range []func(*agentQualityCommandOptions){
+		func(value *agentQualityCommandOptions) { value.AgentOutputUSDPerMillionTokens = -1 },
+		func(value *agentQualityCommandOptions) { value.AgentInputUSDPerMillionTokens = math.NaN() },
+		func(value *agentQualityCommandOptions) {
+			value.AgentModelVersion = "deterministic.v1"
+		},
+	} {
+		options := valid
+		mutate(&options)
+		if err := validateAgentQualityCommandOptions(options, 0, &strings.Builder{}, func(context.Context, config.Config, agentQualityCommandOptions) (intelligenceapplication.ShadowQualityTrack, intelligenceapplication.ShadowQualityTrack, error) {
+			return intelligenceapplication.ShadowQualityTrack{}, intelligenceapplication.ShadowQualityTrack{}, nil
+		}); err == nil {
+			t.Fatalf("invalid Agent pricing was accepted: %#v", options)
+		}
 	}
 }
 

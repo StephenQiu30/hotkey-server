@@ -87,6 +87,11 @@ type RuntimeInfo struct {
 	Degraded bool   `json:"degraded"`
 }
 
+type TokenUsage struct {
+	InputTokens  int64 `json:"input_tokens"`
+	OutputTokens int64 `json:"output_tokens"`
+}
+
 type AnalyzeResponse struct {
 	ContractVersion string       `json:"contract_version"`
 	TaskID          string       `json:"task_id"`
@@ -94,6 +99,7 @@ type AnalyzeResponse struct {
 	Status          string       `json:"status"`
 	Suggestions     []Suggestion `json:"suggestions"`
 	Runtime         RuntimeInfo  `json:"runtime"`
+	Usage           *TokenUsage  `json:"usage,omitempty"`
 }
 
 type analyzeWireRequest struct {
@@ -256,7 +262,15 @@ func (client *Client) GenerateStructured(ctx context.Context, request intelligen
 		// not the caller's requested label. A mismatch is a stable profile error.
 		ModelVersion: response.Runtime.Version,
 		JSON:         append(json.RawMessage(nil), response.Suggestions[0].Value...),
+		Usage:        structuredUsage(response.Usage),
 	}, nil
+}
+
+func structuredUsage(value *TokenUsage) intelligencedomain.Usage {
+	if value == nil {
+		return intelligencedomain.Usage{}
+	}
+	return intelligencedomain.Usage{InputTokens: value.InputTokens, OutputTokens: value.OutputTokens}
 }
 
 func taskTypeFor(taskType intelligencedomain.TaskType) (TaskType, bool) {
@@ -339,6 +353,13 @@ func validateRequest(input AnalyzeRequest) error {
 
 func validResponse(input AnalyzeRequest, output AnalyzeResponse) bool {
 	if output.ContractVersion != ContractVersion || output.TaskID != input.TaskID || output.TaskType != input.TaskType || (output.Status != StatusSucceeded && output.Status != StatusDegraded) || !identifierPattern.MatchString(output.Runtime.Name) || len(output.Runtime.Version) == 0 || len(output.Runtime.Version) > 32 || (output.Status == StatusDegraded) != output.Runtime.Degraded || len(output.Suggestions) > maximumSuggestionItems {
+		return false
+	}
+	if !output.Runtime.Degraded && output.Usage == nil {
+		return false
+	}
+	if output.Usage != nil && (output.Usage.InputTokens < 0 || output.Usage.InputTokens > 1_000_000_000 ||
+		output.Usage.OutputTokens < 0 || output.Usage.OutputTokens > 1_000_000_000) {
 		return false
 	}
 	allowedEvidence := make(map[string]struct{}, len(input.Evidence))

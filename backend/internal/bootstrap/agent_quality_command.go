@@ -36,6 +36,8 @@ type agentQualityCommandOptions struct {
 	Timeout                           time.Duration
 	BaselineInputUSDPerMillionTokens  float64
 	BaselineOutputUSDPerMillionTokens float64
+	AgentInputUSDPerMillionTokens     float64
+	AgentOutputUSDPerMillionTokens    float64
 }
 
 type agentQualityTrackBuilder func(context.Context, config.Config, agentQualityCommandOptions) (intelligenceapplication.ShadowQualityTrack, intelligenceapplication.ShadowQualityTrack, error)
@@ -90,6 +92,8 @@ func executeAgentQualityCommand(ctx context.Context, cfg config.Config, args []s
 	flags.DurationVar(&options.Timeout, "timeout", time.Minute, "per-track sample timeout")
 	flags.Float64Var(&options.BaselineInputUSDPerMillionTokens, "baseline-input-usd-per-million", -1, "optional baseline input-token price")
 	flags.Float64Var(&options.BaselineOutputUSDPerMillionTokens, "baseline-output-usd-per-million", -1, "optional baseline output-token price")
+	flags.Float64Var(&options.AgentInputUSDPerMillionTokens, "agent-input-usd-per-million", -1, "optional Agent input-token price")
+	flags.Float64Var(&options.AgentOutputUSDPerMillionTokens, "agent-output-usd-per-million", -1, "optional Agent output-token price")
 	if err := flags.Parse(args[1:]); err != nil {
 		return fmt.Errorf("parse agent-quality evaluate flags: %w", err)
 	}
@@ -141,16 +145,22 @@ func validateAgentQualityCommandOptions(options agentQualityCommandOptions, posi
 	} else if options.CodexExecutable != "" {
 		return errors.New("--codex-executable is valid only for the Codex baseline")
 	}
-	inputPriceSet := options.BaselineInputUSDPerMillionTokens >= 0
-	outputPriceSet := options.BaselineOutputUSDPerMillionTokens >= 0
-	if inputPriceSet != outputPriceSet || options.BaselineInputUSDPerMillionTokens < 0 && options.BaselineInputUSDPerMillionTokens != -1 ||
-		options.BaselineOutputUSDPerMillionTokens < 0 && options.BaselineOutputUSDPerMillionTokens != -1 ||
-		math.IsNaN(options.BaselineInputUSDPerMillionTokens) || math.IsInf(options.BaselineInputUSDPerMillionTokens, 0) ||
-		math.IsNaN(options.BaselineOutputUSDPerMillionTokens) || math.IsInf(options.BaselineOutputUSDPerMillionTokens, 0) ||
-		options.BaselineInputUSDPerMillionTokens > 1_000_000 || options.BaselineOutputUSDPerMillionTokens > 1_000_000 {
+	if !validAgentQualityPricing(options.BaselineInputUSDPerMillionTokens, options.BaselineOutputUSDPerMillionTokens) {
 		return errors.New("baseline pricing must provide two finite non-negative values together")
 	}
+	if !validAgentQualityPricing(options.AgentInputUSDPerMillionTokens, options.AgentOutputUSDPerMillionTokens) ||
+		options.AgentModelVersion == intelligenceagent.DeterministicRuntimeVersion && options.AgentInputUSDPerMillionTokens >= 0 {
+		return errors.New("Agent pricing requires a non-degraded runtime and two finite non-negative values together")
+	}
 	return nil
+}
+
+func validAgentQualityPricing(input, output float64) bool {
+	if input == -1 && output == -1 {
+		return true
+	}
+	return input >= 0 && output >= 0 && input <= 1_000_000 && output <= 1_000_000 &&
+		!math.IsNaN(input) && !math.IsInf(input, 0) && !math.IsNaN(output) && !math.IsInf(output, 0)
 }
 
 func validAgentQualityRuntime(runtime string) bool {
@@ -245,6 +255,13 @@ func buildAgentQualityTracks(_ context.Context, cfg config.Config, options agent
 		Name: intelligenceapplication.ShadowQualityTrackAgent, RuntimeName: "hotkey-agent",
 		ModelName: options.AgentModelName, ModelVersion: options.AgentModelVersion,
 		Provider: agentProvider, RuntimeDegraded: options.AgentModelVersion == intelligenceagent.DeterministicRuntimeVersion,
+		UsageAvailable: options.AgentModelVersion != intelligenceagent.DeterministicRuntimeVersion,
+	}
+	if options.AgentInputUSDPerMillionTokens >= 0 {
+		agent.Pricing = &intelligenceapplication.ShadowQualityPricing{
+			InputUSDPerMillion:  options.AgentInputUSDPerMillionTokens,
+			OutputUSDPerMillion: options.AgentOutputUSDPerMillionTokens,
+		}
 	}
 	return baseline, agent, nil
 }

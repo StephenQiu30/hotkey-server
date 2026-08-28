@@ -12,6 +12,7 @@ from starlette.types import Message, Receive, Scope, Send
 from hotkey_agent.config import Settings
 from hotkey_agent.contracts import AnalyzeRequest, AnalyzeResponse, RuntimeInfo, Suggestion
 from hotkey_agent.main import RequestSizeMiddleware, create_app
+from hotkey_agent.model_runtime import ModelRateLimitedError
 
 TOKEN = "test-agent-token-0123456789abcdef0123456789abcdef"
 HASH = "a" * 64
@@ -178,6 +179,42 @@ def test_analysis_requires_internal_authentication() -> None:
     assert missing.status_code == 401
     assert invalid.status_code == 401
     assert missing.json()["error"]["code"] == "AGENT_UNAUTHORIZED"
+
+
+def test_model_runtime_failures_return_stable_redacted_errors() -> None:
+    class FailingAnalyzer:
+        async def analyze(self, _request: AnalyzeRequest) -> AnalyzeResponse:
+            raise ModelRateLimitedError
+
+    with _client(analyzer=FailingAnalyzer()) as client:
+        response = client.post(
+            "/v1/analyze",
+            json=_structured_request(),
+            headers={"X-HotKey-Agent-Token": TOKEN},
+        )
+    assert response.status_code == 429
+    assert response.json() == {
+        "error": {"code": "AGENT_RATE_LIMITED", "message": "analysis provider rate limited"}
+    }
+
+    class UnexpectedFailureAnalyzer:
+        async def analyze(self, _request: AnalyzeRequest) -> AnalyzeResponse:
+            raise RuntimeError("secret=must-not-leak")
+
+    with _client(analyzer=UnexpectedFailureAnalyzer()) as client:
+        unexpected = client.post(
+            "/v1/analyze",
+            json=_structured_request(),
+            headers={"X-HotKey-Agent-Token": TOKEN},
+        )
+    assert unexpected.status_code == 503
+    assert unexpected.json() == {
+        "error": {
+            "code": "AGENT_MODEL_UNAVAILABLE",
+            "message": "analysis provider unavailable",
+        }
+    }
+    assert "must-not-leak" not in unexpected.text
 
 
 def test_relevance_analysis_returns_bounded_degraded_suggestion() -> None:

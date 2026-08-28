@@ -20,6 +20,7 @@ from hotkey_agent.contracts import (
     ErrorResponse,
     HealthResponse,
 )
+from hotkey_agent.model_runtime import ModelRuntimeError, analyzer_from_settings
 from hotkey_agent.skills import (
     SkillContractError,
     SkillOutputError,
@@ -79,7 +80,9 @@ class RequestSizeMiddleware:
 
 def create_app(settings: Settings | None = None, *, analyzer: Analyzer | None = None) -> FastAPI:
     service_settings = settings or Settings.from_env()
-    analysis_engine = analyzer or DeterministicAnalyzer()
+    analysis_engine = (
+        analyzer or analyzer_from_settings(service_settings) or DeterministicAnalyzer()
+    )
     capacity = asyncio.Semaphore(service_settings.max_concurrency)
     application = FastAPI(
         title="HotKey Internal Agent",
@@ -113,7 +116,9 @@ def create_app(settings: Settings | None = None, *, analyzer: Analyzer | None = 
             )
         return HealthResponse(status="ok", version=__version__)
 
-    @application.post("/v1/analyze", response_model=AnalyzeResponse)
+    @application.post(
+        "/v1/analyze", response_model=AnalyzeResponse, response_model_exclude_none=True
+    )
     async def analyze(
         request: AnalyzeRequest,
         agent_token: str | None = Header(default=None, alias="X-HotKey-Agent-Token"),
@@ -136,8 +141,17 @@ def create_app(settings: Settings | None = None, *, analyzer: Analyzer | None = 
                 "AGENT_INVALID_REQUEST",
                 "structured analysis contract is invalid",
             )
-        async with capacity:
-            response = await analysis_engine.analyze(request)
+        try:
+            async with capacity:
+                response = await analysis_engine.analyze(request)
+        except ModelRuntimeError as error:
+            return _error(error.status_code, error.code, error.safe_message)
+        except Exception:
+            return _error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "AGENT_MODEL_UNAVAILABLE",
+                "analysis provider unavailable",
+            )
         try:
             response = AnalyzeResponse.model_validate(response.model_dump(mode="python"))
             validate_analysis_response(request, response, selected_skill)

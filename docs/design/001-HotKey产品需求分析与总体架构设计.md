@@ -15,7 +15,7 @@ plan: docs/plans/001-HotKey产品需求分析与总体架构计划.md
 
 ## 现状
 
-HotKey 已是包含 Go 后端、根目录 Python Agent 与 Next.js Web 工作台的单仓库项目。后端由 `cmd/hotkey` 单一入口启动，以 `all`、`api`、`worker` 三种角色运行模块化单体；业务模块遵循 Transport、Application、Domain、Infrastructure 的依赖方向。PostgreSQL 保存业务事实，Redis 保存验证码和短期状态，MinIO 保存原始证据，本地 Vault 保存人类可读投影，River 兼容表与 Go Worker 承担持久任务。根目录 `agent/` 已落地 Python 数据分析服务骨架、`analysis.v1` 版本化内部契约、服务认证、请求/响应边界、健康检查与双端契约测试；当前仅以 `deterministic.v1` 降级运行时接入可选 Shadow 比较，尚未进入 Live 决策或业务事实写入。前端通过发布 OpenAPI 生成客户端，并使用 Axios、Zustand 与 Recharts 组织请求、状态和可视化。
+HotKey 已是包含 Go 后端、根目录 Python Agent 与 Next.js Web 工作台的单仓库项目。后端由 `cmd/hotkey` 单一入口启动，以 `all`、`api`、`worker` 三种角色运行模块化单体；业务模块遵循 Transport、Application、Domain、Infrastructure 的依赖方向。PostgreSQL 保存业务事实，Redis 保存验证码和短期状态，MinIO 保存原始证据，本地 Vault 保存人类可读投影，River 兼容表与 Go Worker 承担持久任务。根目录 `agent/` 已落地 Python 数据分析服务骨架、`analysis.v1` 版本化内部契约、服务认证、请求/响应边界、健康检查与双端契约测试；Python Agent 默认仍以 `deterministic.v1` 降级运行时执行，`openai_compatible` 真实模型运行时只供受信环境 Golden/Shadow 验收，尚未进入 Live 决策或业务事实写入。前端通过发布 OpenAPI 生成客户端，并使用 Axios、Zustand 与 Recharts 组织请求、状态和可视化。
 
 当前仓库已经存在多种 AI Provider、Embedding、pgvector 数据与相关召回实现。这些是必须保护和盘点的当前事实，不代表新基线继续承诺同一产品边界，也不表示它们已经迁移或移除。任何替换都必须通过独立 Plan、数据处置、兼容验证和回滚门禁完成。
 

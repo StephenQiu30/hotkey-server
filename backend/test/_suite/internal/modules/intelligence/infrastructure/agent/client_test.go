@@ -153,6 +153,8 @@ func TestClientRejectsIdentityAndEvidenceForgery(t *testing.T) {
 		`{"contract_version":"analysis.v1","task_id":"run-42","task_type":"relevance","status":"degraded","suggestions":[{"kind":"event_cluster","value":{},"confidence":0,"evidence_ids":["evidence-1"],"reason":"wrong task"}],"runtime":{"name":"deterministic","version":"v1","degraded":true}}`,
 		`{"contract_version":"analysis.v1","task_id":"run-42","task_type":"relevance","status":"succeeded","suggestions":[],"runtime":{"name":"deterministic","version":"v1","degraded":true}}`,
 		`{"contract_version":"analysis.v1","task_id":"run-42","task_type":"relevance","status":"degraded","suggestions":[{"kind":"relevance","value":{},"confidence":0,"evidence_ids":["evidence-1","evidence-1"],"reason":"duplicate evidence"}],"runtime":{"name":"deterministic","version":"v1","degraded":true}}`,
+		`{"contract_version":"analysis.v1","task_id":"run-42","task_type":"relevance","status":"succeeded","suggestions":[{"kind":"relevance","value":{},"confidence":0,"evidence_ids":["evidence-1"],"reason":"missing usage"}],"runtime":{"name":"openai_compatible","version":"model-v1","degraded":false}}`,
+		`{"contract_version":"analysis.v1","task_id":"run-42","task_type":"relevance","status":"succeeded","suggestions":[{"kind":"relevance","value":{},"confidence":0,"evidence_ids":["evidence-1"],"reason":"invalid usage"}],"runtime":{"name":"openai_compatible","version":"model-v1","degraded":false},"usage":{"input_tokens":-1,"output_tokens":2}}`,
 	}
 	for _, payload := range forgedResponses {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -191,7 +193,7 @@ func TestClientAdaptsStructuredRequestsToVersionedAgentPayload(t *testing.T) {
 			t.Fatalf("structured Agent request = %#v", input)
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(fmt.Sprintf(`{"contract_version":"analysis.v1","task_id":%q,"task_type":"event_summary","status":"degraded","suggestions":[{"kind":"event_summary","value":{"title_zh":"待分析事件","sentences":[]},"confidence":0,"evidence_ids":[],"reason":"safe fallback"}],"runtime":{"name":"deterministic","version":"deterministic.v1","degraded":true}}`, input.TaskID)))
+		_, _ = writer.Write([]byte(fmt.Sprintf(`{"contract_version":"analysis.v1","task_id":%q,"task_type":"event_summary","status":"succeeded","suggestions":[{"kind":"event_summary","value":{"title_zh":"待分析事件","sentences":[]},"confidence":0,"evidence_ids":[],"reason":"validated model output"}],"runtime":{"name":"openai_compatible","version":"model-2026-08-28","degraded":false},"usage":{"input_tokens":17,"output_tokens":9}}`, input.TaskID)))
 	}))
 	defer server.Close()
 
@@ -204,7 +206,8 @@ func TestClientAdaptsStructuredRequestsToVersionedAgentPayload(t *testing.T) {
 		SchemaName: "event-summary-output-v1", SchemaVersion: "v1", Instruction: "return JSON",
 		InputSchema: json.RawMessage(`{"type":"object"}`), Schema: json.RawMessage(`{"type":"object"}`), Input: json.RawMessage(`{"evidence":[{"content_id":17,"locator":"body:1","excerpt":"trusted"}]}`),
 	})
-	if err != nil || string(response.JSON) != `{"title_zh":"待分析事件","sentences":[]}` || response.ModelVersion != DeterministicRuntimeVersion {
+	if err != nil || string(response.JSON) != `{"title_zh":"待分析事件","sentences":[]}` || response.ModelVersion != "model-2026-08-28" ||
+		response.Usage.InputTokens != 17 || response.Usage.OutputTokens != 9 {
 		t.Fatalf("GenerateStructured() = %#v / %v", response, err)
 	}
 }

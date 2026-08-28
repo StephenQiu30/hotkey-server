@@ -54,9 +54,14 @@ class Suggestion(StrictModel):
 
 
 class RuntimeInfo(StrictModel):
-    name: Literal["deterministic"]
+    name: Literal["deterministic", "openai_compatible"]
     version: str = Field(min_length=1, max_length=32)
     degraded: bool
+
+
+class TokenUsage(StrictModel):
+    input_tokens: int = Field(ge=0, le=1_000_000_000)
+    output_tokens: int = Field(ge=0, le=1_000_000_000)
 
 
 class AnalyzeResponse(StrictModel):
@@ -66,6 +71,7 @@ class AnalyzeResponse(StrictModel):
     status: Literal["succeeded", "degraded"]
     suggestions: list[Suggestion] = Field(max_length=32)
     runtime: RuntimeInfo
+    usage: TokenUsage | None = None
 
 
 class HealthResponse(StrictModel):
