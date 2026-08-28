@@ -22,10 +22,18 @@ const ruleColumns = `id, version, config_version_id, rule_type, operator, value,
 const monitorSourceColumns = `id, version, config_version_id, source_connection_id, query_override, query_signature, priority, enabled`
 
 const (
-	monitorListDefaultLimit = 50
-	monitorListMaximumLimit = 200
-	monitorListFingerprint  = "monitors"
+	monitorListDefaultLimit  = 50
+	monitorListMaximumLimit  = 200
+	monitorListFingerprint   = "monitors"
+	monitorListCursorVersion = 1
 )
+
+type monitorListCursor struct {
+	Version           int    `json:"v"`
+	FilterFingerprint string `json:"filter"`
+	SnapshotID        int64  `json:"snapshot_id"`
+	AfterID           int64  `json:"after_id"`
+}
 
 type Repository struct {
 	runtime     *database.Runtime
@@ -85,22 +93,23 @@ func (repository *Repository) LockByID(ctx context.Context, id int64) (*domain.M
 // PublishedOnly for viewer reads; editors/admins receive all Monitor metadata
 // and decide which safe configuration projection to expose.
 func (repository *Repository) List(ctx context.Context, query domain.MonitorListQuery) ([]domain.Monitor, string, error) {
-	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || repository.cursorCodec == nil {
 		return nil, "", sharedrepository.ErrUnavailable
 	}
-	limit, cursorID, err := repository.monitorListParameters(query)
+	limit, cursor, err := repository.monitorListParameters(ctx, query)
 	if err != nil {
 		return nil, "", err
 	}
-	statement := `SELECT ` + monitorColumns + ` FROM monitors WHERE id > $1 AND deleted_at IS NULL`
-	arguments := []any{cursorID, limit + 1}
-	if query.PublishedOnly {
-		statement += ` AND status IN ('active', 'paused') AND published_config_version_id IS NOT NULL`
-	} else if query.VisibleOwnerUserID > 0 {
-		statement += ` AND ((status IN ('active', 'paused') AND published_config_version_id IS NOT NULL) OR created_by = $3)`
+	if cursor.SnapshotID == 0 {
+		return []domain.Monitor{}, "", nil
+	}
+	statement := `SELECT ` + monitorColumns + ` FROM monitors WHERE id > $1 AND id <= $2 AND deleted_at IS NULL`
+	arguments := []any{cursor.AfterID, cursor.SnapshotID, limit + 1}
+	statement += monitorListVisibilityClause(query, "$4")
+	if query.VisibleOwnerUserID > 0 {
 		arguments = append(arguments, query.VisibleOwnerUserID)
 	}
-	statement += ` ORDER BY id ASC LIMIT $2`
+	statement += ` ORDER BY id ASC LIMIT $3`
 	rows, err := repository.runtime.SQL.QueryContext(ctx, statement, arguments...)
 	if err != nil {
 		return nil, "", databaserepository.MapError(err)
@@ -121,13 +130,8 @@ func (repository *Repository) List(ctx context.Context, query domain.MonitorList
 		return monitors, "", nil
 	}
 	monitors = monitors[:limit]
-	fingerprint := monitorListFingerprint
-	if query.PublishedOnly {
-		fingerprint += "-published"
-	} else if query.VisibleOwnerUserID > 0 {
-		fingerprint += "-published-or-owner-" + strconv.FormatInt(query.VisibleOwnerUserID, 10)
-	}
-	nextCursor, err := repository.cursorCodec.Encode("id", false, fingerprint, monitors[len(monitors)-1].ID)
+	cursor.AfterID = monitors[len(monitors)-1].ID
+	nextCursor, err := repository.cursorCodec.Seal("monitor_list", cursor)
 	if err != nil {
 		return nil, "", fmt.Errorf("%w: encode monitor cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
@@ -359,28 +363,58 @@ func (repository *Repository) ListActivePublished(ctx context.Context) ([]domain
 	return result, nil
 }
 
-func (repository *Repository) monitorListParameters(query domain.MonitorListQuery) (int, int64, error) {
+func (repository *Repository) monitorListParameters(ctx context.Context, query domain.MonitorListQuery) (int, monitorListCursor, error) {
 	if query.PublishedOnly && query.VisibleOwnerUserID != 0 || query.VisibleOwnerUserID < 0 {
-		return 0, 0, fmt.Errorf("%w: monitor visibility is invalid", sharedrepository.ErrInvalidInput)
+		return 0, monitorListCursor{}, fmt.Errorf("%w: monitor visibility is invalid", sharedrepository.ErrInvalidInput)
 	}
 	limit := query.Limit
 	if limit == 0 {
 		limit = monitorListDefaultLimit
 	}
 	if limit < 1 || limit > monitorListMaximumLimit {
-		return 0, 0, fmt.Errorf("%w: monitor list limit must be 1-%d", sharedrepository.ErrInvalidInput, monitorListMaximumLimit)
+		return 0, monitorListCursor{}, fmt.Errorf("%w: monitor list limit must be 1-%d", sharedrepository.ErrInvalidInput, monitorListMaximumLimit)
 	}
+	fingerprint := monitorListFilterFingerprint(query)
+	cursor := monitorListCursor{Version: monitorListCursorVersion, FilterFingerprint: fingerprint}
+	if query.Cursor != "" {
+		if err := repository.cursorCodec.Open(query.Cursor, "monitor_list", &cursor); err != nil ||
+			cursor.Version != monitorListCursorVersion || cursor.FilterFingerprint != fingerprint ||
+			cursor.SnapshotID <= 0 || cursor.AfterID <= 0 || cursor.AfterID >= cursor.SnapshotID {
+			return 0, monitorListCursor{}, fmt.Errorf("%w: monitor cursor is invalid", sharedrepository.ErrInvalidInput)
+		}
+		return limit, cursor, nil
+	}
+	statement := `SELECT COALESCE(MAX(id), 0) FROM monitors WHERE deleted_at IS NULL`
+	arguments := []any{}
+	statement += monitorListVisibilityClause(query, "$1")
+	if query.VisibleOwnerUserID > 0 {
+		arguments = append(arguments, query.VisibleOwnerUserID)
+	}
+	if err := repository.queryRow(ctx, statement, arguments...).Scan(&cursor.SnapshotID); err != nil {
+		return 0, monitorListCursor{}, databaserepository.MapError(err)
+	}
+	return limit, cursor, nil
+}
+
+func monitorListFilterFingerprint(query domain.MonitorListQuery) string {
 	fingerprint := monitorListFingerprint
 	if query.PublishedOnly {
-		fingerprint += "-published"
-	} else if query.VisibleOwnerUserID > 0 {
-		fingerprint += "-published-or-owner-" + strconv.FormatInt(query.VisibleOwnerUserID, 10)
+		return fingerprint + "-published"
 	}
-	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", false, fingerprint)
-	if err != nil {
-		return 0, 0, fmt.Errorf("%w: monitor cursor: %v", sharedrepository.ErrInvalidInput, err)
+	if query.VisibleOwnerUserID > 0 {
+		return fingerprint + "-published-or-owner-" + strconv.FormatInt(query.VisibleOwnerUserID, 10)
 	}
-	return limit, cursor.ID, nil
+	return fingerprint
+}
+
+func monitorListVisibilityClause(query domain.MonitorListQuery, ownerPlaceholder string) string {
+	if query.PublishedOnly {
+		return ` AND status IN ('active', 'paused') AND published_config_version_id IS NOT NULL`
+	}
+	if query.VisibleOwnerUserID > 0 {
+		return ` AND ((status IN ('active', 'paused') AND published_config_version_id IS NOT NULL) OR created_by = ` + ownerPlaceholder + `)`
+	}
+	return ""
 }
 
 func (repository *Repository) insertConfig(ctx context.Context, queryer interface {
