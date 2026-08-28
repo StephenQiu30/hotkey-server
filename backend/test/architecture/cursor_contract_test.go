@@ -24,11 +24,14 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 		"internal/modules/search/application/service.go": {
 			`cursorCodec.Seal("search_result_list"`, `cursorCodec.Open(value, "search_result_list"`,
 		},
+		"internal/modules/operations/infrastructure/postgres/jobs.go": {
+			"NewJobRepositoryWithCursorCodec", `cursorCodec.Seal("operations_job_list"`, `cursorCodec.Open(value, "operations_job_list"`,
+		},
 		"internal/shared/pagination/cursor.go": {
 			"hmac.Equal", "ErrExpiredCursor", "ErrStaleCursor", "maximumEncodedCursorSize",
 		},
 		"internal/bootstrap/pagination.go": {
-			"pagination.NewCodec", "NewRepositoryWithCursorCodec", "NewMicroEventQueryPostgresRepositoryWithCursorCodec", "newReportRepository",
+			"pagination.NewCodec", "NewRepositoryWithCursorCodec", "NewMicroEventQueryPostgresRepositoryWithCursorCodec", "newReportRepository", "newJobRepository",
 		},
 	}
 	for relative, required := range contracts {

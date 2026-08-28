@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -10,31 +11,68 @@ import (
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	databaserepository "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database/repository"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
 var _ operationsapplication.JobStore = (*JobRepository)(nil)
 var _ operationsapplication.JobStoreWithHook = (*JobRepository)(nil)
 
-type JobRepository struct{ runtime *database.Runtime }
+type JobRepository struct {
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
+}
+
+type jobListCursor struct {
+	Version           int    `json:"v"`
+	SubjectUserID     int64  `json:"user_id"`
+	FilterFingerprint string `json:"filter"`
+	SnapshotID        int64  `json:"snapshot_id"`
+	AfterID           int64  `json:"after_id"`
+}
+
+const jobListCursorVersion = 1
 
 const safeResourceIDProjection = `CASE WHEN args->>'entity_id' ~ '^[1-9][0-9]{0,18}$'
 THEN CASE WHEN (args->>'entity_id')::numeric <= 9223372036854775807 THEN (args->>'entity_id')::bigint ELSE 0 END
 ELSE 0 END`
 
 func NewJobRepository(runtime *database.Runtime) *JobRepository {
-	return &JobRepository{runtime: runtime}
+	seed := "operations-jobs:unavailable"
+	if runtime != nil && runtime.Pool != nil {
+		seed = "operations-jobs:" + runtime.Pool.Config().ConnString()
+	}
+	return NewJobRepositoryWithCursorCodec(runtime, pagination.NewTestCodec(seed))
+}
+
+func NewJobRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *JobRepository {
+	return &JobRepository{runtime: runtime, cursorCodec: codec}
 }
 
 func (repository *JobRepository) ListJobs(ctx context.Context, query operationsdomain.JobListQuery) (operationsdomain.JobPage, error) {
-	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || repository.cursorCodec == nil {
 		return operationsdomain.JobPage{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
 		return operationsdomain.JobPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	args := []any{query.Cursor, query.Limit + 1}
-	filters := []string{"id > $1"}
+	cursor := jobListCursor{
+		Version: jobListCursorVersion, SubjectUserID: query.SubjectUserID, FilterFingerprint: jobListFingerprint(query),
+	}
+	if query.Cursor != "" {
+		decoded, err := decodeJobListCursor(repository.cursorCodec, query.Cursor, query)
+		if err != nil {
+			return operationsdomain.JobPage{}, fmt.Errorf("%w: invalid job cursor", sharedrepository.ErrInvalidInput)
+		}
+		cursor = decoded
+	} else if err := repository.runtime.SQL.QueryRowContext(ctx, `SELECT COALESCE(MAX(id),0) FROM river_job`).Scan(&cursor.SnapshotID); err != nil {
+		return operationsdomain.JobPage{}, databaserepository.MapError(err)
+	}
+	if cursor.SnapshotID == 0 {
+		return operationsdomain.JobPage{Items: []operationsdomain.JobSummary{}}, nil
+	}
+	args := []any{cursor.AfterID, cursor.SnapshotID, query.Limit + 1}
+	filters := []string{"id > $1", "id <= $2"}
 	if query.Kind != "" {
 		args = append(args, query.Kind)
 		filters = append(filters, fmt.Sprintf("kind = $%d", len(args)))
@@ -47,27 +85,55 @@ func (repository *JobRepository) ListJobs(ctx context.Context, query operationsd
 state, attempt, max_attempts, priority, scheduled_at, attempted_at, finalized_at, created_at,
 COALESCE((SELECT CASE WHEN attempt.error IN ('retryable','permanent','cancelled') THEN attempt.error ELSE '' END
           FROM river_job_attempt attempt WHERE attempt.job_id=river_job.id ORDER BY attempt.attempt DESC LIMIT 1),'')
-FROM river_job WHERE `+strings.Join(filters, " AND ")+` ORDER BY id ASC LIMIT $2`, args...)
+FROM river_job WHERE `+strings.Join(filters, " AND ")+` ORDER BY id ASC LIMIT $3`, args...)
 	if err != nil {
 		return operationsdomain.JobPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
-	page := operationsdomain.JobPage{Items: make([]operationsdomain.JobSummary, 0, query.Limit)}
+	page := operationsdomain.JobPage{Items: make([]operationsdomain.JobSummary, 0, query.Limit+1)}
 	for rows.Next() {
 		job, err := scanJobSummary(rows)
 		if err != nil {
 			return operationsdomain.JobPage{}, err
-		}
-		if len(page.Items) == query.Limit {
-			page.NextCursor = job.ID
-			break
 		}
 		page.Items = append(page.Items, job)
 	}
 	if err := rows.Err(); err != nil {
 		return operationsdomain.JobPage{}, databaserepository.MapError(err)
 	}
+	if len(page.Items) > query.Limit {
+		page.Items = page.Items[:query.Limit]
+		cursor.AfterID = page.Items[len(page.Items)-1].ID
+		encoded, err := encodeJobListCursor(repository.cursorCodec, cursor)
+		if err != nil {
+			return operationsdomain.JobPage{}, sharedrepository.ErrUnavailable
+		}
+		page.NextCursor = encoded
+	}
 	return page, nil
+}
+
+func encodeJobListCursor(cursorCodec *pagination.Codec, cursor jobListCursor) (string, error) {
+	cursor.Version = jobListCursorVersion
+	return cursorCodec.Seal("operations_job_list", cursor)
+}
+
+func decodeJobListCursor(cursorCodec *pagination.Codec, value string, query operationsdomain.JobListQuery) (jobListCursor, error) {
+	var cursor jobListCursor
+	if err := cursorCodec.Open(value, "operations_job_list", &cursor); err != nil {
+		return jobListCursor{}, err
+	}
+	if cursor.Version != jobListCursorVersion || cursor.SubjectUserID != query.SubjectUserID ||
+		cursor.FilterFingerprint != jobListFingerprint(query) || cursor.SnapshotID <= 0 ||
+		cursor.AfterID <= 0 || cursor.AfterID >= cursor.SnapshotID {
+		return jobListCursor{}, pagination.ErrInvalidCursor
+	}
+	return cursor, nil
+}
+
+func jobListFingerprint(query operationsdomain.JobListQuery) string {
+	digest := sha256.Sum256([]byte(query.Kind + "\x00" + string(query.State)))
+	return fmt.Sprintf("%x", digest)
 }
 
 func (repository *JobRepository) CancelJob(ctx context.Context, jobID int64) (operationsdomain.JobSummary, error) {

@@ -5847,8 +5847,8 @@ const docTemplate = `{
                 "summary": "List durable jobs",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "last job id",
+                        "type": "string",
+                        "description": "opaque signed job snapshot cursor",
                         "name": "cursor",
                         "in": "query"
                     },
@@ -11369,7 +11369,7 @@ const docTemplate = `{
                     }
                 },
                 "next_cursor": {
-                    "type": "integer"
+                    "type": "string"
                 }
             }
         },

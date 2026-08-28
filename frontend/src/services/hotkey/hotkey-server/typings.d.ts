@@ -954,8 +954,8 @@ required property without making explicit null impossible to bind. */
   };
 
   type getOperationsJobsParams = {
-    /** last job id */
-    cursor?: number;
+    /** opaque signed job snapshot cursor */
+    cursor?: string;
     /** job kind */
     kind?: string;
     /** job state */
@@ -1304,7 +1304,7 @@ probability or a cross-channel relevance percentage. */
 
   type JobPageResponse = {
     items?: JobResponse[];
-    next_cursor?: number;
+    next_cursor?: string;
   };
 
   type JobResponse = {

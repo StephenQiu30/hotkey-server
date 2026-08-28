@@ -52,14 +52,17 @@ func validJobFailureCode(code string) bool {
 }
 
 type JobListQuery struct {
-	Cursor int64
-	Kind   string
-	State  JobState
-	Limit  int
+	Cursor        string
+	SubjectUserID int64
+	Kind          string
+	State         JobState
+	Limit         int
 }
 
 func (query JobListQuery) Validate() error {
-	if query.Cursor < 0 || query.Limit < 1 || query.Limit > 100 || query.State != "" && !query.State.Valid() || len(query.Kind) > 64 {
+	if len(query.Cursor) > 8192 || strings.TrimSpace(query.Cursor) != query.Cursor || strings.ContainsAny(query.Cursor, "\r\n") ||
+		query.SubjectUserID < 0 || query.Limit < 1 || query.Limit > 100 || query.State != "" && !query.State.Valid() ||
+		len(query.Kind) > 64 || strings.TrimSpace(query.Kind) != query.Kind || strings.ContainsAny(query.Kind, "\r\n") {
 		return fmt.Errorf("invalid job list query")
 	}
 	return nil
@@ -67,7 +70,7 @@ func (query JobListQuery) Validate() error {
 
 type JobPage struct {
 	Items      []JobSummary `json:"items"`
-	NextCursor int64        `json:"next_cursor,omitempty"`
+	NextCursor string       `json:"next_cursor,omitempty"`
 }
 
 type JobMutationInput struct {

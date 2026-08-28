@@ -5844,8 +5844,8 @@
                 "summary": "List durable jobs",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "last job id",
+                        "type": "string",
+                        "description": "opaque signed job snapshot cursor",
                         "name": "cursor",
                         "in": "query"
                     },
@@ -11366,7 +11366,7 @@
                     }
                 },
                 "next_cursor": {
-                    "type": "integer"
+                    "type": "string"
                 }
             }
         },

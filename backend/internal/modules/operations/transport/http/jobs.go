@@ -3,11 +3,13 @@ package http
 import (
 	"context"
 	"fmt"
+	stdhttp "net/http"
 	"strconv"
 
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
+	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,7 +40,7 @@ func RegisterJobRoutes(router *gin.Engine, service *operationsapplication.JobSer
 // @Tags operations
 // @Produce json
 // @Security BearerAuth
-// @Param cursor query int false "last job id"
+// @Param cursor query string false "opaque signed job snapshot cursor"
 // @Param kind query string false "job kind"
 // @Param state query string false "job state"
 // @Param limit query int false "page size"
@@ -50,10 +52,15 @@ func RegisterJobRoutes(router *gin.Engine, service *operationsapplication.JobSer
 // @Router /api/v1/operations/jobs [get]
 func (handler *JobsHandler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "operations")
+	subject, ok := httptransport.SubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		return sharederrors.New(sharederrors.CodeUnauthenticated, stdhttp.StatusUnauthorized, "")
+	}
 	query, err := parseJobListQuery(c)
 	if err != nil {
 		return operationsapplication.JobHTTPError(err)
 	}
+	query.SubjectUserID = subject.UserID
 	page, err := handler.service.List(c.Request.Context(), query)
 	if err != nil {
 		return operationsapplication.JobHTTPError(err)
@@ -129,11 +136,7 @@ func parseJobListQuery(c *gin.Context) (operationsdomain.JobListQuery, error) {
 		query.State = operationsdomain.JobState(raw)
 	}
 	if raw := c.Query("cursor"); raw != "" {
-		cursor, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			return operationsdomain.JobListQuery{}, err
-		}
-		query.Cursor = cursor
+		query.Cursor = raw
 	}
 	query.Limit = 50
 	if raw := c.Query("limit"); raw != "" {

@@ -38,7 +38,7 @@ type JobResponse struct {
 
 type JobPageResponse struct {
 	Items      []JobResponse `json:"items"`
-	NextCursor int64         `json:"next_cursor,omitempty"`
+	NextCursor string        `json:"next_cursor,omitempty"`
 }
 
 func jobResponse(job operationsdomain.JobSummary) JobResponse {
