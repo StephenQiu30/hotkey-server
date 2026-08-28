@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -28,5 +29,85 @@ func TestMergeAutomaticRegionPreservesHumanNotes(t *testing.T) {
 	}
 	if !strings.Contains(merged, "Human note.") || strings.Contains(merged, "old") || !strings.Contains(merged, "new generated facts") {
 		t.Fatalf("merged document lost manual/automatic content: %q", merged)
+	}
+}
+
+func TestRenderVaultDocumentIsDeterministicAndSeparatesOwnedRegions(t *testing.T) {
+	input := VaultDocumentRenderInput{
+		DocumentID: 17,
+		RevisionNo: 4,
+		Type:       DocumentReport,
+		SourceID:   91,
+		Title:      `每日 "热点"`,
+		Generated:  "## 摘要\n\n- 事实 A\n",
+	}
+
+	first, err := RenderVaultDocument(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := RenderVaultDocument(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("identical Vault render input produced different bytes")
+	}
+	wantLines := []string{
+		"---",
+		"hotkey_schema: 1",
+		"hotkey_document_id: 17",
+		"hotkey_document_type: report",
+		"hotkey_source_id: 91",
+		"hotkey_revision: 4",
+		"hotkey_generated_sha256: " + HashContent("", input.Generated),
+		`title: "每日 \"热点\""`,
+		"---",
+		"",
+		AutomaticRegionBegin,
+		"## 摘要",
+		"",
+		"- 事实 A",
+		AutomaticRegionEnd,
+		"",
+		HumanRegionBegin,
+		HumanRegionEnd,
+		"",
+	}
+	if lines := strings.Split(first, "\n"); !reflect.DeepEqual(lines, wantLines) {
+		t.Fatalf("Vault Markdown lines = %#v, want %#v", lines, wantLines)
+	}
+	if strings.Count(first, AutomaticRegionBegin) != 1 || strings.Count(first, AutomaticRegionEnd) != 1 ||
+		strings.Count(first, HumanRegionBegin) != 1 || strings.Count(first, HumanRegionEnd) != 1 {
+		t.Fatalf("Vault Markdown markers are not unique: %q", first)
+	}
+}
+
+func TestRenderVaultDocumentRejectsUnstableIdentityAndMarkerInjection(t *testing.T) {
+	valid := VaultDocumentRenderInput{
+		DocumentID: 17,
+		RevisionNo: 1,
+		Type:       DocumentEvent,
+		SourceID:   91,
+		Title:      "事件",
+		Generated:  "事实",
+	}
+
+	cases := map[string]func(*VaultDocumentRenderInput){
+		"missing document identity": func(input *VaultDocumentRenderInput) { input.DocumentID = 0 },
+		"missing source identity":   func(input *VaultDocumentRenderInput) { input.SourceID = 0 },
+		"invalid document type":     func(input *VaultDocumentRenderInput) { input.Type = "unknown" },
+		"multiline title":           func(input *VaultDocumentRenderInput) { input.Title = "title\ninjected: true" },
+		"automatic marker":          func(input *VaultDocumentRenderInput) { input.Generated = AutomaticRegionBegin },
+		"human marker":              func(input *VaultDocumentRenderInput) { input.Generated = HumanRegionBegin },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			input := valid
+			mutate(&input)
+			if _, err := RenderVaultDocument(input); err == nil {
+				t.Fatal("RenderVaultDocument() error = nil")
+			}
+		})
 	}
 }

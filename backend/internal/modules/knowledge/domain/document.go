@@ -5,12 +5,15 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
 const (
 	AutomaticRegionBegin = "<!-- HOTKEY:AUTO:BEGIN -->"
 	AutomaticRegionEnd   = "<!-- HOTKEY:AUTO:END -->"
+	HumanRegionBegin     = "<!-- HOTKEY:HUMAN:BEGIN -->"
+	HumanRegionEnd       = "<!-- HOTKEY:HUMAN:END -->"
 )
 
 type DocumentType string
@@ -108,6 +111,19 @@ type VaultFile struct {
 	Hash string
 }
 
+// VaultDocumentRenderInput contains only stable business identity and the
+// database-owned automatic body. Human-authored bytes are deliberately not an
+// input: a new document starts with an empty human region, while later writes
+// must preserve the region already stored in Vault or an immutable revision.
+type VaultDocumentRenderInput struct {
+	DocumentID int64
+	RevisionNo int64
+	Type       DocumentType
+	SourceID   int64
+	Title      string
+	Generated  string
+}
+
 func (proposal Proposal) Validate() error {
 	if proposal.ID <= 0 || proposal.Version <= 0 || proposal.DocumentID <= 0 || proposal.BaseRevisionNo < 0 || len(proposal.BaseHash) != 64 || proposal.Status == "" {
 		return fmt.Errorf("invalid knowledge proposal")
@@ -118,6 +134,45 @@ func (proposal Proposal) Validate() error {
 func HashContent(frontmatter, body string) string {
 	sum := sha256.Sum256([]byte(frontmatter + "\n---\n" + body))
 	return hex.EncodeToString(sum[:])
+}
+
+// RenderVaultDocument emits the canonical, deterministic Markdown shape for
+// a new human-maintainable projection. The fixed key order is intentional: it
+// makes the same PostgreSQL facts byte-for-byte reproducible without relying
+// on map iteration or a YAML encoder's formatting choices.
+func RenderVaultDocument(input VaultDocumentRenderInput) (string, error) {
+	title := strings.TrimSpace(input.Title)
+	generated := strings.ReplaceAll(strings.ReplaceAll(input.Generated, "\r\n", "\n"), "\r", "\n")
+	if input.DocumentID <= 0 || input.RevisionNo < 0 || input.SourceID <= 0 || !validDocumentType(input.Type) ||
+		title == "" || title != input.Title || strings.ContainsAny(title, "\r\n\x00") || strings.ContainsRune(generated, 0) {
+		return "", fmt.Errorf("invalid Vault document render input")
+	}
+	for _, marker := range []string{AutomaticRegionBegin, AutomaticRegionEnd, HumanRegionBegin, HumanRegionEnd} {
+		if strings.Contains(generated, marker) {
+			return "", fmt.Errorf("generated content must not contain Vault region markers")
+		}
+	}
+
+	var result strings.Builder
+	fmt.Fprintf(&result, "---\nhotkey_schema: 1\nhotkey_document_id: %d\nhotkey_document_type: %s\nhotkey_source_id: %d\nhotkey_revision: %d\n", input.DocumentID, input.Type, input.SourceID, input.RevisionNo)
+	fmt.Fprintf(&result, "hotkey_generated_sha256: %s\ntitle: %s\n---\n\n", HashContent("", generated), strconv.QuoteToGraphic(title))
+	result.WriteString(AutomaticRegionBegin)
+	result.WriteByte('\n')
+	result.WriteString(generated)
+	if !strings.HasSuffix(generated, "\n") {
+		result.WriteByte('\n')
+	}
+	result.WriteString(AutomaticRegionEnd)
+	result.WriteString("\n\n")
+	result.WriteString(HumanRegionBegin)
+	result.WriteByte('\n')
+	result.WriteString(HumanRegionEnd)
+	result.WriteByte('\n')
+	return result.String(), nil
+}
+
+func validDocumentType(documentType DocumentType) bool {
+	return documentType == DocumentEvent || documentType == DocumentTopic || documentType == DocumentReport
 }
 
 func StablePath(root, kind, key string) (string, error) {
