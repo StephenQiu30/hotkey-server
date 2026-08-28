@@ -231,6 +231,7 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	}
 	transport := &http.Transport{
 		Proxy: nil, ForceAttemptHTTP2: true, TLSClientConfig: tlsConfig,
+		DisableCompression:  true,
 		TLSHandshakeTimeout: options.resourceLimits.ConnectTimeout, ResponseHeaderTimeout: minimumDuration(configuredReadTimeout, options.resourceLimits.ReadTimeout),
 		DialContext: secureDialContext(options.resolver, options.dialContext, options.resourceLimits.ConnectTimeout),
 	}
@@ -528,6 +529,7 @@ func (connector *Connector) doRequest(ctx context.Context, endpoint *url.URL, pa
 		return fetchedJSONResponse{}, domain.RateLimit{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("create X request"))
 	}
 	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Accept-Encoding", "gzip")
 	request.Header.Set("Authorization", "Bearer "+token)
 	response, err := connector.http.Do(request)
 	if err != nil {
@@ -539,13 +541,16 @@ func (connector *Connector) doRequest(ctx context.Context, endpoint *url.URL, pa
 		return fetchedJSONResponse{}, domain.RateLimit{}, requestError(err)
 	}
 	rateLimit := parseRateLimit(response.Header)
-	payload, readErr := byteBudget.read(response.Body)
+	payload, readErr := byteBudget.readResponse(ctx, response.Body, response.Header.Get("Content-Encoding"))
 	closeErr := response.Body.Close()
 	if readErr != nil || closeErr != nil {
 		if errors.Is(readErr, errResponseByteLimit) {
 			return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X response exceeds cumulative byte limit"))
 		}
-		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read X response"))
+		if errors.Is(readErr, sourcenet.ErrResponseBodyRead) || errors.Is(readErr, context.Canceled) || closeErr != nil {
+			return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read X response"))
+		}
+		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X compressed response is not permitted"))
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		status := response.StatusCode

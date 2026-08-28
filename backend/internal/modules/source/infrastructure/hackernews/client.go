@@ -14,6 +14,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/evidencecapture"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
 )
 
 const maxRedirects = 3
@@ -66,6 +67,7 @@ func newClient(endpoint *url.URL, profile ResourceLimitProfile, configuredReadTi
 	transport := &http.Transport{
 		Proxy:                 nil,
 		ForceAttemptHTTP2:     true,
+		DisableCompression:    true,
 		TLSClientConfig:       tlsConfig,
 		TLSHandshakeTimeout:   profile.ConnectTimeout,
 		ResponseHeaderTimeout: minimumDuration(configuredReadTimeout, profile.ReadTimeout),
@@ -101,6 +103,7 @@ func (client *client) get(ctx context.Context, path string, byteBudget *response
 	if err != nil {
 		return fetchedJSONResponse{}, nil, errUnsafeDestination
 	}
+	request.Header.Set("Accept-Encoding", "gzip")
 	response, err := client.http.Do(request)
 	if err != nil {
 		var quota requestQuotaError
@@ -111,13 +114,16 @@ func (client *client) get(ctx context.Context, path string, byteBudget *response
 		return fetchedJSONResponse{}, nil, requestError(err)
 	}
 	retry := retryAfter(response.Header.Get("Retry-After"), client.now())
-	payload, readErr := byteBudget.read(response.Body)
+	payload, readErr := byteBudget.readResponse(ctx, response.Body, response.Header.Get("Content-Encoding"))
 	closeErr := response.Body.Close()
 	if readErr != nil || closeErr != nil {
 		if errors.Is(readErr, errResponseByteLimit) {
 			return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("Hacker News response exceeds cumulative byte limit"))
 		}
-		return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read Hacker News response"))
+		if errors.Is(readErr, sourcenet.ErrResponseBodyRead) || errors.Is(readErr, context.Canceled) || closeErr != nil {
+			return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read Hacker News response"))
+		}
+		return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("Hacker News compressed response is not permitted"))
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		status := response.StatusCode

@@ -1,6 +1,8 @@
 package rss
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"net"
@@ -14,6 +16,36 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 )
+
+func TestConnectorRejectsCompressionBombBeforeEvidence(t *testing.T) {
+	var encoded bytes.Buffer
+	compressor := gzip.NewWriter(&encoded)
+	if _, err := compressor.Write(bytes.Repeat([]byte("A"), 1<<20)); err != nil {
+		t.Fatal(err)
+	}
+	if err := compressor.Close(); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Accept-Encoding") != "gzip" {
+			t.Errorf("Accept-Encoding = %q, want explicit guarded gzip", request.Header.Get("Accept-Encoding"))
+		}
+		writer.Header().Set("Content-Encoding", "gzip")
+		writer.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = writer.Write(encoded.Bytes())
+	}))
+	defer server.Close()
+
+	connector := newTestConnector(t, server, 1, publicResolver())
+	result, err := connector.Fetch(context.Background(), testFetchRequest())
+	if domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent ||
+		domain.SafeCollectionErrorCause(err) != "RSS compressed response is not permitted" {
+		t.Fatalf("compression bomb error = %v / %q", err, domain.SafeCollectionErrorCause(err))
+	}
+	if len(result.Items) != 0 || len(result.Snapshots) != 0 {
+		t.Fatalf("compression bomb produced evidence: %#v", result)
+	}
+}
 
 func TestConnectorFetchesRSSAndAtomWithConditionalRequests(t *testing.T) {
 	t.Parallel()

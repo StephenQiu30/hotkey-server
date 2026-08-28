@@ -112,6 +112,7 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	transport := &http.Transport{
 		Proxy:                 nil,
 		ForceAttemptHTTP2:     true,
+		DisableCompression:    true,
 		DisableKeepAlives:     true,
 		TLSClientConfig:       tlsConfig,
 		TLSHandshakeTimeout:   options.resourceLimits.ConnectTimeout,
@@ -232,13 +233,13 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 			return result, statusError(status)
 		}
 		remainingBytes := connector.resourceLimits.MaxCumulativeResponseBytes - cumulativeBytes
-		payload, readErr := io.ReadAll(io.LimitReader(response.Body, remainingBytes+1))
+		payload, readErr := sourcenet.ReadBoundedResponse(ctx, response.Body, response.Header.Get("Content-Encoding"), sourcenet.DefaultCompressionLimits(remainingBytes))
 		closeErr := response.Body.Close()
-		if readErr != nil || closeErr != nil {
+		if errors.Is(readErr, sourcenet.ErrResponseBodyRead) || closeErr != nil {
 			return result, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read RSS response"))
 		}
-		if int64(len(payload)) > remainingBytes {
-			return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("RSS response exceeds body byte limit"))
+		if readErr != nil {
+			return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("RSS compressed response is not permitted"))
 		}
 		cumulativeBytes += int64(len(payload))
 		capturedAt := connector.now().UTC()
@@ -369,6 +370,7 @@ func (connector *Connector) get(ctx context.Context, target *url.URL, etag, last
 	redirectChain := []string{}
 	request = request.WithContext(context.WithValue(request.Context(), redirectTraceContextKey{}, &redirectChain))
 	request.Header.Set("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9")
+	request.Header.Set("Accept-Encoding", "gzip")
 	if strings.TrimSpace(etag) != "" {
 		request.Header.Set("If-None-Match", strings.TrimSpace(etag))
 	}

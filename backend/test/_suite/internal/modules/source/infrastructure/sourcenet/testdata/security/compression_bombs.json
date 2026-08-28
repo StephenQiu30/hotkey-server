@@ -1,0 +1,104 @@
+{
+  "cases": [
+    {
+      "name": "encoded_byte_limit",
+      "kind": "gzip",
+      "expanded_bytes": 1024,
+      "max_encoded_bytes": 8,
+      "max_decoded_bytes": 2048,
+      "max_ratio": 1000,
+      "max_members": 1,
+      "max_depth": 1,
+      "max_wall_milliseconds": 100,
+      "want": "encoded_bytes"
+    },
+    {
+      "name": "decoded_byte_limit",
+      "kind": "gzip",
+      "expanded_bytes": 4096,
+      "max_encoded_bytes": 4096,
+      "max_decoded_bytes": 512,
+      "max_ratio": 1000,
+      "max_members": 1,
+      "max_depth": 1,
+      "max_wall_milliseconds": 100,
+      "want": "decoded_bytes"
+    },
+    {
+      "name": "compression_ratio_limit",
+      "kind": "gzip",
+      "expanded_bytes": 1048576,
+      "max_encoded_bytes": 1048576,
+      "max_decoded_bytes": 2097152,
+      "max_ratio": 10,
+      "max_members": 1,
+      "max_depth": 1,
+      "max_wall_milliseconds": 100,
+      "want": "ratio"
+    },
+    {
+      "name": "multiple_gzip_members",
+      "kind": "gzip_multistream",
+      "expanded_bytes": 128,
+      "members": 2,
+      "max_encoded_bytes": 4096,
+      "max_decoded_bytes": 4096,
+      "max_ratio": 1000,
+      "max_members": 1,
+      "max_depth": 1,
+      "max_wall_milliseconds": 100,
+      "want": "members"
+    },
+    {
+      "name": "nested_gzip_depth",
+      "kind": "nested_gzip",
+      "expanded_bytes": 128,
+      "depth": 2,
+      "max_encoded_bytes": 4096,
+      "max_decoded_bytes": 4096,
+      "max_ratio": 1000,
+      "max_members": 1,
+      "max_depth": 1,
+      "max_wall_milliseconds": 100,
+      "want": "depth"
+    },
+    {
+      "name": "forged_gzip_length",
+      "kind": "forged_gzip_length",
+      "expanded_bytes": 128,
+      "max_encoded_bytes": 4096,
+      "max_decoded_bytes": 4096,
+      "max_ratio": 1000,
+      "max_members": 1,
+      "max_depth": 1,
+      "max_wall_milliseconds": 100,
+      "want": "invalid"
+    },
+    {
+      "name": "zip_many_members",
+      "kind": "zip",
+      "members": 33,
+      "expanded_bytes": 16,
+      "max_encoded_bytes": 65536,
+      "max_decoded_bytes": 65536,
+      "max_ratio": 1000,
+      "max_members": 1,
+      "max_depth": 1,
+      "max_wall_milliseconds": 100,
+      "want": "archive"
+    },
+    {
+      "name": "wall_clock_limit",
+      "kind": "slow_identity",
+      "expanded_bytes": 128,
+      "sleep_milliseconds": 20,
+      "max_encoded_bytes": 4096,
+      "max_decoded_bytes": 4096,
+      "max_ratio": 1000,
+      "max_members": 1,
+      "max_depth": 1,
+      "max_wall_milliseconds": 5,
+      "want": "wall_clock"
+    }
+  ]
+}

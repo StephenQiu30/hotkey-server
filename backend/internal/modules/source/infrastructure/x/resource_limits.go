@@ -1,11 +1,14 @@
 package x
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"sync"
 	"time"
+
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/sourcenet"
 )
 
 const ResourceLimitProfileVersion = "x-api-resource-limits-v1"
@@ -68,6 +71,20 @@ func (budget *responseByteBudget) read(body io.Reader) ([]byte, error) {
 	}
 	if int64(len(payload)) > budget.remaining {
 		return nil, errResponseByteLimit
+	}
+	budget.remaining -= int64(len(payload))
+	return payload, nil
+}
+
+func (budget *responseByteBudget) readResponse(ctx context.Context, body io.Reader, contentEncoding string) ([]byte, error) {
+	budget.mu.Lock()
+	defer budget.mu.Unlock()
+	if budget.remaining <= 0 {
+		return nil, errResponseByteLimit
+	}
+	payload, err := sourcenet.ReadBoundedResponse(ctx, body, contentEncoding, sourcenet.DefaultCompressionLimits(budget.remaining))
+	if err != nil {
+		return nil, err
 	}
 	budget.remaining -= int64(len(payload))
 	return payload, nil

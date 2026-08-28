@@ -86,6 +86,68 @@ FROM audit_logs WHERE action = 'collection.security_rejected' AND resource_id = 
 	}
 }
 
+func TestCollectionCompressionSecurityRejectionPersistsNoBusinessFactsOrPayload(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "compression-rejection", 1)
+	before := readCollectionBusinessFactCounts(t, runtime)
+	connector := &collectionConnectorFake{err: domain.NewCollectionError(
+		domain.CollectionErrorPermanent,
+		errors.New("RSS compressed response is not permitted"),
+	)}
+	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
+		Connectors: connectorRegistryForAcceptance{connector: connector}, SecurityAudit: operationspostgres.NewAuditWriter(runtime),
+		Now: func() time.Time { return request.WindowEnd },
+	})
+	if err != nil {
+		t.Fatalf("NewCollectionService(): %v", err)
+	}
+
+	first, firstErr := service.Collect(context.Background(), request)
+	second, secondErr := service.Collect(context.Background(), request)
+	if firstErr == nil || domain.ClassifyCollectionError(firstErr) != domain.CollectionErrorPermanent || first.Status != domain.CollectionRunFailed {
+		t.Fatalf("first compression rejection = %#v / %v", first, firstErr)
+	}
+	if secondErr != nil || second.ID != first.ID || second.Status != domain.CollectionRunFailed {
+		t.Fatalf("repeated compression rejection = %#v / %v", second, secondErr)
+	}
+	if got := connector.calls.Load(); got != 1 {
+		t.Fatalf("connector fetch calls = %d, want one attempt and no replay side effect", got)
+	}
+	if after := readCollectionBusinessFactCounts(t, runtime); after != before {
+		t.Fatalf("business facts changed after repeated compression rejection: before=%#v after=%#v", before, after)
+	}
+
+	var runStatus, runError string
+	var candidateCount, acceptedCount, rejectedCount int64
+	if err := runtime.SQL.QueryRow(`
+SELECT status, COALESCE(error_code, ''), candidate_count, accepted_count, rejected_count
+FROM collection_runs WHERE id = $1`, first.ID).Scan(&runStatus, &runError, &candidateCount, &acceptedCount, &rejectedCount); err != nil {
+		t.Fatal(err)
+	}
+	if runStatus != "failed" || runError != "permanent" || candidateCount != 0 || acceptedCount != 0 || rejectedCount != 0 {
+		t.Fatalf("sanitized compression run = %q/%q/%d/%d/%d", runStatus, runError, candidateCount, acceptedCount, rejectedCount)
+	}
+
+	var auditCount int
+	var afterData, allRows string
+	if err := runtime.SQL.QueryRow(`
+SELECT count(*), COALESCE(min(after_data::text), ''), COALESCE(string_agg(row_to_json(audit_logs)::text, ''), '')
+FROM audit_logs WHERE action='collection.security_rejected' AND resource_id=$1`, first.ID).
+		Scan(&auditCount, &afterData, &allRows); err != nil {
+		t.Fatal(err)
+	}
+	if auditCount != 1 || afterData != `{"reason_code": "compressed_content_not_permitted"}` {
+		t.Fatalf("compression audit = %d/%q", auditCount, afterData)
+	}
+	for _, forbidden := range []string{"gzip", "zip", "expanded", "payload", "RSS compressed response"} {
+		if strings.Contains(allRows, forbidden) {
+			t.Fatalf("compression audit leaked %q: %s", forbidden, allRows)
+		}
+	}
+}
+
 type connectorRegistryForAcceptance struct{ connector domain.Connector }
 
 func (registry connectorRegistryForAcceptance) Resolve(context.Context, domain.SourceConnection) (domain.Connector, error) {

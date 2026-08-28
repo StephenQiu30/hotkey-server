@@ -82,13 +82,16 @@ func SafeCollectionErrorCause(cause error) string {
 		"invalid RSS request cursor",
 		"RSS destination is not permitted",
 		"RSS response exceeds body byte limit",
+		"RSS compressed response is not permitted",
 		"RSS response exceeds collection item limit",
 		"RSS daily request quota exceeded",
 		"read RSS response",
 		"parse RSS response",
 		"invalid RSS pagination link",
 		"Hacker News destination is not permitted",
+		"Hacker News compressed response is not permitted",
 		"X destination is not permitted",
+		"X compressed response is not permitted",
 		"Foundry destination is not permitted",
 		"source connection is unavailable",
 		"resolved collection identity changed":
@@ -110,6 +113,10 @@ func CollectionSecurityRejectionReason(cause error) string {
 		"X destination is not permitted",
 		"Foundry destination is not permitted":
 		return "ssrf_destination_not_permitted"
+	case "RSS compressed response is not permitted",
+		"Hacker News compressed response is not permitted",
+		"X compressed response is not permitted":
+		return "compressed_content_not_permitted"
 	default:
 		return ""
 	}
