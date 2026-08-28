@@ -11,66 +11,29 @@ HotKey 采用单体仓库管理 Go Core、Python 数据分析 Agent 与 Web 工�
 | [`frontend/`](frontend/README.md) | Next.js Web 工作台、页面组件和生成的 API 客户端 |
 | [`docs/`](docs/README.md) | 不按应用分层的统一正式文档与 OpenAPI 发布契约 |
 
-## 本机开发（默认方式）
+## 运行与本机测试
 
-本机开发不启动 Docker，也不连接 Compose 内的 PostgreSQL、Redis 或 MinIO。请先通过 Homebrew 或其他本机方式启动 PostgreSQL 16 + pgvector、Redis 和 MinIO，再分别运行 Go、Python Agent 与 Next.js 开发进程。
-
-克隆仓库后，在对应子目录执行命令：
+项目运行固定使用根目录 Docker Compose；Go API/Worker、Python Agent、Next.js、PostgreSQL、Redis 与 MinIO 不作为本机直启进程分别维护：
 
 ```bash
 git clone https://github.com/StephenQiu30/hotkey-server.git
 cd hotkey-server
-
-# 后端
-cd backend
 cp .env.example .env
-# 如需启用 Python Agent Shadow，在 .env 中同时设置：
-# HOTKEY_AGENT_SHADOW_ENABLED=true
-# HOTKEY_AGENT_URL=http://127.0.0.1:8090
-# HOTKEY_AGENT_AUTH_TOKEN=development-agent-token-change-me-000000
-# 仅首次初始化；已有 hotkey 数据库时跳过以下三行
-createdb -O hotkey hotkey
-go run ./cmd/hotkey db init --empty-only --confirm-empty
-go run ./cmd/hotkey db verify
-go run ./cmd/hotkey
-
-# Python Agent（另开终端；配置后仅运行 Go Worker Shadow，不进入 Live 决策）
-cd agent
-uv sync --all-extras --locked
-export HOTKEY_AGENT_AUTH_TOKEN=development-agent-token-change-me-000000
-uv run uvicorn hotkey_agent.main:app --host 127.0.0.1 --port 8090
-
-# 前端（另开终端）
-cd frontend
-npm ci
-npm run dev
+cp backend/.env.example backend/.env
+docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240
 ```
 
-`backend/.env` 的数据库、Redis 和 MinIO 地址必须使用本机地址（默认分别为 `localhost:5432`、`127.0.0.1:6379`、`localhost:9000`）。后端默认监听 `http://127.0.0.1:8866`，Agent 默认监听仅本机的 `http://127.0.0.1:8090`，前端默认启动在 `http://127.0.0.1:8010`。Agent 不接收业务存储或来源凭据；环境变量与部署方式见各子项目 README。
+日常开发验证直接使用本机已安装的 Go、Python/uv 和 Node 工具链；后端集成测试复用已经存在的可丢弃 PostgreSQL/Redis 测试实例。格式、静态、单元、集成或生成检查不启动 API、Worker、Agent、Frontend，也不为每轮测试执行 `docker compose up/down`。只有 Compose 配置、新鲜容器 E2E、发布和恢复演练会创建隔离容器栈。
+
+默认 Compose 对外提供 Web `http://127.0.0.1:8010` 与 Go API `http://127.0.0.1:8866`；Agent 只在内部网络提供分析服务，不接收业务存储或来源凭据。
 
 登录后，管理员可在“来源管理”中直接填写和轮换第三方来源凭据。来源参数与加密密文以 PostgreSQL 为事实源；`.env` 只保留数据库、身份、存储等部署配置和独立的 `HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY`。旧 `env:NAME` 来源继续兼容，任何读取接口都不会返回凭据明文或引用。
 
-### 配置加载与工作目录
-
-后端从**进程工作目录**读取 `.env`；当配置的 `HOTKEY_ENV=production` 时，再叠加读取同目录 `.env.prod`（进程环境变量优先级最高）。因此：
-
-- 从 `backend/` 目录执行 `go run ./cmd/hotkey` 时，读到的是 `backend/.env`。
-- 若在仓库根目录另建了 `.env`，请确保启动后端时工作目录与预期读取的 `.env` 一致，或把配置通过进程环境变量注入。
-- `HOTKEY_VAULT_PATH` 等相对路径按进程工作目录解析，建议本地填写绝对路径以避免歧义。
-
-### 数据库初始化
-
-```bash
-cd backend
-go run ./cmd/hotkey db init --empty-only --confirm-empty
-go run ./cmd/hotkey db verify
-```
-
-`db init` 只接受**全新空库**（public schema 中无任何对象）。若目标库已有旧数据或已安装 extension，会拒绝执行。现有库与当前 `backend/db/schema.sql` 存在结构漂移时**无法增量升级**——请对全新空库初始化，或将现有数据备份后重建。若目标库由非超级用户持有，需先以超级用户安装 `pg_trgm` 与 `vector` 扩展，或临时授予该用户创建扩展的权限。
+Compose 的 `db-init` 一次性服务使用唯一 [`backend/db/schema.sql`](backend/db/schema.sql) 初始化空库并在 API 接流量前完成。它拒绝覆盖非空或不兼容数据库；现有数据的备份、重建与恢复必须按 Operations 手册在隔离环境执行。
 
 ## Docker Compose 部署与隔离验收
 
-Docker Compose 只用于完整容器部署和隔离验收，不是本机开发依赖。根 `docker-compose.yml` 统一定义前端、Go Core、内部 Python Agent、PostgreSQL、Redis、MinIO、默认环境配置、健康检查和卷；Agent 不发布宿主机端口，生产文件只覆盖生产环境差异。
+Docker Compose 是完整项目唯一运行入口。根 `docker-compose.yml` 统一定义前端、Go Core、内部 Python Agent、PostgreSQL、Redis、MinIO、默认环境配置、健康检查和卷；Agent 不发布宿主机端口，生产文件只覆盖生产环境差异。
 
 容器使用固定名称 `hotkey-postgres`、`hotkey-redis`、`hotkey-minio`、`hotkey-minio-init`、`hotkey-db-init`、`hotkey-agent`、`hotkey-api` 和 `hotkey-web`，不带 `-1`。同一主机运行多套时通过 `HOTKEY_CONTAINER_PREFIX` 设置唯一前缀。
 

@@ -70,17 +70,20 @@ The frontend does not hand-write backend DTOs. Request functions and types are g
 - npm
 - A running [hotkey-server](https://github.com/StephenQiu30/hotkey-server), available at `http://127.0.0.1:8866` by default
 
-### Local development
+### Host-side tests and complete runtime
+
+Use the installed Node toolchain for dependency installation, type checks, unit tests, OpenAPI generation, and builds. Start the complete product only through root Docker Compose; do not run a separate Next.js development server or host Go backend.
 
 ```bash
 git clone https://github.com/StephenQiu30/hotkey-server.git
 cd hotkey-server/frontend
 npm ci
 cp .env.example .env
-npm run dev
+npm run typecheck
+npm run test:unit
 ```
 
-Open <http://localhost:8010>.
+To use the complete workspace, run `docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240` from the repository root and open <http://localhost:8010>.
 
 No environment value is required for the default local backend. Same-origin `/api` and `/healthz` requests are sent through the Next.js server to:
 
@@ -90,11 +93,11 @@ HOTKEY_API_ORIGIN=http://127.0.0.1:8866
 
 This variable is server-only and is not exposed to the browser as `NEXT_PUBLIC_*`. See [`.env.example`](.env.example) for the complete configuration.
 
-In WebStorm, you can run the `dev` script from `package.json` directly. The Web application and backend start separately and require no `.sh` launcher. See the [`backend/` documentation](../backend/README_EN.md) for registration, email, and administrator configuration.
+Compose owns frontend/backend origins, internal service addresses, and dependency ordering. See the [`backend/` documentation](../backend/README_EN.md) for registration, email, and administrator configuration.
 
 ### Docker
 
-Docker Compose is centralized in a root default configuration with a production override and starts the frontend, backend, PostgreSQL, Redis, and MinIO together. Start the default environment with:
+Docker Compose is the only full-project runtime entry point. Its root default configuration and production override start the frontend, backend, Python Agent, PostgreSQL, Redis, and MinIO together. Start the default environment with:
 
 ```bash
 cd ..
@@ -116,7 +119,6 @@ The shared baseline connects the frontend and backend through internal service n
 ## Commands
 
 ```bash
-npm run dev
 npm run typecheck
 npm run test:unit
 npm run build

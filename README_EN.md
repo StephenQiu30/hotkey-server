@@ -11,36 +11,23 @@ HotKey keeps its Go Core, Python data-analysis Agent, and Web workspace in one r
 | [`frontend/`](frontend/README_EN.md) | Next.js Web workspace, UI components, and the generated API client |
 | [`docs/`](docs/README.md) | Unified formal documentation and the published OpenAPI contract, without app-specific layers |
 
-## Development
+## Runtime and host-side testing
 
-Run each project from its own directory:
+The complete project always starts through the root Docker Compose definition:
 
 ```bash
 git clone https://github.com/StephenQiu30/hotkey-server.git
 cd hotkey-server
-
-# Backend
-cd backend
 cp .env.example .env
-go run ./cmd/hotkey
-
-# Python Agent (another terminal; production Go Worker wiring is still pending)
-cd agent
-uv sync --all-extras --locked
-export HOTKEY_AGENT_AUTH_TOKEN=development-agent-token-change-me-000000
-uv run uvicorn hotkey_agent.main:app --host 127.0.0.1 --port 8090
-
-# Frontend (in another terminal)
-cd frontend
-npm ci
-npm run dev
+cp backend/.env.example backend/.env
+docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240
 ```
 
-The backend listens on `http://127.0.0.1:8866`, the Agent is local-only on `http://127.0.0.1:8090`, and the frontend starts at `http://127.0.0.1:8010`. The Agent receives no business-storage or source credentials.
+Use the installed Go, Python/uv, and Node toolchains directly for formatting, static checks, unit/integration tests, generation, and builds. These checks reuse existing disposable PostgreSQL and Redis test services; they do not start API, Worker, Agent, or Frontend processes and do not repeatedly run `docker compose up/down`. Only fresh-container E2E, release, and recovery gates create an isolated stack.
 
 ## Docker Compose
 
-The root `docker-compose.yml` defines the frontend, Go Core, internal Python Agent, PostgreSQL, Redis, MinIO, default environment, health checks, and volumes. The Agent publishes no host port. The production file contains only production differences. For the default environment:
+Docker Compose is the only full-project runtime entry point. The root `docker-compose.yml` defines the frontend, Go Core, internal Python Agent, PostgreSQL, Redis, MinIO, default environment, health checks, and volumes. The Agent publishes no host port. The production file contains only production differences. For the default environment:
 
 ```bash
 cp backend/.env.example backend/.env

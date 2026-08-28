@@ -95,9 +95,9 @@ flowchart LR
 - MinIO
 - 可选：SMTP、OpenAI / DeepSeek API、Ollama、ONNX Runtime
 
-### Docker Compose 部署（不用于本机开发）
+### Docker Compose 部署（唯一项目运行入口）
 
-本机开发直接使用本机安装的 PostgreSQL、Redis 和 MinIO，并从 `backend/` 执行 Go 进程；不要启动 Compose。默认 Compose 文件位于仓库根目录，只用于完整容器部署与隔离验收，包含前端、后端与基础设施的完整配置。默认容器环境使用 `backend/.env`：
+API、Worker、Python Agent、前端与基础设施统一通过仓库根 Compose 启动，不从 `backend/` 直接运行 Go 服务进程。默认容器环境使用 `backend/.env`：
 
 ```bash
 cd ..
@@ -123,7 +123,7 @@ cd hotkey-server/backend
 cp .env.example .env
 ```
 
-以下步骤均面向本机原生依赖。确认 `.env` 中 PostgreSQL、Redis 与 MinIO 使用 `localhost` 或 `127.0.0.1`，不要填写 Compose 服务名 `postgres`、`redis`、`minio`。
+配置由 Compose 映射给容器；不要为直接运行本机服务改写成另一套地址或启动流程。
 
 编辑 `.env`，至少配置专用 PostgreSQL、MinIO、Redis、精确 CORS Origin、两个身份随机密钥和独立的来源凭据主密钥：
 
@@ -143,10 +143,7 @@ JWT 与 HMAC 密钥填写各自独立、随机且不少于 32 字节的值；来
 
 当前完整结构由 [`db/schema.sql`](db/schema.sql) 统一维护。请使用新的空数据库初始化：
 
-```bash
-go run ./cmd/hotkey db init --empty-only --confirm-empty
-go run ./cmd/hotkey db verify
-```
+默认 Compose 的 `db-init` 一次性服务会在 API 启动前完成空库初始化和兼容性验证，不需要在本机重复执行初始化命令。
 
 > **为什么必须是空库：** `db init` 只接受 public schema 中无任何对象的目标库，`db verify` 会对表集合、列名与顺序、约束、索引和默认值做字节级一致性校验。旧版本库与当前 `db/schema.sql` 存在结构漂移时**无法增量迁移**，需对全新空库初始化，或将现有数据备份后重建。
 >
@@ -164,13 +161,11 @@ go run ./cmd/hotkey db verify
 
 ### 3. 启动后端
 
-GoLand 直接运行 `cmd/hotkey` 的 `main` 包即可；命令行等价入口只有一个：
+从仓库根目录启动完整项目：
 
 ```bash
-go run ./cmd/hotkey
+docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240
 ```
-
-> **配置加载与工作目录：** 后端从进程工作目录读取 `.env`（生产环境叠加 `.env.prod`，进程环境变量优先级最高）。GoLand 运行 `cmd/hotkey` 时，请把工作目录设为 `backend/` 以便读取 `backend/.env`；相对路径配置（如 `HOTKEY_VAULT_PATH`）按工作目录解析，建议填写绝对路径。
 
 首个用户通过 Web 正常完成邮箱验证和注册，默认角色为 viewer；随后由数据库操作员通过经评审、留有审计记录的一次性事务将该用户提升为 admin。新文档基线尚未验收这项生产操作，正式部署前必须按 [Operations 索引](../docs/operations/README.md) 补充并演练专用手册。启动过程不读取管理员邮箱或密码，也不需要额外的用户引导命令。
 
@@ -189,9 +184,9 @@ curl --fail http://127.0.0.1:8866/readyz
 
 > 生产环境设置 `HOTKEY_ENV=production` 后，服务会在 `.env` 基础上覆盖读取 `.env.prod`；进程环境变量优先级最高。生产环境不会开放 Swagger UI 和 OpenAPI 路由。
 
-### GoLand 运行与调试
+### 本机工具链调试
 
-使用 GoLand 打开 `backend/` 后，直接运行 `cmd/hotkey` 的 `main` 包即可。工作目录使用 `backend/`，以便读取当前 `.env`；运行配置保存在个人 IDE 中，无需提交共享配置。GoLand 会使用 `go.mod` 中声明的 Go SDK 和依赖，代码格式由仓库根目录 [`.editorconfig`](../.editorconfig) 统一管理。
+GoLand 和本机 Go 工具链用于格式、编译、单元/集成测试及断点测试，不作为项目服务启动入口。测试复用已存在的可丢弃 PostgreSQL/Redis 测试实例；只有新鲜容器 E2E、发布和恢复门禁才创建隔离 Compose 栈。
 
 ## Web 工作台
 

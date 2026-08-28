@@ -91,7 +91,7 @@ The same Go binary can run as `all`, `api`, or `worker`.
 
 ### Start with Docker Compose
 
-The root default Compose file starts the frontend, backend, and infrastructure together. The default environment uses `backend/.env`:
+Docker Compose is the only full-project runtime entry point. The root default Compose file starts the frontend, backend, Python Agent, and infrastructure together. Do not run the Go service directly from the host. The default environment uses `backend/.env`:
 
 ```bash
 cd ..
@@ -121,17 +121,10 @@ Configure a dedicated PostgreSQL database, MinIO, Redis, explicit CORS origins, 
 
 Registration and password reset require a compatible SMTP service. To enable them, use [`.env.example`](.env.example) to configure the provider host, TLS mode, account, authorization code, and sender. See the [operations guides](../docs/operations/README.md) for deployment and diagnostics.
 
-Initialize a new, empty database:
+The Compose `db-init` one-shot service initializes and verifies an empty database before the API receives traffic. Start the complete project from the repository root:
 
 ```bash
-go run ./cmd/hotkey db init --empty-only --confirm-empty
-go run ./cmd/hotkey db verify
-```
-
-Run the `cmd/hotkey` main package directly in GoLand, or use the single equivalent command-line entry point:
-
-```bash
-go run ./cmd/hotkey
+docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240
 ```
 
 The first user completes normal email verification and registration as a viewer. A database operator then promotes that user through a reviewed, auditable one-time transaction. The rebuilt documentation baseline has not yet accepted this production procedure; before a production deployment, add and rehearse a dedicated runbook through the [operations index](../docs/operations/README.md). Startup does not read an administrator email or password and requires no separate user-bootstrap command.
@@ -149,13 +142,13 @@ curl --fail http://127.0.0.1:8866/readyz
 
 For production, set `HOTKEY_ENV=production` to load `.env.prod` as an override. Process environment variables always take precedence. API documentation routes are disabled in production.
 
-### Run and debug with GoLand
+### Host-side debugging
 
-Open `backend/` and run the `cmd/hotkey` main package directly. Use `backend/` as the working directory so the application loads the current `.env`; keep the run configuration in your local IDE rather than committing a shared file. GoLand uses the SDK and dependencies declared by `go.mod`, while the repository-level [`.editorconfig`](../.editorconfig) keeps formatting consistent.
+Use GoLand and the installed Go toolchain for formatting, compilation, unit/integration tests, and test debugging, not as a project-service startup path. Tests reuse existing disposable PostgreSQL and Redis services. Only fresh-container E2E, release, and recovery gates create isolated Compose stacks.
 
 ## Web application
 
-Use [hotkey-web](https://github.com/StephenQiu30/hotkey-web) for the complete browser workspace, including events, monitors, sources, evidence, reports, and notification settings. The backend and Web application start and deploy separately, without `.sh` launchers.
+Use [hotkey-web](https://github.com/StephenQiu30/hotkey-web) for the complete browser workspace, including events, monitors, sources, evidence, reports, and notification settings. Root Compose starts and deploys the backend, Agent, and Web application together.
 
 ## Development
 

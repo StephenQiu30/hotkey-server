@@ -70,19 +70,20 @@ Web 端不手写后端 API 类型。所有请求函数和 DTO 都从 `hotkey-ser
 - npm
 - 已启动的 [hotkey-server](https://github.com/StephenQiu30/hotkey-server)，默认地址为 `http://127.0.0.1:8866`
 
-### 本地开发
+### 本机测试与完整项目运行
 
-本机开发直接连接本机启动的 Go 后端，不启动 Docker Compose；后端再连接本机 PostgreSQL、Redis 和 MinIO。
+本机 Node 工具链只用于依赖安装、类型检查、单元测试、OpenAPI 生成和构建；完整项目固定由根 Docker Compose 启动，不单独运行 Next.js 开发服务器或本机 Go 后端。
 
 ```bash
 git clone https://github.com/StephenQiu30/hotkey-server.git
 cd hotkey-server/frontend
 npm ci
 cp .env.example .env
-npm run dev
+npm run typecheck
+npm run test:unit
 ```
 
-访问 <http://localhost:8010>。
+需要访问完整工作台时，从仓库根执行 `docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240`，然后访问 <http://localhost:8010>。
 
 无需填写环境变量即可使用默认的本机后端地址：
 
@@ -92,13 +93,11 @@ HOTKEY_API_ORIGIN=http://127.0.0.1:8866
 
 `HOTKEY_API_ORIGIN` 只由 Next.js 服务端 rewrites 使用，不会作为 `NEXT_PUBLIC_*` 变量暴露给浏览器。完整说明见 [`.env.example`](.env.example)。
 
-> **与后端配合**：前端启动前请保证 `hotkey-server` 后端已运行于 `HOTKEY_API_ORIGIN` 对应地址，且后端 `HOTKEY_CORS_ALLOWED_ORIGINS` 包含前端 Origin（默认 `http://localhost:8010`）。后端自身从**进程工作目录**读取 `.env`，请从 `backend/` 目录启动，或通过进程环境变量注入正确配置（详见 [backend/README](../backend/README.md)）。
-
-也可以在 WebStorm 中直接运行 `package.json` 的 `dev` 脚本。Web 端与后端分别启动，不依赖 `.sh` 文件；注册、邮件和管理员配置请参阅 [`backend/` 文档](../backend/README.md)。
+Compose 统一处理前后端 Origin、内部服务地址与依赖顺序；注册、邮件和管理员配置请参阅 [`backend/` 文档](../backend/README.md)。
 
 ### Docker 部署与隔离验收
 
-Docker Compose 不参与本机开发，只用于完整容器部署与隔离验收。仓库根目录的默认配置与生产覆盖会同时启动前端、后端、PostgreSQL、Redis 与 MinIO。启动默认容器环境：
+Docker Compose 是完整项目唯一运行入口。仓库根目录的默认配置与生产覆盖会同时启动前端、后端、Python Agent、PostgreSQL、Redis 与 MinIO。启动默认容器环境：
 
 ```bash
 cd ..
@@ -120,7 +119,6 @@ docker compose --env-file .env.prod -f docker-compose-prod.yml up --build -d
 ## 常用命令
 
 ```bash
-npm run dev               # 本地开发与 Fast Refresh
 npm run typecheck         # TypeScript 类型检查
 npm run test:unit         # 单元测试
 npm run build             # 生产构建

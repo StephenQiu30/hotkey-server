@@ -18,6 +18,8 @@
 ## 通用工作规则
 
 - Go 后端命令从 `backend/` 执行，Python Agent 命令从 `agent/` 执行，前端命令从 `frontend/` 执行，Compose 与跨项目命令从仓库根目录执行。
+- 项目运行只通过根 `docker-compose.yml` 或 `docker-compose-prod.yml` 启动；不得把本机直接运行 API、Worker、Python Agent 或 Next.js 开发服务器写成项目启动方式。
+- 日常格式、静态、单元与集成测试直接使用本机已安装并锁定的 Go、Python/uv、Node 工具链，以及已存在的可丢弃 PostgreSQL/Redis 测试实例；不得为每轮测试反复启动或停止整套 Compose。只有 Compose 配置、新鲜容器 E2E、发布、备份恢复或用户明确要求的隔离验收才创建独立容器栈，并在该门禁结束后清理。
 - 修改前先阅读相关 Design、PRD、Plan、Acceptance、Operations 和现有测试；目标设计不得描述为当前已实现能力。
 - 行为变更遵循测试先行：先保存可复现失败，再做最小实现，最后重构并运行相关回归。纯文档和机械迁移可说明为何不新增行为测试。
 - 只在出现第二个真实实现或明确替换需求时提取抽象；避免空目录、占位层、重复 DTO、重复配置和第二套事实源。
@@ -98,6 +100,7 @@ bootstrap -> all adapters
 
 ## Docker 与环境配置
 
+- 根 Compose 是开发、验收与生产的唯一项目运行入口；本机工具链仅用于构建、生成和测试，不直接承载项目服务进程。
 - Dockerfile 与 `.dockerignore` 保留在 `backend/`、`agent/` 与 `frontend/`，因为构建上下文不同；不得为了文件名相同而合并不同应用镜像。
 - `docker-compose.yml` 与 `docker-compose-prod.yml` 都保存完整服务、环境变量、依赖、健康检查、初始化命令和卷；prod 文件只将默认环境值替换为生产环境值、生产凭据和 prod 镜像标签。
 - 日常环境读取 `backend/.env` 并可发布基础设施端口；生产环境读取根 `.env.prod`，基础设施只接收所需凭据且不发布宿主机端口。

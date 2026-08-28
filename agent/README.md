@@ -23,7 +23,7 @@ go run ./cmd/hotkey agent-quality evaluate \
 
 `openai_compatible` 只向显式批准的 HTTPS `/chat/completions` 端点发送 canonical Skill 指令、有界输入和输出 JSON Schema；禁用环境代理与重定向，不发送 Agent 服务密钥或任何业务存储凭据。启用时需设置 `HOTKEY_AGENT_RUNTIME=openai_compatible`、`HOTKEY_AGENT_MODEL_BASE_URL`、独立 `HOTKEY_AGENT_MODEL_API_KEY`、`HOTKEY_AGENT_MODEL_NAME` 和实际 `HOTKEY_AGENT_MODEL_VERSION`；任一缺失、非 HTTPS 或模型返回版本漂移都会 fail closed。
 
-本地验证：
+本机工具链只执行验证，不直接启动 Agent 服务；完整项目中的 Agent 固定由根 Docker Compose 启动：
 
 ```bash
 uv sync --all-extras --locked
