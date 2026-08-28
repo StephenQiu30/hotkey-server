@@ -299,6 +299,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					ingestionjobs.NewNormalizeHandler,
 					newNotificationEmailDeliveryService,
 					notificationjobs.NewEmailDispatcher,
+					notificationjobs.NewOutboxProjectionHandler,
 					newMonitorIntentAnalysisHandler,
 					ingestionjobs.NewPublishedDocumentMatchEvaluationHandler,
 					newAIRunRecomputeHandler,
@@ -560,6 +561,7 @@ type p0HandlerParams struct {
 	Collect                          *sourcejobs.CollectHandler
 	Normalize                        *ingestionjobs.NormalizeHandler
 	AnalyzeMonitorIntent             *monitorIntentAnalysisHandler
+	ProjectUserNotification          *notificationjobs.OutboxProjectionHandler
 	GenerateSourceDocument           *ingestionjobs.SourceDocumentGenerationHandler         `optional:"true"`
 	EvaluatePublishedDocumentMatches *ingestionjobs.PublishedDocumentMatchEvaluationHandler `optional:"true"`
 	BackfillPublishedMonitorMatches  *ingestionjobs.PublishedMonitorMatchBackfillHandler    `optional:"true"`
@@ -572,10 +574,11 @@ type p0HandlerParams struct {
 
 func newP0Handlers(params p0HandlerParams) map[string]queue.Handler {
 	handlers := map[string]queue.Handler{
-		queue.KindCollectSource:        params.Collect.Handle,
-		queue.KindNormalizeContent:     params.Normalize.Handle,
-		queue.KindAnalyzeMonitorIntent: params.AnalyzeMonitorIntent.Handle,
-		queue.KindRecomputeAIRun:       params.RecomputeAIRun.Handle,
+		queue.KindCollectSource:           params.Collect.Handle,
+		queue.KindNormalizeContent:        params.Normalize.Handle,
+		queue.KindAnalyzeMonitorIntent:    params.AnalyzeMonitorIntent.Handle,
+		queue.KindProjectUserNotification: params.ProjectUserNotification.Handle,
+		queue.KindRecomputeAIRun:          params.RecomputeAIRun.Handle,
 	}
 	if params.GenerateSourceDocument != nil {
 		handlers[queue.KindGenerateSourceDocument] = params.GenerateSourceDocument.Handle

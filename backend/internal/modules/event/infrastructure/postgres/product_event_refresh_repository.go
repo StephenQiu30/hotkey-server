@@ -14,10 +14,14 @@ import (
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	databaserepository "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database/repository"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
-type ProductEventRefreshPostgresRepository struct{ runtime *database.Runtime }
+type ProductEventRefreshPostgresRepository struct {
+	runtime *database.Runtime
+	jobs    *queue.Store
+}
 
 var _ eventapplication.ProductEventRefreshRepository = (*ProductEventRefreshPostgresRepository)(nil)
 var _ eventapplication.ProductEventRefreshScheduleTargetReader = (*ProductEventRefreshPostgresRepository)(nil)
@@ -27,7 +31,7 @@ func NewProductEventRefreshPostgresRepository(runtime *database.Runtime) (*Produ
 	if runtime == nil || runtime.SQL == nil {
 		return nil, fmt.Errorf("product event refresh database runtime is required")
 	}
-	return &ProductEventRefreshPostgresRepository{runtime: runtime}, nil
+	return &ProductEventRefreshPostgresRepository{runtime: runtime, jobs: queue.NewStore(runtime)}, nil
 }
 
 func (repository *ProductEventRefreshPostgresRepository) ReadProductEventRefreshScheduleTarget(ctx context.Context,
@@ -194,7 +198,7 @@ evidence_state,refresh_key FROM micro_event_updates WHERE id=$1 AND version=$2 F
 			return sharedrepository.ErrConflict
 		}
 		rows, err := transaction.SQL.QueryContext(transactionCtx, `SELECT DISTINCT monitor.id,config.id,
-GREATEST(config.event_threshold,config.alert_min_heat)::float8
+GREATEST(config.event_threshold,config.alert_min_heat)::float8,config.alert_cooldown_minutes
 FROM micro_event_members AS member
 JOIN micro_event_membership_decisions AS decision ON decision.id=member.membership_decision_id
 JOIN monitors AS monitor ON monitor.id=decision.monitor_id AND monitor.status='active' AND monitor.deleted_at IS NULL
@@ -208,11 +212,12 @@ ORDER BY monitor.id,config.id`, update.MicroEventID)
 		type candidate struct {
 			monitorID, configID int64
 			threshold           float64
+			cooldownMinutes     int
 		}
 		candidates := []candidate{}
 		for rows.Next() {
 			var value candidate
-			if err := rows.Scan(&value.monitorID, &value.configID, &value.threshold); err != nil {
+			if err := rows.Scan(&value.monitorID, &value.configID, &value.threshold, &value.cooldownMinutes); err != nil {
 				rows.Close()
 				return databaserepository.MapError(err)
 			}
@@ -226,6 +231,17 @@ ORDER BY monitor.id,config.id`, update.MicroEventID)
 		}
 		result.CandidateCount = len(candidates)
 		for _, candidate := range candidates {
+			// Serialize one Monitor's alert window before testing cooldown. This
+			// makes concurrent refreshes observe the first committed Outbox fact.
+			var lockedMonitorID int64
+			if err := transaction.SQL.QueryRowContext(transactionCtx, `SELECT id FROM monitors
+WHERE id=$1 AND status='active' AND deleted_at IS NULL AND published_config_version_id=$2
+FOR UPDATE`, candidate.monitorID, candidate.configID).Scan(&lockedMonitorID); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					continue
+				}
+				return databaserepository.MapError(err)
+			}
 			eligible := update.HeatScore >= candidate.threshold
 			if eligible {
 				result.EligibleCount++
@@ -235,8 +251,13 @@ ORDER BY monitor.id,config.id`, update.MicroEventID)
 			err := transaction.SQL.QueryRowContext(transactionCtx, `SELECT result FROM micro_event_alert_evaluations
 WHERE idempotency_key=$1 FOR KEY SHARE`, fingerprint).Scan(&existingResult)
 			if err == nil {
-				if eligible && existingResult == "outbox_recorded" {
-					result.DuplicateCount++
+				if eligible {
+					switch existingResult {
+					case "outbox_recorded":
+						result.DuplicateCount++
+					case "cooldown_suppressed":
+						result.SuppressedCount++
+					}
 				}
 				continue
 			}
@@ -246,28 +267,46 @@ WHERE idempotency_key=$1 FOR KEY SHARE`, fingerprint).Scan(&existingResult)
 			var notificationID any
 			evaluationResult := "below_threshold"
 			if eligible {
-				evaluationResult = "outbox_recorded"
-				dedupeKey := fmt.Sprintf("micro-event-update:%d:monitor:%d", update.ID, candidate.monitorID)
-				var outboxID int64
-				insertErr := transaction.SQL.QueryRowContext(transactionCtx, `INSERT INTO notification_outbox_events (
+				var priorOutboxID int64
+				priorErr := transaction.SQL.QueryRowContext(transactionCtx, `SELECT id
+FROM notification_outbox_events
+WHERE monitor_id=$1 AND event_type='micro_event.updated' AND resource_type='micro_event' AND resource_id=$2
+  AND occurred_at<=$3 AND occurred_at>$3-make_interval(mins=>$4)
+ORDER BY occurred_at DESC,id DESC
+LIMIT 1`, candidate.monitorID, update.MicroEventID, update.WindowEndedAt.UTC(), candidate.cooldownMinutes).Scan(&priorOutboxID)
+				if priorErr == nil {
+					evaluationResult = "cooldown_suppressed"
+					result.SuppressedCount++
+				} else if !errors.Is(priorErr, sql.ErrNoRows) {
+					return databaserepository.MapError(priorErr)
+				} else {
+					evaluationResult = "outbox_recorded"
+					dedupeKey := fmt.Sprintf("micro-event-update:%d:monitor:%d", update.ID, candidate.monitorID)
+					var outboxID int64
+					insertErr := transaction.SQL.QueryRowContext(transactionCtx, `INSERT INTO notification_outbox_events (
 event_type,resource_type,resource_id,resource_version,monitor_id,occurred_at,title,summary,resource_status,deep_link,dedupe_key)
 VALUES ('micro_event.updated','micro_event',$1,$2,$3,$4,'事件更新',$5,$6,$7,$8)
 ON CONFLICT (dedupe_key) DO NOTHING RETURNING id`, update.MicroEventID, update.MicroEventVersion,
-					candidate.monitorID, update.WindowEndedAt.UTC(), productEventNotificationSummary(update), update.EvidenceState,
-					fmt.Sprintf("/dashboard/events?event=%d", update.MicroEventID), dedupeKey).Scan(&outboxID)
-				created := insertErr == nil
-				if errors.Is(insertErr, sql.ErrNoRows) {
-					if err := transaction.SQL.QueryRowContext(transactionCtx, `SELECT id FROM notification_outbox_events WHERE dedupe_key=$1`, dedupeKey).Scan(&outboxID); err != nil {
-						return databaserepository.MapError(err)
+						candidate.monitorID, update.WindowEndedAt.UTC(), productEventNotificationSummary(update), update.EvidenceState,
+						fmt.Sprintf("/dashboard/events?event=%d", update.MicroEventID), dedupeKey).Scan(&outboxID)
+					created := insertErr == nil
+					if errors.Is(insertErr, sql.ErrNoRows) {
+						if err := transaction.SQL.QueryRowContext(transactionCtx, `SELECT id FROM notification_outbox_events WHERE dedupe_key=$1`, dedupeKey).Scan(&outboxID); err != nil {
+							return databaserepository.MapError(err)
+						}
+					} else if insertErr != nil {
+						return databaserepository.MapError(insertErr)
 					}
-				} else if insertErr != nil {
-					return databaserepository.MapError(insertErr)
-				}
-				notificationID = outboxID
-				if created {
-					result.NotificationCount++
-				} else {
-					result.DuplicateCount++
+					notificationID = outboxID
+					job := productEventUserNotificationProjectionJob(outboxID, time.Now().UTC())
+					if _, _, err := repository.jobs.Enqueue(transactionCtx, job); err != nil {
+						return err
+					}
+					if created {
+						result.NotificationCount++
+					} else {
+						result.DuplicateCount++
+					}
 				}
 			}
 			if _, err := transaction.SQL.ExecContext(transactionCtx, `INSERT INTO micro_event_alert_evaluations (
@@ -284,6 +323,21 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, update.ID, candidate.monitorID, candidate.
 		return eventapplication.ProductEventAlertEvaluationResult{}, databaserepository.MapError(err)
 	}
 	return result, nil
+}
+
+func productEventUserNotificationProjectionJob(outboxEventID int64, scheduledAt time.Time) queue.Job {
+	inputHash := queue.StableJobHash(queue.KindProjectUserNotification, fmt.Sprint(outboxEventID), "1")
+	return queue.Job{
+		Kind: queue.KindProjectUserNotification,
+		UniqueKey: queue.StableJobKey(
+			queue.KindProjectUserNotification,
+			outboxEventID,
+			1,
+			inputHash,
+		),
+		Payload:     queue.Payload{EntityID: outboxEventID, EntityVersion: 1, InputHash: inputHash},
+		ScheduledAt: scheduledAt.UTC(), MaxAttempts: 5, Priority: 6,
+	}
 }
 
 func productEventAlertEvaluationKey(updateID, configID int64) string {

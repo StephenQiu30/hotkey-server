@@ -13,6 +13,7 @@ type notificationRepositoryStub struct {
 	query    ListUserNotificationsQuery
 	page     ListUserNotificationsResult
 	delivery RecordNotificationDeliveryAttemptCommand
+	project  ProjectUserNotificationCommand
 	err      error
 }
 
@@ -24,6 +25,11 @@ func (stub *notificationRepositoryStub) ListUserNotifications(_ context.Context,
 func (stub *notificationRepositoryStub) RecordDeliveryAttempt(_ context.Context, command RecordNotificationDeliveryAttemptCommand) (RecordNotificationDeliveryAttemptResult, error) {
 	stub.delivery = command
 	return RecordNotificationDeliveryAttemptResult{DeliveryAttemptID: 1, AttemptNo: 1}, stub.err
+}
+
+func (stub *notificationRepositoryStub) ProjectUserNotification(_ context.Context, command ProjectUserNotificationCommand) (ProjectUserNotificationResult, error) {
+	stub.project = command
+	return ProjectUserNotificationResult{UserNotificationID: 13, Created: true}, stub.err
 }
 
 func TestServiceNormalizesUserNotificationListAndPreservesIdentity(t *testing.T) {
@@ -77,5 +83,22 @@ func TestServiceAcceptsWebSocketAsAnIndependentDeliveryChannel(t *testing.T) {
 	}
 	if repository.delivery.Channel != "websocket" || repository.delivery.DeliveryTargetKey != "browser_ws" {
 		t.Fatalf("repository delivery = %#v", repository.delivery)
+	}
+}
+
+func TestServiceProjectsOnlyAnExactVersionedOutboxFact(t *testing.T) {
+	repository := &notificationRepositoryStub{}
+	service, _ := NewService(repository)
+	result, err := service.ProjectUserNotification(context.Background(), ProjectUserNotificationCommand{
+		OutboxEventID: 11, OutboxVersion: 1,
+	})
+	if err != nil || result.UserNotificationID != 13 || !result.Created {
+		t.Fatalf("ProjectUserNotification() = %#v/%v", result, err)
+	}
+	if repository.project.OutboxEventID != 11 || repository.project.OutboxVersion != 1 {
+		t.Fatalf("repository project command = %#v", repository.project)
+	}
+	if _, err := service.ProjectUserNotification(context.Background(), ProjectUserNotificationCommand{OutboxEventID: 11}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("ProjectUserNotification(invalid version) error = %v", err)
 	}
 }

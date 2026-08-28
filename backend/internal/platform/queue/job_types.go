@@ -24,6 +24,7 @@ const (
 	KindBuildReport                      = "build_report"
 	KindDeliverEmail                     = "deliver_email"
 	KindDeliverAlertEmail                = "deliver_alert_email"
+	KindProjectUserNotification          = "project_user_notification"
 	KindProjectKnowledge                 = "project_knowledge"
 	KindReconcileKnowledge               = "reconcile_knowledge"
 	KindRunRetention                     = "run_retention"
@@ -41,6 +42,7 @@ func IsKnownKind(kind string) bool {
 	switch kind {
 	case KindCollectSource, KindRefreshXMetrics, KindNormalizeContent, KindEvaluateRelevance, KindClusterContent,
 		KindRecomputeEventHeat, KindEvaluateEventAlerts, KindGenerateEventSummary, KindBuildReport, KindDeliverEmail, KindDeliverAlertEmail,
+		KindProjectUserNotification,
 		KindProjectKnowledge, KindReconcileKnowledge, KindRunRetention, KindGenerateSourceDocument, KindAnalyzeMonitorIntent,
 		KindEvaluatePublishedDocumentMatches, KindBackfillPublishedMonitorMatches, KindProjectAcceptedDocumentMatch:
 		return true

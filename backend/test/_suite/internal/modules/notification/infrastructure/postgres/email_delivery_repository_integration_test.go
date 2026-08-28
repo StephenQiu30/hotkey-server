@@ -26,7 +26,7 @@ func TestEmailDeliveryRepositoryClaimsWithCurrentPermissionBackoffAndTerminalAtt
 	}
 	repository := NewRepository(runtime)
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	userID, monitorID, notificationID := insertEmailNotificationFixture(t, runtime, now)
+	userID, monitorID, notificationID := insertEmailNotificationFixture(t, runtime, now, true)
 
 	first, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
 		ClaimToken: strings.Repeat("a", 64), ClaimedAt: now, LeaseUntil: now.Add(time.Minute),
@@ -82,7 +82,33 @@ func TestEmailDeliveryRepositoryClaimsWithCurrentPermissionBackoffAndTerminalAtt
 	}
 }
 
-func insertEmailNotificationFixture(t *testing.T, runtime *database.Runtime, now time.Time) (int64, int64, int64) {
+func TestEmailDeliveryRepositoryRechecksCurrentChannelPreferenceBeforeClaim(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	_, _, notificationID := insertEmailNotificationFixture(t, runtime, now, false)
+
+	claimed, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
+		ClaimToken: strings.Repeat("f", 64), ClaimedAt: now, LeaseUntil: now.Add(time.Minute),
+	})
+	if err != nil || claimed.Claimed {
+		t.Fatalf("disabled current email preference claim = %#v / %v", claimed, err)
+	}
+	var attempts int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM notification_delivery_attempts WHERE user_notification_id=$1`, notificationID).Scan(&attempts); err != nil || attempts != 0 {
+		t.Fatalf("disabled preference attempts = %d/%v", attempts, err)
+	}
+}
+
+func insertEmailNotificationFixture(t *testing.T, runtime *database.Runtime, now time.Time, emailEnabled bool) (int64, int64, int64) {
 	t.Helper()
 	var userID, monitorID, configID, eventID, outboxID, notificationID int64
 	if err := runtime.SQL.QueryRow(`INSERT INTO users(email,password_hash,display_name,role)
@@ -95,7 +121,7 @@ VALUES ($1,'draft',$2,$2) RETURNING id`, fmt.Sprintf("email-monitor-%d", now.Uni
 	}
 	if err := runtime.SQL.QueryRow(`INSERT INTO monitor_config_versions(
 monitor_id,revision,state,languages,alert_email_enabled,created_by,updated_by)
-VALUES ($1,1,'draft',ARRAY['zh'],true,$2,$2) RETURNING id`, monitorID, userID).Scan(&configID); err != nil {
+VALUES ($1,1,'draft',ARRAY['zh'],$3,$2,$2) RETURNING id`, monitorID, userID, emailEnabled).Scan(&configID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runtime.SQL.Exec(`UPDATE monitor_config_versions SET state='published',config_hash=repeat('a',64),published_at=$1 WHERE id=$2`, now, configID); err != nil {

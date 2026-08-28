@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/application"
+	notificationjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/jobs"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
@@ -51,12 +53,40 @@ VALUES ('micro_event.updated','micro_event',$1,1,$2,$3,'事件更新','新增独
 		eventID, monitorID, now, fmt.Sprintf("/dashboard/events?event=%d", eventID), fmt.Sprintf("notification-fixture:%d", now.UnixNano())).Scan(&outboxID); err != nil {
 		t.Fatal(err)
 	}
-	if err := runtime.SQL.QueryRow(`INSERT INTO user_notifications(
-outbox_event_id,user_id,monitor_id,event_type,resource_type,resource_id,resource_version,
-occurred_at,title,summary,resource_status,deep_link)
-VALUES ($1,$2,$3,'micro_event.updated','micro_event',$4,1,$5,'事件更新','新增独立正文谱系','active',$6)
-RETURNING id`, outboxID, userID, monitorID, eventID, now, fmt.Sprintf("/dashboard/events?event=%d", eventID)).Scan(&notificationID); err != nil {
+	service, err := application.NewService(repository)
+	if err != nil {
 		t.Fatal(err)
+	}
+	handler, err := notificationjobs.NewOutboxProjectionHandler(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputHash := queue.StableJobHash(queue.KindProjectUserNotification, fmt.Sprint(outboxID), "1")
+	job := queue.Job{
+		Kind:        queue.KindProjectUserNotification,
+		UniqueKey:   queue.StableJobKey(queue.KindProjectUserNotification, outboxID, 1, inputHash),
+		Payload:     queue.Payload{EntityID: outboxID, EntityVersion: 1, InputHash: inputHash},
+		ScheduledAt: now, MaxAttempts: 5, Priority: 6,
+	}
+	store := queue.NewStore(runtime)
+	firstJobID, created, err := store.Enqueue(ctx, job)
+	if err != nil || !created || firstJobID <= 0 {
+		t.Fatalf("first projection job = %d/%t/%v", firstJobID, created, err)
+	}
+	replayedJobID, created, err := store.Enqueue(ctx, job)
+	if err != nil || created || replayedJobID != firstJobID {
+		t.Fatalf("replayed projection job = %d/%t/%v", replayedJobID, created, err)
+	}
+	worker := queue.NewWorker(runtime, map[string]queue.Handler{queue.KindProjectUserNotification: handler.Handle})
+	if ran, err := worker.RunOnce(ctx); err != nil || !ran {
+		t.Fatalf("projection worker = %t/%v", ran, err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT id FROM user_notifications WHERE outbox_event_id=$1 AND user_id=$2`, outboxID, userID).Scan(&notificationID); err != nil {
+		t.Fatal(err)
+	}
+	replayedProjection, err := repository.ProjectUserNotification(ctx, application.ProjectUserNotificationCommand{OutboxEventID: outboxID, OutboxVersion: 1})
+	if err != nil || replayedProjection.Created || replayedProjection.UserNotificationID != notificationID {
+		t.Fatalf("replayed outbox projection = %#v / %v", replayedProjection, err)
 	}
 
 	page, err := repository.ListUserNotifications(ctx, application.ListUserNotificationsQuery{UserID: userID, Limit: 10})

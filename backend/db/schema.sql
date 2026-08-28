@@ -7339,7 +7339,7 @@ CREATE TABLE IF NOT EXISTS micro_event_alert_evaluations (
     monitor_config_version_id bigint NOT NULL,
     heat_score numeric(8,4) NOT NULL CHECK (heat_score BETWEEN 0 AND 100),
     heat_threshold numeric(5,2) NOT NULL CHECK (heat_threshold BETWEEN 0 AND 100),
-    result varchar(24) NOT NULL CHECK (result IN ('below_threshold','outbox_recorded')),
+    result varchar(24) NOT NULL CHECK (result IN ('below_threshold','cooldown_suppressed','outbox_recorded')),
     notification_outbox_event_id bigint REFERENCES notification_outbox_events(id) ON DELETE RESTRICT,
     idempotency_key char(64) NOT NULL UNIQUE CHECK (idempotency_key ~ '^[0-9a-f]{64}$'),
     evaluated_at timestamptz NOT NULL,
@@ -7347,8 +7347,15 @@ CREATE TABLE IF NOT EXISTS micro_event_alert_evaluations (
     FOREIGN KEY (monitor_config_version_id,monitor_id) REFERENCES monitor_config_versions(id,monitor_id) ON DELETE RESTRICT,
     UNIQUE (micro_event_update_id,monitor_config_version_id),
     CHECK (result='outbox_recorded' AND notification_outbox_event_id IS NOT NULL
-        OR result='below_threshold' AND notification_outbox_event_id IS NULL)
+        OR result IN ('below_threshold','cooldown_suppressed') AND notification_outbox_event_id IS NULL)
 );
+ALTER TABLE micro_event_alert_evaluations DROP CONSTRAINT IF EXISTS micro_event_alert_evaluations_result_check;
+ALTER TABLE micro_event_alert_evaluations ADD CONSTRAINT micro_event_alert_evaluations_result_check
+    CHECK (result IN ('below_threshold','cooldown_suppressed','outbox_recorded'));
+ALTER TABLE micro_event_alert_evaluations DROP CONSTRAINT IF EXISTS micro_event_alert_evaluations_check;
+ALTER TABLE micro_event_alert_evaluations ADD CONSTRAINT micro_event_alert_evaluations_check
+    CHECK (result='outbox_recorded' AND notification_outbox_event_id IS NOT NULL
+        OR result IN ('below_threshold','cooldown_suppressed') AND notification_outbox_event_id IS NULL);
 CREATE INDEX IF NOT EXISTS micro_event_alert_evaluations_update_idx
     ON micro_event_alert_evaluations(micro_event_update_id,id);
 

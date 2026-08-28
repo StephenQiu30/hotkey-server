@@ -56,9 +56,37 @@ type RecordNotificationDeliveryAttemptResult struct {
 	AttemptNo         int
 }
 
+type ProjectUserNotificationCommand struct {
+	OutboxEventID int64
+	OutboxVersion int64
+}
+
+type ProjectUserNotificationResult struct {
+	UserNotificationID int64
+	Created            bool
+}
+
 type Repository interface {
 	ListUserNotifications(context.Context, ListUserNotificationsQuery) (ListUserNotificationsResult, error)
 	RecordDeliveryAttempt(context.Context, RecordNotificationDeliveryAttemptCommand) (RecordNotificationDeliveryAttemptResult, error)
+	ProjectUserNotification(context.Context, ProjectUserNotificationCommand) (ProjectUserNotificationResult, error)
+}
+
+func (service *Service) ProjectUserNotification(ctx context.Context, command ProjectUserNotificationCommand) (ProjectUserNotificationResult, error) {
+	if service == nil || service.repository == nil {
+		return ProjectUserNotificationResult{}, sharedrepository.ErrUnavailable
+	}
+	if command.OutboxEventID <= 0 || command.OutboxVersion != 1 {
+		return ProjectUserNotificationResult{}, sharedrepository.ErrInvalidInput
+	}
+	result, err := service.repository.ProjectUserNotification(ctx, command)
+	if err != nil {
+		return ProjectUserNotificationResult{}, err
+	}
+	if result.UserNotificationID <= 0 {
+		return ProjectUserNotificationResult{}, sharedrepository.ErrConstraint
+	}
+	return result, nil
 }
 
 type Service struct{ repository Repository }

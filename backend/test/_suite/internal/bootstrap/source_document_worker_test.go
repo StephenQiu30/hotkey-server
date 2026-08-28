@@ -216,6 +216,9 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentAndMatchServices(t *testing.T
 	if handlers[queue.KindRefreshProductEvent] == nil {
 		t.Fatal("product event refresh handler is not registered")
 	}
+	if handlers[queue.KindProjectUserNotification] == nil {
+		t.Fatal("user notification projection handler is not registered")
+	}
 }
 
 type sourceEvidenceSelectionReaderFake struct {

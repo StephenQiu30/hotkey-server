@@ -136,6 +136,11 @@ VALUES ($1,$2,'warning',82,70,repeat('3',64),$3)`, threadID, cooldownUpdateID, n
 	}
 
 	var publishedReportID, failedReportID int64
+	var reportActorID int64
+	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO users(email,password_hash,display_name,role)
+VALUES ('notification-report@example.test','fixture','通知报告审批人','admin') RETURNING id`).Scan(&reportActorID); err != nil {
+		t.Fatal(err)
+	}
 	for reportIndex, fixture := range []struct {
 		status string
 		id     *int64
@@ -144,11 +149,18 @@ VALUES ($1,$2,'warning',82,70,repeat('3',64),$3)`, threadID, cooldownUpdateID, n
 		{status: "failed", id: &failedReportID},
 	} {
 		if err := runtime.SQL.QueryRowContext(ctx, `
-INSERT INTO reports (report_type, period_start, period_end, timezone, title)
-VALUES ('daily', $1::timestamptz, $1::timestamptz + interval '1 day', 'UTC', $2::text) RETURNING id`, now.Add(time.Duration(reportIndex)*24*time.Hour), "通知报告 "+fixture.status).Scan(fixture.id); err != nil {
+		INSERT INTO reports (report_type, period_start, period_end, timezone, title, created_by, updated_by)
+		VALUES ('daily', $1::timestamptz, $1::timestamptz + interval '1 day', 'UTC', $2::text, $3, $3) RETURNING id`, now.Add(time.Duration(reportIndex)*24*time.Hour), "通知报告 "+fixture.status, reportActorID).Scan(fixture.id); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := runtime.SQL.ExecContext(ctx, `UPDATE reports SET status=$2::text, published_at=CASE WHEN $2::text='published' THEN $3::timestamptz ELSE NULL END, updated_at=$3::timestamptz WHERE id=$1`, *fixture.id, fixture.status, now.Add(2*time.Second)); err != nil {
+		if fixture.status == "published" {
+			if _, err := runtime.SQL.ExecContext(ctx, `UPDATE reports SET version=version+1,status='pending_approval',submitted_at=$2,submitted_by=$3,updated_by=$3,updated_at=$2 WHERE id=$1`, *fixture.id, now.Add(time.Second), reportActorID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := runtime.SQL.ExecContext(ctx, `UPDATE reports SET version=version+1,status='published',reviewed_at=$2,reviewed_by=$3,published_at=$2,updated_by=$3,updated_at=$2 WHERE id=$1`, *fixture.id, now.Add(2*time.Second), reportActorID); err != nil {
+				t.Fatal(err)
+			}
+		} else if _, err := runtime.SQL.ExecContext(ctx, `UPDATE reports SET version=version+1,status='failed',updated_by=$3,updated_at=$2 WHERE id=$1`, *fixture.id, now.Add(2*time.Second), reportActorID); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -180,8 +192,8 @@ VALUES ($1, $2, $3::timestamptz, $3::timestamptz + interval '1 hour', 'schedule'
 		"collection.failed":    1,
 	})
 
-	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE reports SET title='已发布报告标题变化', updated_at=now() WHERE id=$1`, publishedReportID); err != nil {
-		t.Fatal(err)
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE reports SET version=version+1,title='已发布报告标题变化', updated_at=now() WHERE id=$1`, publishedReportID); err == nil {
+		t.Fatal("published report revision accepted mutation")
 	}
 	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE collection_runs SET accepted_count=1, updated_at=now() WHERE status='succeeded'`); err != nil {
 		t.Fatal(err)

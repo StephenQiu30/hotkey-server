@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -130,6 +131,69 @@ LIMIT $4`, query.UserID, query.AfterID, query.MonitorID, query.Limit)
 	}
 	if err := rows.Err(); err != nil {
 		return application.ListUserNotificationsResult{}, databaserepository.MapError(err)
+	}
+	return result, nil
+}
+
+func (repository *Repository) ProjectUserNotification(ctx context.Context, command application.ProjectUserNotificationCommand) (application.ProjectUserNotificationResult, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+		return application.ProjectUserNotificationResult{}, sharedrepository.ErrUnavailable
+	}
+	if command.OutboxEventID <= 0 || command.OutboxVersion != 1 {
+		return application.ProjectUserNotificationResult{}, sharedrepository.ErrInvalidInput
+	}
+	var result application.ProjectUserNotificationResult
+	err := repository.runtime.WithinTransaction(ctx, func(transactionContext context.Context, transaction database.Transaction) error {
+		var record userNotificationRecord
+		if err := transaction.SQL.QueryRowContext(transactionContext, `
+SELECT outbox.id,outbox.version,outbox.id,owner.id,outbox.monitor_id,outbox.resource_id,
+       outbox.resource_version,outbox.event_type,outbox.resource_type,outbox.title,outbox.summary,
+       outbox.resource_status,outbox.deep_link,outbox.occurred_at,outbox.created_at
+FROM notification_outbox_events AS outbox
+JOIN monitors AS monitor ON monitor.id=outbox.monitor_id
+JOIN users AS owner ON owner.id=monitor.created_by
+WHERE outbox.id=$1 AND outbox.version=$2
+  AND monitor.status='active' AND monitor.deleted_at IS NULL
+  AND owner.status='active' AND owner.deleted_at IS NULL
+FOR UPDATE OF monitor`, command.OutboxEventID, command.OutboxVersion).Scan(
+			&record.id, &record.version, &record.outboxEventID, &record.userID, &record.monitorID,
+			&record.resourceID, &record.resourceVersion, &record.eventType, &record.resourceType,
+			&record.title, &record.summary, &record.resourceStatus, &record.deepLink,
+			&record.occurredAt, &record.createdAt,
+		); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return sharedrepository.ErrNotFound
+			}
+			return databaserepository.MapError(err)
+		}
+
+		var notificationID int64
+		err := transaction.SQL.QueryRowContext(transactionContext, `
+INSERT INTO user_notifications(
+    outbox_event_id,user_id,monitor_id,event_type,resource_type,resource_id,resource_version,
+    occurred_at,title,summary,resource_status,deep_link
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+ON CONFLICT (outbox_event_id,user_id) DO NOTHING
+RETURNING id`, record.outboxEventID, record.userID, record.monitorID, record.eventType,
+			record.resourceType, record.resourceID, record.resourceVersion, record.occurredAt,
+			record.title, record.summary, record.resourceStatus, record.deepLink).Scan(&notificationID)
+		if err == nil {
+			result = application.ProjectUserNotificationResult{UserNotificationID: notificationID, Created: true}
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return databaserepository.MapError(err)
+		}
+		if err := transaction.SQL.QueryRowContext(transactionContext, `
+SELECT id FROM user_notifications WHERE outbox_event_id=$1 AND user_id=$2`,
+			record.outboxEventID, record.userID).Scan(&notificationID); err != nil {
+			return databaserepository.MapError(err)
+		}
+		result = application.ProjectUserNotificationResult{UserNotificationID: notificationID}
+		return nil
+	})
+	if err != nil {
+		return application.ProjectUserNotificationResult{}, err
 	}
 	return result, nil
 }

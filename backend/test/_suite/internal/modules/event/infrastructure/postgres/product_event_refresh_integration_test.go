@@ -10,6 +10,9 @@ import (
 
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
 	eventjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/infrastructure/jobs"
+	notificationapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/application"
+	notificationjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/jobs"
+	notificationpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/queue"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
@@ -63,7 +66,13 @@ recency_weight,activated_by_user_id,activated_at)
 	store := queue.NewStore(runtime)
 	scheduler, _ := eventjobs.NewProductEventRefreshScheduler(refreshRepository, store)
 	handler, _ := eventjobs.NewProductEventRefreshHandler(refreshService)
-	worker := queue.NewWorker(runtime, map[string]queue.Handler{queue.KindRefreshProductEvent: handler.Handle})
+	notificationRepository := notificationpostgres.NewRepository(runtime)
+	notificationService, _ := notificationapplication.NewService(notificationRepository)
+	notificationHandler, _ := notificationjobs.NewOutboxProjectionHandler(notificationService)
+	worker := queue.NewWorker(runtime, map[string]queue.Handler{
+		queue.KindRefreshProductEvent:     handler.Handle,
+		queue.KindProjectUserNotification: notificationHandler.Handle,
+	})
 	windowEnd := time.Now().UTC().Add(time.Minute).Truncate(time.Minute)
 
 	firstSchedule, err := scheduler.ScheduleProductEventRefresh(ctx, eventapplication.ScheduleProductEventRefreshCommand{
@@ -80,7 +89,12 @@ recency_weight,activated_by_user_id,activated_at)
 	if ran, err := worker.RunOnce(ctx); err != nil || !ran {
 		t.Fatalf("first refresh worker = %t/%v", ran, err)
 	}
+	if ran, err := worker.RunOnce(ctx); err != nil || !ran {
+		t.Fatalf("first notification projection worker = %t/%v", ran, err)
+	}
 	assertProductEventRefreshCounts(t, runtime, 1, 3, 1, 1, 1, 1)
+	assertUserNotificationProjectionJobCount(t, runtime, 1)
+	assertUserNotificationCount(t, runtime, 1)
 
 	replayed, err := refreshService.Refresh(ctx, eventapplication.RefreshProductEventCommand{
 		MicroEventID: created.Event.ID, ExpectedEventVersion: created.Event.Version, WindowEndedAt: windowEnd,
@@ -91,6 +105,7 @@ recency_weight,activated_by_user_id,activated_at)
 		t.Fatalf("refresh service replay = %#v / %v", replayed, err)
 	}
 	assertProductEventRefreshCounts(t, runtime, 1, 3, 1, 1, 1, 1)
+	assertUserNotificationProjectionJobCount(t, runtime, 1)
 
 	joined, err := microRepository.CommitMicroEventMembership(ctx, microEventCommitFixture(second, "join",
 		created.Event.ID, created.Event.Version, strings.Repeat("9", 64), "product-refresh-join"))
@@ -106,7 +121,12 @@ recency_weight,activated_by_user_id,activated_at)
 	if ran, err := worker.RunOnce(ctx); err != nil || !ran {
 		t.Fatalf("member refresh worker = %t/%v", ran, err)
 	}
-	assertProductEventRefreshCounts(t, runtime, 2, 6, 2, 2, 3, 3)
+	if ran, err := worker.RunOnce(ctx); err != nil || !ran {
+		t.Fatalf("member notification projection worker = %t/%v", ran, err)
+	}
+	assertProductEventRefreshCounts(t, runtime, 2, 6, 2, 2, 3, 2)
+	assertUserNotificationProjectionJobCount(t, runtime, 2)
+	assertUserNotificationCount(t, runtime, 2)
 
 	contentID := attachMetricContentToMicroEventFixture(t, runtime, first)
 	metricRefresh, _ := eventapplication.NewContentMetricRefreshServiceWithClock(heatRepository, scheduler,
@@ -118,7 +138,16 @@ recency_weight,activated_by_user_id,activated_at)
 	if ran, err := worker.RunOnce(ctx); err != nil || !ran {
 		t.Fatalf("late metric refresh worker = %t/%v", ran, err)
 	}
-	assertProductEventRefreshCounts(t, runtime, 2, 9, 2, 3, 5, 5)
+	assertProductEventRefreshCounts(t, runtime, 2, 9, 2, 3, 5, 2)
+	assertUserNotificationProjectionJobCount(t, runtime, 2)
+	assertUserNotificationCount(t, runtime, 2)
+	var recorded, suppressed int
+	if err := runtime.SQL.QueryRow(`SELECT
+count(*) FILTER (WHERE result='outbox_recorded'),
+count(*) FILTER (WHERE result='cooldown_suppressed')
+FROM micro_event_alert_evaluations`).Scan(&recorded, &suppressed); err != nil || recorded != 2 || suppressed != 3 {
+		t.Fatalf("alert evaluation outcomes = %d recorded/%d suppressed/%v", recorded, suppressed, err)
+	}
 
 	var legacyEvents, legacyTopics, legacyUpdates int
 	if err := runtime.SQL.QueryRow(`SELECT (SELECT count(*) FROM events),(SELECT count(*) FROM topics),
@@ -127,6 +156,22 @@ recency_weight,activated_by_user_id,activated_at)
 	}
 	if legacyEvents != 0 || legacyTopics != 0 || legacyUpdates != 0 {
 		t.Fatalf("legacy writes = events %d topics %d updates %d", legacyEvents, legacyTopics, legacyUpdates)
+	}
+}
+
+func assertUserNotificationProjectionJobCount(t *testing.T, runtime *database.Runtime, want int) {
+	t.Helper()
+	var count int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM river_job WHERE kind=$1`, queue.KindProjectUserNotification).Scan(&count); err != nil || count != want {
+		t.Fatalf("user notification projection jobs = %d/%v, want %d", count, err, want)
+	}
+}
+
+func assertUserNotificationCount(t *testing.T, runtime *database.Runtime, want int) {
+	t.Helper()
+	var count int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM user_notifications`).Scan(&count); err != nil || count != want {
+		t.Fatalf("user notifications = %d/%v, want %d", count, err, want)
 	}
 }
 

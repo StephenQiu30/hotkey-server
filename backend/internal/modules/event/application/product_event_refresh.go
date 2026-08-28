@@ -100,7 +100,7 @@ type ProductEventUpdateDTO struct {
 }
 
 type ProductEventAlertEvaluationResult struct {
-	CandidateCount, EligibleCount, NotificationCount, DuplicateCount int
+	CandidateCount, EligibleCount, NotificationCount, DuplicateCount, SuppressedCount int
 }
 
 type ProductEventRefreshResult struct {
@@ -218,8 +218,8 @@ func (service *ProductEventRefreshService) Refresh(ctx context.Context, command 
 	if err != nil {
 		return ProductEventRefreshResult{}, fmt.Errorf("evaluate product event alerts: %w", err)
 	}
-	if evaluated.CandidateCount < 0 || evaluated.EligibleCount < 0 || evaluated.NotificationCount < 0 || evaluated.DuplicateCount < 0 ||
-		evaluated.EligibleCount > evaluated.CandidateCount || evaluated.NotificationCount+evaluated.DuplicateCount > evaluated.EligibleCount {
+	if evaluated.CandidateCount < 0 || evaluated.EligibleCount < 0 || evaluated.NotificationCount < 0 || evaluated.DuplicateCount < 0 || evaluated.SuppressedCount < 0 ||
+		evaluated.EligibleCount > evaluated.CandidateCount || evaluated.NotificationCount+evaluated.DuplicateCount+evaluated.SuppressedCount > evaluated.EligibleCount {
 		return ProductEventRefreshResult{}, ErrInvalidProductEventRefreshContract
 	}
 	return ProductEventRefreshResult{Update: update, HeatSnapshots: heatSnapshots,
