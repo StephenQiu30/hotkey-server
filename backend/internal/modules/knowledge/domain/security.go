@@ -32,7 +32,7 @@ var (
 // instead of being decoded differently by later layers.
 func ValidateVaultLocation(kind, key string) error {
 	if !legacyKnowledgeKind(kind) || !vaultStableKeyPattern.MatchString(key) ||
-		strings.Contains(key, "..") || strings.HasSuffix(key, ".") || strings.ContainsAny(key, `%/\\\x00\r\n`) {
+		strings.Contains(key, "..") || strings.HasSuffix(key, ".") || strings.ContainsAny(key, "%/\\\x00\r\n") {
 		return ErrVaultPathInvalid
 	}
 	return nil

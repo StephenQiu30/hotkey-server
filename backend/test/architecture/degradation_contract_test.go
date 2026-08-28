@@ -19,8 +19,8 @@ func TestS03DegradationMatrixNamesExecutableEvidenceAndHonestGaps(t *testing.T) 
 			test: "TestRSSHNPipelineRecovery",
 		},
 		"DEG-001-REDIS-TRANSIENT": {
-			path: "backend/test/_suite/internal/modules/identity/infrastructure/redis/verification_store_test.go",
-			test: "TestVerificationStoreReportsUnavailableForClosedRedisClientOnEveryOperation",
+			path: "backend/test/_suite/internal/modules/identity/infrastructure/redis/verification_store_integration_test.go",
+			test: "TestVerificationStoreReturnsUnavailableDuringRealDisconnectAndRecoversExistingCode",
 		},
 		"DEG-001-MINIO-WRITE": {
 			path: "backend/test/_suite/internal/modules/source/application/collection_evidence_integration_test.go",
@@ -100,8 +100,14 @@ func TestS03DegradationMatrixNamesExecutableEvidenceAndHonestGaps(t *testing.T) 
 	}
 
 	redisRow := markdownTableRow(t, matrix, "DEG-001-REDIS-TRANSIENT")
-	if !strings.Contains(redisRow, "`partial`") || !strings.Contains(redisRow, "尚需真实断开/恢复往返测试") {
-		t.Errorf("Redis degradation must not be presented as fully verified: %s", redisRow)
+	for _, required := range []string{
+		"`verified`", "真实 TCP", "稳定 `unavailable`", "同一个 Client",
+		"`TestVerificationStoreReportsUnavailableForClosedRedisClientOnEveryOperation`",
+		"`TestVerificationStoreReturnsUnavailableDuringRealDisconnectAndRecoversExistingCode`",
+	} {
+		if !strings.Contains(redisRow, required) {
+			t.Errorf("verified Redis degradation row is missing %q: %s", required, redisRow)
+		}
 	}
 	if !strings.Contains(matrix, "`CHK-001-G4-001` 必须保持未勾选") {
 		t.Error("degradation matrix no longer protects the incomplete G4 checklist state")

@@ -275,30 +275,43 @@ ORDER BY id`)
 	if err != nil {
 		return nil, "", nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
-	targets := make([]vaultRecoveryTarget, 0)
+	type vaultInspectionCandidate struct {
+		target     vaultRecoveryTarget
+		revisionNo int64
+	}
+	candidates := make([]vaultInspectionCandidate, 0)
+	for rows.Next() {
+		var candidate vaultInspectionCandidate
+		if err := rows.Scan(&candidate.target.documentID, &candidate.target.version, &candidate.revisionNo, &candidate.target.inputHash); err != nil {
+			_ = rows.Close()
+			return nil, "", nil, databaserepository.MapError(err)
+		}
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, "", nil, databaserepository.MapError(err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, "", nil, databaserepository.MapError(err)
+	}
+
+	targets := make([]vaultRecoveryTarget, 0, len(candidates))
 	blockers := make([]string, 0)
 	digest := sha256.New()
 	writeRecoveryDigestPart(digest, "vault_manual_regions")
-	for rows.Next() {
-		var id, version, revision int64
-		var contentHash string
-		if err := rows.Scan(&id, &version, &revision, &contentHash); err != nil {
-			return nil, "", nil, databaserepository.MapError(err)
-		}
-		inspection, err := repository.vault.Inspect(ctx, id)
-		if err != nil || inspection.DocumentID != id || inspection.RevisionNo != revision || inspection.ContentHash != contentHash || len(inspection.HumanRegionSHA256) != 64 {
+	for _, candidate := range candidates {
+		inspection, err := repository.vault.Inspect(ctx, candidate.target.documentID)
+		if err != nil || inspection.DocumentID != candidate.target.documentID || inspection.RevisionNo != candidate.revisionNo ||
+			inspection.ContentHash != candidate.target.inputHash || len(inspection.HumanRegionSHA256) != 64 {
 			blockers = append(blockers, "vault_projection_requires_manual_reconciliation")
 			continue
 		}
-		writeRecoveryDigestPart(digest, strconv.FormatInt(id, 10))
+		writeRecoveryDigestPart(digest, strconv.FormatInt(candidate.target.documentID, 10))
 		writeRecoveryDigestPart(digest, inspection.HumanRegionSHA256)
 		if inspection.Missing {
-			targets = append(targets, vaultRecoveryTarget{documentID: id, version: version, inputHash: contentHash})
+			targets = append(targets, candidate.target)
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, "", nil, databaserepository.MapError(err)
 	}
 	return targets, hex.EncodeToString(digest.Sum(nil)), blockers, nil
 }

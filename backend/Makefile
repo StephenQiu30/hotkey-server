@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go,internal/modules/knowledge/transport/http,internal/modules/report
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance m4-fault-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -35,6 +35,20 @@ worker-recovery-acceptance: test-env minio-test-env
 		./internal/modules/source/infrastructure/postgres \
 		./internal/modules/ingestion/infrastructure/postgres \
 		-run '^(TestWorkerKillAfterClaimReclaimsLeaseAndAppliesSideEffectOnce|TestIngestWorkerKillAfterMinIOWriteRecoversWithoutDuplicateSideEffects|TestEvidenceWorkerKillAfterObservationCommitRecoversOneDocumentJob|TestDocumentProjectionWorkerKillAfterVaultWriteRecoversOneArtifact)$$' \
+		-count=1 -v
+
+m4-fault-recovery-acceptance: test-env
+	$(GO) run ./test/runner test -tags=integration -p=1 \
+		./internal/modules/notification/transport/http \
+		./internal/modules/notification/application \
+		./internal/modules/notification/infrastructure/postgres \
+		./internal/modules/knowledge/application \
+		./internal/modules/knowledge/domain \
+		./internal/modules/ingestion/application \
+		./internal/modules/identity/infrastructure/redis \
+		./internal/modules/operations/infrastructure/postgres \
+		./internal/platform/queue \
+		-run '^(TestWebSocketAuthenticatesInTheFirstFrameReplaysAndRecordsDelivery|TestEmailDeliveryReconcilesProviderReceiptWithoutSendingAgain|TestEmailDeliveryStopsWhenProviderReceiptCannotBeConfirmed|TestEmailDeliveryLeavesStartedFenceWhenProviderAcceptedButAttemptCommitFails|TestEmailDeliveryRepositoryFencesExpiredWorkersAndStopsUnknownSMTPReplay|TestEmailDeliveryRepositoryReusesDispatchKeyWithHigherFenceForIdempotentProvider|TestVaultRecoveryRestoresMissingFileFromRevisionSnapshot|TestVaultRecoveryStopsOnCurrentConflictWithoutReadingOlderCopies|TestStablePathRejectsTraversal|TestSourceDocumentGenerationReturnsHonestPartialResultWhenSearchProjectionFails|TestSourceDocumentGenerationRetriesAfterSearchProjectionRecoveryAndCompletes|TestVerificationStoreReturnsUnavailableDuringRealDisconnectAndRecoversExistingCode|TestProjectionRecoverySchedulesMissingVaultAndWorkerConvergesToZero|TestProjectionRecoveryRepositoryPreservesNotificationFactsAndUnknownAttempts|TestWorkerRecoversExpiredClaimsAndTerminatesExhaustedLease)$$' \
 		-count=1 -v
 
 source-resource-limit-acceptance: test-env

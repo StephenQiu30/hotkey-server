@@ -186,6 +186,9 @@ jobs:
       - name: Four-point Worker recovery acceptance
         run: make worker-recovery-acceptance
 
+      - name: M4 fault and projection recovery acceptance
+        run: make m4-fault-recovery-acceptance
+
       - name: Remove isolated MinIO
         if: always()
         run: docker rm --force "$HOTKEY_RECOVERY_MINIO_CONTAINER" || true

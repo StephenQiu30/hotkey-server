@@ -152,6 +152,33 @@ func TestSourceDocumentGenerationReturnsHonestPartialResultWhenSearchProjectionF
 	}
 }
 
+func TestSourceDocumentGenerationRetriesAfterSearchProjectionRecoveryAndCompletes(t *testing.T) {
+	t.Parallel()
+
+	fixture := newSourceDocumentGenerationFixture(t, BodyCompletenessFull)
+	fixture.search.err = sharedrepository.ErrUnavailable
+	partial, err := fixture.service.Generate(context.Background(), GenerateSourceDocumentCommand{EvidenceReferenceID: 71})
+	if !errors.Is(err, sharedrepository.ErrUnavailable) || partial.SearchAvailability != SourceDocumentUnavailable ||
+		partial.PlaintextAvailability != SourceDocumentAvailable || partial.LastVerifiedDocumentLifecycleState != DocumentDerivedAvailable {
+		t.Fatalf("search outage result/error = %#v / %v", partial, err)
+	}
+
+	fixture.search.err = nil
+	fixture.calls = nil
+	recovered, err := fixture.service.Generate(context.Background(), GenerateSourceDocumentCommand{EvidenceReferenceID: 71})
+	if err != nil {
+		t.Fatalf("Generate() after search recovery: %v", err)
+	}
+	if recovered.SearchAvailability != SourceDocumentAvailable || recovered.SearchProjection == nil ||
+		recovered.MarkdownAvailability != SourceDocumentAvailable || recovered.LastVerifiedDocumentLifecycleState != DocumentReadable ||
+		fixture.search.calls != 2 {
+		t.Fatalf("recovered search result=%#v calls=%d", recovered, fixture.search.calls)
+	}
+	if got, want := strings.Join(fixture.calls, ","), "read,extract,persist,authorize,project_plaintext,structure,index,family,embed,schedule_matches,project_markdown"; got != want {
+		t.Fatalf("recovery call order = %q, want %q", got, want)
+	}
+}
+
 func TestSourceDocumentGenerationFailsClosedBeforeIndexWhenStructureExtractionFails(t *testing.T) {
 	t.Parallel()
 
