@@ -366,7 +366,10 @@ func (writer *Writer) safePath(kind, key string) (string, error) {
 	if err := writer.ensureRoot(); err != nil {
 		return "", err
 	}
-	if err := rejectSymlinkComponents(writer.root, filepath.Dir(path)); err != nil {
+	// Include the final path component. Checking only the parent directories
+	// lets a leaf symlink escape the Vault during Read before CompareAndSwap
+	// can reject the non-regular target.
+	if err := rejectSymlinkComponents(writer.root, path); err != nil {
 		return "", err
 	}
 	return path, nil

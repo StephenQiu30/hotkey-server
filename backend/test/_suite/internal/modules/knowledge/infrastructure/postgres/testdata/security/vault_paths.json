@@ -1,0 +1,15 @@
+{
+  "invalid_paths": [
+    {"name": "parent traversal", "path": "events/../escape.md"},
+    {"name": "absolute posix", "path": "/tmp/hotkey-vault-escape.md"},
+    {"name": "encoded parent", "path": "events/%2e%2e.md"},
+    {"name": "double encoded parent", "path": "events/%252e%252e.md"},
+    {"name": "encoded separator", "path": "events%2fescape.md"},
+    {"name": "windows absolute", "path": "C:\\hotkey\\escape.md"},
+    {"name": "backslash separator", "path": "events\\escape.md"}
+  ],
+  "symlink_paths": [
+    {"name": "leaf symlink", "path": "events/leaf-escape.md", "kind": "leaf"},
+    {"name": "directory symlink", "path": "topics/directory-escape.md", "kind": "directory"}
+  ]
+}

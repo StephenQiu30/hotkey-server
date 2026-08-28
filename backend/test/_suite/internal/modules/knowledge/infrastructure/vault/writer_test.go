@@ -56,6 +56,32 @@ func TestWriterAutomaticUpdateAndSymlinkEscape(t *testing.T) {
 	}
 }
 
+func TestWriterRejectsLeafSymlinkBeforeReadOrWrite(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, []byte("outside secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "events"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "events", "leaf.md")); err != nil {
+		t.Fatal(err)
+	}
+	writer := NewWriter(root)
+
+	if _, _, err := writer.Read("events", "leaf"); !errors.Is(err, domain.ErrVaultPathSymlink) {
+		t.Fatalf("leaf symlink read error = %v", err)
+	}
+	if _, err := writer.Write("events", "leaf", "replacement"); !errors.Is(err, domain.ErrVaultPathSymlink) {
+		t.Fatalf("leaf symlink write error = %v", err)
+	}
+	content, err := os.ReadFile(outside)
+	if err != nil || string(content) != "outside secret" {
+		t.Fatalf("outside target after rejected leaf symlink = %q/%v", content, err)
+	}
+}
+
 func TestWriterRejectsPathAndContentBeforeCreatingVaultRoot(t *testing.T) {
 	parent := t.TempDir()
 	root := filepath.Join(parent, "not-created", "vault")
