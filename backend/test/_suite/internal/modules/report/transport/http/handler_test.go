@@ -16,12 +16,13 @@ import (
 )
 
 type reportServiceFake struct {
-	report       domain.Report
-	lifecycleErr error
-	submitCalls  int
-	approveCalls int
-	rejectCalls  int
-	createCalls  int
+	report        domain.Report
+	lastListQuery domain.ListQuery
+	lifecycleErr  error
+	submitCalls   int
+	approveCalls  int
+	rejectCalls   int
+	createCalls   int
 }
 
 func (fake *reportServiceFake) CreateDraft(_ context.Context, _ reportapplication.CreateInput) (domain.Report, error) {
@@ -29,7 +30,8 @@ func (fake *reportServiceFake) CreateDraft(_ context.Context, _ reportapplicatio
 	return fake.report, nil
 }
 
-func (fake *reportServiceFake) List(_ context.Context, _ domain.ListQuery) (domain.Page, error) {
+func (fake *reportServiceFake) List(_ context.Context, query domain.ListQuery) (domain.Page, error) {
+	fake.lastListQuery = query
 	return domain.Page{Items: []domain.Report{fake.report}}, nil
 }
 
@@ -131,6 +133,21 @@ func TestReportApprovalMapsInvalidEvidenceToStableConflict(t *testing.T) {
 	response := reportJSONRequest(router, "/api/v1/reports/7/approve", "editor", `{"expected_resource_version":1}`)
 	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"code":80000`) {
 		t.Fatalf("invalid evidence response = %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestReportListTreatsCursorAsOpaqueTransportValue(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &reportServiceFake{}
+	router := gin.New()
+	RegisterRoutes(router, service, reportAuthenticator{role: httptransport.RoleViewer})
+	response := reportRequest(router, http.MethodGet, "/api/v1/reports?cursor=opaque.signed&limit=7&type=daily", "viewer")
+	if response.Code != http.StatusOK {
+		t.Fatalf("list response = %d: %s", response.Code, response.Body.String())
+	}
+	if service.lastListQuery.Cursor != "opaque.signed" || service.lastListQuery.Limit != 7 ||
+		service.lastListQuery.Type == nil || *service.lastListQuery.Type != domain.ReportDaily {
+		t.Fatalf("list query = %#v", service.lastListQuery)
 	}
 }
 

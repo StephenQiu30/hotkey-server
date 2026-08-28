@@ -85,7 +85,7 @@ type ReportResponse struct {
 
 type ReportPageResponse struct {
 	Items      []ReportResponse `json:"items"`
-	NextCursor int64            `json:"next_cursor,omitempty"`
+	NextCursor string           `json:"next_cursor,omitempty"`
 }
 
 type ReportPreviewResponse struct {

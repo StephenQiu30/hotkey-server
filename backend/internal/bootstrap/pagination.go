@@ -6,6 +6,7 @@ import (
 	eventpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/infrastructure/postgres"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/postgres"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
+	reportpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/infrastructure/postgres"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/config"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
@@ -41,6 +42,10 @@ func newContentRepository(runtime *database.Runtime, codec *pagination.Codec) *i
 
 func newMonitorRepository(runtime *database.Runtime, codec *pagination.Codec) *monitorpostgres.Repository {
 	return monitorpostgres.NewRepositoryWithCursorCodec(runtime, codec)
+}
+
+func newReportRepository(runtime *database.Runtime, codec *pagination.Codec) *reportpostgres.Repository {
+	return reportpostgres.NewRepositoryWithCursorCodec(runtime, codec)
 }
 
 func newMicroEventQueryRepository(runtime *database.Runtime, codec *pagination.Codec) (*eventpostgres.MicroEventQueryPostgresRepository, error) {

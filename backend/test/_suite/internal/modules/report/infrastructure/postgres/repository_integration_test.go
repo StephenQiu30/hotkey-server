@@ -5,14 +5,109 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	reportapp "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
+
+func TestReportListCursorIsSignedBoundExpiringAndStableAcrossConcurrentInsert(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+
+	codec, err := pagination.NewCodec("report-list-cursor-secret-for-tests-32-bytes", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepositoryWithCursorCodec(runtime, codec)
+	base := time.Date(2026, time.August, 29, 0, 0, 0, 0, time.UTC)
+	initial := make(map[int64]struct{}, 4)
+	for index := 0; index < 4; index++ {
+		initial[insertCursorReport(t, runtime, base.AddDate(0, 0, index), domain.ReportDaily)] = struct{}{}
+	}
+
+	first, err := repository.List(ctx, domain.ListQuery{Limit: 2})
+	if err != nil || len(first.Items) != 2 || first.NextCursor == "" {
+		t.Fatalf("first page = %#v/%v", first, err)
+	}
+	if first.NextCursor == fmt.Sprintf("%d", first.Items[1].ID) || !strings.Contains(first.NextCursor, ".") {
+		t.Fatalf("cursor is not opaque and signed: %q", first.NextCursor)
+	}
+
+	tampered := "A" + first.NextCursor[1:]
+	if tampered == first.NextCursor {
+		tampered = "B" + first.NextCursor[1:]
+	}
+	if _, err := repository.List(ctx, domain.ListQuery{Limit: 2, Cursor: tampered}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("tampered cursor error = %v, want invalid input", err)
+	}
+	daily := domain.ReportDaily
+	if _, err := repository.List(ctx, domain.ListQuery{Limit: 2, Cursor: first.NextCursor, Type: &daily}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("cross-filter cursor error = %v, want invalid input", err)
+	}
+
+	concurrentID := insertCursorReport(t, runtime, base.AddDate(0, 0, 10), domain.ReportWeekly)
+	second, err := repository.List(ctx, domain.ListQuery{Limit: 2, Cursor: first.NextCursor})
+	if err != nil || len(second.Items) != 2 || second.NextCursor != "" {
+		t.Fatalf("second page = %#v/%v", second, err)
+	}
+	seen := make(map[int64]struct{}, 4)
+	for _, report := range append(first.Items, second.Items...) {
+		if _, duplicate := seen[report.ID]; duplicate {
+			t.Fatalf("report %d repeated across pages", report.ID)
+		}
+		if report.ID == concurrentID {
+			t.Fatalf("concurrent report %d leaked into an existing traversal", concurrentID)
+		}
+		if _, expected := initial[report.ID]; !expected {
+			t.Fatalf("unexpected report %d in traversal", report.ID)
+		}
+		seen[report.ID] = struct{}{}
+	}
+	if len(seen) != len(initial) {
+		t.Fatalf("traversal returned %d initial reports, want %d", len(seen), len(initial))
+	}
+
+	expiringCodec, err := pagination.NewCodec("expiring-report-cursor-secret-for-tests-32b", time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiring := NewRepositoryWithCursorCodec(runtime, expiringCodec)
+	expiringFirst, err := expiring.List(ctx, domain.ListQuery{Limit: 1})
+	if err != nil || expiringFirst.NextCursor == "" {
+		t.Fatalf("expiring first page = %#v/%v", expiringFirst, err)
+	}
+	time.Sleep(2 * time.Millisecond)
+	if _, err := expiring.List(ctx, domain.ListQuery{Limit: 1, Cursor: expiringFirst.NextCursor}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired cursor error = %v, want invalid input", err)
+	}
+}
+
+func insertCursorReport(t *testing.T, runtime *database.Runtime, periodStart time.Time, reportType domain.ReportType) int64 {
+	t.Helper()
+	var id int64
+	if err := runtime.SQL.QueryRow(`INSERT INTO reports
+(report_type,period_start,period_end,timezone,title,input_snapshot_hash,status,version_no)
+VALUES ($1,$2,$3,'UTC',$4,repeat('a',64),'draft',1) RETURNING id`, reportType, periodStart, periodStart.Add(24*time.Hour),
+		fmt.Sprintf("cursor-report-%d", periodStart.Unix())).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
 
 func TestReportRepositoryKeepsLegacyItemsReadableButRejectsNewPublication(t *testing.T) {
 	ctx := context.Background()

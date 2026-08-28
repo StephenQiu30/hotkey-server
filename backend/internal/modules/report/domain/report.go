@@ -117,7 +117,7 @@ type Report struct {
 }
 
 type ListQuery struct {
-	Cursor int64
+	Cursor string
 	Limit  int
 	Type   *ReportType
 	Status *ReportStatus
@@ -125,7 +125,7 @@ type ListQuery struct {
 
 type Page struct {
 	Items      []Report
-	NextCursor int64
+	NextCursor string
 }
 
 type RevisionTransition struct {
@@ -135,7 +135,7 @@ type RevisionTransition struct {
 }
 
 func (query ListQuery) Validate() error {
-	if query.Cursor < 0 || query.Limit < 1 || query.Limit > 100 {
+	if query.Limit < 1 || query.Limit > 100 {
 		return fmt.Errorf("invalid report list query")
 	}
 	if query.Type != nil && *query.Type != ReportDaily && *query.Type != ReportWeekly {

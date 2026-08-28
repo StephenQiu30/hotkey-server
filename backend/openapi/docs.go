@@ -6335,8 +6335,8 @@ const docTemplate = `{
                 "summary": "List reports",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "report id cursor",
+                        "type": "string",
+                        "description": "opaque signed report cursor",
                         "name": "cursor",
                         "in": "query"
                     },
@@ -13794,7 +13794,7 @@ const docTemplate = `{
                     }
                 },
                 "next_cursor": {
-                    "type": "integer"
+                    "type": "string"
                 }
             }
         },

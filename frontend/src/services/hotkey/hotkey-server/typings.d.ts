@@ -970,8 +970,8 @@ required property without making explicit null impossible to bind. */
   };
 
   type getReportsParams = {
-    /** report id cursor */
-    cursor?: number;
+    /** opaque signed report cursor */
+    cursor?: string;
     /** page size */
     limit?: number;
     /** daily or weekly */
@@ -2430,7 +2430,7 @@ required property without making explicit null impossible to bind. */
 
   type ReportPageResponse = {
     items?: ReportResponse[];
-    next_cursor?: number;
+    next_cursor?: string;
   };
 
   type ReportPreviewResponse = {

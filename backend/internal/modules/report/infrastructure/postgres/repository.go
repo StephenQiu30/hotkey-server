@@ -11,12 +11,26 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	databaserepository "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database/repository"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
-type Repository struct{ runtime *database.Runtime }
+type Repository struct {
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
+}
 
-func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }
+func NewRepository(runtime *database.Runtime) *Repository {
+	seed := "report:unavailable"
+	if runtime != nil && runtime.Pool != nil {
+		seed = "report:" + runtime.Pool.Config().ConnString()
+	}
+	return NewRepositoryWithCursorCodec(runtime, pagination.NewTestCodec(seed))
+}
+
+func NewRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *Repository {
+	return &Repository{runtime: runtime, cursorCodec: codec}
+}
 
 func (repository *Repository) FindByPeriod(ctx context.Context, reportType domain.ReportType, monitorID *int64, start, end time.Time) (domain.Report, error) {
 	if repository == nil || repository.runtime == nil || start.IsZero() || end.IsZero() {
@@ -398,7 +412,7 @@ func (repository *Repository) Get(ctx context.Context, reportID int64) (domain.R
 }
 
 func (repository *Repository) List(ctx context.Context, query domain.ListQuery) (domain.Page, error) {
-	if repository == nil || repository.runtime == nil {
+	if repository == nil || repository.runtime == nil || repository.cursorCodec == nil {
 		return domain.Page{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
@@ -411,13 +425,17 @@ func (repository *Repository) List(ctx context.Context, query domain.ListQuery) 
 	if query.Status != nil {
 		status = string(*query.Status)
 	}
+	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", true, reportListFingerprint(query))
+	if err != nil {
+		return domain.Page{}, fmt.Errorf("%w: report cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
 	rows, err := reportQueryerFor(ctx, repository.runtime).QueryContext(ctx, reportSelect+`
 WHERE deleted_at IS NULL
   AND ($1 = '' OR report_type = $1)
   AND ($2 = '' OR status = $2)
   AND ($3 = 0 OR id < $3)
 ORDER BY id DESC
-LIMIT $4`, reportType, status, query.Cursor, query.Limit+1)
+LIMIT $4`, reportType, status, cursor.ID, query.Limit+1)
 	if err != nil {
 		return domain.Page{}, databaserepository.MapError(err)
 	}
@@ -434,7 +452,10 @@ LIMIT $4`, reportType, status, query.Cursor, query.Limit+1)
 		return domain.Page{}, databaserepository.MapError(err)
 	}
 	if len(page.Items) > query.Limit {
-		page.NextCursor = page.Items[query.Limit-1].ID
+		page.NextCursor, err = repository.cursorCodec.Encode("id", true, reportListFingerprint(query), page.Items[query.Limit-1].ID)
+		if err != nil {
+			return domain.Page{}, fmt.Errorf("encode report cursor: %w", err)
+		}
 		page.Items = page.Items[:query.Limit]
 	}
 	if err := rows.Close(); err != nil {
@@ -449,6 +470,17 @@ LIMIT $4`, reportType, status, query.Cursor, query.Limit+1)
 		page.Items[index].Items = items
 	}
 	return page, nil
+}
+
+func reportListFingerprint(query domain.ListQuery) string {
+	reportType, status := "all", "all"
+	if query.Type != nil {
+		reportType = string(*query.Type)
+	}
+	if query.Status != nil {
+		status = string(*query.Status)
+	}
+	return fmt.Sprintf("type:%s|status:%s", reportType, status)
 }
 
 const reportSelect = `SELECT id,version,report_type,monitor_id,period_start,period_end,timezone,title,summary,body,input_snapshot_hash,

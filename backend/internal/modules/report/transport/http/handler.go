@@ -118,7 +118,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 // @Tags reports
 // @Produce json
 // @Security BearerAuth
-// @Param cursor query int false "report id cursor"
+// @Param cursor query string false "opaque signed report cursor"
 // @Param limit query int false "page size"
 // @Param type query string false "daily or weekly"
 // @Param status query string false "draft, pending_approval, published, rejected, failed or archived"
@@ -309,11 +309,7 @@ func reportListQuery(c *gin.Context) (domain.ListQuery, error) {
 		query.Limit = limit
 	}
 	if value := c.Query("cursor"); value != "" {
-		cursor, err := strconv.ParseInt(value, 10, 64)
-		if err != nil || cursor <= 0 {
-			return domain.ListQuery{}, sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "invalid report cursor")
-		}
-		query.Cursor = cursor
+		query.Cursor = value
 	}
 	if value := c.Query("type"); value != "" {
 		reportType := domain.ReportType(value)
