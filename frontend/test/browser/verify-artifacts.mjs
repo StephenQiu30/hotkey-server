@@ -26,8 +26,18 @@ const requests = network?.data?.requests ?? [];
 const failedRequests = requests.filter(
   (request) => typeof request.status === "number" && request.status >= 400,
 );
+const failedRequestSummary = failedRequests.map((request) => ({
+  method: request.method,
+  status: request.status,
+  pathname: safePathname(request.url),
+}));
+writeFileSync(
+  `${artifactDirectory}/hotkey-browser-network-summary.json`,
+  `${JSON.stringify({ version: "hotkey-browser-network-summary-v1", run_id: process.env.HOTKEY_BROWSER_RUN_ID, failed_requests: failedRequestSummary }, null, 2)}\n`,
+  { flag: "wx" },
+);
 if (!network?.success || failedRequests.length !== 0) {
-  throw new Error(`real browser emitted ${failedRequests.length} failed HTTP request(s)`);
+  throw new Error(`real browser emitted ${failedRequests.length} failed HTTP request(s): ${JSON.stringify(failedRequestSummary)}`);
 }
 
 const requiredRequests = [
@@ -62,4 +72,12 @@ writeFileSync(`${artifactDirectory}/hotkey-browser-acceptance.json`, `${JSON.str
 
 function readJSON(path) {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function safePathname(value) {
+  try {
+    return new URL(value).pathname;
+  } catch {
+    return "invalid-url";
+  }
 }

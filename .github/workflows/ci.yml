@@ -443,6 +443,7 @@ jobs:
           path: |
             /tmp/hotkey-browser-acceptance.json
             /tmp/hotkey-browser-database.json
+            /tmp/hotkey-browser-network-summary.json
             /tmp/hotkey-sentinel-scan.json
             /tmp/hotkey-a11y-*.json
 
