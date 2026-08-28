@@ -410,11 +410,13 @@ jobs:
           agent-browser click 'main form button[type="submit"]'
           agent-browser wait --text "日报 #$HOTKEY_BROWSER_REPORT_ID"
           agent-browser wait --text "BrowserAcceptanceTopic2026"
+          agent-browser wait 300
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-search-desktop.json
 
           agent-browser set viewport 390 844
           agent-browser press Tab
           agent-browser eval --json "document.querySelector('main') !== null && document.documentElement.scrollWidth <= window.innerWidth && document.activeElement !== document.body" > /tmp/hotkey-browser-viewport.json
+          agent-browser wait 300
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-search-mobile.json
 
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"

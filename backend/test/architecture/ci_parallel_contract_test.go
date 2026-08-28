@@ -91,3 +91,23 @@ func TestBrowserCIEnforcesSyntheticSecretScanningBeforeEvidenceUpload(t *testing
 		t.Error("secret canaries must be injected before startup and every surface scanned before evidence upload")
 	}
 }
+
+func TestBrowserCIA11yAuditsWaitForVisualStateToSettle(t *testing.T) {
+	backend := repositoryRoot(t)
+	repository := filepath.Clean(filepath.Join(backend, ".."))
+	workflow := readRepositoryFile(t, repository, ".github/workflows/ci.yml")
+
+	searchResult := strings.Index(workflow, `agent-browser wait --text "BrowserAcceptanceTopic2026"`)
+	desktopSettle := strings.Index(workflow, "agent-browser wait 300")
+	desktopAudit := strings.Index(workflow, "hotkey-a11y-search-desktop.json")
+	viewport := strings.Index(workflow, "agent-browser set viewport 390 844")
+	if searchResult < 0 || desktopSettle <= searchResult || desktopAudit <= desktopSettle || viewport <= desktopAudit {
+		t.Fatal("desktop search a11y audit must wait for CSS transitions to settle")
+	}
+	mobileWorkflow := workflow[viewport:]
+	mobileSettle := strings.Index(mobileWorkflow, "agent-browser wait 300")
+	mobileAudit := strings.Index(mobileWorkflow, "hotkey-a11y-search-mobile.json")
+	if mobileSettle < 0 || mobileAudit <= mobileSettle {
+		t.Fatal("mobile search a11y audit must wait for responsive layout transitions to settle")
+	}
+}
