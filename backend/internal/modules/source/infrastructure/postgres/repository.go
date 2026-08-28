@@ -21,10 +21,18 @@ id, version, source_type, name, endpoint, auth_type, credential_ref, config,
 enabled, health_status, terms_policy_url, created_at, updated_at, deleted_at`
 
 const (
-	sourceListDefaultLimit = 50
-	sourceListMaximumLimit = 200
-	sourceListFingerprint  = "source-connections"
+	sourceListDefaultLimit  = 50
+	sourceListMaximumLimit  = 200
+	sourceListFingerprint   = "source-connections"
+	sourceListCursorVersion = 1
 )
+
+type sourceConnectionListCursor struct {
+	Version           int    `json:"v"`
+	FilterFingerprint string `json:"filter"`
+	SnapshotID        int64  `json:"snapshot_id"`
+	AfterID           int64  `json:"after_id"`
+}
 
 // Repository owns only source_connections. The Monitor module supplies its
 // own usage reader in Task 4 instead of allowing this adapter to join tables
@@ -168,19 +176,22 @@ ORDER BY id ASC`, unique)
 // SQL fragments, or joins. Deleted records remain present because the safe
 // DTO explicitly exposes their lifecycle state for shared-team management.
 func (repository *Repository) List(ctx context.Context, query domain.SourceConnectionListQuery) ([]domain.SourceConnection, string, error) {
-	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || repository.cursorCodec == nil {
 		return nil, "", sharedrepository.ErrUnavailable
 	}
-	limit, cursorID, err := repository.sourceListParameters(query)
+	limit, cursor, err := repository.sourceListParameters(ctx, query)
 	if err != nil {
 		return nil, "", err
+	}
+	if cursor.SnapshotID == 0 {
+		return []domain.SourceConnection{}, "", nil
 	}
 	rows, err := repository.queryRows(ctx, `
 SELECT `+sourceConnectionColumns+`
 FROM source_connections
-WHERE id > $1
+WHERE id > $1 AND id <= $2
 ORDER BY id ASC
-LIMIT $2`, cursorID, limit+1)
+LIMIT $3`, cursor.AfterID, cursor.SnapshotID, limit+1)
 	if err != nil {
 		return nil, "", databaserepository.MapError(err)
 	}
@@ -205,7 +216,8 @@ LIMIT $2`, cursorID, limit+1)
 		return connections, "", nil
 	}
 	connections = connections[:limit]
-	nextCursor, err := repository.cursorCodec.Encode("id", false, sourceListFingerprint, connections[len(connections)-1].ID)
+	cursor.AfterID = connections[len(connections)-1].ID
+	nextCursor, err := repository.cursorCodec.Seal("source_connection_list", cursor)
 	if err != nil {
 		return nil, "", fmt.Errorf("%w: encode source cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
@@ -415,19 +427,27 @@ ON CONFLICT (event_digest) DO NOTHING`, webhook.Digest, webhook.Event, webhook.O
 // exercise archival without sharing application clock state.
 var timeNowUTC = func() time.Time { return time.Now().UTC() }
 
-func (repository *Repository) sourceListParameters(query domain.SourceConnectionListQuery) (int, int64, error) {
+func (repository *Repository) sourceListParameters(ctx context.Context, query domain.SourceConnectionListQuery) (int, sourceConnectionListCursor, error) {
 	limit := query.Limit
 	if limit == 0 {
 		limit = sourceListDefaultLimit
 	}
 	if limit < 1 || limit > sourceListMaximumLimit {
-		return 0, 0, fmt.Errorf("%w: source list limit must be from 1 to %d", sharedrepository.ErrInvalidInput, sourceListMaximumLimit)
+		return 0, sourceConnectionListCursor{}, fmt.Errorf("%w: source list limit must be from 1 to %d", sharedrepository.ErrInvalidInput, sourceListMaximumLimit)
 	}
-	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", false, sourceListFingerprint)
-	if err != nil {
-		return 0, 0, fmt.Errorf("%w: source list cursor: %v", sharedrepository.ErrInvalidInput, err)
+	cursor := sourceConnectionListCursor{Version: sourceListCursorVersion, FilterFingerprint: sourceListFingerprint}
+	if query.Cursor != "" {
+		if err := repository.cursorCodec.Open(query.Cursor, "source_connection_list", &cursor); err != nil ||
+			cursor.Version != sourceListCursorVersion || cursor.FilterFingerprint != sourceListFingerprint ||
+			cursor.SnapshotID <= 0 || cursor.AfterID <= 0 || cursor.AfterID >= cursor.SnapshotID {
+			return 0, sourceConnectionListCursor{}, fmt.Errorf("%w: source list cursor is invalid", sharedrepository.ErrInvalidInput)
+		}
+		return limit, cursor, nil
 	}
-	return limit, cursor.ID, nil
+	if err := repository.queryRow(ctx, `SELECT COALESCE(MAX(id), 0) FROM source_connections`).Scan(&cursor.SnapshotID); err != nil {
+		return 0, sourceConnectionListCursor{}, databaserepository.MapError(err)
+	}
+	return limit, cursor, nil
 }
 
 func scanSourceConnection(scanner interface{ Scan(...any) error }) (sourceConnectionRecord, error) {

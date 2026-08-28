@@ -11,6 +11,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
@@ -84,6 +85,66 @@ func TestRepositorySourceSemanticUpdateIsRejectedAfterPublishedReference(t *test
 	connection.Endpoint = "https://feeds.example.test/changed"
 	if err := repository.Update(ctx, &connection); !errors.Is(err, sharedrepository.ErrConstraint) {
 		t.Fatalf("published semantic Update() error = %v, want source trigger constraint", err)
+	}
+}
+
+func TestSourceConnectionListCursorIsSignedExpiringAndSnapshotStableAcrossConcurrentInsert(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	codec, err := pagination.NewCodec(strings.Repeat("source-list-secret-", 2), time.Minute)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(): %v", err)
+	}
+	repository := sourcepostgres.NewRepositoryWithCursorCodec(runtime, codec)
+	create := func(name string) domain.SourceConnection {
+		t.Helper()
+		connection := sourceConnection(name)
+		if err := repository.Create(context.Background(), &connection); err != nil {
+			t.Fatalf("Create(%s): %v", name, err)
+		}
+		return connection
+	}
+	firstFixture := create("cursor-first")
+	secondFixture := create("cursor-second")
+	thirdFixture := create("cursor-third")
+
+	first, cursor, err := repository.List(context.Background(), domain.SourceConnectionListQuery{Limit: 2})
+	if err != nil || len(first) != 2 || cursor == "" {
+		t.Fatalf("List(first) connections/cursor/error = %#v/%q/%v", first, cursor, err)
+	}
+	if first[0].ID != firstFixture.ID || first[1].ID != secondFixture.ID || strings.Count(cursor, ".") != 1 {
+		t.Fatalf("first page/cursor = %#v/%q", first, cursor)
+	}
+	concurrent := create("cursor-concurrent")
+
+	second, nextCursor, err := repository.List(context.Background(), domain.SourceConnectionListQuery{Cursor: cursor, Limit: 2})
+	if err != nil || len(second) != 1 || second[0].ID != thirdFixture.ID || nextCursor != "" {
+		t.Fatalf("List(second) connections/cursor/error = %#v/%q/%v; concurrent=%d", second, nextCursor, err, concurrent.ID)
+	}
+
+	tampered := cursor[:len(cursor)-1] + "A"
+	if strings.HasSuffix(cursor, "A") {
+		tampered = cursor[:len(cursor)-1] + "B"
+	}
+	if _, _, err := repository.List(context.Background(), domain.SourceConnectionListQuery{Cursor: tampered, Limit: 2}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("tampered cursor error = %v, want invalid input", err)
+	}
+	if _, _, err := repository.List(context.Background(), domain.SourceConnectionListQuery{Limit: 201}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("oversized page error = %v, want invalid input", err)
+	}
+
+	shortCodec, err := pagination.NewCodec(strings.Repeat("short-source-secret-", 2), time.Millisecond)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(short): %v", err)
+	}
+	shortRepository := sourcepostgres.NewRepositoryWithCursorCodec(runtime, shortCodec)
+	_, expiring, err := shortRepository.List(context.Background(), domain.SourceConnectionListQuery{Limit: 2})
+	if err != nil || expiring == "" {
+		t.Fatalf("List(expiring) cursor/error = %q/%v", expiring, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, _, err := shortRepository.List(context.Background(), domain.SourceConnectionListQuery{Cursor: expiring, Limit: 2}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired cursor error = %v, want invalid input", err)
 	}
 }
 
