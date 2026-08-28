@@ -12,6 +12,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 )
 
 type promptInjectionFixture struct {
@@ -31,6 +32,7 @@ func TestPromptInjectionFixtureCannotChangeEvidenceOrOutputContract(t *testing.T
 	if err := runs.CreateProfile(context.Background(), &profile); err != nil {
 		t.Fatal(err)
 	}
+	beforeFacts := readPromptInjectionBusinessFacts(t, runtime)
 	forgedEvidence := json.RawMessage(fmt.Sprintf(
 		`{"title_zh":"事件","sentences":[{"text":"注入事实","evidence":[{"content_id":%d,"locator":"admin:override"}]}]}`,
 		fixture.ForgedEvidenceID,
@@ -38,21 +40,24 @@ func TestPromptInjectionFixtureCannotChangeEvidenceOrOutputContract(t *testing.T
 	formatOverride := json.RawMessage(`{"title_zh":"事件","sentences":[],"system_contract":"markdown"}`)
 	provider := &promptInjectionRecordingProvider{
 		modelVersion: profile.ModelVersion,
-		outputs:      []json.RawMessage{forgedEvidence, formatOverride},
+		outputs:      []json.RawMessage{forgedEvidence, formatOverride, forgedEvidence, formatOverride},
 	}
 	clock := &applicationClock{value: time.Date(2026, time.August, 27, 17, 0, 0, 0, time.UTC)}
 	service := NewEventIntelligenceService(newApplicationRunService(t, runs, provider, clock))
-	result, err := service.Execute(context.Background(), EventIntelligenceInput{
+	input := EventIntelligenceInput{
 		TaskType: domain.TaskTypeEventSummary, EventID: 7004, EventVersion: 1, EventKey: "evt-prompt-injection",
 		Evidence: []EventIntelligenceEvidence{{ContentID: 2, Locator: "title", Excerpt: fixture.SourceText}},
-	})
-	if err != nil || result.Status != AnalysisStatusPending || result.ReasonCode != AnalysisReasonOutputInvalid || len(result.Result) != 0 {
-		t.Fatalf("prompt-injection result=%#v error=%v, want pending output_invalid without a result", result, err)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		result, err := service.Execute(context.Background(), input)
+		if err != nil || result.Status != AnalysisStatusPending || result.ReasonCode != AnalysisReasonOutputInvalid || len(result.Result) != 0 {
+			t.Fatalf("prompt-injection run %d result=%#v error=%v, want pending output_invalid without a result", attempt+1, result, err)
+		}
 	}
 
 	requests := provider.recordedRequests()
-	if len(requests) != 2 {
-		t.Fatalf("provider requests=%d, want one attempt plus one repair", len(requests))
+	if len(requests) != 4 {
+		t.Fatalf("provider requests=%d, want two runs with one repair each", len(requests))
 	}
 	for index, request := range requests {
 		if request.TaskType != domain.TaskTypeEventSummary || request.SchemaName != "event-summary-output-v1" || request.SchemaVersion != "v1" {
@@ -68,25 +73,58 @@ func TestPromptInjectionFixtureCannotChangeEvidenceOrOutputContract(t *testing.T
 			t.Fatalf("request[%d] did not preserve the source strictly as evidence data: %#v / %v", index, input, err)
 		}
 	}
-	if requests[0].Repair != nil || requests[1].Repair == nil || string(requests[1].Repair.PreviousOutput) != string(forgedEvidence) {
-		t.Fatalf("repair contract=%#v, want the rejected first output only on attempt two", requests[1].Repair)
+	for _, pair := range [][2]int{{0, 1}, {2, 3}} {
+		if requests[pair[0]].Repair != nil || requests[pair[1]].Repair == nil || string(requests[pair[1]].Repair.PreviousOutput) != string(forgedEvidence) {
+			t.Fatalf("repair contract=%#v, want rejected output only on the bounded repair", requests[pair[1]].Repair)
+		}
 	}
 
-	var status string
-	var attempt int
-	var repairAttempted bool
-	var structuredResult []byte
+	var runCount int
 	var succeededRuns int
+	var allFailed, allBoundedRepairs, allResultsEmpty, allErrorsSanitized bool
+	var operationalAudit string
 	if err := runtime.SQL.QueryRow(`
-SELECT status,attempt,repair_attempted,structured_result,
-       count(*) FILTER (WHERE status='succeeded') OVER ()
-FROM ai_runs WHERE task_type='event_summary' AND target_id=7004`).
-		Scan(&status, &attempt, &repairAttempted, &structuredResult, &succeededRuns); err != nil {
+SELECT count(*), count(*) FILTER (WHERE status='succeeded'),
+       bool_and(status='failed'), bool_and(attempt=2 AND repair_attempted),
+       bool_and(structured_result='{}'::jsonb), bool_and(error_code=$1),
+       string_agg(row_to_json(ai_runs)::text, '')
+FROM ai_runs WHERE task_type='event_summary' AND target_id=7004`, domain.CodeAIOutputInvalid).
+		Scan(&runCount, &succeededRuns, &allFailed, &allBoundedRepairs, &allResultsEmpty, &allErrorsSanitized, &operationalAudit); err != nil {
 		t.Fatal(err)
 	}
-	if status != "failed" || attempt != 2 || !repairAttempted || string(structuredResult) != "{}" || succeededRuns != 0 {
-		t.Fatalf("persisted run status=%q attempt=%d repair=%v result=%q succeeded=%d", status, attempt, repairAttempted, structuredResult, succeededRuns)
+	if runCount != 2 || succeededRuns != 0 || !allFailed || !allBoundedRepairs || !allResultsEmpty || !allErrorsSanitized {
+		t.Fatalf("operational audits = runs:%d succeeded:%d failed:%v repairs:%v empty:%v safe:%v", runCount, succeededRuns, allFailed, allBoundedRepairs, allResultsEmpty, allErrorsSanitized)
 	}
+	for _, forbidden := range []string{fixture.AttemptedCommand, fixture.FormatOverride, "attacker-output-v9", "admin:override", "伪造事实"} {
+		if strings.Contains(operationalAudit, forbidden) {
+			t.Fatalf("sanitized AI run audit leaked prompt-injection input %q", forbidden)
+		}
+	}
+	if afterFacts := readPromptInjectionBusinessFacts(t, runtime); afterFacts != beforeFacts {
+		t.Fatalf("prompt injection changed business facts: before=%#v after=%#v", beforeFacts, afterFacts)
+	}
+}
+
+type promptInjectionBusinessFacts struct {
+	Claims, ClaimEvidence, Summaries, SummarySentences, ReportItems, ReportSentences int64
+}
+
+func readPromptInjectionBusinessFacts(t *testing.T, runtime *database.Runtime) promptInjectionBusinessFacts {
+	t.Helper()
+	var facts promptInjectionBusinessFacts
+	if err := runtime.SQL.QueryRow(`
+SELECT
+  (SELECT count(*) FROM claims),
+  (SELECT count(*) FROM claim_evidence_versions),
+  (SELECT count(*) FROM micro_event_summaries),
+  (SELECT count(*) FROM micro_event_summary_sentences),
+  (SELECT count(*) FROM report_items),
+  (SELECT count(*) FROM report_item_sentences)`).Scan(
+		&facts.Claims, &facts.ClaimEvidence, &facts.Summaries, &facts.SummarySentences, &facts.ReportItems, &facts.ReportSentences,
+	); err != nil {
+		t.Fatalf("read prompt-injection business facts: %v", err)
+	}
+	return facts
 }
 
 type promptInjectionRecordingProvider struct {

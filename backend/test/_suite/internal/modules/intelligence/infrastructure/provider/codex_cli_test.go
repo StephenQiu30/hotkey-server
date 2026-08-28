@@ -49,6 +49,18 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"{
 	gotArguments := strings.Split(strings.TrimSpace(string(arguments)), "\n")
 	wantArguments := []string{
 		"exec", "--json", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check",
+		"--strict-config",
+		"--disable", "shell_tool",
+		"--disable", "browser_use",
+		"--disable", "browser_use_external",
+		"--disable", "browser_use_full_cdp_access",
+		"--disable", "in_app_browser",
+		"--disable", "computer_use",
+		"--disable", "apps",
+		"--disable", "image_generation",
+		"--disable", "multi_agent",
+		"--disable", "multi_agent_v2",
+		"--disable", "tool_suggest",
 		"--color", "never", "--sandbox", "read-only", "-",
 	}
 	if !reflect.DeepEqual(gotArguments, wantArguments) {
