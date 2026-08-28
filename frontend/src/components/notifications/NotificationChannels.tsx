@@ -50,7 +50,7 @@ export function NotificationChannels() {
                 <p className="mt-1 text-sm text-muted-foreground">{realtime.detail}</p>
               </div>
             </div>
-            <Badge variant={transport === "live" ? "default" : "secondary"} className="shrink-0">
+            <Badge variant={transport === "live" ? "outline" : "secondary"} className="shrink-0">
               {realtime.label}
             </Badge>
           </div>
