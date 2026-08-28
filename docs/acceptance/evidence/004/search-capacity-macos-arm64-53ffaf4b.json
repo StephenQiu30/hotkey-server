@@ -1,0 +1,578 @@
+{
+  "version": "hotkey-search-capacity-v1",
+  "status": "measured",
+  "approval": "required",
+  "git_revision": "53ffaf4b19dc901aeda32474d821648b77a166f1",
+  "environment": "macos26.6.2-postgresql18.4-local-apfs-warm",
+  "hardware": "Apple M5; 10 logical CPU; 24 GiB RAM; APFS; PostgreSQL 18.4 local loopback",
+  "cache_state": "warm",
+  "percentile_algorithm": "nearest-rank-ceiling",
+  "runtime": {
+    "goos": "darwin",
+    "goarch": "arm64",
+    "cpus": 10
+  },
+  "corpus": {
+    "content_rows": 1000,
+    "event_rows": 1000,
+    "knowledge_rows": 1000,
+    "total_rows": 3000
+  },
+  "api": {
+    "route_shape": "/api/v1/search?\u003cbounded-filter-set\u003e",
+    "stack": "httptest_http+gin+authn+authz+search_application+owner_postgres+dto+json",
+    "concurrency": 4,
+    "warmups": 10,
+    "latency": {
+      "samples": 120,
+      "duration_micros": [
+        93271,
+        93751,
+        100044,
+        103245,
+        107772,
+        111069,
+        111811,
+        113464,
+        114194,
+        114610,
+        115211,
+        115587,
+        115817,
+        116050,
+        117376,
+        118077,
+        119241,
+        119340,
+        119542,
+        119599,
+        120073,
+        120329,
+        121172,
+        121289,
+        122158,
+        122567,
+        123117,
+        123682,
+        123704,
+        124139,
+        124734,
+        124915,
+        125866,
+        126261,
+        128229,
+        128255,
+        128517,
+        128604,
+        129007,
+        130316,
+        130534,
+        130954,
+        131707,
+        131781,
+        132979,
+        133485,
+        133573,
+        133905,
+        134565,
+        136277,
+        137189,
+        138669,
+        139182,
+        139665,
+        139768,
+        140901,
+        141034,
+        141601,
+        141608,
+        142254,
+        142602,
+        143025,
+        145386,
+        145694,
+        145811,
+        146121,
+        146191,
+        146785,
+        147324,
+        147711,
+        148206,
+        148524,
+        149030,
+        149371,
+        149666,
+        150240,
+        150344,
+        151531,
+        152347,
+        152962,
+        153248,
+        153795,
+        154086,
+        154993,
+        155323,
+        155597,
+        156699,
+        156781,
+        156922,
+        157754,
+        158079,
+        158884,
+        158897,
+        159083,
+        160574,
+        160879,
+        161003,
+        161058,
+        161059,
+        161702,
+        162188,
+        162190,
+        164107,
+        164856,
+        164925,
+        165466,
+        165911,
+        166596,
+        166630,
+        168314,
+        168403,
+        170954,
+        171002,
+        171480,
+        173818,
+        174816,
+        174998,
+        175730,
+        176179,
+        178562
+      ],
+      "p50_micros": 142254,
+      "p95_micros": 171480,
+      "p99_micros": 176179,
+      "errors": 0
+    },
+    "queries": [
+      {
+        "id": "mixed-all",
+        "query_digest": "60367fb36936203d125a18c6750d08b6f1e4b59a12ac5a95514259b7bd7eda53",
+        "result_count": 20,
+        "result_identity_digest": "30d5a378cb0260d9581a16c6050c48fb400da44af97834ca0029d2653e08fa42",
+        "latency": {
+          "samples": 24,
+          "duration_micros": [
+            114194,
+            115587,
+            119241,
+            125866,
+            128517,
+            129007,
+            130954,
+            138669,
+            141608,
+            142602,
+            149666,
+            150240,
+            151531,
+            152347,
+            156781,
+            161003,
+            161059,
+            162188,
+            162190,
+            164107,
+            165466,
+            171002,
+            174998,
+            176179
+          ],
+          "p50_micros": 150240,
+          "p95_micros": 174998,
+          "p99_micros": 176179,
+          "errors": 0
+        }
+      },
+      {
+        "id": "multilingual-all",
+        "query_digest": "3d66c4180bd1648bb36af384b7e4f48d23355bcaea8b043c08d04ad332d451ce",
+        "result_count": 20,
+        "result_identity_digest": "30d5a378cb0260d9581a16c6050c48fb400da44af97834ca0029d2653e08fa42",
+        "latency": {
+          "samples": 24,
+          "duration_micros": [
+            113464,
+            117376,
+            119340,
+            119599,
+            123682,
+            126261,
+            128229,
+            139768,
+            141601,
+            145811,
+            147324,
+            147711,
+            148206,
+            149371,
+            152962,
+            156922,
+            158884,
+            158897,
+            159083,
+            161058,
+            164925,
+            170954,
+            171480,
+            174816
+          ],
+          "p50_micros": 147711,
+          "p95_micros": 171480,
+          "p99_micros": 174816,
+          "errors": 0
+        }
+      },
+      {
+        "id": "trigram-all",
+        "query_digest": "9f2dcab2e35dee4ea53f7cf298cf90c759b7b1db2f569c4cf52dce05608fb422",
+        "result_count": 20,
+        "result_identity_digest": "0fdbef2463b115b32c983a65ad3664824753ede55cd8130de0a65b4a981bf69d",
+        "latency": {
+          "samples": 24,
+          "duration_micros": [
+            111811,
+            118077,
+            120329,
+            123704,
+            124139,
+            124915,
+            128604,
+            136277,
+            137189,
+            139182,
+            145386,
+            146121,
+            146191,
+            146785,
+            153248,
+            153795,
+            154086,
+            155323,
+            155597,
+            156699,
+            158079,
+            164856,
+            166630,
+            168403
+          ],
+          "p50_micros": 146121,
+          "p95_micros": 166630,
+          "p99_micros": 168403,
+          "errors": 0
+        }
+      },
+      {
+        "id": "entity-content",
+        "query_digest": "b33b0f7ac0d830e81758883c736a721ad5724c51267dee87657da9d45a7ad121",
+        "result_count": 20,
+        "result_identity_digest": "0fe1a937e2cd3bf970dae4a956a5412ef55046a2a8f34d5f04d20748a8531964",
+        "latency": {
+          "samples": 24,
+          "duration_micros": [
+            93271,
+            93751,
+            100044,
+            103245,
+            107772,
+            111069,
+            114610,
+            115211,
+            116050,
+            121172,
+            121289,
+            122567,
+            123117,
+            124734,
+            128255,
+            131707,
+            131781,
+            132979,
+            133573,
+            133905,
+            134565,
+            139665,
+            140901,
+            143025
+          ],
+          "p50_micros": 122567,
+          "p95_micros": 140901,
+          "p99_micros": 143025,
+          "errors": 0
+        }
+      },
+      {
+        "id": "active-latest",
+        "query_digest": "31275a8393d7caa3af305859bd9914457a2fdf7d8217a646155b8f5339b248ee",
+        "result_count": 20,
+        "result_identity_digest": "30d5a378cb0260d9581a16c6050c48fb400da44af97834ca0029d2653e08fa42",
+        "latency": {
+          "samples": 24,
+          "duration_micros": [
+            115817,
+            119542,
+            120073,
+            122158,
+            130316,
+            130534,
+            133485,
+            141034,
+            142254,
+            145694,
+            148524,
+            149030,
+            150344,
+            154993,
+            157754,
+            160574,
+            160879,
+            161702,
+            165911,
+            166596,
+            168314,
+            173818,
+            175730,
+            178562
+          ],
+          "p50_micros": 149030,
+          "p95_micros": 175730,
+          "p99_micros": 178562,
+          "errors": 0
+        }
+      }
+    ]
+  },
+  "index_update": {
+    "resource_type": "content",
+    "query_digest": "45f4770f2da5363041e0086fa531cb1e11fb393213fda857d2705890533418f4",
+    "visible": true,
+    "attempts": 1,
+    "latency_micros": 117593
+  },
+  "query_plans": [
+    {
+      "resource_type": "content",
+      "plan_digest": "24b5b8f8f94f681cc942db9b6ce06a40f51b17ba0c91240ac4396ba4af9d952e",
+      "nodes": [
+        {
+          "depth": 0,
+          "node_type": "Limit"
+        },
+        {
+          "depth": 1,
+          "node_type": "Result"
+        },
+        {
+          "depth": 1,
+          "node_type": "Sort"
+        },
+        {
+          "depth": 2,
+          "node_type": "Aggregate"
+        },
+        {
+          "depth": 3,
+          "node_type": "Sort"
+        },
+        {
+          "depth": 4,
+          "node_type": "Nested Loop"
+        },
+        {
+          "depth": 5,
+          "node_type": "Nested Loop"
+        },
+        {
+          "depth": 6,
+          "node_type": "Nested Loop"
+        },
+        {
+          "depth": 7,
+          "node_type": "Hash Join"
+        },
+        {
+          "depth": 8,
+          "node_type": "Seq Scan",
+          "relation": "documents"
+        },
+        {
+          "depth": 8,
+          "node_type": "Hash"
+        },
+        {
+          "depth": 9,
+          "node_type": "Seq Scan",
+          "relation": "document_versions"
+        },
+        {
+          "depth": 7,
+          "node_type": "Index Scan",
+          "relation": "document_version_search_indexes",
+          "index": "document_version_search_index_document_version_id_normaliza_key"
+        },
+        {
+          "depth": 6,
+          "node_type": "Index Scan",
+          "relation": "contents",
+          "index": "contents_source_connection_id_external_id_key"
+        },
+        {
+          "depth": 5,
+          "node_type": "CTE Scan"
+        }
+      ]
+    },
+    {
+      "resource_type": "event",
+      "plan_digest": "d2bb443bf7d893e99fdf49f4f9c8d65c891e72c424f739cca06f4b7fb47d4131",
+      "nodes": [
+        {
+          "depth": 0,
+          "node_type": "Limit"
+        },
+        {
+          "depth": 1,
+          "node_type": "Result"
+        },
+        {
+          "depth": 1,
+          "node_type": "Sort"
+        },
+        {
+          "depth": 2,
+          "node_type": "Nested Loop"
+        },
+        {
+          "depth": 3,
+          "node_type": "CTE Scan"
+        },
+        {
+          "depth": 3,
+          "node_type": "Nested Loop"
+        },
+        {
+          "depth": 4,
+          "node_type": "Seq Scan",
+          "relation": "micro_events"
+        },
+        {
+          "depth": 4,
+          "node_type": "Aggregate"
+        },
+        {
+          "depth": 5,
+          "node_type": "Limit"
+        },
+        {
+          "depth": 6,
+          "node_type": "Sort"
+        },
+        {
+          "depth": 7,
+          "node_type": "Index Scan",
+          "relation": "micro_event_summaries",
+          "index": "micro_event_summaries_micro_event_id_micro_event_version_su_key"
+        },
+        {
+          "depth": 5,
+          "node_type": "Sort"
+        },
+        {
+          "depth": 6,
+          "node_type": "Nested Loop"
+        },
+        {
+          "depth": 7,
+          "node_type": "Index Only Scan",
+          "relation": "micro_event_summaries",
+          "index": "micro_event_summaries_pkey"
+        },
+        {
+          "depth": 7,
+          "node_type": "Bitmap Heap Scan",
+          "relation": "micro_event_summary_sentences"
+        },
+        {
+          "depth": 8,
+          "node_type": "Bitmap Index Scan",
+          "index": "micro_event_summary_sentences_summary_ordinal_uq"
+        }
+      ]
+    },
+    {
+      "resource_type": "knowledge",
+      "plan_digest": "5ae75fad0c47f9726d5a30f71795a7d5dd0a963c6289c454957220e7c9e7949f",
+      "nodes": [
+        {
+          "depth": 0,
+          "node_type": "Limit"
+        },
+        {
+          "depth": 1,
+          "node_type": "Result"
+        },
+        {
+          "depth": 1,
+          "node_type": "Sort"
+        },
+        {
+          "depth": 2,
+          "node_type": "Hash Join"
+        },
+        {
+          "depth": 3,
+          "node_type": "Seq Scan",
+          "relation": "knowledge_documents"
+        },
+        {
+          "depth": 3,
+          "node_type": "Hash"
+        },
+        {
+          "depth": 4,
+          "node_type": "Hash Join"
+        },
+        {
+          "depth": 5,
+          "node_type": "Seq Scan",
+          "relation": "knowledge_revisions"
+        },
+        {
+          "depth": 5,
+          "node_type": "Hash"
+        },
+        {
+          "depth": 6,
+          "node_type": "Nested Loop"
+        },
+        {
+          "depth": 7,
+          "node_type": "CTE Scan"
+        },
+        {
+          "depth": 7,
+          "node_type": "Seq Scan",
+          "relation": "knowledge_change_proposals"
+        }
+      ]
+    }
+  ],
+  "started_at": "2026-08-28T04:05:55.551246Z",
+  "completed_at": "2026-08-28T04:06:01.539589Z",
+  "exclusions": [
+    "fixture_generation",
+    "public_network_tls",
+    "production_identity_lookup",
+    "browser_rendering",
+    "query_text_title_snippet_body_and_host_paths_intentionally_omitted",
+    "candidate_targets_require_human_approval"
+  ]
+}
