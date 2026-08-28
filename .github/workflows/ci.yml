@@ -337,6 +337,10 @@ jobs:
           curl --fail --silent http://127.0.0.1:8866/healthz
           curl --fail --silent http://127.0.0.1:8866/readyz
           curl --fail --silent http://127.0.0.1:8866/metrics | grep 'hotkey_runtime_metrics_collection_success'
+          curl --fail --silent --show-error --head http://127.0.0.1:8010/ > /tmp/hotkey-web-headers.txt
+          grep --fixed-strings --ignore-case 'content-security-policy:' /tmp/hotkey-web-headers.txt
+          grep --fixed-strings "script-src-attr 'none'" /tmp/hotkey-web-headers.txt
+          grep --fixed-strings "frame-ancestors 'none'" /tmp/hotkey-web-headers.txt
 
       - name: Prepare same-fixture report approval story
         run: |
