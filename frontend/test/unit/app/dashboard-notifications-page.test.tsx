@@ -66,7 +66,7 @@ describe("NotificationsPage", () => {
     });
 
     render(<NotificationsPage />);
-    expect(screen.getByText("轮询中")).toBeInTheDocument();
+    expect(screen.getByText("轮询中")).toHaveClass("transition-none");
     expect(screen.getByText("新热点已发现")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看通知关联内容" })).toHaveAttribute("href", "/dashboard/contents/8");
     expect(screen.getByRole("heading", { name: "站内实时通知" })).toBeInTheDocument();

@@ -126,7 +126,7 @@ export function NotificationInbox() {
             <Badge
               variant={presentation.variant}
               aria-live="polite"
-              className="h-9 px-3"
+              className="h-9 px-3 transition-none"
             >
               {presentation.label}
             </Badge>
