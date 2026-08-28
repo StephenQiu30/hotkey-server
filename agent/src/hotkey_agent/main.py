@@ -129,7 +129,11 @@ def create_app(settings: Settings | None = None, *, analyzer: Analyzer | None = 
                 "AGENT_NOT_READY",
                 "analysis runtime is not ready",
             )
-        if agent_token is None or not hmac.compare_digest(agent_token, service_settings.auth_token):
+        accepted_tokens = (service_settings.auth_token, *service_settings.previous_auth_tokens)
+        authenticated = agent_token is not None and any(
+            hmac.compare_digest(agent_token, accepted) for accepted in accepted_tokens
+        )
+        if not authenticated:
             return _error(
                 status.HTTP_401_UNAUTHORIZED, "AGENT_UNAUTHORIZED", "invalid service credential"
             )

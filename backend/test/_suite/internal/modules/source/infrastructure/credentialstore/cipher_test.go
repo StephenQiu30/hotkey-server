@@ -40,3 +40,65 @@ func TestCipherRejectsMissingMalformedAndWrongLengthKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestCipherKeyringWritesCurrentVersionReadsPreviousAndRejectsItAfterRevocation(t *testing.T) {
+	oldKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x11}, 32))
+	newKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x22}, 32))
+	legacy, err := NewCipherKeyring(1, oldKey, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyRecord, err := legacy.Encrypt(42, []byte("old-provider-token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rolling, err := NewCipherKeyring(2, newKey, map[int]string{1: oldKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened, err := rolling.Decrypt(42, legacyRecord); err != nil || string(opened) != "old-provider-token" {
+		t.Fatalf("rolling decrypt legacy = %q, %v", opened, err)
+	}
+	currentRecord, err := rolling.Encrypt(42, []byte("new-provider-token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if currentRecord.KeyVersion != 2 {
+		t.Fatalf("current record key version = %d, want 2", currentRecord.KeyVersion)
+	}
+	if _, err := legacy.Decrypt(42, currentRecord); err == nil {
+		t.Fatal("legacy-only keyring decrypted current ciphertext")
+	}
+
+	revoked, err := NewCipherKeyring(2, newKey, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := revoked.Decrypt(42, legacyRecord); err == nil {
+		t.Fatal("revoked keyring decrypted legacy ciphertext")
+	}
+	if opened, err := revoked.Decrypt(42, currentRecord); err != nil || string(opened) != "new-provider-token" {
+		t.Fatalf("revoked keyring decrypt current = %q, %v", opened, err)
+	}
+}
+
+func TestCipherKeyringRejectsDuplicateOrOutOfRangeVersionsWithoutLeakingKeys(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x33}, 32))
+	for _, test := range []struct {
+		version  int
+		previous map[int]string
+	}{
+		{version: 0},
+		{version: 32768},
+		{version: 2, previous: map[int]string{2: key}},
+	} {
+		_, err := NewCipherKeyring(test.version, key, test.previous)
+		if err == nil {
+			t.Fatal("NewCipherKeyring() accepted invalid version configuration")
+		}
+		if bytes.Contains([]byte(err.Error()), []byte(key)) {
+			t.Fatalf("NewCipherKeyring() leaked key material: %v", err)
+		}
+	}
+}

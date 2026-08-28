@@ -24,6 +24,12 @@ var _ domain.ManagedCredentialStore = (*Store)(nil)
 // and credential-free installations keep running. Managed writes and reads
 // fail closed until the independent master key is configured.
 func NewStore(runtime *database.Runtime, encodedKey string) (*Store, error) {
+	return NewStoreWithKeyring(runtime, currentKeyVersion, encodedKey, nil)
+}
+
+// NewStoreWithKeyring writes only with currentVersion while retaining the
+// explicitly supplied previous keys for a bounded migration window.
+func NewStoreWithKeyring(runtime *database.Runtime, currentVersion int, encodedKey string, previous map[int]string) (*Store, error) {
 	if runtime == nil {
 		return nil, errors.New("source credential database runtime is required")
 	}
@@ -31,7 +37,7 @@ func NewStore(runtime *database.Runtime, encodedKey string) (*Store, error) {
 	if strings.TrimSpace(encodedKey) == "" {
 		return store, nil
 	}
-	value, err := NewCipher(encodedKey)
+	value, err := NewCipherKeyring(currentVersion, encodedKey, previous)
 	if err != nil {
 		return nil, err
 	}

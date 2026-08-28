@@ -18,6 +18,53 @@ import (
 
 const testVerificationHMACSecret = "verification-hmac-secret-for-tests-32-bytes"
 
+func TestVerificationHMACRotationWritesCurrentAcceptsPreviousAndRejectsItAfterRevocation(t *testing.T) {
+	oldSecret := "old-verification-hmac-secret-for-tests-32-bytes"
+	newSecret := "new-verification-hmac-secret-for-tests-32-bytes"
+	rawURL := testRedisURL(t)
+	legacy, err := NewVerificationStoreFromURL(rawURL, oldSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = legacy.Close() })
+	rolling, err := NewVerificationStoreFromURLWithSecrets(rawURL, newSecret, oldSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = rolling.Close() })
+	revoked, err := NewVerificationStoreFromURL(rawURL, newSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = revoked.Close() })
+
+	ctx := context.Background()
+	rollingEmail := uniqueVerificationEmail("hmac-rolling")
+	revokedEmail := uniqueVerificationEmail("hmac-revoked")
+	currentEmail := uniqueVerificationEmail("hmac-current")
+	for _, email := range []string{rollingEmail, revokedEmail} {
+		if err := legacy.CreateCode(ctx, domain.VerificationPurposeRegistration, email, "123456", time.Now().Add(2*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := rolling.ConsumeCode(ctx, domain.VerificationPurposeRegistration, rollingEmail, "123456"); err != nil {
+		t.Fatalf("rolling store rejected previous-key code: %v", err)
+	}
+	if _, err := revoked.ConsumeCode(ctx, domain.VerificationPurposeRegistration, revokedEmail, "123456"); appErrorCode(err) != sharederrors.CodeVerificationInvalid {
+		t.Fatalf("revoked store previous-key code error = %v, want invalid", err)
+	}
+
+	if err := rolling.CreateCode(ctx, domain.VerificationPurposeRegistration, currentEmail, "654321", time.Now().Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.ConsumeCode(ctx, domain.VerificationPurposeRegistration, currentEmail, "654321"); appErrorCode(err) != sharederrors.CodeVerificationInvalid {
+		t.Fatalf("legacy store current-key code error = %v, want invalid", err)
+	}
+	if _, err := revoked.ConsumeCode(ctx, domain.VerificationPurposeRegistration, currentEmail, "654321"); err != nil {
+		t.Fatalf("revoked store rejected current-key code: %v", err)
+	}
+}
+
 func TestVerificationStoreUsesAtomicCodeAndTicketConsumption(t *testing.T) {
 	store, err := NewVerificationStoreFromURL(testRedisURL(t), testVerificationHMACSecret)
 	if err != nil {

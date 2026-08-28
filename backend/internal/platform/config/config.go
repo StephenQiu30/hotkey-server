@@ -8,6 +8,7 @@ import (
 	"net/mail"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,26 +16,29 @@ import (
 )
 
 type Config struct {
-	Environment               string
-	Role                      string
-	HTTPAddr                  string
-	RequestTimeout            time.Duration
-	ShutdownTimeout           time.Duration
-	WorkerPollInterval        time.Duration
-	WorkerConcurrency         int
-	WorkerLeaseTimeout        time.Duration
-	CronInterval              time.Duration
-	DatabaseURL               string
-	OTLPHTTPEndpoint          string
-	SourceDNSOverHTTPSURL     string
-	SourceCredentialMasterKey string
-	BilibiliWebhookSecret     string
-	MinIO                     MinIOConfig
-	VaultPath                 string
-	Authentication            AuthenticationConfig
-	AI                        AIConfig
-	Agent                     AgentConfig
-	Notification              NotificationConfig
+	Environment                              string
+	Role                                     string
+	HTTPAddr                                 string
+	RequestTimeout                           time.Duration
+	ShutdownTimeout                          time.Duration
+	WorkerPollInterval                       time.Duration
+	WorkerConcurrency                        int
+	WorkerLeaseTimeout                       time.Duration
+	CronInterval                             time.Duration
+	DatabaseURL                              string
+	OTLPHTTPEndpoint                         string
+	SourceDNSOverHTTPSURL                    string
+	SourceCredentialMasterKey                string
+	SourceCredentialMasterKeyVersion         int
+	SourceCredentialPreviousMasterKey        string
+	SourceCredentialPreviousMasterKeyVersion int
+	BilibiliWebhookSecret                    string
+	MinIO                                    MinIOConfig
+	VaultPath                                string
+	Authentication                           AuthenticationConfig
+	AI                                       AIConfig
+	Agent                                    AgentConfig
+	Notification                             NotificationConfig
 }
 
 type MinIOConfig struct {
@@ -70,14 +74,18 @@ func (c MinIOConfig) ValidateRuntime() error {
 }
 
 type AuthenticationConfig struct {
-	JWTSecret              string
-	JWTIssuer              string
-	JWTAudience            string
-	VerificationHMACSecret string
-	RedisURL               string
-	SMTP                   SMTPConfig
-	AllowedOrigins         []string
-	RefreshCookieSecure    bool
+	JWTSecret                      string
+	JWTKeyID                       string
+	JWTPreviousSecret              string
+	JWTPreviousKeyID               string
+	JWTIssuer                      string
+	JWTAudience                    string
+	VerificationHMACSecret         string
+	VerificationHMACPreviousSecret string
+	RedisURL                       string
+	SMTP                           SMTPConfig
+	AllowedOrigins                 []string
+	RefreshCookieSecure            bool
 }
 
 type SMTPConfig struct {
@@ -173,21 +181,23 @@ func (c AgentConfig) Validate() error {
 
 func Default() Config {
 	return Config{
-		Environment:        "development",
-		Role:               "all",
-		HTTPAddr:           ":8866",
-		RequestTimeout:     15 * time.Second,
-		ShutdownTimeout:    15 * time.Second,
-		WorkerPollInterval: time.Second,
-		WorkerConcurrency:  1,
-		WorkerLeaseTimeout: 5 * time.Minute,
-		CronInterval:       time.Minute,
-		VaultPath:          "./var/vault",
+		Environment:                      "development",
+		Role:                             "all",
+		HTTPAddr:                         ":8866",
+		RequestTimeout:                   15 * time.Second,
+		ShutdownTimeout:                  15 * time.Second,
+		WorkerPollInterval:               time.Second,
+		WorkerConcurrency:                1,
+		WorkerLeaseTimeout:               5 * time.Minute,
+		CronInterval:                     time.Minute,
+		VaultPath:                        "./var/vault",
+		SourceCredentialMasterKeyVersion: 1,
 		MinIO: MinIOConfig{
 			Endpoint: "localhost:9000",
 			Bucket:   "hotkey-evidence",
 		},
 		Authentication: AuthenticationConfig{
+			JWTKeyID:    "jwt-v1",
 			JWTIssuer:   "hotkey",
 			JWTAudience: "hotkey-web",
 			SMTP: SMTPConfig{
@@ -231,21 +241,24 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		Environment:               configString(v, "env"),
-		Role:                      configString(v, "role"),
-		HTTPAddr:                  configString(v, "http_addr"),
-		RequestTimeout:            configDuration(v, "request_timeout"),
-		ShutdownTimeout:           configDuration(v, "shutdown_timeout"),
-		WorkerPollInterval:        configDuration(v, "worker_poll_interval"),
-		WorkerConcurrency:         configInt(v, "worker_concurrency"),
-		WorkerLeaseTimeout:        configDuration(v, "worker_lease_timeout"),
-		CronInterval:              configDuration(v, "cron_interval"),
-		DatabaseURL:               configString(v, "database_url"),
-		OTLPHTTPEndpoint:          configString(v, "otlp_http_endpoint"),
-		SourceDNSOverHTTPSURL:     configString(v, "source_doh_url"),
-		SourceCredentialMasterKey: configString(v, "source_credential_master_key"),
-		BilibiliWebhookSecret:     configString(v, "bilibili_webhook_secret"),
-		VaultPath:                 configString(v, "vault_path"),
+		Environment:                              configString(v, "env"),
+		Role:                                     configString(v, "role"),
+		HTTPAddr:                                 configString(v, "http_addr"),
+		RequestTimeout:                           configDuration(v, "request_timeout"),
+		ShutdownTimeout:                          configDuration(v, "shutdown_timeout"),
+		WorkerPollInterval:                       configDuration(v, "worker_poll_interval"),
+		WorkerConcurrency:                        configInt(v, "worker_concurrency"),
+		WorkerLeaseTimeout:                       configDuration(v, "worker_lease_timeout"),
+		CronInterval:                             configDuration(v, "cron_interval"),
+		DatabaseURL:                              configString(v, "database_url"),
+		OTLPHTTPEndpoint:                         configString(v, "otlp_http_endpoint"),
+		SourceDNSOverHTTPSURL:                    configString(v, "source_doh_url"),
+		SourceCredentialMasterKey:                configString(v, "source_credential_master_key"),
+		SourceCredentialMasterKeyVersion:         configInt(v, "source_credential_master_key_version"),
+		SourceCredentialPreviousMasterKey:        configString(v, "source_credential_previous_master_key"),
+		SourceCredentialPreviousMasterKeyVersion: configInt(v, "source_credential_previous_master_key_version"),
+		BilibiliWebhookSecret:                    configString(v, "bilibili_webhook_secret"),
+		VaultPath:                                configString(v, "vault_path"),
 		MinIO: MinIOConfig{
 			Endpoint:  configString(v, "minio_endpoint"),
 			AccessKey: configString(v, "minio_access_key"),
@@ -254,13 +267,17 @@ func Load() (Config, error) {
 			UseSSL:    configBool(v, "minio_use_ssl"),
 		},
 		Authentication: AuthenticationConfig{
-			JWTSecret:              configString(v, "jwt_secret"),
-			JWTIssuer:              configString(v, "jwt_issuer"),
-			JWTAudience:            configString(v, "jwt_audience"),
-			VerificationHMACSecret: configString(v, "verification_hmac_secret"),
-			RedisURL:               configString(v, "redis_url"),
-			AllowedOrigins:         parseCSV(configString(v, "cors_allowed_origins")),
-			RefreshCookieSecure:    configBool(v, "refresh_cookie_secure"),
+			JWTSecret:                      configString(v, "jwt_secret"),
+			JWTKeyID:                       configString(v, "jwt_key_id"),
+			JWTPreviousSecret:              configString(v, "jwt_previous_secret"),
+			JWTPreviousKeyID:               configString(v, "jwt_previous_key_id"),
+			JWTIssuer:                      configString(v, "jwt_issuer"),
+			JWTAudience:                    configString(v, "jwt_audience"),
+			VerificationHMACSecret:         configString(v, "verification_hmac_secret"),
+			VerificationHMACPreviousSecret: configString(v, "verification_hmac_previous_secret"),
+			RedisURL:                       configString(v, "redis_url"),
+			AllowedOrigins:                 parseCSV(configString(v, "cors_allowed_origins")),
+			RefreshCookieSecure:            configBool(v, "refresh_cookie_secure"),
 			SMTP: SMTPConfig{
 				Enabled:   configBool(v, "smtp_enabled"),
 				Host:      configString(v, "smtp_host"),
@@ -372,11 +389,8 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Notification.WebOrigin) != "" && !validCORSOrigin(c.Notification.WebOrigin) {
 		return errors.New("notification web origin must be an absolute HTTP(S) origin")
 	}
-	if value := strings.TrimSpace(c.SourceCredentialMasterKey); value != "" {
-		decoded, err := base64.StdEncoding.DecodeString(value)
-		if err != nil || len(decoded) != 32 {
-			return errors.New("source credential master key must be Base64-encoded 32 bytes")
-		}
+	if err := validateSourceCredentialKeyring(c); err != nil {
+		return err
 	}
 	if err := c.Agent.Validate(); err != nil {
 		return err
@@ -409,6 +423,25 @@ func (c Config) ValidateAuthenticationRuntime() error {
 	if knownAuthenticationPlaceholder(auth.JWTSecret) {
 		return errors.New("JWT secret must not use a known placeholder")
 	}
+	if !validKeyID(auth.JWTKeyID) {
+		return errors.New("JWT key ID is invalid")
+	}
+	previousJWTSecret := strings.TrimSpace(auth.JWTPreviousSecret)
+	previousJWTKeyID := strings.TrimSpace(auth.JWTPreviousKeyID)
+	if previousJWTSecret != "" || previousJWTKeyID != "" {
+		if len([]byte(previousJWTSecret)) < 32 {
+			return errors.New("previous JWT secret must be at least 32 bytes")
+		}
+		if knownAuthenticationPlaceholder(previousJWTSecret) {
+			return errors.New("previous JWT secret must not use a known placeholder")
+		}
+		if !validKeyID(previousJWTKeyID) || previousJWTKeyID == strings.TrimSpace(auth.JWTKeyID) {
+			return errors.New("JWT rotation key IDs must be valid and distinct")
+		}
+		if previousJWTSecret == strings.TrimSpace(auth.JWTSecret) {
+			return errors.New("JWT rotation secrets must be distinct")
+		}
+	}
 	if strings.TrimSpace(auth.JWTIssuer) == "" {
 		return errors.New("JWT issuer is required")
 	}
@@ -420,6 +453,17 @@ func (c Config) ValidateAuthenticationRuntime() error {
 	}
 	if knownAuthenticationPlaceholder(auth.VerificationHMACSecret) {
 		return errors.New("verification HMAC secret must not use a known placeholder")
+	}
+	if previousHMACSecret := strings.TrimSpace(auth.VerificationHMACPreviousSecret); previousHMACSecret != "" {
+		if len([]byte(previousHMACSecret)) < 32 {
+			return errors.New("previous verification HMAC secret must be at least 32 bytes")
+		}
+		if knownAuthenticationPlaceholder(previousHMACSecret) {
+			return errors.New("previous verification HMAC secret must not use a known placeholder")
+		}
+		if previousHMACSecret == strings.TrimSpace(auth.VerificationHMACSecret) {
+			return errors.New("verification HMAC rotation secrets must be distinct")
+		}
 	}
 	if len(auth.AllowedOrigins) == 0 {
 		return errors.New("at least one allowed CORS origin is required for authentication")
@@ -444,6 +488,51 @@ func knownAuthenticationPlaceholder(value string) bool {
 	default:
 		return false
 	}
+}
+
+var keyIDPattern = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,64}$`)
+
+func validKeyID(value string) bool {
+	return keyIDPattern.MatchString(strings.TrimSpace(value))
+}
+
+func validateSourceCredentialKeyring(c Config) error {
+	current := strings.TrimSpace(c.SourceCredentialMasterKey)
+	previous := strings.TrimSpace(c.SourceCredentialPreviousMasterKey)
+	previousVersion := c.SourceCredentialPreviousMasterKeyVersion
+	if current == "" {
+		if previous != "" || previousVersion != 0 {
+			return errors.New("source credential previous key requires a current key")
+		}
+		return nil
+	}
+	if c.SourceCredentialMasterKeyVersion < 1 || c.SourceCredentialMasterKeyVersion > 32767 {
+		return errors.New("source credential master key version must be between 1 and 32767")
+	}
+	if !validSourceCredentialKey(current) {
+		return errors.New("source credential master key must be Base64-encoded 32 bytes")
+	}
+	if previous == "" && previousVersion == 0 {
+		return nil
+	}
+	if previous == "" || previousVersion < 1 || previousVersion > 32767 {
+		return errors.New("source credential previous key and version must be configured together")
+	}
+	if previousVersion == c.SourceCredentialMasterKeyVersion {
+		return errors.New("source credential key versions must be distinct")
+	}
+	if !validSourceCredentialKey(previous) {
+		return errors.New("source credential previous master key must be Base64-encoded 32 bytes")
+	}
+	if previous == current {
+		return errors.New("source credential master keys must be distinct")
+	}
+	return nil
+}
+
+func validSourceCredentialKey(value string) bool {
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	return err == nil && len(decoded) == 32
 }
 
 func validCORSOrigin(value string) bool {
@@ -472,10 +561,12 @@ func setDefaults(v *viper.Viper, cfg Config) {
 	v.SetDefault("worker_lease_timeout", cfg.WorkerLeaseTimeout)
 	v.SetDefault("cron_interval", cfg.CronInterval)
 	v.SetDefault("vault_path", cfg.VaultPath)
+	v.SetDefault("source_credential_master_key_version", cfg.SourceCredentialMasterKeyVersion)
 	v.SetDefault("minio_endpoint", cfg.MinIO.Endpoint)
 	v.SetDefault("minio_bucket", cfg.MinIO.Bucket)
 	v.SetDefault("jwt_issuer", cfg.Authentication.JWTIssuer)
 	v.SetDefault("jwt_audience", cfg.Authentication.JWTAudience)
+	v.SetDefault("jwt_key_id", cfg.Authentication.JWTKeyID)
 	v.SetDefault("smtp_port", cfg.Authentication.SMTP.Port)
 	v.SetDefault("smtp_tls_mode", cfg.Authentication.SMTP.TLSMode)
 	v.SetDefault("smtp_from_name", "HotKey")
@@ -492,10 +583,10 @@ func setDefaults(v *viper.Viper, cfg Config) {
 func configKeys() []string {
 	return []string{
 		"env", "role", "http_addr", "request_timeout", "shutdown_timeout", "worker_poll_interval", "worker_concurrency", "worker_lease_timeout", "cron_interval", "database_url", "otlp_http_endpoint",
-		"source_doh_url", "source_credential_master_key", "bilibili_webhook_secret",
+		"source_doh_url", "source_credential_master_key", "source_credential_master_key_version", "source_credential_previous_master_key", "source_credential_previous_master_key_version", "bilibili_webhook_secret",
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
-		"jwt_secret", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure",
+		"jwt_secret", "jwt_key_id", "jwt_previous_secret", "jwt_previous_key_id", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "verification_hmac_previous_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure",
 		"openai_api_key", "deepseek_api_key", "ollama_enabled", "ollama_base_url", "onnx_runtime_library", "onnx_model_path", "onnx_tokenizer_path", "onnx_manifest_path",
 		"agent_url", "agent_auth_token", "agent_max_response_bytes", "agent_shadow_enabled",
 		"notification_poll_interval", "notification_heartbeat_interval", "notification_max_connections", "notification_web_origin",

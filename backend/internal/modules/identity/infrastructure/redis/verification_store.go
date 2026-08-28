@@ -41,7 +41,17 @@ end
 if redis.call('HGET', KEYS[1], 'purpose') ~= ARGV[1] or redis.call('HGET', KEYS[1], 'email_hash') ~= ARGV[2] then
   return 0
 end
-if redis.call('HGET', KEYS[1], 'code_hash') ~= ARGV[4] then
+local stored_hash = redis.call('HGET', KEYS[1], 'code_hash')
+local accepted = stored_hash == ARGV[4]
+if not accepted then
+  for index = 7, #ARGV do
+    if stored_hash == ARGV[index] then
+      accepted = true
+      break
+    end
+  end
+end
+if not accepted then
   local attempts = redis.call('HINCRBY', KEYS[1], 'attempts', 1)
   if attempts >= tonumber(ARGV[5]) then
     redis.call('DEL', KEYS[1])
@@ -72,23 +82,37 @@ return email`)
 )
 
 type VerificationStore struct {
-	client     goredis.UniversalClient
-	hmacSecret []byte
-	now        func() time.Time
+	client              goredis.UniversalClient
+	hmacSecret          []byte
+	previousHMACSecrets [][]byte
+	now                 func() time.Time
 }
 
 var _ domain.VerificationStore = (*VerificationStore)(nil)
 
 func NewVerificationStore(client goredis.UniversalClient, verificationHMACSecret string) *VerificationStore {
-	return &VerificationStore{client: client, hmacSecret: []byte(verificationHMACSecret), now: time.Now}
+	return NewVerificationStoreWithSecrets(client, verificationHMACSecret)
+}
+
+func NewVerificationStoreWithSecrets(client goredis.UniversalClient, current string, previous ...string) *VerificationStore {
+	store := &VerificationStore{client: client, hmacSecret: []byte(strings.TrimSpace(current)), now: time.Now}
+	store.previousHMACSecrets = make([][]byte, 0, len(previous))
+	for _, secret := range previous {
+		store.previousHMACSecrets = append(store.previousHMACSecrets, []byte(strings.TrimSpace(secret)))
+	}
+	return store
 }
 
 func NewVerificationStoreFromURL(rawURL, verificationHMACSecret string) (*VerificationStore, error) {
+	return NewVerificationStoreFromURLWithSecrets(rawURL, verificationHMACSecret)
+}
+
+func NewVerificationStoreFromURLWithSecrets(rawURL, current string, previous ...string) (*VerificationStore, error) {
 	options, err := goredis.ParseURL(strings.TrimSpace(rawURL))
 	if err != nil {
 		return nil, fmt.Errorf("parse Redis URL: %w", err)
 	}
-	return NewVerificationStore(goredis.NewClient(options), verificationHMACSecret), nil
+	return NewVerificationStoreWithSecrets(goredis.NewClient(options), current, previous...), nil
 }
 
 func (store *VerificationStore) Close() error {
@@ -140,7 +164,11 @@ func (store *VerificationStore) ConsumeCode(ctx context.Context, purpose domain.
 	if err != nil {
 		return domain.VerificationTicket{}, unavailable()
 	}
-	result, err := consumeCodeScript.Run(ctx, store.client, []string{store.codeKey(purpose, normalizedEmail), store.ticketKey(token)}, string(purpose), hashString(normalizedEmail), normalizedEmail, store.codeHMAC(purpose, normalizedEmail, code), verificationMaxAttempts, verificationTicketTTL.Milliseconds()).Int64()
+	arguments := []any{string(purpose), hashString(normalizedEmail), normalizedEmail, store.codeHMAC(purpose, normalizedEmail, code), verificationMaxAttempts, verificationTicketTTL.Milliseconds()}
+	for _, secret := range store.previousHMACSecrets {
+		arguments = append(arguments, verificationCodeHMAC(secret, purpose, normalizedEmail, code))
+	}
+	result, err := consumeCodeScript.Run(ctx, store.client, []string{store.codeKey(purpose, normalizedEmail), store.ticketKey(token)}, arguments...).Int64()
 	if err != nil {
 		return domain.VerificationTicket{}, unavailable()
 	}
@@ -176,7 +204,20 @@ func (store *VerificationStore) ConsumeTicket(ctx context.Context, purpose domai
 }
 
 func (store *VerificationStore) available() bool {
-	return store != nil && store.client != nil && len(store.hmacSecret) >= 32
+	if store == nil || store.client == nil || len(store.hmacSecret) < 32 {
+		return false
+	}
+	seen := map[string]struct{}{string(store.hmacSecret): {}}
+	for _, secret := range store.previousHMACSecrets {
+		if len(secret) < 32 {
+			return false
+		}
+		if _, exists := seen[string(secret)]; exists {
+			return false
+		}
+		seen[string(secret)] = struct{}{}
+	}
+	return true
 }
 
 func (store *VerificationStore) currentTime() time.Time {
@@ -199,7 +240,11 @@ func (store *VerificationStore) ticketKey(token string) string {
 }
 
 func (store *VerificationStore) codeHMAC(purpose domain.VerificationPurpose, email, code string) string {
-	mac := hmac.New(sha256.New, store.hmacSecret)
+	return verificationCodeHMAC(store.hmacSecret, purpose, email, code)
+}
+
+func verificationCodeHMAC(secret []byte, purpose domain.VerificationPurpose, email, code string) string {
+	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write([]byte(code))
 	_, _ = mac.Write([]byte{0})
 	_, _ = mac.Write([]byte(purpose))

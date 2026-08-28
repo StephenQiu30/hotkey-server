@@ -255,6 +255,73 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadUsesExplicitSecretRotationConfiguration(t *testing.T) {
+	oldSourceKey := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("o", 32)))
+	newSourceKey := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("n", 32)))
+	t.Setenv("HOTKEY_ROLE", "worker")
+	t.Setenv("HOTKEY_HTTP_ADDR", "")
+	t.Setenv("HOTKEY_JWT_KEY_ID", "jwt-v2")
+	t.Setenv("HOTKEY_JWT_PREVIOUS_KEY_ID", "jwt-v1")
+	t.Setenv("HOTKEY_JWT_PREVIOUS_SECRET", strings.Repeat("j", 32))
+	t.Setenv("HOTKEY_VERIFICATION_HMAC_PREVIOUS_SECRET", strings.Repeat("h", 32))
+	t.Setenv("HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY", newSourceKey)
+	t.Setenv("HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY_VERSION", "2")
+	t.Setenv("HOTKEY_SOURCE_CREDENTIAL_PREVIOUS_MASTER_KEY", oldSourceKey)
+	t.Setenv("HOTKEY_SOURCE_CREDENTIAL_PREVIOUS_MASTER_KEY_VERSION", "1")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Authentication.JWTKeyID != "jwt-v2" || cfg.Authentication.JWTPreviousKeyID != "jwt-v1" || cfg.Authentication.JWTPreviousSecret == "" {
+		t.Fatalf("JWT rotation config = %#v", cfg.Authentication)
+	}
+	if cfg.Authentication.VerificationHMACPreviousSecret == "" {
+		t.Fatal("verification HMAC previous secret was not loaded")
+	}
+	if cfg.SourceCredentialMasterKeyVersion != 2 || cfg.SourceCredentialPreviousMasterKeyVersion != 1 || cfg.SourceCredentialPreviousMasterKey != oldSourceKey {
+		t.Fatalf("source credential rotation config = %#v", cfg)
+	}
+}
+
+func TestValidateRejectsAmbiguousSecretRotationConfigurationWithoutLeakingSecrets(t *testing.T) {
+	current := strings.Repeat("current-sensitive-", 3)
+	previous := strings.Repeat("previous-sensitive-", 3)
+	currentSource := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("c", 32)))
+	previousSource := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("p", 32)))
+	tests := []func(*Config){
+		func(c *Config) {
+			c.Authentication.JWTSecret = current
+			c.Authentication.JWTKeyID = "same"
+			c.Authentication.JWTPreviousSecret = previous
+			c.Authentication.JWTPreviousKeyID = "same"
+		},
+		func(c *Config) {
+			c.Authentication.VerificationHMACSecret = current
+			c.Authentication.VerificationHMACPreviousSecret = current
+		},
+		func(c *Config) {
+			c.SourceCredentialMasterKey = currentSource
+			c.SourceCredentialMasterKeyVersion = 2
+			c.SourceCredentialPreviousMasterKey = previousSource
+			c.SourceCredentialPreviousMasterKeyVersion = 2
+		},
+	}
+	for _, mutate := range tests {
+		cfg := validAuthenticationConfig()
+		mutate(&cfg)
+		err := cfg.ValidateAuthenticationRuntime()
+		if err == nil {
+			t.Fatal("ValidateAuthenticationRuntime() accepted ambiguous rotation config")
+		}
+		for _, secret := range []string{current, previous, currentSource, previousSource} {
+			if strings.Contains(err.Error(), secret) {
+				t.Fatalf("validation leaked secret material: %v", err)
+			}
+		}
+	}
+}
+
 func TestValidateAuthenticationRuntimeRejectsUnsafeConfiguration(t *testing.T) {
 	t.Parallel()
 
@@ -623,6 +690,7 @@ func validAuthenticationConfig() Config {
 	cfg := Default()
 	cfg.Authentication = AuthenticationConfig{
 		JWTSecret:              "0123456789abcdef0123456789abcdef",
+		JWTKeyID:               "jwt-v1",
 		JWTIssuer:              "hotkey",
 		JWTAudience:            "hotkey-web",
 		VerificationHMACSecret: "verification-hmac-secret-for-tests-32-bytes",

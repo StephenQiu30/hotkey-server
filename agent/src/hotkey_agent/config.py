@@ -11,6 +11,7 @@ class Settings:
     runtime: str
     max_request_bytes: int
     max_concurrency: int
+    previous_auth_tokens: tuple[str, ...] = ()
     model_base_url: str = ""
     model_api_key: str = ""
     model_name: str = ""
@@ -23,6 +24,7 @@ class Settings:
     def from_env(cls) -> Settings:
         return cls(
             auth_token=os.getenv("HOTKEY_AGENT_AUTH_TOKEN", ""),
+            previous_auth_tokens=_secret_list("HOTKEY_AGENT_PREVIOUS_AUTH_TOKENS"),
             runtime=os.getenv("HOTKEY_AGENT_RUNTIME", "deterministic"),
             max_request_bytes=_positive_int("HOTKEY_AGENT_MAX_REQUEST_BYTES", 262_144),
             max_concurrency=_positive_int("HOTKEY_AGENT_MAX_CONCURRENCY", 2),
@@ -47,6 +49,11 @@ class Settings:
     @property
     def ready(self) -> bool:
         if len(self.auth_token.encode()) < 32:
+            return False
+        if any(
+            len(token.encode()) < 32 or token == self.auth_token
+            for token in self.previous_auth_tokens
+        ) or len(set(self.previous_auth_tokens)) != len(self.previous_auth_tokens):
             return False
         if self.runtime == "deterministic":
             return True
@@ -97,6 +104,13 @@ def _positive_int(name: str, default: int) -> int:
     except ValueError:
         return default
     return value if value > 0 else default
+
+
+def _secret_list(name: str) -> tuple[str, ...]:
+    raw = os.getenv(name, "")
+    if raw == "":
+        return ()
+    return tuple(item.strip() for item in raw.split(","))
 
 
 def _bounded_int(name: str, default: int, *, minimum: int, maximum: int) -> int:

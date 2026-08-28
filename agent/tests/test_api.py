@@ -181,6 +181,45 @@ def test_analysis_requires_internal_authentication() -> None:
     assert missing.json()["error"]["code"] == "AGENT_UNAUTHORIZED"
 
 
+def test_service_credential_rotation_accepts_previous_only_during_rolling_window() -> None:
+    old_token = "old-agent-token-0123456789abcdef0123456789abcdef"
+    new_token = "new-agent-token-0123456789abcdef0123456789abcdef"
+    rolling = Settings(
+        auth_token=new_token,
+        previous_auth_tokens=(old_token,),
+        runtime="deterministic",
+        max_request_bytes=262_144,
+        max_concurrency=2,
+    )
+    with TestClient(create_app(rolling)) as client:
+        old_response = client.post(
+            "/v1/analyze", json=_request(), headers={"X-HotKey-Agent-Token": old_token}
+        )
+        new_response = client.post(
+            "/v1/analyze", json=_request(), headers={"X-HotKey-Agent-Token": new_token}
+        )
+    assert old_response.status_code == 200
+    assert new_response.status_code == 200
+
+    revoked = Settings(
+        auth_token=new_token,
+        runtime="deterministic",
+        max_request_bytes=262_144,
+        max_concurrency=2,
+    )
+    with TestClient(create_app(revoked)) as client:
+        old_response = client.post(
+            "/v1/analyze", json=_request(), headers={"X-HotKey-Agent-Token": old_token}
+        )
+        new_response = client.post(
+            "/v1/analyze", json=_request(), headers={"X-HotKey-Agent-Token": new_token}
+        )
+    assert old_response.status_code == 401
+    assert old_response.json()["error"]["code"] == "AGENT_UNAUTHORIZED"
+    assert new_response.status_code == 200
+    assert old_token not in old_response.text
+
+
 def test_model_runtime_failures_return_stable_redacted_errors() -> None:
     class FailingAnalyzer:
         async def analyze(self, _request: AnalyzeRequest) -> AnalyzeResponse:

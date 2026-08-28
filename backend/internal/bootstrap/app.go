@@ -355,7 +355,11 @@ func registerRuntimeMetricsCollector(metrics *observability.Metrics, collector *
 }
 
 func newSourceCredentialStore(runtime *database.Runtime, cfg config.Config) (*sourcecredentialstore.Store, error) {
-	return sourcecredentialstore.NewStore(runtime, cfg.SourceCredentialMasterKey)
+	previous := make(map[int]string, 1)
+	if strings.TrimSpace(cfg.SourceCredentialPreviousMasterKey) != "" {
+		previous[cfg.SourceCredentialPreviousMasterKeyVersion] = cfg.SourceCredentialPreviousMasterKey
+	}
+	return sourcecredentialstore.NewStoreWithKeyring(runtime, cfg.SourceCredentialMasterKeyVersion, cfg.SourceCredentialMasterKey, previous)
 }
 
 func newSourceConnectorRegistry(cfg config.Config, runtime *database.Runtime, credentials *sourcecredentialstore.Store) (*sourceinfrastructure.ConnectorRegistry, error) {
@@ -887,9 +891,12 @@ func newGovernanceService(runtime *database.Runtime, store *operationspostgres.G
 
 func newIdentityService(runtime *database.Runtime, cfg config.Config, verification *identityredis.VerificationStore) (*identityapplication.Service, error) {
 	tokens, err := identitysecurity.NewJWT(identitysecurity.JWTConfig{
-		Secret:   cfg.Authentication.JWTSecret,
-		Issuer:   cfg.Authentication.JWTIssuer,
-		Audience: cfg.Authentication.JWTAudience,
+		Secret:         cfg.Authentication.JWTSecret,
+		KeyID:          cfg.Authentication.JWTKeyID,
+		PreviousSecret: cfg.Authentication.JWTPreviousSecret,
+		PreviousKeyID:  cfg.Authentication.JWTPreviousKeyID,
+		Issuer:         cfg.Authentication.JWTIssuer,
+		Audience:       cfg.Authentication.JWTAudience,
 	})
 	if err != nil {
 		return nil, err
@@ -917,10 +924,14 @@ func newIdentityService(runtime *database.Runtime, cfg config.Config, verificati
 }
 
 func newIdentityVerificationStore(cfg config.Config) (*identityredis.VerificationStore, error) {
-	if strings.TrimSpace(cfg.Authentication.RedisURL) == "" {
-		return identityredis.NewVerificationStore(nil, cfg.Authentication.VerificationHMACSecret), nil
+	previous := make([]string, 0, 1)
+	if strings.TrimSpace(cfg.Authentication.VerificationHMACPreviousSecret) != "" {
+		previous = append(previous, cfg.Authentication.VerificationHMACPreviousSecret)
 	}
-	return identityredis.NewVerificationStoreFromURL(cfg.Authentication.RedisURL, cfg.Authentication.VerificationHMACSecret)
+	if strings.TrimSpace(cfg.Authentication.RedisURL) == "" {
+		return identityredis.NewVerificationStoreWithSecrets(nil, cfg.Authentication.VerificationHMACSecret, previous...), nil
+	}
+	return identityredis.NewVerificationStoreFromURLWithSecrets(cfg.Authentication.RedisURL, cfg.Authentication.VerificationHMACSecret, previous...)
 }
 
 func registerIdentityVerificationStoreLifecycle(lifecycle fx.Lifecycle, verification *identityredis.VerificationStore) {

@@ -1,8 +1,10 @@
 package security
 
 import (
+	"crypto/subtle"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -12,17 +14,23 @@ import (
 )
 
 type JWTConfig struct {
-	Secret   string
-	Issuer   string
-	Audience string
-	Now      func() time.Time
+	Secret         string
+	KeyID          string
+	PreviousSecret string
+	PreviousKeyID  string
+	Issuer         string
+	Audience       string
+	Now            func() time.Time
 }
 
 type JWT struct {
-	secret   []byte
-	issuer   string
-	audience string
-	now      func() time.Time
+	secret         []byte
+	keyID          string
+	previousSecret []byte
+	previousKeyID  string
+	issuer         string
+	audience       string
+	now            func() time.Time
 }
 
 var _ domain.TokenIssuer = (*JWT)(nil)
@@ -32,9 +40,30 @@ type claims struct {
 	jwt.RegisteredClaims
 }
 
+var jwtKeyIDPattern = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,64}$`)
+
 func NewJWT(config JWTConfig) (*JWT, error) {
 	if len(config.secretBytes()) < 32 {
 		return nil, errors.New("JWT secret must be at least 32 bytes")
+	}
+	config.KeyID = strings.TrimSpace(config.KeyID)
+	config.PreviousKeyID = strings.TrimSpace(config.PreviousKeyID)
+	previousSecret := []byte(strings.TrimSpace(config.PreviousSecret))
+	if config.KeyID != "" && !jwtKeyIDPattern.MatchString(config.KeyID) {
+		return nil, errors.New("JWT key ID is invalid")
+	}
+	if len(previousSecret) > 0 {
+		if len(previousSecret) < 32 {
+			return nil, errors.New("previous JWT secret must be at least 32 bytes")
+		}
+		if config.KeyID == "" || !jwtKeyIDPattern.MatchString(config.PreviousKeyID) || config.PreviousKeyID == config.KeyID {
+			return nil, errors.New("JWT rotation key IDs are invalid")
+		}
+		if subtle.ConstantTimeCompare(config.secretBytes(), previousSecret) == 1 {
+			return nil, errors.New("JWT rotation keys must be distinct")
+		}
+	} else if config.PreviousKeyID != "" {
+		return nil, errors.New("previous JWT key ID requires a previous secret")
 	}
 	if strings.TrimSpace(config.Issuer) == "" {
 		return nil, errors.New("JWT issuer is required")
@@ -46,10 +75,13 @@ func NewJWT(config JWTConfig) (*JWT, error) {
 		config.Now = time.Now
 	}
 	return &JWT{
-		secret:   config.secretBytes(),
-		issuer:   config.Issuer,
-		audience: config.Audience,
-		now:      config.Now,
+		secret:         config.secretBytes(),
+		keyID:          config.KeyID,
+		previousSecret: previousSecret,
+		previousKeyID:  config.PreviousKeyID,
+		issuer:         config.Issuer,
+		audience:       config.Audience,
+		now:            config.Now,
 	}, nil
 }
 
@@ -71,6 +103,9 @@ func (j *JWT) Issue(accessClaims domain.AccessTokenClaims) (string, error) {
 			ID:        accessClaims.TokenID,
 		},
 	})
+	if j.keyID != "" {
+		token.Header["kid"] = j.keyID
+	}
 	return token.SignedString(j.secret)
 }
 
@@ -83,7 +118,21 @@ func (j *JWT) Parse(raw string) (domain.AccessTokenClaims, error) {
 			if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
 				return nil, fmt.Errorf("unexpected signing method %q", token.Method.Alg())
 			}
-			return j.secret, nil
+			keyID, _ := token.Header["kid"].(string)
+			switch {
+			case keyID == "" && len(j.previousSecret) > 0:
+				// Tokens issued before Key IDs were introduced are accepted only
+				// through the explicitly configured previous-key window.
+				return j.previousSecret, nil
+			case keyID == "":
+				return j.secret, nil
+			case keyID == j.keyID:
+				return j.secret, nil
+			case len(j.previousSecret) > 0 && keyID == j.previousKeyID:
+				return j.previousSecret, nil
+			default:
+				return nil, errors.New("JWT key ID is not accepted")
+			}
 		},
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithIssuer(j.issuer),
