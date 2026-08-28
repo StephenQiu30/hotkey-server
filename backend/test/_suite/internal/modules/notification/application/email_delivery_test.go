@@ -11,13 +11,22 @@ import (
 type emailDeliveryRepositoryStub struct {
 	claimed   ClaimedEmailDeliveryDTO
 	claim     ClaimNextEmailDeliveryCommand
+	started   StartEmailDeliveryCommand
 	completed CompleteEmailDeliveryCommand
 }
 
 func (stub *emailDeliveryRepositoryStub) ClaimNextEmailDelivery(_ context.Context, command ClaimNextEmailDeliveryCommand) (ClaimedEmailDeliveryDTO, error) {
 	stub.claim = command
 	stub.claimed.ClaimToken = command.ClaimToken
+	stub.claimed.FencingGeneration = 1
+	stub.claimed.DispatchKey = strings.Repeat("d", 64)
+	stub.claimed.ProviderCapabilities = command.ProviderCapabilities
 	return stub.claimed, nil
+}
+
+func (stub *emailDeliveryRepositoryStub) StartEmailDelivery(_ context.Context, command StartEmailDeliveryCommand) error {
+	stub.started = command
+	return nil
 }
 
 func (stub *emailDeliveryRepositoryStub) CompleteEmailDelivery(_ context.Context, command CompleteEmailDeliveryCommand) (RecordNotificationDeliveryAttemptResult, error) {
@@ -30,22 +39,31 @@ type notificationEmailSenderStub struct {
 	err     error
 }
 
-func (stub *notificationEmailSenderStub) SendNotificationEmail(_ context.Context, message NotificationEmailMessageDTO) (string, error) {
-	stub.message = message
+func (*notificationEmailSenderStub) Capabilities() NotificationEmailProviderCapabilities {
+	return NotificationEmailProviderCapabilities{}
+}
+
+func (stub *notificationEmailSenderStub) SendNotificationEmail(_ context.Context, dispatch NotificationEmailDispatchDTO) (string, error) {
+	stub.message = dispatch.Message
 	return "smtp-41", stub.err
+}
+
+func (*notificationEmailSenderStub) LookupNotificationEmail(context.Context, string) (NotificationEmailReceiptDTO, error) {
+	return NotificationEmailReceiptDTO{}, errors.New("unsupported")
 }
 
 type temporaryMailFailure struct{ temporary bool }
 
-func (failure temporaryMailFailure) Error() string          { return "mail failed" }
-func (failure temporaryMailFailure) TemporaryFailure() bool { return failure.temporary }
+func (failure temporaryMailFailure) Error() string              { return "mail failed" }
+func (failure temporaryMailFailure) TemporaryFailure() bool     { return failure.temporary }
+func (failure temporaryMailFailure) DeliveryOutcomeKnown() bool { return true }
 
 func TestEmailDeliveryUsesSafeUserNotificationProjection(t *testing.T) {
 	now := time.Date(2026, 8, 10, 6, 0, 0, 0, time.UTC)
 	repository := &emailDeliveryRepositoryStub{claimed: validEmailDelivery(now)}
 	sender := &notificationEmailSenderStub{}
 	service, err := NewEmailDeliveryService(EmailDeliveryServiceDependencies{
-		Repository: repository, Sender: sender, Clock: func() time.Time { return now },
+		Repository: repository, Sender: sender,
 		NewToken: func() (string, error) { return strings.Repeat("a", 64), nil }, WebOrigin: "https://hotkey.example",
 	})
 	if err != nil {
@@ -55,7 +73,7 @@ func TestEmailDeliveryUsesSafeUserNotificationProjection(t *testing.T) {
 	if err != nil || !result.Claimed || result.Status != "succeeded" || result.AttemptNo != 1 {
 		t.Fatalf("DispatchNext() = %#v / %v", result, err)
 	}
-	if repository.claim.LeaseUntil.Sub(repository.claim.ClaimedAt) != EmailDeliveryLeaseDuration ||
+	if repository.claim.LeaseDuration != EmailDeliveryLeaseDuration || repository.started.FencingGeneration != 1 ||
 		repository.completed.ProviderMessageID != "smtp-41" || repository.completed.Status != "succeeded" {
 		t.Fatalf("claim/completion = %#v / %#v", repository.claim, repository.completed)
 	}
@@ -80,14 +98,14 @@ func TestEmailDeliveryRecordsRetryAndAttemptExhaustion(t *testing.T) {
 	}{
 		{name: "temporary", attemptCount: 0, failure: temporaryMailFailure{temporary: true}, wantStatus: "failed", wantCode: "smtp_temporary"},
 		{name: "permanent", attemptCount: 0, failure: temporaryMailFailure{temporary: false}, wantStatus: "permanent_failure", wantCode: "smtp_permanent"},
-		{name: "exhausted", attemptCount: 4, failure: errors.New("opaque smtp failure"), wantStatus: "permanent_failure", wantCode: "smtp_attempts_exhausted"},
+		{name: "exhausted", attemptCount: 4, failure: temporaryMailFailure{temporary: true}, wantStatus: "permanent_failure", wantCode: "smtp_attempts_exhausted"},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			claimed := validEmailDelivery(now)
 			claimed.AttemptCount = fixture.attemptCount
 			repository := &emailDeliveryRepositoryStub{claimed: claimed}
 			service, err := NewEmailDeliveryService(EmailDeliveryServiceDependencies{
-				Repository: repository, Sender: &notificationEmailSenderStub{err: fixture.failure}, Clock: func() time.Time { return now },
+				Repository: repository, Sender: &notificationEmailSenderStub{err: fixture.failure},
 				NewToken: func() (string, error) { return strings.Repeat("b", 64), nil }, WebOrigin: "http://127.0.0.1:3000",
 			})
 			if err != nil {
@@ -108,7 +126,7 @@ func TestEmailDeliveryFailsClosedForInvalidRecipient(t *testing.T) {
 	repository := &emailDeliveryRepositoryStub{claimed: claimed}
 	sender := &notificationEmailSenderStub{}
 	service, _ := NewEmailDeliveryService(EmailDeliveryServiceDependencies{
-		Repository: repository, Sender: sender, Clock: func() time.Time { return now },
+		Repository: repository, Sender: sender,
 		NewToken: func() (string, error) { return strings.Repeat("c", 64), nil }, WebOrigin: "https://hotkey.example",
 	})
 	result, err := service.DispatchNext(context.Background())

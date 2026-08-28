@@ -7457,28 +7457,52 @@ CREATE TABLE IF NOT EXISTS notification_delivery_attempts (
     delivery_target_key varchar(128) NOT NULL DEFAULT 'primary'
         CHECK (delivery_target_key ~ '^[a-z][a-z0-9:_-]{0,127}$'),
     attempt_no integer NOT NULL CHECK (attempt_no > 0),
-    status varchar(24) NOT NULL CHECK (status IN ('succeeded','failed','permanent_failure')),
+    status varchar(24) NOT NULL CHECK (status IN ('succeeded','failed','permanent_failure','unknown')),
+    dispatch_key char(64) CHECK (dispatch_key IS NULL OR dispatch_key ~ '^[0-9a-f]{64}$'),
+    fencing_generation bigint CHECK (fencing_generation IS NULL OR fencing_generation > 0),
+    provider_supports_idempotency boolean NOT NULL DEFAULT false,
+    provider_supports_receipt_lookup boolean NOT NULL DEFAULT false,
     provider_message_id varchar(256),
     response_code integer CHECK (response_code IS NULL OR response_code BETWEEN 100 AND 599),
     error_code varchar(64),
     attempted_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     CHECK (status='succeeded' AND error_code IS NULL
-        OR status<>'succeeded' AND error_code IS NOT NULL AND btrim(error_code) <> '')
+        OR status<>'succeeded' AND error_code IS NOT NULL AND btrim(error_code) <> ''),
+    CONSTRAINT notification_delivery_attempts_unknown_fence_check
+        CHECK (status<>'unknown' OR dispatch_key IS NOT NULL AND fencing_generation IS NOT NULL)
 );
 ALTER TABLE notification_delivery_attempts ADD COLUMN IF NOT EXISTS delivery_target_key varchar(128) NOT NULL DEFAULT 'primary';
+ALTER TABLE notification_delivery_attempts ADD COLUMN IF NOT EXISTS dispatch_key char(64);
+ALTER TABLE notification_delivery_attempts ADD COLUMN IF NOT EXISTS fencing_generation bigint;
+ALTER TABLE notification_delivery_attempts ADD COLUMN IF NOT EXISTS provider_supports_idempotency boolean NOT NULL DEFAULT false;
+ALTER TABLE notification_delivery_attempts ADD COLUMN IF NOT EXISTS provider_supports_receipt_lookup boolean NOT NULL DEFAULT false;
 ALTER TABLE notification_delivery_attempts DROP CONSTRAINT IF EXISTS notification_delivery_attempts_channel_check;
 ALTER TABLE notification_delivery_attempts ADD CONSTRAINT notification_delivery_attempts_channel_check
     CHECK (channel IN ('sse','websocket','email','web_push'));
+ALTER TABLE notification_delivery_attempts DROP CONSTRAINT IF EXISTS notification_delivery_attempts_status_check;
+ALTER TABLE notification_delivery_attempts ADD CONSTRAINT notification_delivery_attempts_status_check
+    CHECK (status IN ('succeeded','failed','permanent_failure','unknown'));
 ALTER TABLE notification_delivery_attempts DROP CONSTRAINT IF EXISTS notification_delivery_attempts_delivery_target_key_check;
 ALTER TABLE notification_delivery_attempts ADD CONSTRAINT notification_delivery_attempts_delivery_target_key_check
     CHECK (delivery_target_key ~ '^[a-z][a-z0-9:_-]{0,127}$');
+ALTER TABLE notification_delivery_attempts DROP CONSTRAINT IF EXISTS notification_delivery_attempts_dispatch_key_check;
+ALTER TABLE notification_delivery_attempts ADD CONSTRAINT notification_delivery_attempts_dispatch_key_check
+    CHECK (dispatch_key IS NULL OR dispatch_key ~ '^[0-9a-f]{64}$');
+ALTER TABLE notification_delivery_attempts DROP CONSTRAINT IF EXISTS notification_delivery_attempts_fencing_generation_check;
+ALTER TABLE notification_delivery_attempts ADD CONSTRAINT notification_delivery_attempts_fencing_generation_check
+    CHECK (fencing_generation IS NULL OR fencing_generation > 0);
+ALTER TABLE notification_delivery_attempts DROP CONSTRAINT IF EXISTS notification_delivery_attempts_unknown_fence_check;
+ALTER TABLE notification_delivery_attempts ADD CONSTRAINT notification_delivery_attempts_unknown_fence_check
+    CHECK (status<>'unknown' OR dispatch_key IS NOT NULL AND fencing_generation IS NOT NULL);
 ALTER TABLE notification_delivery_attempts DROP CONSTRAINT IF EXISTS notification_delivery_attempts_user_notification_id_channel_attempt_no_key;
 CREATE UNIQUE INDEX IF NOT EXISTS notification_delivery_attempts_target_attempt_uq
     ON notification_delivery_attempts(user_notification_id,channel,delivery_target_key,attempt_no);
 DROP INDEX IF EXISTS notification_delivery_attempts_notification_idx;
 CREATE INDEX IF NOT EXISTS notification_delivery_attempts_notification_idx
     ON notification_delivery_attempts(user_notification_id,channel,delivery_target_key,attempt_no);
+CREATE UNIQUE INDEX IF NOT EXISTS notification_delivery_attempts_dispatch_key_uq
+    ON notification_delivery_attempts(dispatch_key) WHERE dispatch_key IS NOT NULL;
 
 -- Mutable, short-lived claims coordinate channel workers. Claims are not
 -- notification or delivery facts and are deleted after a terminal attempt.
@@ -7488,11 +7512,36 @@ CREATE TABLE IF NOT EXISTS notification_delivery_claims (
     delivery_target_key varchar(128) NOT NULL
         CHECK (delivery_target_key ~ '^[a-z][a-z0-9:_-]{0,127}$'),
     claim_token char(64) NOT NULL CHECK (claim_token ~ '^[0-9a-f]{64}$'),
+    fencing_generation bigint NOT NULL DEFAULT 1 CHECK (fencing_generation > 0),
+    dispatch_key char(64) NOT NULL CHECK (dispatch_key IS NULL OR dispatch_key ~ '^[0-9a-f]{64}$'),
+    provider_supports_idempotency boolean NOT NULL DEFAULT false,
+    provider_supports_receipt_lookup boolean NOT NULL DEFAULT false,
+    dispatch_started_at timestamptz,
     claimed_at timestamptz NOT NULL,
     lease_until timestamptz NOT NULL,
     PRIMARY KEY (user_notification_id,channel,delivery_target_key),
     CHECK (lease_until > claimed_at)
 );
+ALTER TABLE notification_delivery_claims ADD COLUMN IF NOT EXISTS fencing_generation bigint NOT NULL DEFAULT 1;
+ALTER TABLE notification_delivery_claims ADD COLUMN IF NOT EXISTS dispatch_key char(64);
+ALTER TABLE notification_delivery_claims ADD COLUMN IF NOT EXISTS provider_supports_idempotency boolean NOT NULL DEFAULT false;
+ALTER TABLE notification_delivery_claims ADD COLUMN IF NOT EXISTS provider_supports_receipt_lookup boolean NOT NULL DEFAULT false;
+ALTER TABLE notification_delivery_claims ADD COLUMN IF NOT EXISTS dispatch_started_at timestamptz;
+-- Legacy claims cannot prove whether the external request started. Give each a
+-- deterministic migration key and conservatively route it through unknown
+-- recovery after expiry instead of permitting a blind resend.
+UPDATE notification_delivery_claims
+SET dispatch_key=md5(user_notification_id::text || ':' || channel || ':' || delivery_target_key) ||
+                 md5('legacy:' || user_notification_id::text || ':' || channel || ':' || delivery_target_key),
+    dispatch_started_at=COALESCE(dispatch_started_at,claimed_at)
+WHERE dispatch_key IS NULL;
+ALTER TABLE notification_delivery_claims ALTER COLUMN dispatch_key SET NOT NULL;
+ALTER TABLE notification_delivery_claims DROP CONSTRAINT IF EXISTS notification_delivery_claims_fencing_generation_check;
+ALTER TABLE notification_delivery_claims ADD CONSTRAINT notification_delivery_claims_fencing_generation_check
+    CHECK (fencing_generation > 0);
+ALTER TABLE notification_delivery_claims DROP CONSTRAINT IF EXISTS notification_delivery_claims_dispatch_key_check;
+ALTER TABLE notification_delivery_claims ADD CONSTRAINT notification_delivery_claims_dispatch_key_check
+    CHECK (dispatch_key IS NULL OR dispatch_key ~ '^[0-9a-f]{64}$');
 CREATE INDEX IF NOT EXISTS notification_delivery_claims_expiry_idx
     ON notification_delivery_claims(channel,lease_until);
 

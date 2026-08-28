@@ -116,10 +116,11 @@ const (
 	DeliverySucceeded        DeliveryStatus = "succeeded"
 	DeliveryFailed           DeliveryStatus = "failed"
 	DeliveryPermanentFailure DeliveryStatus = "permanent_failure"
+	DeliveryUnknown          DeliveryStatus = "unknown"
 )
 
 func (status DeliveryStatus) Valid() bool {
-	return status == DeliverySucceeded || status == DeliveryFailed || status == DeliveryPermanentFailure
+	return status == DeliverySucceeded || status == DeliveryFailed || status == DeliveryPermanentFailure || status == DeliveryUnknown
 }
 
 type NotificationDeliveryAttempt struct {

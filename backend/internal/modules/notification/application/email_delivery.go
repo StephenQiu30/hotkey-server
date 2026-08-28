@@ -25,40 +25,56 @@ const (
 )
 
 type ClaimNextEmailDeliveryCommand struct {
-	ClaimToken string
-	ClaimedAt  time.Time
-	LeaseUntil time.Time
+	ClaimToken           string
+	LeaseDuration        time.Duration
+	ProviderCapabilities NotificationEmailProviderCapabilities
 }
 
 type ClaimedEmailDeliveryDTO struct {
-	Claimed           bool
-	ClaimToken        string
-	AttemptCount      int
-	RecipientEmail    string
-	Notification      UserNotificationDTO
-	PublishedConfigID int64
-	PublishedRevision int64
-	AlertEmailEnabled bool
-	MonitorName       string
-	SourceName        string
-	SourceType        string
-	RelevanceScore    *float64
-	OriginalURL       string
+	Claimed              bool
+	ClaimToken           string
+	AttemptCount         int
+	RecipientEmail       string
+	Notification         UserNotificationDTO
+	PublishedConfigID    int64
+	PublishedRevision    int64
+	AlertEmailEnabled    bool
+	MonitorName          string
+	SourceName           string
+	SourceType           string
+	RelevanceScore       *float64
+	OriginalURL          string
+	FencingGeneration    int64
+	DispatchKey          string
+	ReconcileRequired    bool
+	RecoveredUnknown     bool
+	ProviderCapabilities NotificationEmailProviderCapabilities
 }
 
-type CompleteEmailDeliveryCommand struct {
+type StartEmailDeliveryCommand struct {
 	UserNotificationID int64
 	UserID             int64
 	ClaimToken         string
-	Status             string
-	ProviderMessageID  string
-	ResponseCode       *int
-	ErrorCode          string
-	AttemptedAt        time.Time
+	FencingGeneration  int64
+	DispatchKey        string
+}
+
+type CompleteEmailDeliveryCommand struct {
+	UserNotificationID   int64
+	UserID               int64
+	ClaimToken           string
+	FencingGeneration    int64
+	DispatchKey          string
+	ProviderCapabilities NotificationEmailProviderCapabilities
+	Status               string
+	ProviderMessageID    string
+	ResponseCode         *int
+	ErrorCode            string
 }
 
 type EmailDeliveryRepository interface {
 	ClaimNextEmailDelivery(context.Context, ClaimNextEmailDeliveryCommand) (ClaimedEmailDeliveryDTO, error)
+	StartEmailDelivery(context.Context, StartEmailDeliveryCommand) error
 	CompleteEmailDelivery(context.Context, CompleteEmailDeliveryCommand) (RecordNotificationDeliveryAttemptResult, error)
 }
 
@@ -69,14 +85,30 @@ type NotificationEmailMessageDTO struct {
 	HTML      string
 }
 
+type NotificationEmailProviderCapabilities struct {
+	SupportsIdempotency   bool
+	SupportsReceiptLookup bool
+}
+
+type NotificationEmailDispatchDTO struct {
+	DispatchKey string
+	Message     NotificationEmailMessageDTO
+}
+
+type NotificationEmailReceiptDTO struct {
+	Found             bool
+	ProviderMessageID string
+}
+
 type NotificationEmailSender interface {
-	SendNotificationEmail(context.Context, NotificationEmailMessageDTO) (string, error)
+	Capabilities() NotificationEmailProviderCapabilities
+	SendNotificationEmail(context.Context, NotificationEmailDispatchDTO) (string, error)
+	LookupNotificationEmail(context.Context, string) (NotificationEmailReceiptDTO, error)
 }
 
 type EmailDeliveryServiceDependencies struct {
 	Repository EmailDeliveryRepository
 	Sender     NotificationEmailSender
-	Clock      func() time.Time
 	NewToken   func() (string, error)
 	WebOrigin  string
 }
@@ -84,7 +116,6 @@ type EmailDeliveryServiceDependencies struct {
 type EmailDeliveryService struct {
 	repository EmailDeliveryRepository
 	sender     NotificationEmailSender
-	clock      func() time.Time
 	newToken   func() (string, error)
 	webOrigin  string
 }
@@ -100,9 +131,6 @@ func NewEmailDeliveryService(dependencies EmailDeliveryServiceDependencies) (*Em
 	if dependencies.Repository == nil || dependencies.Sender == nil {
 		return nil, fmt.Errorf("notification email delivery dependencies are required")
 	}
-	if dependencies.Clock == nil {
-		dependencies.Clock = func() time.Time { return time.Now().UTC() }
-	}
 	if dependencies.NewToken == nil {
 		dependencies.NewToken = newEmailClaimToken
 	}
@@ -111,25 +139,25 @@ func NewEmailDeliveryService(dependencies EmailDeliveryServiceDependencies) (*Em
 		return nil, err
 	}
 	return &EmailDeliveryService{
-		repository: dependencies.Repository, sender: dependencies.Sender, clock: dependencies.Clock,
+		repository: dependencies.Repository, sender: dependencies.Sender,
 		newToken: dependencies.NewToken, webOrigin: origin,
 	}, nil
 }
 
-// DispatchNext claims at most one durable user notification. SMTP outcomes are
-// converted into immutable DeliveryAttempt facts; a channel failure never
-// mutates or retracts the UserNotification.
+// DispatchNext claims at most one durable user notification. Provider outcomes
+// become immutable DeliveryAttempt facts; uncertain outcomes either reconcile
+// under a stable provider key or stop as unknown without mutating the notification.
 func (service *EmailDeliveryService) DispatchNext(ctx context.Context) (DispatchEmailDeliveryResult, error) {
 	if service == nil {
 		return DispatchEmailDeliveryResult{}, sharedrepository.ErrUnavailable
 	}
-	now := service.clock().UTC()
 	token, err := service.newToken()
 	if err != nil {
 		return DispatchEmailDeliveryResult{}, fmt.Errorf("create notification email claim: %w", err)
 	}
+	capabilities := service.sender.Capabilities()
 	claimed, err := service.repository.ClaimNextEmailDelivery(ctx, ClaimNextEmailDeliveryCommand{
-		ClaimToken: token, ClaimedAt: now, LeaseUntil: now.Add(EmailDeliveryLeaseDuration),
+		ClaimToken: token, LeaseDuration: EmailDeliveryLeaseDuration, ProviderCapabilities: capabilities,
 	})
 	if err != nil {
 		return DispatchEmailDeliveryResult{}, err
@@ -138,32 +166,79 @@ func (service *EmailDeliveryService) DispatchNext(ctx context.Context) (Dispatch
 		return DispatchEmailDeliveryResult{}, nil
 	}
 	result := DispatchEmailDeliveryResult{Claimed: true, UserNotificationID: claimed.Notification.ID}
+	if claimed.RecoveredUnknown {
+		result.Status, result.AttemptNo = "unknown", claimed.AttemptCount
+		return result, nil
+	}
+	if err := validateClaimedEmailDeliveryFence(claimed, token, capabilities); err != nil {
+		return result, err
+	}
+	if err := service.repository.StartEmailDelivery(ctx, StartEmailDeliveryCommand{
+		UserNotificationID: claimed.Notification.ID, UserID: claimed.Notification.UserID, ClaimToken: token,
+		FencingGeneration: claimed.FencingGeneration, DispatchKey: claimed.DispatchKey,
+	}); err != nil {
+		return result, err
+	}
 	status, errorCode, providerMessageID := "succeeded", "", ""
-	if err := validateClaimedEmailDelivery(claimed, token); err != nil {
+	if err := validateClaimedEmailDelivery(claimed); err != nil {
 		status, errorCode = "permanent_failure", "invalid_notification_projection"
 	} else {
-		message := service.message(claimed)
-		providerMessageID, err = service.sender.SendNotificationEmail(ctx, message)
-		if err != nil {
-			status, errorCode = "failed", "smtp_temporary"
-			var temporary interface{ TemporaryFailure() bool }
-			if errors.As(err, &temporary) && !temporary.TemporaryFailure() {
-				status, errorCode = "permanent_failure", "smtp_permanent"
+		if claimed.ReconcileRequired && capabilities.SupportsReceiptLookup {
+			receipt, lookupErr := service.sender.LookupNotificationEmail(ctx, claimed.DispatchKey)
+			if lookupErr != nil && !capabilities.SupportsIdempotency {
+				status, errorCode = "unknown", "provider_receipt_unavailable"
+				completed, completeErr := service.completeEmailDelivery(ctx, claimed, token, status, providerMessageID, errorCode)
+				if completeErr != nil {
+					return result, completeErr
+				}
+				result.Status, result.AttemptNo = status, completed.AttemptNo
+				return result, nil
 			}
-			if claimed.AttemptCount+1 >= MaximumEmailAttempts {
-				status, errorCode = "permanent_failure", "smtp_attempts_exhausted"
+			if lookupErr == nil && receipt.Found {
+				providerMessageID = receipt.ProviderMessageID
+				completed, completeErr := service.completeEmailDelivery(ctx, claimed, token, status, providerMessageID, errorCode)
+				if completeErr != nil {
+					return result, completeErr
+				}
+				result.Status, result.AttemptNo = status, completed.AttemptNo
+				return result, nil
+			}
+		}
+		dispatch := NotificationEmailDispatchDTO{DispatchKey: claimed.DispatchKey, Message: service.message(claimed)}
+		providerMessageID, err = service.sender.SendNotificationEmail(ctx, dispatch)
+		if err != nil {
+			if !emailDeliveryOutcomeKnown(err) {
+				if capabilities.SupportsIdempotency || capabilities.SupportsReceiptLookup {
+					return result, fmt.Errorf("notification email provider outcome awaits reconciliation: %w", err)
+				}
+				status, errorCode = "unknown", "provider_outcome_unconfirmed"
+			} else {
+				status, errorCode = "failed", "smtp_temporary"
+				var temporary interface{ TemporaryFailure() bool }
+				if errors.As(err, &temporary) && !temporary.TemporaryFailure() {
+					status, errorCode = "permanent_failure", "smtp_permanent"
+				}
+				if claimed.AttemptCount+1 >= MaximumEmailAttempts {
+					status, errorCode = "permanent_failure", "smtp_attempts_exhausted"
+				}
 			}
 		}
 	}
-	completed, err := service.repository.CompleteEmailDelivery(ctx, CompleteEmailDeliveryCommand{
-		UserNotificationID: claimed.Notification.ID, UserID: claimed.Notification.UserID, ClaimToken: token,
-		Status: status, ProviderMessageID: providerMessageID, ErrorCode: errorCode, AttemptedAt: service.clock().UTC(),
-	})
+	completed, err := service.completeEmailDelivery(ctx, claimed, token, status, providerMessageID, errorCode)
 	if err != nil {
-		return DispatchEmailDeliveryResult{}, err
+		return result, err
 	}
 	result.Status, result.AttemptNo = status, completed.AttemptNo
 	return result, nil
+}
+
+func (service *EmailDeliveryService) completeEmailDelivery(ctx context.Context, claimed ClaimedEmailDeliveryDTO, token string, status string, providerMessageID string, errorCode string) (RecordNotificationDeliveryAttemptResult, error) {
+	return service.repository.CompleteEmailDelivery(ctx, CompleteEmailDeliveryCommand{
+		UserNotificationID: claimed.Notification.ID, UserID: claimed.Notification.UserID, ClaimToken: token,
+		FencingGeneration: claimed.FencingGeneration, DispatchKey: claimed.DispatchKey,
+		ProviderCapabilities: claimed.ProviderCapabilities,
+		Status:               status, ProviderMessageID: providerMessageID, ErrorCode: errorCode,
+	})
 }
 
 func (service *EmailDeliveryService) message(claimed ClaimedEmailDeliveryDTO) NotificationEmailMessageDTO {
@@ -208,10 +283,18 @@ func (service *EmailDeliveryService) message(claimed ClaimedEmailDeliveryDTO) No
 	}
 }
 
-func validateClaimedEmailDelivery(claimed ClaimedEmailDeliveryDTO, expectedToken string) error {
-	if !claimed.Claimed || claimed.ClaimToken != expectedToken || claimed.AttemptCount < 0 ||
-		claimed.AttemptCount >= MaximumEmailAttempts || claimed.PublishedConfigID <= 0 || claimed.PublishedRevision <= 0 ||
-		!claimed.AlertEmailEnabled {
+func validateClaimedEmailDeliveryFence(claimed ClaimedEmailDeliveryDTO, expectedToken string, capabilities NotificationEmailProviderCapabilities) error {
+	if !claimed.Claimed || claimed.RecoveredUnknown || claimed.ClaimToken != expectedToken || claimed.FencingGeneration <= 0 ||
+		!lowerHexEmailDispatchKey.MatchString(claimed.DispatchKey) || claimed.ProviderCapabilities != capabilities ||
+		claimed.ReconcileRequired && !capabilities.SupportsIdempotency && !capabilities.SupportsReceiptLookup {
+		return fmt.Errorf("claimed notification email fence is invalid")
+	}
+	return nil
+}
+
+func validateClaimedEmailDelivery(claimed ClaimedEmailDeliveryDTO) error {
+	if claimed.AttemptCount < 0 || claimed.AttemptCount >= MaximumEmailAttempts || claimed.PublishedConfigID <= 0 ||
+		claimed.PublishedRevision <= 0 || !claimed.AlertEmailEnabled {
 		return fmt.Errorf("claimed notification email identity is invalid")
 	}
 	if err := ValidateUserNotificationDTO(claimed.Notification); err != nil {
@@ -225,6 +308,13 @@ func validateClaimedEmailDelivery(claimed ClaimedEmailDeliveryDTO, expectedToken
 		return fmt.Errorf("notification recipient is invalid")
 	}
 	return nil
+}
+
+var lowerHexEmailDispatchKey = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+func emailDeliveryOutcomeKnown(err error) bool {
+	var known interface{ DeliveryOutcomeKnown() bool }
+	return errors.As(err, &known) && known.DeliveryOutcomeKnown()
 }
 
 func normalizeWebOrigin(value string) (string, error) {

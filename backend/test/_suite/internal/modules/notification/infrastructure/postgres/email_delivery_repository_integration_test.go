@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
@@ -29,56 +31,204 @@ func TestEmailDeliveryRepositoryClaimsWithCurrentPermissionBackoffAndTerminalAtt
 	userID, monitorID, notificationID := insertEmailNotificationFixture(t, runtime, now, true)
 
 	first, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
-		ClaimToken: strings.Repeat("a", 64), ClaimedAt: now, LeaseUntil: now.Add(time.Minute),
+		ClaimToken: strings.Repeat("a", 64), LeaseDuration: time.Minute,
 	})
 	if err != nil || !first.Claimed || first.Notification.ID != notificationID || first.Notification.UserID != userID ||
-		first.AttemptCount != 0 || first.RecipientEmail == "" || !first.AlertEmailEnabled {
+		first.AttemptCount != 0 || first.RecipientEmail == "" || !first.AlertEmailEnabled || first.FencingGeneration != 1 ||
+		len(first.DispatchKey) != 64 {
 		t.Fatalf("first claim = %#v / %v", first, err)
 	}
+	var claimedAt, leaseUntil, databaseNow time.Time
+	if err := runtime.SQL.QueryRow(`SELECT claimed_at,lease_until,clock_timestamp()
+FROM notification_delivery_claims WHERE user_notification_id=$1 AND channel='email'`, notificationID).Scan(
+		&claimedAt, &leaseUntil, &databaseNow,
+	); err != nil || claimedAt.After(databaseNow) || leaseUntil.Sub(claimedAt) < 59*time.Second ||
+		leaseUntil.Sub(claimedAt) > 61*time.Second {
+		t.Fatalf("database lease = %s/%s/%s / %v", claimedAt, leaseUntil, databaseNow, err)
+	}
 	concurrent, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
-		ClaimToken: strings.Repeat("b", 64), ClaimedAt: now.Add(time.Second), LeaseUntil: now.Add(time.Minute + time.Second),
+		ClaimToken: strings.Repeat("b", 64), LeaseDuration: time.Minute,
 	})
 	if err != nil || concurrent.Claimed {
 		t.Fatalf("concurrent claim = %#v / %v", concurrent, err)
 	}
+	if err := repository.StartEmailDelivery(ctx, application.StartEmailDeliveryCommand{
+		UserNotificationID: notificationID, UserID: userID, ClaimToken: first.ClaimToken,
+		FencingGeneration: first.FencingGeneration, DispatchKey: first.DispatchKey,
+	}); err != nil {
+		t.Fatalf("start email delivery: %v", err)
+	}
 	failed, err := repository.CompleteEmailDelivery(ctx, application.CompleteEmailDeliveryCommand{
 		UserNotificationID: notificationID, UserID: userID, ClaimToken: strings.Repeat("a", 64),
-		Status: "failed", ErrorCode: "smtp_temporary", AttemptedAt: now.Add(2 * time.Second),
+		FencingGeneration: first.FencingGeneration, DispatchKey: first.DispatchKey,
+		Status: "failed", ErrorCode: "smtp_temporary",
 	})
 	if err != nil || failed.AttemptNo != 1 {
 		t.Fatalf("failed completion = %#v / %v", failed, err)
 	}
 	immediate, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
-		ClaimToken: strings.Repeat("c", 64), ClaimedAt: now.Add(30 * time.Second), LeaseUntil: now.Add(90 * time.Second),
+		ClaimToken: strings.Repeat("c", 64), LeaseDuration: time.Minute,
 	})
 	if err != nil || immediate.Claimed {
 		t.Fatalf("backoff claim = %#v / %v", immediate, err)
-	}
-	retryAt := now.Add(time.Minute + 3*time.Second)
-	retry, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
-		ClaimToken: strings.Repeat("d", 64), ClaimedAt: retryAt, LeaseUntil: retryAt.Add(time.Minute),
-	})
-	if err != nil || !retry.Claimed || retry.AttemptCount != 1 {
-		t.Fatalf("retry claim = %#v / %v", retry, err)
-	}
-	succeeded, err := repository.CompleteEmailDelivery(ctx, application.CompleteEmailDeliveryCommand{
-		UserNotificationID: notificationID, UserID: userID, ClaimToken: strings.Repeat("d", 64),
-		Status: "succeeded", ProviderMessageID: "smtp-fixture", AttemptedAt: retryAt.Add(time.Second),
-	})
-	if err != nil || succeeded.AttemptNo != 2 {
-		t.Fatalf("successful completion = %#v / %v", succeeded, err)
-	}
-	terminal, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
-		ClaimToken: strings.Repeat("e", 64), ClaimedAt: retryAt.Add(10 * time.Minute), LeaseUntil: retryAt.Add(11 * time.Minute),
-	})
-	if err != nil || terminal.Claimed {
-		t.Fatalf("terminal claim = %#v / %v", terminal, err)
 	}
 	if _, err := runtime.SQL.Exec(`UPDATE notification_delivery_attempts SET status='failed' WHERE user_notification_id=$1`, notificationID); err == nil {
 		t.Fatal("append-only delivery attempt accepted mutation")
 	}
 	if _, err := runtime.SQL.Exec(`UPDATE monitors SET status='archived' WHERE id=$1`, monitorID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEmailDeliveryRepositoryFencesExpiredWorkersAndStopsUnknownSMTPReplay(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	userID, monitorID, notificationID := insertEmailNotificationFixture(t, runtime, now, true)
+
+	workerA, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
+		ClaimToken: strings.Repeat("1", 64), LeaseDuration: time.Minute,
+	})
+	if err != nil || !workerA.Claimed || workerA.FencingGeneration != 1 {
+		t.Fatalf("worker A claim = %#v / %v", workerA, err)
+	}
+	if err := repository.StartEmailDelivery(ctx, application.StartEmailDeliveryCommand{
+		UserNotificationID: notificationID, UserID: userID, ClaimToken: workerA.ClaimToken,
+		FencingGeneration: workerA.FencingGeneration, DispatchKey: workerA.DispatchKey,
+	}); err != nil {
+		t.Fatalf("worker A start: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE notification_delivery_claims
+SET claimed_at=clock_timestamp()-interval '2 minutes',lease_until=clock_timestamp()-interval '1 second'
+WHERE user_notification_id=$1 AND channel='email'`, notificationID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE monitors SET status='archived' WHERE id=$1`, monitorID); err != nil {
+		t.Fatal(err)
+	}
+
+	recovered, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
+		ClaimToken: strings.Repeat("2", 64), LeaseDuration: time.Minute,
+	})
+	if err != nil || !recovered.Claimed || !recovered.RecoveredUnknown || recovered.AttemptCount != 1 {
+		t.Fatalf("unsupported provider recovery = %#v / %v", recovered, err)
+	}
+	_, err = repository.CompleteEmailDelivery(ctx, application.CompleteEmailDeliveryCommand{
+		UserNotificationID: notificationID, UserID: userID, ClaimToken: workerA.ClaimToken,
+		FencingGeneration: workerA.FencingGeneration, DispatchKey: workerA.DispatchKey,
+		Status: "succeeded", ProviderMessageID: "late-worker-a",
+	})
+	if !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("late worker A completion error = %v", err)
+	}
+	var status, dispatchKey, errorCode string
+	var generation int64
+	if err := runtime.SQL.QueryRow(`SELECT status,dispatch_key,fencing_generation,error_code
+FROM notification_delivery_attempts WHERE user_notification_id=$1`, notificationID).Scan(
+		&status, &dispatchKey, &generation, &errorCode,
+	); err != nil || status != "unknown" || dispatchKey != workerA.DispatchKey || generation != 1 ||
+		errorCode != "provider_outcome_unconfirmed" {
+		t.Fatalf("unknown attempt = %q/%q/%d/%q / %v", status, dispatchKey, generation, errorCode, err)
+	}
+	if _, err := runtime.SQL.Exec(`INSERT INTO notification_delivery_attempts(
+user_notification_id,channel,delivery_target_key,attempt_no,status,error_code,attempted_at)
+VALUES ($1,'email',$2,2,'unknown','forged_unknown',clock_timestamp())`,
+		notificationID, application.PrimaryEmailDeliveryTarget); err == nil {
+		t.Fatal("unknown delivery attempt without a dispatch fence was accepted")
+	}
+	terminal, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
+		ClaimToken: strings.Repeat("3", 64), LeaseDuration: time.Minute,
+	})
+	if err != nil || terminal.Claimed {
+		t.Fatalf("unknown terminal replay = %#v / %v", terminal, err)
+	}
+}
+
+func TestEmailDeliveryRepositoryReusesDispatchKeyWithHigherFenceForIdempotentProvider(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	userID, _, notificationID := insertEmailNotificationFixture(t, runtime, now, true)
+	capabilities := application.NotificationEmailProviderCapabilities{SupportsIdempotency: true}
+	if _, err := runtime.SQL.Exec(`INSERT INTO notification_delivery_attempts(
+user_notification_id,channel,delivery_target_key,attempt_no,status,dispatch_key,fencing_generation,error_code,attempted_at)
+VALUES ($1,'email',$2,1,'failed',$3,7,'provider_rejected',clock_timestamp()-interval '10 minutes')`,
+		notificationID, application.PrimaryEmailDeliveryTarget, strings.Repeat("9", 64)); err != nil {
+		t.Fatal(err)
+	}
+
+	workerA, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
+		ClaimToken: strings.Repeat("4", 64), LeaseDuration: time.Minute, ProviderCapabilities: capabilities,
+	})
+	if err != nil || !workerA.Claimed || workerA.FencingGeneration != 8 {
+		t.Fatalf("worker A claim = %#v / %v", workerA, err)
+	}
+	if err := repository.StartEmailDelivery(ctx, application.StartEmailDeliveryCommand{
+		UserNotificationID: notificationID, UserID: userID, ClaimToken: workerA.ClaimToken,
+		FencingGeneration: workerA.FencingGeneration, DispatchKey: workerA.DispatchKey,
+	}); err != nil {
+		t.Fatalf("worker A start: %v", err)
+	}
+	if _, err := runtime.SQL.Exec(`UPDATE notification_delivery_claims
+SET claimed_at=clock_timestamp()-interval '2 minutes',lease_until=clock_timestamp()-interval '1 second'
+WHERE user_notification_id=$1 AND channel='email'`, notificationID); err != nil {
+		t.Fatal(err)
+	}
+
+	workerB, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
+		ClaimToken: strings.Repeat("5", 64), LeaseDuration: time.Minute, ProviderCapabilities: capabilities,
+	})
+	if err != nil || !workerB.Claimed || !workerB.ReconcileRequired || workerB.FencingGeneration != 9 ||
+		workerB.DispatchKey != workerA.DispatchKey {
+		t.Fatalf("worker B claim = %#v / %v", workerB, err)
+	}
+	_, err = repository.CompleteEmailDelivery(ctx, application.CompleteEmailDeliveryCommand{
+		UserNotificationID: notificationID, UserID: userID, ClaimToken: workerA.ClaimToken,
+		FencingGeneration: workerA.FencingGeneration, DispatchKey: workerA.DispatchKey,
+		Status: "succeeded", ProviderMessageID: "late-worker-a",
+	})
+	if !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("late worker A completion error = %v", err)
+	}
+	if err := repository.StartEmailDelivery(ctx, application.StartEmailDeliveryCommand{
+		UserNotificationID: notificationID, UserID: userID, ClaimToken: workerB.ClaimToken,
+		FencingGeneration: workerB.FencingGeneration, DispatchKey: workerB.DispatchKey,
+	}); err != nil {
+		t.Fatalf("worker B start: %v", err)
+	}
+	completed, err := repository.CompleteEmailDelivery(ctx, application.CompleteEmailDeliveryCommand{
+		UserNotificationID: notificationID, UserID: userID, ClaimToken: workerB.ClaimToken,
+		FencingGeneration: workerB.FencingGeneration, DispatchKey: workerB.DispatchKey,
+		ProviderCapabilities: capabilities,
+		Status:               "succeeded", ProviderMessageID: "idempotent-provider-result",
+	})
+	if err != nil || completed.AttemptNo != 2 {
+		t.Fatalf("worker B completion = %#v / %v", completed, err)
+	}
+	var generation int64
+	var dispatchKey string
+	var supportsIdempotency bool
+	if err := runtime.SQL.QueryRow(`SELECT fencing_generation,dispatch_key,provider_supports_idempotency
+FROM notification_delivery_attempts WHERE user_notification_id=$1 AND status='succeeded'`, notificationID).Scan(
+		&generation, &dispatchKey, &supportsIdempotency,
+	); err != nil || generation != 9 || dispatchKey != workerA.DispatchKey || !supportsIdempotency {
+		t.Fatalf("fenced attempt = %d/%q/%t / %v", generation, dispatchKey, supportsIdempotency, err)
 	}
 }
 
@@ -97,7 +247,7 @@ func TestEmailDeliveryRepositoryRechecksCurrentChannelPreferenceBeforeClaim(t *t
 	_, _, notificationID := insertEmailNotificationFixture(t, runtime, now, false)
 
 	claimed, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
-		ClaimToken: strings.Repeat("f", 64), ClaimedAt: now, LeaseUntil: now.Add(time.Minute),
+		ClaimToken: strings.Repeat("f", 64), LeaseDuration: time.Minute,
 	})
 	if err != nil || claimed.Claimed {
 		t.Fatalf("disabled current email preference claim = %#v / %v", claimed, err)

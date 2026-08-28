@@ -111,7 +111,7 @@ VALUES ($1,$2,$3,87.5,87.5,'accepted','fixture-v1',repeat('e',64),'fixture-v1')`
 		t.Fatalf("hotspot notification = %#v", notification)
 	}
 	claimed, err := repository.ClaimNextEmailDelivery(ctx, application.ClaimNextEmailDeliveryCommand{
-		ClaimToken: strings.Repeat("e", 64), ClaimedAt: now.Add(time.Second), LeaseUntil: now.Add(time.Minute),
+		ClaimToken: strings.Repeat("e", 64), LeaseDuration: time.Minute,
 	})
 	if err != nil || !claimed.Claimed || claimed.Notification.ID != notification.ID ||
 		claimed.MonitorName != "热点监控" || claimed.SourceName != "热点 Feed" || claimed.SourceType != "rss" ||

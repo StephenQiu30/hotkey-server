@@ -492,11 +492,20 @@ func newNotificationService(repository *notificationpostgres.Repository) (*notif
 
 type notificationEmailSender struct{ mailer *deliverysmtp.Mailer }
 
-func (sender notificationEmailSender) SendNotificationEmail(ctx context.Context, message notificationapplication.NotificationEmailMessageDTO) (string, error) {
+func (notificationEmailSender) Capabilities() notificationapplication.NotificationEmailProviderCapabilities {
+	return notificationapplication.NotificationEmailProviderCapabilities{}
+}
+
+func (sender notificationEmailSender) SendNotificationEmail(ctx context.Context, dispatch notificationapplication.NotificationEmailDispatchDTO) (string, error) {
+	message := dispatch.Message
 	err := sender.mailer.Send(ctx, deliverysmtp.Message{
 		To: message.Recipient, Subject: message.Subject, Text: message.Text, HTML: message.HTML,
 	})
 	return "", err
+}
+
+func (notificationEmailSender) LookupNotificationEmail(context.Context, string) (notificationapplication.NotificationEmailReceiptDTO, error) {
+	return notificationapplication.NotificationEmailReceiptDTO{}, fmt.Errorf("notification SMTP provider does not support receipt lookup")
 }
 
 func newNotificationEmailDeliveryService(repository *notificationpostgres.Repository, cfg config.Config) (*notificationapplication.EmailDeliveryService, error) {
