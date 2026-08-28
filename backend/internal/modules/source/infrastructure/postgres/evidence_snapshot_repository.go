@@ -69,7 +69,7 @@ INSERT INTO evidence_snapshots (
   snapshot_key,object_key,payload_sha256,collector_profile_version,mime_type,size_bytes,
   response_status,requested_url,final_url,redirect_chain,response_headers,captured_at,retention_until
 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb,$16,$17)
-ON CONFLICT (source_connection_id,snapshot_key) DO NOTHING`,
+ON CONFLICT DO NOTHING`,
 			command.SourceConnectionID, collectionRunID, command.StoreRawRightsDecisionID, command.RetainRightsDecisionID,
 			command.EvidenceKey, command.ObjectKey, command.PayloadSHA256, command.CollectorProfileVersion,
 			command.MIMEType, command.SizeBytes, command.ResponseStatus, command.RequestedURL, command.FinalURL,
