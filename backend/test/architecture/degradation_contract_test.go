@@ -109,8 +109,10 @@ func TestS03DegradationMatrixNamesExecutableEvidenceAndHonestGaps(t *testing.T) 
 			t.Errorf("verified Redis degradation row is missing %q: %s", required, redisRow)
 		}
 	}
-	if !strings.Contains(matrix, "`CHK-001-G4-001` 必须保持未勾选") {
-		t.Error("degradation matrix no longer protects the incomplete G4 checklist state")
+	for _, required := range []string{"001 Acceptance `EV-001-004`", "`CHK-001-G4-001` 已按局部门禁证据关闭", "整体 Acceptance 仍为 `failed`"} {
+		if !strings.Contains(matrix, required) {
+			t.Errorf("degradation matrix is missing recorded partial-Acceptance boundary %q", required)
+		}
 	}
 }
 

@@ -141,16 +141,16 @@ docker-compose-prod.yml
 
 ## 执行检查清单（CHECKLIST）
 
-- [ ] `CHK-001-G0-001`（`AC-001-001`）：保存当前 P0 主故事的代码、Schema、API、页面和测试证据，并确认日报逐句 Evidence 与 Vault 人工区域保护均有后续测试入口；预期证据：现状矩阵、证据/知识保护断言清单与基线命令结果。
+- [x] `CHK-001-G0-001`（`AC-001-001`）：已保存当前 P0 主故事的代码、Schema、API、页面、测试与真实缺口矩阵，并确认日报逐句 Evidence 与 Vault 人工区域保护的专项入口；证据：001 Acceptance `EV-001-001`。该基线完成不代表真实来源驱动的 `AC-001-001` 整体 UAT 已通过。
 - [ ] `CHK-001-G1-001`（`AC-001-002`）：四角色权限矩阵已由产品与后端共同评审，Analyst 迁移语义、所有权和审核边界显式；当前工程证据覆盖 Schema/Domain/HTTP/OpenAPI/生成客户端、自有/他人 Monitor 负向测试及 `TestFourRoleSessionLifecycleUsesCurrentRoleAndNeverResurrectsRevokedSessions` 的角色/会话生命周期矩阵，仍需完整四角色 UAT 后勾选。
-- [ ] `CHK-001-G1-002`（`AC-001-003`）：Design 明确拒绝禁用基础设施，架构测试可捕获误引入，代码/契约现状、Design/PRD/Plan 目标状态与 Acceptance 已验收状态不存在伪装；预期证据：accepted Design、事实差距矩阵、架构和文档状态检查记录。
+- [x] `CHK-001-G1-002`（`AC-001-003`）：Design 明确拒绝禁用基础设施，反例架构测试可捕获 Kafka、Temporal、第二 Python 后端和迁移目录误引入；代码/契约现状、Design/PRD/Plan 目标状态与 failed/partial Acceptance 未相互冒充；证据：001 Acceptance `EV-001-002`。
 - [ ] `CHK-001-G2-001`（`AC-001-004`）：PRD 覆盖工作台五态、移动端、权限不足、键盘、可见焦点、语义标签、对比度和 `prefers-reduced-motion`；预期证据：页面状态、自动可访问性和人工键盘测试矩阵。
-- [ ] `CHK-001-G3-001`（`AC-001-005`）：Result、OpenAPI、Schema 和生成客户端的单一事实源无冲突；预期证据：契约与 Schema 检查输出。
+- [x] `CHK-001-G3-001`（`AC-001-005`）：Result、OpenAPI、唯一 Schema 和生成客户端的单一事实源无冲突；证据：本机 `make ci`、前端 `openapi:check`、远端全绿门禁及 001 Acceptance `EV-001-003`。
 - [ ] `CHK-001-G3-002`（`AC-001-006`）：容量/性能测试和 PostgreSQL/MinIO/Vault/持久任务联合恢复的环境、数据、命令、统计法、对账与 RPO/RTO 测量均已冻结；预期证据：基准报告、恢复时间线和零未解释差异报告模板。
 - [ ] `CHK-001-G3-003`（`AC-001-009`）：关键写操作的未认证/越权、幂等重放、旧版本和并发冲突矩阵在副作用、事实计数与审计上闭合；预期证据：并发集成测试、稳定错误码、写前后事实计数和追加审计查询。
 - [ ] `CHK-001-G3-004`（`AC-001-010`）：并列排序和并发新增下连续游标遍历无回流、重复或漏项，页大小及无效/过期/越权游标均受控；预期证据：固定数据集、游标序列、边界/权限负向测试和脱敏错误快照。
-- [ ] `CHK-001-G4-001`（`AC-001-007`）：所有降级场景都有“事实继续/暂停/重试/人工介入”的明确结论；Python Agent 只能提交建议，必须经 Go Application/Domain 校验和授权人工治理，不得直写业务事实、权限或最终状态；预期证据：故障矩阵、越权建议负向测试和零直接事实写入断言。
-- [ ] `CHK-001-G4-002`（`AC-001-008`）：全文检索目标不依赖向量/RAG，现有向量能力只进入受控迁移清单；自动知识区域可重建但人工区域只能从 Vault/Revision/备份恢复；预期证据：搜索架构断言、人工区域恢复矩阵和替换/回滚清单。
+- [x] `CHK-001-G4-001`（`AC-001-007`）：来源、Agent、Redis、MinIO 和 Vault 降级均已记录“事实继续/暂停/重试/人工介入”结论；Python Agent 只提交建议，越权 Evidence/状态在 Go Application/Domain 写入前拒绝，5 类 Agent 故障为零 Claim 写入；证据：001 Acceptance `EV-001-004`。
+- [x] `CHK-001-G4-002`（`AC-001-008`）：P0 全文检索只使用 PostgreSQL FTS/`pg_trgm`/权限重检，旧向量能力仍在受控迁移清单；自动知识区域可重建，人工区域只能从当前 Vault、受保护 Revision 或批准备份逐字恢复；证据：001 Acceptance `EV-001-005`。
 
 ## 验证命令
 
