@@ -92,3 +92,70 @@ func TestKnowledgeRepositoryPersistsDocumentAndProposal(t *testing.T) {
 		t.Fatalf("revision count after rejected apply = %d", count)
 	}
 }
+
+func TestKnowledgeRepositoryLoadsVaultRebuildFact(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	var eventID int64
+	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO events (event_key, title_zh, summary, lifecycle_status, first_seen_at, last_seen_at) VALUES ('knowledge-rebuild-' || md5(random()::text), 'Knowledge rebuild', '', 'active', $1, $1) RETURNING id`, now).Scan(&eventID); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(runtime)
+	emptyHash := domain.HashContent("", "")
+	document := domain.Document{
+		ID: 9701, Version: 1, RevisionNo: 0, Type: domain.DocumentEvent, EventID: &eventID,
+		VaultPath: "events/9701.md", ContentHash: emptyHash, GeneratedHash: emptyHash, Status: domain.DocumentPlanned,
+	}
+	if err := repository.SaveDocument(ctx, document); err != nil {
+		t.Fatal(err)
+	}
+	frontmatter := `{"title":"Knowledge rebuild"}`
+	body := "approved generated body"
+	proposal := domain.Proposal{
+		ID: 9801, Version: 1, DocumentID: document.ID, BaseRevisionNo: 0, BaseHash: emptyHash,
+		ProposedFrontmatter: frontmatter, ProposedBody: body, Reason: "fixture", Status: domain.ProposalPending,
+	}
+	if err := repository.SaveProposal(proposal); err != nil {
+		t.Fatal(err)
+	}
+	approved, err := repository.UpdateProposalStatus(ctx, proposal.ID, proposal.Version, domain.ProposalApproved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := domain.RenderVaultDocument(domain.VaultDocumentRenderInput{
+		DocumentID: document.ID, RevisionNo: 1, Type: document.Type, SourceID: eventID,
+		Title: "Knowledge rebuild", Generated: body,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := document
+	next.Version = 2
+	next.RevisionNo = 1
+	next.ContentHash = domain.HashContent("", content)
+	next.GeneratedHash = domain.HashContent(approved.ProposedFrontmatter, body)
+	next.Status = domain.DocumentActive
+	revision := domain.Revision{
+		DocumentID: document.ID, RevisionNo: 1, ProposalID: proposal.ID, Source: "proposal",
+		PreviousHash: emptyHash, NewHash: next.ContentHash, SnapshotObjectKey: "knowledge/v1/9701/1.md", Frontmatter: approved.ProposedFrontmatter,
+	}
+	if _, err := repository.ApplyProposal(ctx, proposal.ID, approved.Version, next, revision); err != nil {
+		t.Fatal(err)
+	}
+
+	fact, err := repository.LoadVaultRebuildFact(ctx, document.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fact.Document.ContentHash != next.ContentHash || fact.SnapshotObjectKey != revision.SnapshotObjectKey || fact.RenderInput.DocumentID != document.ID || fact.RenderInput.RevisionNo != 1 || fact.RenderInput.SourceID != eventID || fact.RenderInput.Title != "Knowledge rebuild" || fact.RenderInput.Generated != body {
+		t.Fatalf("Vault rebuild fact = %#v", fact)
+	}
+}

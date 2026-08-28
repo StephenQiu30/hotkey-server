@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	databaserepository "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database/repository"
@@ -64,6 +66,68 @@ FROM knowledge_documents WHERE status <> 'archived' ORDER BY id`)
 		return nil, databaserepository.MapError(err)
 	}
 	return documents, nil
+}
+
+// LoadVaultRebuildFact closes the PostgreSQL lineage needed to reproduce the
+// current automatic region. A document without its exact immutable Revision
+// and applied Proposal is not guessed from hashes or from the Vault.
+func (repository *Repository) LoadVaultRebuildFact(ctx context.Context, documentID int64) (application.VaultRebuildFact, error) {
+	if repository == nil || repository.runtime == nil {
+		return application.VaultRebuildFact{}, sharedrepository.ErrUnavailable
+	}
+	if documentID <= 0 {
+		return application.VaultRebuildFact{}, sharedrepository.ErrInvalidInput
+	}
+	var fact application.VaultRebuildFact
+	var revisionSource, revisionHash, snapshotKey, proposalStatus, proposedBody string
+	var revisionFrontmatter, proposedFrontmatter []byte
+	var proposalID sql.NullInt64
+	err := knowledgeQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
+SELECT d.id, d.version, d.revision_no, d.document_type, d.vault_path,
+       coalesce(d.content_hash, ''), coalesce(d.generated_hash, ''), d.status,
+       d.event_id, d.topic_id, d.report_id,
+       r.source, coalesce(r.new_hash, ''), coalesce(r.snapshot_object_key, ''), r.frontmatter_snapshot,
+       p.id, coalesce(p.status, ''), coalesce(p.proposed_frontmatter, '{}'::jsonb), coalesce(p.proposed_body, '')
+FROM knowledge_documents d
+JOIN knowledge_revisions r ON r.document_id = d.id AND r.revision_no = d.revision_no
+LEFT JOIN knowledge_change_proposals p ON p.id = r.proposal_id
+WHERE d.id = $1`, documentID).Scan(
+		&fact.Document.ID, &fact.Document.Version, &fact.Document.RevisionNo, &fact.Document.Type, &fact.Document.VaultPath,
+		&fact.Document.ContentHash, &fact.Document.GeneratedHash, &fact.Document.Status,
+		&fact.Document.EventID, &fact.Document.TopicID, &fact.Document.ReportID,
+		&revisionSource, &revisionHash, &snapshotKey, &revisionFrontmatter,
+		&proposalID, &proposalStatus, &proposedFrontmatter, &proposedBody)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return application.VaultRebuildFact{}, sharedrepository.ErrUnavailable
+		}
+		return application.VaultRebuildFact{}, databaserepository.MapError(err)
+	}
+	if err := fact.Document.Validate(); err != nil || revisionSource != "proposal" || !proposalID.Valid || proposalStatus != string(domain.ProposalApplied) ||
+		len(fact.Document.ContentHash) != 64 || revisionHash != fact.Document.ContentHash ||
+		fact.Document.GeneratedHash != domain.HashContent(string(proposedFrontmatter), proposedBody) || string(revisionFrontmatter) != string(proposedFrontmatter) {
+		return application.VaultRebuildFact{}, domain.ErrVaultConflict
+	}
+	sourceID, err := knowledgeDocumentSourceID(fact.Document)
+	if err != nil {
+		return application.VaultRebuildFact{}, err
+	}
+	frontmatter := struct {
+		Title string `json:"title"`
+	}{}
+	if err := json.Unmarshal(proposedFrontmatter, &frontmatter); err != nil {
+		return application.VaultRebuildFact{}, domain.ErrVaultConflict
+	}
+	title := strings.TrimSpace(frontmatter.Title)
+	if title == "" {
+		title = fmt.Sprintf("%s-%d", fact.Document.Type, sourceID)
+	}
+	fact.RenderInput = domain.VaultDocumentRenderInput{
+		DocumentID: fact.Document.ID, RevisionNo: fact.Document.RevisionNo, Type: fact.Document.Type,
+		SourceID: sourceID, Title: title, Generated: proposedBody,
+	}
+	fact.SnapshotObjectKey = snapshotKey
+	return fact, nil
 }
 
 func (repository *Repository) ListProposals(ctx context.Context, status domain.ProposalStatus) ([]domain.Proposal, error) {
@@ -331,6 +395,18 @@ func countReferences(document domain.Document) int {
 		count++
 	}
 	return count
+}
+
+func knowledgeDocumentSourceID(document domain.Document) (int64, error) {
+	if countReferences(document) != 1 {
+		return 0, domain.ErrVaultConflict
+	}
+	for _, sourceID := range []*int64{document.EventID, document.TopicID, document.ReportID} {
+		if sourceID != nil && *sourceID > 0 {
+			return *sourceID, nil
+		}
+	}
+	return 0, domain.ErrVaultConflict
 }
 
 type knowledgeQueryer interface {

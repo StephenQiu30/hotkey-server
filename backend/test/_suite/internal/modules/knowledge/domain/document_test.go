@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -180,5 +181,77 @@ func TestUpdateVaultDocumentStopsOnIdentityRevisionAndMarkerConflicts(t *testing
 				t.Fatal("UpdateVaultDocument() error = nil")
 			}
 		})
+	}
+}
+
+func TestRecoverVaultDocumentUsesOnlyProtectedHumanRegionSources(t *testing.T) {
+	initial, err := RenderVaultDocument(VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 1, Type: DocumentReport, SourceID: 91,
+		Title: "日报 v1", Generated: "generated v1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	human := HumanRegionBegin + "\n人工恢复笔记  \n\n- [ ] 保留原始空白\n" + HumanRegionEnd
+	initial = strings.Replace(initial, HumanRegionBegin+"\n"+HumanRegionEnd, human, 1)
+	input := VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 2, Type: DocumentReport, SourceID: 91,
+		Title: "日报 v2", Generated: "generated v2",
+	}
+	tests := []struct {
+		name    string
+		sources VaultRecoverySources
+		want    VaultRecoverySource
+	}{
+		{name: "current Vault", sources: VaultRecoverySources{Current: initial}, want: VaultRecoveryCurrent},
+		{name: "Knowledge Revision", sources: VaultRecoverySources{Revision: initial}, want: VaultRecoveryRevision},
+		{name: "backup", sources: VaultRecoverySources{Backup: initial}, want: VaultRecoveryBackup},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.sources.ExpectedHash = HashContent("", initial)
+			result, err := RecoverVaultDocument(test.sources, input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Source != test.want || !strings.Contains(result.Content, human) || strings.Contains(result.Content, "generated v1") || !strings.Contains(result.Content, "generated v2") {
+				t.Fatalf("recovery result = %#v", result)
+			}
+		})
+	}
+}
+
+func TestRecoverVaultDocumentStopsWithoutProtectedHumanRegionOrOnConflict(t *testing.T) {
+	initial, err := RenderVaultDocument(VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 1, Type: DocumentReport, SourceID: 91,
+		Title: "日报", Generated: "generated",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 2, Type: DocumentReport, SourceID: 91,
+		Title: "日报", Generated: "updated",
+	}
+	if _, err := RecoverVaultDocument(VaultRecoverySources{ExpectedHash: HashContent("", initial)}, input); !errors.Is(err, ErrVaultHumanRegionUnavailable) {
+		t.Fatalf("missing protected source error = %v", err)
+	}
+	tampered := strings.Replace(initial, HumanRegionBegin, HumanRegionBegin+"\nuntracked edit", 1)
+	if _, err := RecoverVaultDocument(VaultRecoverySources{
+		ExpectedHash: HashContent("", initial), Current: tampered, Revision: initial,
+	}, input); !errors.Is(err, ErrVaultConflict) {
+		t.Fatalf("current Vault conflict error = %v", err)
+	}
+	wrongIdentity, err := RenderVaultDocument(VaultDocumentRenderInput{
+		DocumentID: 18, RevisionNo: 1, Type: DocumentReport, SourceID: 91,
+		Title: "其他日报", Generated: "generated",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RecoverVaultDocument(VaultRecoverySources{
+		ExpectedHash: HashContent("", wrongIdentity), Revision: wrongIdentity, Backup: initial,
+	}, input); !errors.Is(err, ErrVaultConflict) {
+		t.Fatalf("revision identity conflict error = %v", err)
 	}
 }

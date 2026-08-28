@@ -10,7 +10,10 @@ import (
 	"strings"
 )
 
-var ErrVaultConflict = errors.New("Vault document conflict")
+var (
+	ErrVaultConflict               = errors.New("Vault document conflict")
+	ErrVaultHumanRegionUnavailable = errors.New("Vault human region unavailable")
+)
 
 const (
 	AutomaticRegionBegin = "<!-- HOTKEY:AUTO:BEGIN -->"
@@ -127,6 +130,30 @@ type VaultDocumentRenderInput struct {
 	Generated  string
 }
 
+type VaultRecoverySource string
+
+const (
+	VaultRecoveryCurrent  VaultRecoverySource = "current_vault"
+	VaultRecoveryRevision VaultRecoverySource = "knowledge_revision"
+	VaultRecoveryBackup   VaultRecoverySource = "backup"
+)
+
+// VaultRecoverySources are ordered protected copies of the last committed
+// human-maintainable file. The current Vault always wins over a Revision,
+// which always wins over an explicit backup. A present but conflicting source
+// is never skipped in favour of an older copy.
+type VaultRecoverySources struct {
+	ExpectedHash string
+	Current      string
+	Revision     string
+	Backup       string
+}
+
+type VaultRecoveryResult struct {
+	Content string
+	Source  VaultRecoverySource
+}
+
 func (proposal Proposal) Validate() error {
 	if proposal.ID <= 0 || proposal.Version <= 0 || proposal.DocumentID <= 0 || proposal.BaseRevisionNo < 0 || len(proposal.BaseHash) != 64 || proposal.Status == "" {
 		return fmt.Errorf("invalid knowledge proposal")
@@ -201,6 +228,37 @@ func UpdateVaultDocument(existing string, input VaultDocumentRenderInput) (strin
 		return "", fmt.Errorf("Vault document revision content conflict")
 	}
 	return candidate, nil
+}
+
+// RecoverVaultDocument rebuilds only database-owned bytes while carrying the
+// human region from a verified protected source. It deliberately cannot
+// create an empty human region when every protected copy is missing.
+func RecoverVaultDocument(sources VaultRecoverySources, input VaultDocumentRenderInput) (VaultRecoveryResult, error) {
+	if len(sources.ExpectedHash) != 64 {
+		return VaultRecoveryResult{}, fmt.Errorf("%w: invalid expected hash", ErrVaultConflict)
+	}
+	candidates := []struct {
+		content string
+		source  VaultRecoverySource
+	}{
+		{content: sources.Current, source: VaultRecoveryCurrent},
+		{content: sources.Revision, source: VaultRecoveryRevision},
+		{content: sources.Backup, source: VaultRecoveryBackup},
+	}
+	for _, candidate := range candidates {
+		if candidate.content == "" {
+			continue
+		}
+		if HashContent("", candidate.content) != sources.ExpectedHash {
+			return VaultRecoveryResult{}, fmt.Errorf("%w: protected source hash changed", ErrVaultConflict)
+		}
+		content, err := UpdateVaultDocument(candidate.content, input)
+		if err != nil {
+			return VaultRecoveryResult{}, fmt.Errorf("%w: protected source identity changed", ErrVaultConflict)
+		}
+		return VaultRecoveryResult{Content: content, Source: candidate.source}, nil
+	}
+	return VaultRecoveryResult{}, ErrVaultHumanRegionUnavailable
 }
 
 type vaultDocumentIdentity struct {

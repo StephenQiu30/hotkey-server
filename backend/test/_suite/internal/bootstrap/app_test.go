@@ -12,6 +12,7 @@ import (
 	ingestionjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/jobs"
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	intelligencejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/jobs"
+	knowledgejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/jobs"
 	notificationjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/jobs"
 	sourcejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/jobs"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/config"
@@ -46,6 +47,20 @@ func TestDefaultP0HandlersExposeTheMultiSourceHotspotCoreChain(t *testing.T) {
 		if handlers[kind] == nil {
 			t.Errorf("default P0 handler %q is not registered", kind)
 		}
+	}
+}
+
+func TestP0HandlersRegisterVaultRecoveryWhenConfigured(t *testing.T) {
+	handlers := newP0Handlers(p0HandlerParams{
+		Collect:                 &sourcejobs.CollectHandler{},
+		Normalize:               &ingestionjobs.NormalizeHandler{},
+		AnalyzeMonitorIntent:    &monitorIntentAnalysisHandler{},
+		ProjectUserNotification: &notificationjobs.OutboxProjectionHandler{},
+		RecomputeAIRun:          &intelligencejobs.AIRunRecomputeHandler{},
+		ProjectKnowledge:        &knowledgejobs.Handler{},
+	})
+	if handlers["project_knowledge"] == nil {
+		t.Fatal("Vault recovery handler is not registered")
 	}
 }
 

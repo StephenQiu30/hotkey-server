@@ -34,6 +34,9 @@ import (
 	intelligenceprovider "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/provider"
 	intelligencetransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/transport/http"
 	knowledgeapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/application"
+	knowledgejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/jobs"
+	knowledgeminio "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/minio"
+	knowledgepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/postgres"
 	knowledgevault "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/vault"
 	monitorapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/application"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
@@ -184,6 +187,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newSourceConnectorRegistry,
 				newKnowledgeVaultWriter,
 				newKnowledgeProjectionService,
+				knowledgepostgres.NewRepository,
 				newTextQuoteSelectorService,
 				newAutomaticClaimEvidenceService,
 				eventjobs.NewAutomaticClaimEvidenceHandler,
@@ -289,6 +293,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					sourcejobs.NewXMetricRefreshHandler,
 					newXMetricRefreshScheduler,
 					exposeXMetricRefreshSchedulerRunner,
+					newKnowledgeSnapshotStore,
+					newKnowledgeRecoveryService,
+					newKnowledgeRecoveryHandler,
 				))
 				options = append(options, fx.Invoke(registerXMetricRefreshSchedulerLifecycle))
 			}
@@ -578,6 +585,7 @@ type p0HandlerParams struct {
 	ExtractAutomaticClaimEvidence    *eventjobs.AutomaticClaimEvidenceHandler               `optional:"true"`
 	RefreshProductEvent              *eventjobs.ProductEventRefreshHandler                  `optional:"true"`
 	RefreshXMetrics                  *sourcejobs.XMetricRefreshHandler                      `optional:"true"`
+	ProjectKnowledge                 *knowledgejobs.Handler                                 `optional:"true"`
 	RecomputeAIRun                   *intelligencejobs.AIRunRecomputeHandler
 }
 
@@ -609,6 +617,9 @@ func newP0Handlers(params p0HandlerParams) map[string]queue.Handler {
 	}
 	if params.RefreshXMetrics != nil {
 		handlers[queue.KindRefreshXMetrics] = params.RefreshXMetrics.Handle
+	}
+	if params.ProjectKnowledge != nil {
+		handlers[queue.KindProjectKnowledge] = params.ProjectKnowledge.Handle
 	}
 	return handlers
 }
@@ -701,6 +712,21 @@ func newKnowledgeVaultWriter(cfg config.Config) *knowledgevault.Writer {
 
 func newKnowledgeProjectionService(writer *knowledgevault.Writer) (*knowledgeapplication.ProjectionService, error) {
 	return knowledgeapplication.NewProjectionService(writer)
+}
+
+func newKnowledgeSnapshotStore(cfg config.Config) (*knowledgeminio.Store, error) {
+	return knowledgeminio.NewStore(cfg.MinIO)
+}
+
+func newKnowledgeRecoveryService(repository *knowledgepostgres.Repository, writer *knowledgevault.Writer, snapshots *knowledgeminio.Store) *knowledgeapplication.VaultRecoveryService {
+	return knowledgeapplication.NewVaultRecoveryService(repository, writer, snapshots, nil)
+}
+
+func newKnowledgeRecoveryHandler(service *knowledgeapplication.VaultRecoveryService) (*knowledgejobs.Handler, error) {
+	return knowledgejobs.NewHandler(queue.KindProjectKnowledge, func(ctx context.Context, documentID int64) error {
+		_, err := service.Recover(ctx, documentID)
+		return err
+	})
 }
 
 func newJobService(repository *operationspostgres.JobRepository, audit *operationspostgres.AuditWriter) (*operationsapplication.JobService, error) {

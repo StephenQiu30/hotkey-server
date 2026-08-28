@@ -11,6 +11,8 @@ import (
 	eventjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/infrastructure/jobs"
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestionjobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/jobs"
+	knowledgeapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/application"
+	knowledgejobs "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/jobs"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/config"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
@@ -181,6 +183,8 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentAndMatchServices(t *testing.T
 	var automaticEvidenceHandler *eventjobs.AutomaticClaimEvidenceHandler
 	var productEventRefreshScheduler *eventjobs.ProductEventRefreshScheduler
 	var productEventRefreshHandler *eventjobs.ProductEventRefreshHandler
+	var knowledgeRecovery *knowledgeapplication.VaultRecoveryService
+	var knowledgeRecoveryHandler *knowledgejobs.Handler
 	var handlers map[string]queue.Handler
 	app, err := NewAppWithReadiness(
 		cfg,
@@ -188,7 +192,8 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentAndMatchServices(t *testing.T
 		httptransport.ReadinessFunc(func(context.Context) error { return nil }),
 		fx.Populate(&handler, &recallProjections, &publishedMatches, &publishedMatchEvaluations, &matchReviews,
 			&publishedMatchHandler, &acceptedMatchProjectionHandler, &automaticEvidenceService, &automaticEvidenceScheduler,
-			&automaticEvidenceHandler, &productEventRefreshScheduler, &productEventRefreshHandler, &handlers),
+			&automaticEvidenceHandler, &productEventRefreshScheduler, &productEventRefreshHandler,
+			&knowledgeRecovery, &knowledgeRecoveryHandler, &handlers),
 	)
 	if err != nil {
 		t.Fatalf("NewAppWithReadiness() error = %v", err)
@@ -203,7 +208,8 @@ func TestMinIOWorkerFxGraphConstructsSourceDocumentAndMatchServices(t *testing.T
 		publishedMatchHandler == nil || acceptedMatchProjectionHandler == nil || automaticEvidenceService == nil ||
 		automaticEvidenceScheduler == nil || automaticEvidenceHandler == nil || productEventRefreshScheduler == nil ||
 		productEventRefreshHandler == nil || handlers[queue.KindGenerateSourceDocument] == nil ||
-		handlers[queue.KindEvaluatePublishedDocumentMatches] == nil || handlers[queue.KindProjectAcceptedDocumentMatch] == nil {
+		handlers[queue.KindEvaluatePublishedDocumentMatches] == nil || handlers[queue.KindProjectAcceptedDocumentMatch] == nil ||
+		knowledgeRecovery == nil || knowledgeRecoveryHandler == nil || handlers[queue.KindProjectKnowledge] == nil {
 		t.Fatalf("source document/match/evidence services/registration = %#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v/%#v",
 			handler, recallProjections, publishedMatches, publishedMatchEvaluations, matchReviews, publishedMatchHandler,
 			acceptedMatchProjectionHandler, automaticEvidenceService, automaticEvidenceScheduler, automaticEvidenceHandler,
