@@ -10,7 +10,7 @@ canonical_path: docs/acceptance/001-HotKey产品需求分析与总体架构验�
 design: docs/design/001-HotKey产品需求分析与总体架构设计.md
 prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 plan: docs/plans/001-HotKey产品需求分析与总体架构计划.md
-verified_revision: "1f2fe4398ca80eca5ce725c2dfc77fae7d0455df"
+verified_revision: "6c0d32f2232d5f7db754b3569debdebde1a1906d"
 verification_date: "2026-08-29"
 ---
 
@@ -18,7 +18,7 @@ verification_date: "2026-08-29"
 
 ## 结论
 
-本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护、日报列表游标、微事件 Evidence 列表游标、全文检索结果游标、运维任务列表游标、审计日志列表游标和内容/热点列表游标十一组可复核证据；完整四角色 UAT、人工键盘矩阵、PostgreSQL/MinIO/Vault/River 联合恢复、全范围关键写入矩阵和全范围游标矩阵仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
+本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护、日报列表游标、微事件 Evidence 列表游标、全文检索结果游标、运维任务列表游标、审计日志列表游标、内容/热点列表游标和 Monitor 列表游标十二组可复核证据；完整四角色 UAT、人工键盘矩阵、PostgreSQL/MinIO/Vault/River 联合恢复、全范围关键写入矩阵和全范围游标矩阵仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
 
 本文件只关闭证据完整的局部门禁，不将浏览器 Fixture、自动化测试或候选性能结果扩大解释为完整 P0 发布验收。
 
@@ -27,11 +27,11 @@ verification_date: "2026-08-29"
 | 项目 | 实际值 |
 |---|---|
 | 验证日期 | 2026-08-29（Asia/Shanghai） |
-| 代码基线 | `1f2fe4398ca80eca5ce725c2dfc77fae7d0455df` |
+| 代码基线 | `6c0d32f2232d5f7db754b3569debdebde1a1906d` |
 | 本机环境 | macOS 26.6.2、Apple arm64、Go 1.26.5、Node.js 24.19.0、uv 0.11.32 |
-| 项目运行 | 根 `docker-compose.yml`；Go Core、Python Agent、Web、PostgreSQL、Redis、MinIO 共 6 个服务均为 `healthy`；API `/readyz` 与 Web `/healthz` 均返回 HTTP 200 |
+| 项目运行 | 根 `docker-compose.yml`；Go Core、Python Agent、Web、PostgreSQL、Redis、MinIO 共 6 个服务均为 `healthy`；API `/readyz` 与 Web 首页均返回 HTTP 200 |
 | 自动化环境 | 本机既有工具链与可丢弃测试库；GitHub Actions Ubuntu Runner 与隔离 PostgreSQL、Redis、MinIO、Fresh Compose Project |
-| 远端证据 | [GitHub Actions 33212372771](https://github.com/StephenQiu30/hotkey-server/actions/runs/33212372771)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose、Fresh-container browser 与最终 `All acceptance gates` 全部 `success` |
+| 远端证据 | [GitHub Actions 33216292257](https://github.com/StephenQiu30/hotkey-server/actions/runs/33216292257)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose、Fresh-container browser 与最终 `All acceptance gates` 全部 `success` |
 
 ## P0 主故事现状矩阵
 
@@ -40,7 +40,7 @@ verification_date: "2026-08-29"
 | 环节 | 当前代码/事实源 | API 与页面 | 可复核测试证据 | 当前结论 |
 |---|---|---|---|---|
 | 登录与身份 | `backend/internal/modules/identity/`、`users`、`auth_sessions` | `/api/v1/auth/login`、`/api/v1/auth/me`、Dashboard Shell | `TestFourRoleSessionLifecycleUsesCurrentRoleAndNeverResurrectsRevokedSessions`；Fresh-container 真实登录 | 已实现；完整四角色 UAT 未执行 |
-| Monitor | `backend/internal/modules/monitor/`、`monitors` 与不可变配置版本 | `/api/v1/monitors`、`/dashboard/settings` | `make monitor-publication-acceptance` 及所有权负向测试 | 已实现；浏览器主故事当前使用固定 Monitor Fixture |
+| Monitor | `backend/internal/modules/monitor/`、`monitors` 与不可变配置版本 | `/api/v1/monitors`、`/dashboard/settings` | `make monitor-publication-acceptance`、`TestMonitorListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert` 及所有权负向测试 | 已实现；列表使用可见性绑定的短期签名高水位游标，并发新增不污染既有遍历；浏览器主故事当前使用固定 Monitor Fixture |
 | 来源、采集与原始证据 | `backend/internal/modules/source/`、MinIO 对象、采集事实与 River Job | `/api/v1/sources`、`/api/v1/monitors/{id}/collect`、`/dashboard/sources` | `TestRSSHNPipelineRecovery`、四点 Worker Recovery、对象写入失败零条目事实测试 | 已实现自动化链；本轮未执行真实 RSS/HN/X 授权冒烟 |
 | 内容、事件与研判 | `backend/internal/modules/ingestion/`、`event/`、`intelligence/` 与根 `agent/` | `/api/v1/contents`、事件 API、`/dashboard/contents`、`/dashboard/events` | Agent 契约/降级、Evidence 白名单、事件语义与治理门禁 | 已实现自动化链；真实模型质量批准另由 003 管理 |
 | 通知 | `notification_outbox_events`、`user_notifications`、`notification_read_receipts` | `/api/v1/notifications`、WebSocket、`/dashboard/notifications` | `make notification-convergence-acceptance`；浏览器 Fixture 精确产生 2 条报告通知 | 当前事实、重放和跨设备收敛已验证 |
@@ -145,6 +145,16 @@ verification_date: "2026-08-29"
 - CI 证据：远端运行 `33212372771` 的 8 个执行 Job 和最终聚合门禁全部为 `success`，其中 Backend test 为 9 分 32 秒，Fresh-container browser 为 4 分 7 秒；
 - 边界：Notification 的 `after_id` 是跨离线周期持久重放位置而不是短期页面游标，按 004 契约保留；本证据只关闭内容与热点列表子项，不能替代其余 P0 列表的统一矩阵。
 
+### `EV-001-012`：Monitor 列表签名高水位游标
+
+- 映射：`CHK-001-G3-004`、`AC-001-010`；
+- 结果：Monitor 列表子项通过，`CHK-001-G3-004` 仍不关闭；
+- 失败证据：`TestMonitorListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert` 在修复前稳定复现第一页返回后新建的第 4 个 Monitor 错误进入第二页，证明旧 ID 游标没有固定一次遍历的新增边界；
+- 代码证据：提交 `6ef7308842d1aebdc4907a29a8397b2e57071b73` 将 `/api/v1/monitors` 使用的 Repository 游标改为短期签名 `monitor_list` 结构，绑定 Viewer/Owner 可见性指纹、首次可见最大 ID 和上一页边界 ID，后续查询固定 `id <= snapshot_id`；提交 `6c0d32f2232d5f7db754b3569debdebde1a1906d` 进一步让普通与复合游标统一使用严格 URL-safe Base64 解码，拒绝同一签名字节的非规范文本别名；既有 OpenAPI 继续使用不透明字符串，无契约漂移；
+- 测试证据：同一 PostgreSQL 测试覆盖并发新增排除、篡改、过期、跨 Owner、跨 PublishedOnly 视图和超大页拒绝，并连续运行 20 次通过；`TestCodecRejectsNonCanonicalSignatureEncoding` 对普通与复合游标保存确定性回归；`TestP0UserListCursorsUseSignedExpiringCodec` 固定生产 Bootstrap 注入统一 Codec，且 `monitor_list` 必须调用 `Seal/Open`；
+- CI 证据：远端运行 `33215012565` 首次在 Linux 精确捕获非规范 Base64 别名导致的偶发测试失败，其余 7 个执行 Job 通过；严格解码修复后，远端运行 `33216292257` 的 8 个执行 Job 和最终聚合门禁全部为 `success`，其中 Backend test 为 10 分 14 秒，Fresh-container browser 为 3 分 9 秒；
+- 边界：本证据冻结同一次 Monitor 遍历的新增 ID 高水位并绑定当前可见性查询形态，不扩大解释为可变状态的历史时间旅行快照；其他 P0 列表仍须分别完成统一矩阵。
+
 ## AC 结果
 
 | AC | 结果 | 说明 |
@@ -158,7 +168,7 @@ verification_date: "2026-08-29"
 | `AC-001-007` | passed | 见 `EV-001-004` |
 | `AC-001-008` | passed | 见 `EV-001-005` |
 | `AC-001-009` | partial | 多个关键写入已有授权、幂等、版本、冲突和审计测试，但尚无全 P0 写入口统一矩阵 |
-| `AC-001-010` | partial | 日报、微事件 Evidence、全文检索结果、内容/热点、运维任务与审计日志列表已覆盖签名、过期、主体/筛选/资源绑定、篡改拒绝和并发新增期间稳定遍历；尚无全部 P0 列表的统一矩阵 |
+| `AC-001-010` | partial | 日报、微事件 Evidence、全文检索结果、内容/热点、Monitor、运维任务与审计日志列表已覆盖签名、过期、主体/筛选/资源绑定、篡改拒绝和并发新增期间稳定遍历；尚无全部 P0 列表的统一矩阵 |
 
 ## 实际命令与结果摘要
 
@@ -167,10 +177,10 @@ backend: make ci
 frontend: npm run openapi:check; npm run typecheck; npm run test:unit; npm audit --omit=dev --audit-level=high; npm run build
 agent: uv run ruff format --check .; uv run ruff check .; uv run mypy src; uv run pytest; uv run pip-audit
 repository: docker compose -f docker-compose.yml config --quiet; docker compose --env-file .env.prod.example -f docker-compose-prod.yml config --quiet（必填生产变量使用 CI 合成值注入）; git diff --check
-specialized: make agent-degradation-acceptance; make agent-skill-contract-acceptance; make report-publication-acceptance; make m4-fault-recovery-acceptance; go run ./test/runner test ./internal/modules/search/... -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/event/infrastructure/postgres -run 'TestMicroEvent(EvidenceCursorIsSignedBoundExpiringAndSnapshotStable|LexicalSearchUsesSnapshotKeysetOrdering)' -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/ingestion/infrastructure/postgres -run 'TestContent(CursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentChanges|RepositoryListsOnlyActiveContentWithPublishedCursor|RepositorySearchFiltersLatestMatchAndStableRelevanceCursor)' -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/operations/infrastructure/postgres -run 'Test(JobRepositoryCursorIsSignedBoundExpiringAndSnapshotStable|GovernanceAuditCursorIsSignedBoundExpiringAndStableAcrossConcurrentInsert)' -count=1; go run ./test/runner test ./test/architecture -count=1
+specialized: make agent-degradation-acceptance; make agent-skill-contract-acceptance; make report-publication-acceptance; make m4-fault-recovery-acceptance; go run ./test/runner test ./internal/modules/search/... -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/event/infrastructure/postgres -run 'TestMicroEvent(EvidenceCursorIsSignedBoundExpiringAndSnapshotStable|LexicalSearchUsesSnapshotKeysetOrdering)' -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/ingestion/infrastructure/postgres -run 'TestContent(CursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentChanges|RepositoryListsOnlyActiveContentWithPublishedCursor|RepositorySearchFiltersLatestMatchAndStableRelevanceCursor)' -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/monitor/infrastructure/postgres -run TestMonitorListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert -count=20; go run ./test/runner test ./internal/shared/pagination -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/operations/infrastructure/postgres -run 'Test(JobRepositoryCursorIsSignedBoundExpiringAndSnapshotStable|GovernanceAuditCursorIsSignedBoundExpiringAndStableAcrossConcurrentInsert)' -count=1; go run ./test/runner test ./test/architecture -count=1
 ```
 
-本机全量结果通过；前端 252 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33212372771` 的 8 个执行 Job 和最终聚合门禁全部通过，其中 Backend test 为 9 分 32 秒，Fresh-container browser 为 4 分 7 秒。记录期间并行出现但未纳入本验收提交的前端工作区改动不计入该基线。
+本机全量结果通过；前端 252 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33216292257` 的 8 个执行 Job 和最终聚合门禁全部通过，其中 Backend test 为 10 分 14 秒，Fresh-container browser 为 3 分 9 秒。记录期间并行出现但未纳入本验收提交的前端工作区改动不计入该基线。
 
 ## 未完成项与停止条件
 
@@ -178,14 +188,14 @@ specialized: make agent-degradation-acceptance; make agent-skill-contract-accept
 - `CHK-001-G2-001`：等待完整人工键盘/焦点矩阵，不以自动 Tab 与 WCAG 扫描替代；
 - `CHK-001-G3-002`：等待同一隔离恢复副本上的联合恢复、对账和真实 RPO/RTO；
 - `CHK-001-G3-003`：等待所有 P0 关键写入口的统一副作用、事实计数和追加审计矩阵；
-- `CHK-001-G3-004`：日报、微事件 Evidence、全文检索结果、内容/热点、运维任务与审计日志列表子项已完成；等待其余 P0 列表的并列排序、并发新增、连续遍历和越权/篡改/过期游标矩阵。
+- `CHK-001-G3-004`：日报、微事件 Evidence、全文检索结果、内容/热点、Monitor、运维任务与审计日志列表子项已完成；等待其余 P0 列表的并列排序、并发新增、连续遍历和越权/篡改/过期游标矩阵。
 
 以上任一项缺失时，本 Acceptance 不得改为 `passed`，001 Plan/PRD 不得改为 `completed/implemented`。
 
 ## 影响与回滚验证
 
-- Schema、运行配置和部署拓扑：无变更；OpenAPI 的日报、微事件 Evidence、全文检索、内容/热点、运维任务与审计日志 `cursor`/`next_cursor` 使用不透明字符串；
-- 运行影响：日报列表拒绝篡改、过期或跨筛选复用的游标，微事件 Evidence 列表拒绝篡改、过期或跨事件复用的游标，全文检索拒绝篡改、过期、跨主体或跨筛选复用的游标并冻结遍历快照，内容/热点列表拒绝篡改、过期或跨筛选/排序复用并以首屏指标快照稳定后续页，运维任务列表拒绝篡改、过期、跨管理员或跨筛选复用并修复分页漏项，审计日志列表拒绝篡改、过期、跨管理员或跨筛选复用；项目继续由根 Compose 运行，测试继续使用本机锁定工具链和可丢弃测试服务；
+- Schema、运行配置和部署拓扑：无变更；OpenAPI 的日报、微事件 Evidence、全文检索、内容/热点、Monitor、运维任务与审计日志 `cursor`/`next_cursor` 使用不透明字符串；
+- 运行影响：日报列表拒绝篡改、过期或跨筛选复用的游标，微事件 Evidence 列表拒绝篡改、过期或跨事件复用的游标，全文检索拒绝篡改、过期、跨主体或跨筛选复用的游标并冻结遍历快照，内容/热点列表拒绝篡改、过期或跨筛选/排序复用并以首屏指标快照稳定后续页，Monitor 列表拒绝篡改、过期或跨可见性复用并排除首屏后的新增 ID，运维任务列表拒绝篡改、过期、跨管理员或跨筛选复用并修复分页漏项，审计日志列表拒绝篡改、过期、跨管理员或跨筛选复用；所有签名游标拒绝非规范 Base64 别名；项目继续由根 Compose 运行，测试继续使用本机锁定工具链和可丢弃测试服务；
 - 回滚：若证据引用失效，回退本文件对应 EV 和 Plan 勾选即可，不删除业务事实、对象、Vault 内容或任务历史；架构契约会在引用的测试、命令或门禁状态漂移时失败；
 - 已知限制：本文件固定的代码基线早于记录本文件的提交；记录提交由同一 CI 再验证，但不以无法实现的“提交自引用哈希”冒充证据。
 
