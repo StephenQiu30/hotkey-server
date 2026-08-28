@@ -118,6 +118,9 @@ func (service *Service) ListUserNotifications(ctx context.Context, query ListUse
 		if item.UserID != normalized.UserID {
 			return ListUserNotificationsResult{}, sharedrepository.ErrConstraint
 		}
+		if normalized.MonitorID != nil && item.MonitorID != *normalized.MonitorID {
+			return ListUserNotificationsResult{}, sharedrepository.ErrConstraint
+		}
 		if err := ValidateUserNotificationDTO(item); err != nil {
 			return ListUserNotificationsResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
 		}

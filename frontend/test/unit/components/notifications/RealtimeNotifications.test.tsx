@@ -1,4 +1,4 @@
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RealtimeNotifications } from "@/components/notifications/RealtimeNotifications";
 import { setAccessToken } from "@/lib/authSession";
@@ -23,6 +23,7 @@ describe("RealtimeNotifications", () => {
   afterEach(() => {
     cleanup();
     globalThis.WebSocket = originalWebSocket;
+    vi.useRealTimers();
   });
 
   beforeEach(() => {
@@ -124,5 +125,86 @@ describe("RealtimeNotifications", () => {
     expect(useNotificationStore.getState().transport).toBe("polling");
     expect(useNotificationStore.getState().items[0]?.title).toBe("补拉热点");
     expect(mocks.toast).not.toHaveBeenCalled();
+  });
+
+  it("recovers after cursor N and suppresses a duplicate frame after reconnect", async () => {
+    vi.useFakeTimers();
+    localStorage.setItem(
+      "hotkey.notifications.v2.7",
+      JSON.stringify({ lastEventID: 10, readThroughID: 0 }),
+    );
+    const sockets: Array<{ sent: string[] }> = [];
+    const notification = (id: number, title: string): HotKeyAPI.UserNotificationResponseDTO => ({
+      id, version: 1, monitor_id: 2, event_type: "micro_event.updated",
+      resource_type: "micro_event", resource_id: id, resource_version: 1,
+      occurred_at: "2026-08-08T00:00:00Z", created_at: "2026-08-08T00:00:00Z",
+      title, summary: `游标 ${id}`, resource_status: "active",
+      deep_link: `/dashboard/events?event=${id}`,
+    });
+    class RecoveringWebSocket extends EventTarget {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      readonly sent: string[] = [];
+      readyState = RecoveringWebSocket.CONNECTING;
+
+      constructor() {
+        super();
+        sockets.push(this);
+        queueMicrotask(() => {
+          this.readyState = RecoveringWebSocket.OPEN;
+          this.dispatchEvent(new Event("open"));
+        });
+      }
+
+      send(value: string) {
+        this.sent.push(value);
+        const authentication = JSON.parse(value) as { after_id?: number };
+        const socketIndex = sockets.indexOf(this);
+        queueMicrotask(() => {
+          this.dispatchEvent(new MessageEvent("message", {
+            data: JSON.stringify({ type: "ready", after_id: authentication.after_id }),
+          }));
+          if (socketIndex === 0) {
+            this.dispatchNotification(notification(11, "在线通知 11"));
+            this.readyState = 3;
+            this.dispatchEvent(new CloseEvent("close", { code: 1006, wasClean: false }));
+            return;
+          }
+          this.dispatchNotification(notification(12, "补拉通知 12"));
+          this.dispatchNotification(notification(13, "重连通知 13"));
+        });
+      }
+
+      dispatchNotification(item: HotKeyAPI.UserNotificationResponseDTO) {
+        this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({
+          type: "notification", id: item.id, event: item.event_type, data: item,
+        }) }));
+      }
+
+      close() {
+        this.readyState = 3;
+        this.dispatchEvent(new CloseEvent("close", { code: 1000, wasClean: true }));
+      }
+    }
+    globalThis.WebSocket = RecoveringWebSocket as unknown as typeof WebSocket;
+    mocks.getNotifications
+      .mockResolvedValueOnce({ data: { items: [], next_after_id: 10 } })
+      .mockResolvedValueOnce({ data: { items: [notification(12, "补拉通知 12")], next_after_id: 12 } })
+      .mockResolvedValue({ data: { items: [], next_after_id: 12 } });
+
+    render(<RealtimeNotifications />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(mocks.getNotifications).toHaveBeenNthCalledWith(2, { after_id: 11, limit: 100 });
+    expect(useNotificationStore.getState().items.map((item) => item.id)).toEqual([12, 11]);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(sockets).toHaveLength(2);
+    expect(JSON.parse(sockets[1]?.sent[0] ?? "{}")).toMatchObject({ after_id: 12 });
+    expect(useNotificationStore.getState().items.map((item) => item.id)).toEqual([13, 12, 11]);
+    expect(mocks.toast.mock.calls.map(([title]) => title)).toEqual(["在线通知 11", "重连通知 13"]);
   });
 });

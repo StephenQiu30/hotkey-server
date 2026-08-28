@@ -205,6 +205,82 @@ func TestWebSocketAllowsConfiguredFrontendOriginBehindReverseProxy(t *testing.T)
 	}
 }
 
+func TestWebSocketRejectsAuthenticationFramesWithUnknownFields(t *testing.T) {
+	stub := &notificationServiceStub{}
+	handler := mustNotificationHandler(t, stub, StreamConfig{
+		PollInterval: time.Millisecond, HeartbeatInterval: time.Second, MaxConnections: 2,
+	})
+	router := gin.New()
+	RegisterRoutes(router, handler, notificationAuthenticator{role: httptransport.RoleViewer})
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	connection, response, err := websocket.Dial(ctx, server.URL+"/api/v1/notifications/ws", &websocket.DialOptions{
+		Subprotocols: []string{"hotkey.notifications.v1"},
+	})
+	if err != nil {
+		status := 0
+		if response != nil {
+			status = response.StatusCode
+		}
+		t.Fatalf("websocket dial status=%d error=%v", status, err)
+	}
+	defer connection.CloseNow()
+	if err := wsjson.Write(ctx, connection, map[string]any{
+		"type": "authenticate", "token": "fixture", "after_id": 0, "injected": true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var frame notificationWebSocketControlFrame
+	err = wsjson.Read(ctx, connection, &frame)
+	if err == nil {
+		t.Fatalf("unknown authentication field was accepted: %#v", frame)
+	}
+	if status := websocket.CloseStatus(err); status != websocket.StatusPolicyViolation {
+		t.Fatalf("close status = %d, want %d: %v", status, websocket.StatusPolicyViolation, err)
+	}
+}
+
+func TestWebSocketClosesWhenClientSendsBusinessFramesAfterAuthentication(t *testing.T) {
+	stub := &notificationServiceStub{}
+	handler := mustNotificationHandler(t, stub, StreamConfig{
+		PollInterval: time.Second, HeartbeatInterval: time.Second, MaxConnections: 2,
+	})
+	router := gin.New()
+	RegisterRoutes(router, handler, notificationAuthenticator{role: httptransport.RoleViewer})
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	connection, _, err := websocket.Dial(ctx, server.URL+"/api/v1/notifications/ws", &websocket.DialOptions{
+		Subprotocols: []string{"hotkey.notifications.v1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.CloseNow()
+	if err := wsjson.Write(ctx, connection, map[string]any{
+		"type": "authenticate", "token": "fixture", "after_id": 0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var ready notificationWebSocketControlFrame
+	if err := wsjson.Read(ctx, connection, &ready); err != nil || ready.Type != "ready" {
+		t.Fatalf("ready frame = %#v / %v", ready, err)
+	}
+	if err := wsjson.Write(ctx, connection, map[string]any{"type": "inject_notification"}); err != nil {
+		t.Fatal(err)
+	}
+	var response notificationWebSocketControlFrame
+	err = wsjson.Read(ctx, connection, &response)
+	if status := websocket.CloseStatus(err); status != websocket.StatusPolicyViolation {
+		t.Fatalf("close status = %d, want %d: %v", status, websocket.StatusPolicyViolation, err)
+	}
+}
+
 func TestWebSocketEmitsHeartbeatAndRejectsConnectionsAboveCapacity(t *testing.T) {
 	stub := &notificationServiceStub{}
 	handler := mustNotificationHandler(t, stub, StreamConfig{

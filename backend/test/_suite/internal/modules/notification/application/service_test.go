@@ -58,6 +58,27 @@ func TestServiceRejectsInvalidUserBeforeRepository(t *testing.T) {
 	}
 }
 
+func TestServiceRejectsNotificationOutsideRequestedMonitor(t *testing.T) {
+	now := time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)
+	requestedMonitorID := int64(4)
+	repository := &notificationRepositoryStub{page: ListUserNotificationsResult{
+		Items: []UserNotificationDTO{{
+			ID: 9, Version: 1, OutboxEventID: 11, UserID: 7, MonitorID: 5,
+			EventType: "micro_event.updated", ResourceType: "micro_event", ResourceID: 42, ResourceVersion: 2,
+			OccurredAt: now, Title: "越界 Monitor 通知", ResourceStatus: "active",
+			DeepLink: "/dashboard/events?event=42", CreatedAt: now,
+		}},
+		NextAfterID: 9,
+	}}
+	service, _ := NewService(repository)
+
+	if _, err := service.ListUserNotifications(context.Background(), ListUserNotificationsQuery{
+		UserID: 7, MonitorID: &requestedMonitorID, Limit: 10,
+	}); !errors.Is(err, sharedrepository.ErrConstraint) {
+		t.Fatalf("ListUserNotifications(cross-monitor result) error = %v, want constraint", err)
+	}
+}
+
 func TestServiceValidatesIndependentDeliveryAttempt(t *testing.T) {
 	repository := &notificationRepositoryStub{}
 	service, _ := NewService(repository)

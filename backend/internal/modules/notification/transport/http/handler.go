@@ -1,9 +1,12 @@
 package http
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	stdhttp "net/http"
 	"strconv"
 	"strings"
@@ -145,8 +148,7 @@ func (handler *Handler) WebSocket(authenticator httptransport.Authenticator) gin
 		connection.SetReadLimit(notificationWebSocketReadLimit)
 
 		authenticationContext, cancelAuthentication := context.WithTimeout(context.Background(), notificationWebSocketAuthTimeout)
-		var authentication notificationWebSocketAuthenticateFrame
-		err = wsjson.Read(authenticationContext, connection, &authentication)
+		authentication, err := readNotificationWebSocketAuthentication(authenticationContext, connection)
 		if err == nil {
 			err = validateNotificationWebSocketAuthentication(authentication)
 		}
@@ -206,6 +208,24 @@ func (handler *Handler) WebSocket(authenticator httptransport.Authenticator) gin
 			}
 		}
 	}
+}
+
+func readNotificationWebSocketAuthentication(ctx context.Context, connection *websocket.Conn) (notificationWebSocketAuthenticateFrame, error) {
+	messageType, payload, err := connection.Read(ctx)
+	if err != nil || messageType != websocket.MessageText {
+		return notificationWebSocketAuthenticateFrame{}, invalidNotificationRequest()
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	var frame notificationWebSocketAuthenticateFrame
+	if err := decoder.Decode(&frame); err != nil {
+		return notificationWebSocketAuthenticateFrame{}, invalidNotificationRequest()
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return notificationWebSocketAuthenticateFrame{}, invalidNotificationRequest()
+	}
+	return frame, nil
 }
 
 func validateNotificationWebSocketAuthentication(frame notificationWebSocketAuthenticateFrame) error {
