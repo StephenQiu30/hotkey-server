@@ -14,6 +14,8 @@ describe("dashboard menu", () => {
       { path: "/dashboard/settings", name: "监控" },
       { path: "/dashboard/sources", name: "来源" },
       { path: "/dashboard/search", name: "全文检索" },
+      { path: "/dashboard/reports", name: "日报" },
+      { path: "/dashboard/knowledge", name: "知识投影" },
       { path: "/dashboard/contents", name: "热点雷达" },
       { path: "/dashboard/events", name: "语义事件" },
     ]);
@@ -38,5 +40,12 @@ describe("dashboard menu", () => {
       dashboardMenuItems.find((item) => item.path === "/dashboard/sources")
         ?.roles
     ).toBeUndefined();
+  });
+
+  it("keeps knowledge publishing inside the editor and administrator boundary", () => {
+    expect(
+      dashboardMenuItems.find((item) => item.path === "/dashboard/knowledge")
+        ?.roles,
+    ).toEqual([UserRole.Editor, UserRole.Admin]);
   });
 });

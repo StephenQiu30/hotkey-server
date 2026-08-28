@@ -4,9 +4,11 @@ package postgres
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
@@ -220,6 +222,63 @@ VALUES ($1, 3, 'metric_changed', '事务回滚', $2, '{}', repeat('f',64), repea
 	}
 	if _, err := runtime.SQL.ExecContext(ctx, `DELETE FROM notification_events WHERE id=(SELECT min(id) FROM notification_events)`); err == nil {
 		t.Fatal("notification outbox DELETE succeeded, want append-only rejection")
+	}
+}
+
+func TestReportLifecycleProjectsUserNotificationWithSafeDeepLink(t *testing.T) {
+	ctx := context.Background()
+	runtime := openNotificationRuntime(t, ctx)
+	repository := NewRepository(runtime)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	var userID int64
+	if err := runtime.SQL.QueryRowContext(ctx, `
+INSERT INTO users(email,password_hash,display_name,role)
+VALUES ('report-inbox@example.test','fixture','日报审批人','editor') RETURNING id`).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	var monitorID int64
+	if err := runtime.SQL.QueryRowContext(ctx, `
+INSERT INTO monitors(name,created_by,status) VALUES ('日报通知监控',$1,'active') RETURNING id`, userID).Scan(&monitorID); err != nil {
+		t.Fatal(err)
+	}
+	var reportID int64
+	if err := runtime.SQL.QueryRowContext(ctx, `
+INSERT INTO reports(report_type,monitor_id,period_start,period_end,timezone,title,created_by,updated_by)
+VALUES ('daily',$1,$2::timestamptz,$2::timestamptz + interval '1 day','UTC','日报审批 Fixture',$3,$3) RETURNING id`, monitorID, now, userID).Scan(&reportID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `
+UPDATE reports SET version=version+1,status='pending_approval',submitted_at=$2,submitted_by=$3,updated_by=$3,updated_at=$2
+WHERE id=$1`, reportID, now.Add(time.Second), userID); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := repository.ListUserNotifications(ctx, application.ListUserNotificationsQuery{UserID: userID, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("pending report notification count = %d, want 1", len(page.Items))
+	}
+	pending := page.Items[0]
+	if pending.EventType != "report.approval_requested" || pending.ResourceType != "report" ||
+		pending.ResourceID != reportID || pending.ResourceVersion != 2 || pending.ResourceStatus != "pending_approval" ||
+		pending.DeepLink != "/dashboard/reports?report="+strconv.FormatInt(reportID, 10) {
+		t.Fatalf("pending report notification = %#v", pending)
+	}
+
+	if _, err := runtime.SQL.ExecContext(ctx, `
+UPDATE reports SET version=version+1,status='published',reviewed_at=$2,reviewed_by=$3,published_at=$2,updated_by=$3,updated_at=$2
+WHERE id=$1`, reportID, now.Add(2*time.Second), userID); err != nil {
+		t.Fatal(err)
+	}
+	page, err = repository.ListUserNotifications(ctx, application.ListUserNotificationsQuery{UserID: userID, AfterID: pending.ID, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].EventType != "report.published" || page.Items[0].ResourceVersion != 3 {
+		t.Fatalf("published report notification = %#v", page.Items)
 	}
 }
 

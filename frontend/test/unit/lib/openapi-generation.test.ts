@@ -201,7 +201,7 @@ describe("Umi OpenAPI generation contract", () => {
     }
   });
 
-  it("does not regenerate retired product clients or DTOs", () => {
+  it("generates the active report and knowledge clients without reviving other retired surfaces", () => {
     const generatedRoot = path.resolve(
       repositoryRoot,
       "src/services/hotkey/hotkey-server",
@@ -211,10 +211,12 @@ describe("Umi OpenAPI generation contract", () => {
       "alerts.ts",
       "delivery.ts",
       "events.ts",
-      "knowledge.ts",
-      "reports.ts",
     ]) {
       expect(fs.existsSync(path.join(generatedRoot, service)), service).toBe(false);
+    }
+
+    for (const service of ["knowledge.ts", "reports.ts"]) {
+      expect(fs.existsSync(path.join(generatedRoot, service)), service).toBe(true);
     }
 
     const typeSource = fs.readFileSync(
@@ -224,12 +226,12 @@ describe("Umi OpenAPI generation contract", () => {
     for (const retiredType of [
       "AlertThreadResponse",
       "EventResponse",
-      "ProposalResponse",
-      "ReportResponse",
       "SubscriptionResponse",
       "TokenResponse",
     ]) {
       expect(typeSource, retiredType).not.toContain(`type ${retiredType}`);
     }
+    expect(typeSource).toContain("type ProposalResponse");
+    expect(typeSource).toContain("type ReportResponse");
   });
 });

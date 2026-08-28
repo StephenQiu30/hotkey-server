@@ -527,6 +527,13 @@ required property without making explicit null impossible to bind. */
     source_connection_ids: number[];
   };
 
+  type CreateReportRequest = {
+    at?: string;
+    monitor_id?: number;
+    timezone: string;
+    type: "daily" | "weekly";
+  };
+
   type CreateRightsPolicyRequestDTO = {
     approved_by_user_id?: number;
     basis_summary?: string;
@@ -619,6 +626,24 @@ required property without making explicit null impossible to bind. */
     rank?: number;
     raw_score?: number;
   };
+
+  type DocumentResponse = {
+    contentHash?: string;
+    eventID?: number;
+    generatedHash?: string;
+    id?: number;
+    reportID?: number;
+    revisionNo?: number;
+    status?: string;
+    topicID?: number;
+    type?: string;
+    vaultPath?: string;
+    version?: number;
+  };
+
+  type EmptyResponse = true;
+
+  type EmptyResponse = true;
 
   type EmptyResponse = true;
 
@@ -766,6 +791,21 @@ required property without making explicit null impossible to bind. */
     decision?: "accepted" | "review" | "rejected";
     /** sort order */
     sort?: "discovered" | "published" | "importance" | "relevance" | "heat";
+  };
+
+  type getKnowledgeDocumentsIdParams = {
+    /** document ID */
+    id: number;
+  };
+
+  type getKnowledgeProposalsIdParams = {
+    /** proposal ID */
+    id: number;
+  };
+
+  type getKnowledgeProposalsParams = {
+    /** proposal status */
+    status?: string;
   };
 
   type getMicroEventsIdEvidenceParams = {
@@ -922,6 +962,22 @@ required property without making explicit null impossible to bind. */
     state?: string;
     /** page size */
     limit?: number;
+  };
+
+  type getReportsIdParams = {
+    /** report ID */
+    id: number;
+  };
+
+  type getReportsParams = {
+    /** report id cursor */
+    cursor?: number;
+    /** page size */
+    limit?: number;
+    /** daily or weekly */
+    type?: string;
+    /** draft, pending_approval, published, rejected, failed or archived */
+    status?: string;
   };
 
   type getSearchParams = {
@@ -1812,6 +1868,27 @@ probability or a cross-channel relevance percentage. */
     id: number;
   };
 
+  type postKnowledgeProposalsIdApplyParams = {
+    /** proposal ID */
+    id: number;
+    /** proposal version */
+    version: number;
+  };
+
+  type postKnowledgeProposalsIdApproveParams = {
+    /** proposal ID */
+    id: number;
+    /** proposal version */
+    version: number;
+  };
+
+  type postKnowledgeProposalsIdRejectParams = {
+    /** proposal ID */
+    id: number;
+    /** proposal version */
+    version: number;
+  };
+
   type postMetricCapabilityProfilesIdArchiveParams = {
     /** metric capability profile ID */
     id: number;
@@ -1947,6 +2024,31 @@ probability or a cross-channel relevance percentage. */
     id: number;
   };
 
+  type postReportsIdApproveParams = {
+    /** report ID */
+    id: number;
+  };
+
+  type postReportsIdBuildParams = {
+    /** report ID */
+    id: number;
+  };
+
+  type postReportsIdPreviewParams = {
+    /** report ID */
+    id: number;
+  };
+
+  type postReportsIdRejectParams = {
+    /** report ID */
+    id: number;
+  };
+
+  type postReportsIdSubmitParams = {
+    /** report ID */
+    id: number;
+  };
+
   type postSourceConnectionsIdArchiveParams = {
     /** source connection ID */
     id: number;
@@ -2016,6 +2118,64 @@ probability or a cross-channel relevance percentage. */
     unapproved_rule_ids?: number[];
   };
 
+  type ProposalRequest = {
+    base_hash?: string;
+    base_revision?: number;
+    body?: string;
+    document_id?: number;
+    frontmatter?: string;
+    reason?: string;
+  };
+
+  type ProposalResponse = {
+    baseHash?: string;
+    baseRevisionNo?: number;
+    diffSummary?: string;
+    documentID?: number;
+    id?: number;
+    proposedBody?: string;
+    proposedFrontmatter?: string;
+    reason?: string;
+    status?: string;
+    version?: number;
+  };
+
+  type ProposalResultArrayHttpDocumentResponse = {
+    code?: number;
+    data?: DocumentResponse[];
+    message?: string;
+  };
+
+  type ProposalResultArrayHttpProposalResponse = {
+    code?: number;
+    data?: ProposalResponse[];
+    message?: string;
+  };
+
+  type ProposalResultHttpDocumentResponse = {
+    code?: number;
+    data?: DocumentResponse;
+    message?: string;
+  };
+
+  type ProposalResultHttpProposalResponse = {
+    code?: number;
+    data?: ProposalResponse;
+    message?: string;
+  };
+
+  type ProposalResultHttpReconciliationResponse = {
+    code?: number;
+    data?: ReconciliationResponse;
+    message?: string;
+  };
+
+  type ProposalResultInternalModulesKnowledgeTransportHttpEmptyResponse = {
+    code?: number;
+    data?: EmptyResponse;
+    message?: string;
+  };
+
   type PublishRequest = {
     /** Gin must not apply required directly to this nullable wrapper: both an
 explicit JSON null and a positive integer are valid. The application
@@ -2052,6 +2212,20 @@ required property without making explicit null impossible to bind. */
   type putMonitorsIdParams = {
     /** monitor ID */
     id: number;
+  };
+
+  type ReconciliationIssueResponse = {
+    actualHash?: string;
+    expectedHash?: string;
+    kind?: string;
+    path?: string;
+  };
+
+  type ReconciliationResponse = {
+    changed?: number;
+    conflict?: number;
+    issues?: ReconciliationIssueResponse[];
+    scanned?: number;
   };
 
   type RecordClaimEvidenceRequestDTO = {
@@ -2235,6 +2409,101 @@ required property without making explicit null impossible to bind. */
     examples?: IntentExampleRequestDTO[];
     expected_resource_version?: number;
     objective: string;
+  };
+
+  type ReportItemResponse = {
+    event_id?: number;
+    event_update_id?: number;
+    evidence_set_hash?: string;
+    heat_score?: number;
+    inclusion_reason?: string;
+    micro_event_id?: number;
+    micro_event_summary_id?: number;
+    micro_event_update_id?: number;
+    micro_event_version?: number;
+    rank?: number;
+    reason_codes?: string[];
+    sentences?: ReportSentenceResponse[];
+    summary?: string;
+    title?: string;
+  };
+
+  type ReportPageResponse = {
+    items?: ReportResponse[];
+    next_cursor?: number;
+  };
+
+  type ReportPreviewResponse = {
+    approvable?: boolean;
+    report?: ReportResponse;
+    submittable?: boolean;
+  };
+
+  type ReportResponse = {
+    body?: string;
+    created_by?: number;
+    frozen?: boolean;
+    generated_at?: string;
+    id?: number;
+    input_snapshot_hash?: string;
+    items?: ReportItemResponse[];
+    monitor_id?: number;
+    period_end?: string;
+    period_start?: string;
+    published_at?: string;
+    review_reason?: string;
+    reviewed_at?: string;
+    reviewed_by?: number;
+    status?: string;
+    submitted_at?: string;
+    submitted_by?: number;
+    summary?: string;
+    timezone?: string;
+    title?: string;
+    type?: string;
+    updated_by?: number;
+    version?: number;
+    version_no?: number;
+  };
+
+  type ReportResultHttpReportPageResponse = {
+    code?: number;
+    data?: ReportPageResponse;
+    message?: string;
+  };
+
+  type ReportResultHttpReportPreviewResponse = {
+    code?: number;
+    data?: ReportPreviewResponse;
+    message?: string;
+  };
+
+  type ReportResultHttpReportResponse = {
+    code?: number;
+    data?: ReportResponse;
+    message?: string;
+  };
+
+  type ReportResultInternalModulesReportTransportHttpEmptyResponse = {
+    code?: number;
+    data?: EmptyResponse;
+    message?: string;
+  };
+
+  type ReportRevisionLifecycleRequest = {
+    expected_resource_version: number;
+    reason_code?: string;
+  };
+
+  type ReportSentenceResponse = {
+    actor_user_id?: number;
+    claim_evidence_version_ids?: number[];
+    decision_origin?: string;
+    editorial_note?: boolean;
+    model_run_id?: number;
+    ordinal?: number;
+    source_summary_sentence_id?: number;
+    text?: string;
   };
 
   type RequestVerificationRequest = {

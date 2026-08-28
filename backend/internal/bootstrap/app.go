@@ -39,6 +39,7 @@ import (
 	knowledgeminio "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/minio"
 	knowledgepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/postgres"
 	knowledgevault "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/vault"
+	knowledgetransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/transport/http"
 	monitorapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/application"
 	monitordomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/domain"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
@@ -50,6 +51,9 @@ import (
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 	operationstransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/transport/http"
+	reportapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/application"
+	reportpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/infrastructure/postgres"
+	reporttransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/transport/http"
 	searchapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/search/application"
 	searchdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/search/domain"
 	searchtransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/search/transport/http"
@@ -194,6 +198,12 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newKnowledgeVaultWriter,
 				newKnowledgeProjectionService,
 				knowledgepostgres.NewRepository,
+				reportpostgres.NewRepository,
+				reportpostgres.NewCandidateReader,
+				newReportService,
+				newKnowledgeProposalService,
+				newKnowledgeReconciler,
+				newKnowledgeHandler,
 				newSearchAuthorizationReader,
 				newSearchService,
 				newTextQuoteSelectorService,
@@ -211,6 +221,9 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 			),
 			fx.Invoke(database.RegisterLifecycle),
 		)
+		if cfg.MinIO.ValidateRuntime() == nil {
+			options = append(options, fx.Provide(newKnowledgeSnapshotStore))
+		}
 	}
 	if role.StartsAPI() {
 		if err := cfg.ValidateAuthenticationRuntime(); err != nil {
@@ -259,7 +272,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newJobService,
 					newNotificationHandler,
 				),
-				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerInstantSearchRoutes, registerSearchRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerMicroEventRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes),
+				fx.Invoke(registerRuntimeMetricsCollector, registerIdentityVerificationStoreLifecycle, registerIdentityRoutes, registerSourceRoutes, registerRightsManagementRoutes, registerBilibiliWebhookRoutes, registerMetricCapabilityRoutes, registerCollectionRoutes, registerInstantSearchRoutes, registerSearchRoutes, registerMonitorRoutes, registerMonitorIntentRoutes, registerIngestionRoutes, registerIntelligenceRoutes, registerMicroEventRoutes, registerReportRoutes, registerKnowledgeRoutes, registerJobRoutes, registerOverviewRoutes, registerGovernanceRoutes, registerNotificationRoutes),
 			)
 		} else {
 			apiOptions = append(apiOptions, fx.Provide(httptransport.NewUnavailableAuthenticator))
@@ -301,7 +314,6 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					sourcejobs.NewXMetricRefreshHandler,
 					newXMetricRefreshScheduler,
 					exposeXMetricRefreshSchedulerRunner,
-					newKnowledgeSnapshotStore,
 					newKnowledgeRecoveryService,
 					newKnowledgeRecoveryHandler,
 				))
@@ -536,6 +548,14 @@ func newNotificationEmailDeliveryService(repository *notificationpostgres.Reposi
 
 func registerNotificationRoutes(router *gin.Engine, handler *notificationtransport.Handler, authenticator httptransport.Authenticator) {
 	notificationtransport.RegisterRoutes(router, handler, authenticator)
+}
+
+func registerReportRoutes(router *gin.Engine, service *reportapplication.Service, authenticator httptransport.Authenticator) {
+	reporttransport.RegisterRoutes(router, service, authenticator)
+}
+
+func registerKnowledgeRoutes(router *gin.Engine, handler *knowledgetransport.Handler, authenticator httptransport.Authenticator) {
+	knowledgetransport.RegisterRoutes(router, handler, authenticator)
 }
 
 func newEventContentMetricRefreshService(repository *eventpostgres.EventHeatRepository, refresh eventapplication.ProductEventRefreshScheduler) (*eventapplication.ContentMetricRefreshService, error) {
@@ -797,6 +817,33 @@ func newKnowledgeVaultWriter(cfg config.Config) *knowledgevault.Writer {
 
 func newKnowledgeProjectionService(writer *knowledgevault.Writer) (*knowledgeapplication.ProjectionService, error) {
 	return knowledgeapplication.NewProjectionService(writer)
+}
+
+func newReportService(repository *reportpostgres.Repository, candidates *reportpostgres.CandidateReader) (*reportapplication.Service, error) {
+	return reportapplication.NewService(repository, candidates)
+}
+
+type knowledgeProposalServiceParams struct {
+	fx.In
+
+	Repository *knowledgepostgres.Repository
+	Snapshots  *knowledgeminio.Store `optional:"true"`
+	Audit      *operationspostgres.AuditWriter
+}
+
+func newKnowledgeProposalService(params knowledgeProposalServiceParams) *knowledgeapplication.ProposalService {
+	if params.Snapshots != nil {
+		return knowledgeapplication.NewProposalService(params.Repository, params.Repository, params.Snapshots).WithVaultSecurityAudit(params.Audit)
+	}
+	return knowledgeapplication.NewProposalService(params.Repository, params.Repository).WithVaultSecurityAudit(params.Audit)
+}
+
+func newKnowledgeReconciler(repository *knowledgepostgres.Repository, writer *knowledgevault.Writer) *knowledgeapplication.Reconciler {
+	return knowledgeapplication.NewReconciler(repository, writer)
+}
+
+func newKnowledgeHandler(proposals *knowledgeapplication.ProposalService, repository *knowledgepostgres.Repository, reconciler *knowledgeapplication.Reconciler, writer *knowledgevault.Writer) *knowledgetransport.Handler {
+	return knowledgetransport.NewHandler(proposals, repository, reconciler, writer)
 }
 
 func newKnowledgeSnapshotStore(cfg config.Config) (*knowledgeminio.Store, error) {

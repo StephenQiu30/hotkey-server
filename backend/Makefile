@@ -1,6 +1,6 @@
 GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
-OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go,internal/modules/knowledge/transport/http,internal/modules/report
+OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go
 
 .PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance m4-fault-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 

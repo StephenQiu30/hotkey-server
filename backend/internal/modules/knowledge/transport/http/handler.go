@@ -36,6 +36,9 @@ func NewHandler(proposals *knowledgeapplication.ProposalService, reader proposal
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} ProposalResult[[]DocumentResponse]
+// @Failure 401 {object} ProposalResult[EmptyResponse]
+// @Failure 403 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/documents [get]
 func (handler *Handler) ListDocuments(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	reader, ok := handler.reader.(interface {
@@ -63,6 +66,10 @@ func (handler *Handler) ListDocuments(c *gin.Context) error {
 // @Security BearerAuth
 // @Param id path int true "document ID"
 // @Success 200 {object} ProposalResult[DocumentResponse]
+// @Failure 401 {object} ProposalResult[EmptyResponse]
+// @Failure 403 {object} ProposalResult[EmptyResponse]
+// @Failure 404 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/documents/{id} [get]
 func (handler *Handler) GetDocument(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	id, err := positivePathID(c, "document")
@@ -90,6 +97,9 @@ func (handler *Handler) GetDocument(c *gin.Context) error {
 // @Security BearerAuth
 // @Param status query string false "proposal status"
 // @Success 200 {object} ProposalResult[[]ProposalResponse]
+// @Failure 401 {object} ProposalResult[EmptyResponse]
+// @Failure 403 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/proposals [get]
 func (handler *Handler) ListProposals(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	status := knowledgedomain.ProposalStatus(c.Query("status"))
@@ -118,6 +128,10 @@ func (handler *Handler) ListProposals(c *gin.Context) error {
 // @Security BearerAuth
 // @Param id path int true "proposal ID"
 // @Success 200 {object} ProposalResult[ProposalResponse]
+// @Failure 401 {object} ProposalResult[EmptyResponse]
+// @Failure 403 {object} ProposalResult[EmptyResponse]
+// @Failure 404 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/proposals/{id} [get]
 func (handler *Handler) GetProposal(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	id, err := positivePathID(c, "proposal")
@@ -160,6 +174,7 @@ type EmptyResponse struct{}
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
 // @Failure 409 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/proposals [post]
 func (handler *Handler) Create(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	var request ProposalRequest
@@ -186,6 +201,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
 // @Failure 409 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/proposals/{id}/approve [post]
 func (handler *Handler) Approve(c *gin.Context) error {
 	return handler.change(c, knowledgedomain.ProposalApproved)
 }
@@ -202,6 +218,7 @@ func (handler *Handler) Approve(c *gin.Context) error {
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
 // @Failure 409 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/proposals/{id}/reject [post]
 func (handler *Handler) Reject(c *gin.Context) error {
 	return handler.change(c, knowledgedomain.ProposalRejected)
 }
@@ -237,6 +254,7 @@ func (handler *Handler) change(c *gin.Context, status knowledgedomain.ProposalSt
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
 // @Failure 409 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/proposals/{id}/apply [post]
 func (handler *Handler) Apply(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	id, _, err := proposalPath(c)
@@ -264,6 +282,7 @@ func (handler *Handler) Apply(c *gin.Context) error {
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
 // @Failure 503 {object} ProposalResult[EmptyResponse]
+// @Router /api/v1/knowledge/reconcile [post]
 func (handler *Handler) Reconcile(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	report, err := handler.reconcile.Reconcile(c.Request.Context())

@@ -43,6 +43,8 @@ const eventTypeLabels: Record<string, string> = {
   "micro_event.updated": "微事件更新",
   "micro_event.review_requested": "需要复核",
   "micro_event.evidence_changed": "证据覆盖更新",
+  "report.approval_requested": "日报待审批",
+  "report.published": "日报已发布",
 };
 
 function resourceHref(notification: HotKeyAPI.UserNotificationResponseDTO) {

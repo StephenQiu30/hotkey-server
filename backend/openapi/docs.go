@@ -1758,6 +1758,479 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/knowledge/documents": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "List knowledge documents",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-array_http_DocumentResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/documents/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Get knowledge document",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "document ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-http_DocumentResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/proposals": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "List knowledge proposals",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "proposal status",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-array_http_ProposalResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Create knowledge proposal",
+                "parameters": [
+                    {
+                        "description": "proposal",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-http_ProposalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/proposals/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Get knowledge proposal",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "proposal ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-http_ProposalResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/proposals/{id}/apply": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Apply knowledge proposal",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "proposal ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "proposal version",
+                        "name": "version",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-http_DocumentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/proposals/{id}/approve": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Approve knowledge proposal",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "proposal ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "proposal version",
+                        "name": "version",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-http_ProposalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/proposals/{id}/reject": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Reject knowledge proposal",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "proposal ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "proposal version",
+                        "name": "version",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-http_ProposalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/knowledge/reconcile": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "knowledge"
+                ],
+                "summary": "Reconcile knowledge Vault",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-http_ReconciliationResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/metric-capability-profiles": {
             "post": {
                 "security": [
@@ -5846,6 +6319,524 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/reports": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "List reports",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "report id cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "daily or weekly",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "draft, pending_approval, published, rejected, failed or archived",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-http_ReportPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Create or refresh a report draft",
+                "parameters": [
+                    {
+                        "description": "report draft",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.CreateReportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-http_ReportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Get a report",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-http_ReportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/{id}/approve": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Approve a report revision",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "revision fence",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportRevisionLifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-http_ReportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/{id}/build": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Build a report draft",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-http_ReportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/{id}/preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Preview a report",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-http_ReportPreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/{id}/reject": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Reject a report revision",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "revision fence and reason",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportRevisionLifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-http_ReportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/{id}/submit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Submit a report revision for approval",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "revision fence",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportRevisionLifecycleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-http_ReportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReportResult-internal_modules_report_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/search": {
             "get": {
                 "security": [
@@ -9180,6 +10171,31 @@ const docTemplate = `{
                 }
             }
         },
+        "http.CreateReportRequest": {
+            "type": "object",
+            "required": [
+                "timezone",
+                "type"
+            ],
+            "properties": {
+                "at": {
+                    "type": "string"
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "daily",
+                        "weekly"
+                    ]
+                }
+            }
+        },
         "http.CreateRightsPolicyRequestDTO": {
             "type": "object",
             "properties": {
@@ -9399,6 +10415,44 @@ const docTemplate = `{
                 },
                 "raw_score": {
                     "type": "number"
+                }
+            }
+        },
+        "http.DocumentResponse": {
+            "type": "object",
+            "properties": {
+                "contentHash": {
+                    "type": "string"
+                },
+                "eventID": {
+                    "type": "integer"
+                },
+                "generatedHash": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "reportID": {
+                    "type": "integer"
+                },
+                "revisionNo": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "topicID": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "vaultPath": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         },
@@ -11848,6 +12902,154 @@ const docTemplate = `{
                 }
             }
         },
+        "http.ProposalRequest": {
+            "type": "object",
+            "properties": {
+                "base_hash": {
+                    "type": "string"
+                },
+                "base_revision": {
+                    "type": "integer"
+                },
+                "body": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "integer"
+                },
+                "frontmatter": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResponse": {
+            "type": "object",
+            "properties": {
+                "baseHash": {
+                    "type": "string"
+                },
+                "baseRevisionNo": {
+                    "type": "integer"
+                },
+                "diffSummary": {
+                    "type": "string"
+                },
+                "documentID": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "proposedBody": {
+                    "type": "string"
+                },
+                "proposedFrontmatter": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.ProposalResult-array_http_DocumentResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.DocumentResponse"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-array_http_ProposalResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ProposalResponse"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-http_DocumentResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.DocumentResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-http_ProposalResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ProposalResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-http_ReconciliationResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ReconciliationResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_knowledge_transport_http.EmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.PublishRequest": {
             "type": "object",
             "required": [
@@ -11861,6 +13063,43 @@ const docTemplate = `{
                     "x-nullable": true
                 },
                 "expected_monitor_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.ReconciliationIssueResponse": {
+            "type": "object",
+            "properties": {
+                "actualHash": {
+                    "type": "string"
+                },
+                "expectedHash": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ReconciliationResponse": {
+            "type": "object",
+            "properties": {
+                "changed": {
+                    "type": "integer"
+                },
+                "conflict": {
+                    "type": "integer"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ReconciliationIssueResponse"
+                    }
+                },
+                "scanned": {
                     "type": "integer"
                 }
             }
@@ -12438,6 +13677,269 @@ const docTemplate = `{
                     "minimum": 0
                 },
                 "objective": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ReportItemResponse": {
+            "type": "object",
+            "properties": {
+                "event_id": {
+                    "type": "integer"
+                },
+                "event_update_id": {
+                    "type": "integer"
+                },
+                "evidence_set_hash": {
+                    "type": "string"
+                },
+                "heat_score": {
+                    "type": "number"
+                },
+                "inclusion_reason": {
+                    "type": "string"
+                },
+                "micro_event_id": {
+                    "type": "integer"
+                },
+                "micro_event_summary_id": {
+                    "type": "integer"
+                },
+                "micro_event_update_id": {
+                    "type": "integer"
+                },
+                "micro_event_version": {
+                    "type": "integer"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "sentences": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ReportSentenceResponse"
+                    }
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ReportPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ReportResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.ReportPreviewResponse": {
+            "type": "object",
+            "properties": {
+                "approvable": {
+                    "type": "boolean"
+                },
+                "report": {
+                    "$ref": "#/definitions/http.ReportResponse"
+                },
+                "submittable": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "http.ReportResponse": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "integer"
+                },
+                "frozen": {
+                    "type": "boolean"
+                },
+                "generated_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "input_snapshot_hash": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ReportItemResponse"
+                    }
+                },
+                "monitor_id": {
+                    "type": "integer"
+                },
+                "period_end": {
+                    "type": "string"
+                },
+                "period_start": {
+                    "type": "string"
+                },
+                "published_at": {
+                    "type": "string"
+                },
+                "review_reason": {
+                    "type": "string"
+                },
+                "reviewed_at": {
+                    "type": "string"
+                },
+                "reviewed_by": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "submitted_at": {
+                    "type": "string"
+                },
+                "submitted_by": {
+                    "type": "integer"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "integer"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "version_no": {
+                    "type": "integer"
+                }
+            }
+        },
+        "http.ReportResult-http_ReportPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ReportPageResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ReportResult-http_ReportPreviewResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ReportPreviewResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ReportResult-http_ReportResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ReportResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ReportResult-internal_modules_report_transport_http_EmptyResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_modules_report_transport_http.EmptyResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ReportRevisionLifecycleRequest": {
+            "type": "object",
+            "required": [
+                "expected_resource_version"
+            ],
+            "properties": {
+                "expected_resource_version": {
+                    "type": "integer"
+                },
+                "reason_code": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ReportSentenceResponse": {
+            "type": "object",
+            "properties": {
+                "actor_user_id": {
+                    "type": "integer"
+                },
+                "claim_evidence_version_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "decision_origin": {
+                    "type": "string"
+                },
+                "editorial_note": {
+                    "type": "boolean"
+                },
+                "model_run_id": {
+                    "type": "integer"
+                },
+                "ordinal": {
+                    "type": "integer"
+                },
+                "source_summary_sentence_id": {
+                    "type": "integer"
+                },
+                "text": {
                     "type": "string"
                 }
             }
@@ -13906,10 +15408,16 @@ const docTemplate = `{
         "internal_modules_intelligence_transport_http.EmptyResponse": {
             "type": "object"
         },
+        "internal_modules_knowledge_transport_http.EmptyResponse": {
+            "type": "object"
+        },
         "internal_modules_monitor_transport_http.EmptyResponse": {
             "type": "object"
         },
         "internal_modules_operations_transport_http.EmptyResponse": {
+            "type": "object"
+        },
+        "internal_modules_report_transport_http.EmptyResponse": {
             "type": "object"
         },
         "internal_modules_source_transport_http.EmptyResponse": {

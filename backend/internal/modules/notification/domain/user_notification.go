@@ -20,11 +20,14 @@ const (
 	MicroEventReviewRequested UserNotificationEventType = "micro_event.review_requested"
 	MicroEventEvidenceChanged UserNotificationEventType = "micro_event.evidence_changed"
 	HotspotDiscovered         UserNotificationEventType = "hotspot.discovered"
+	ReportApprovalRequested   UserNotificationEventType = "report.approval_requested"
+	UserReportPublished       UserNotificationEventType = "report.published"
 )
 
 func (eventType UserNotificationEventType) Valid() bool {
 	switch eventType {
-	case MicroEventCreated, MicroEventUpdated, MicroEventReviewRequested, MicroEventEvidenceChanged, HotspotDiscovered:
+	case MicroEventCreated, MicroEventUpdated, MicroEventReviewRequested, MicroEventEvidenceChanged, HotspotDiscovered,
+		ReportApprovalRequested, UserReportPublished:
 		return true
 	default:
 		return false
@@ -33,6 +36,7 @@ func (eventType UserNotificationEventType) Valid() bool {
 
 var microEventDeepLink = regexp.MustCompile(`^/dashboard/events\?event=[1-9][0-9]{0,18}$`)
 var hotspotDeepLink = regexp.MustCompile(`^/dashboard/contents/[1-9][0-9]{0,18}$`)
+var reportDeepLink = regexp.MustCompile(`^/dashboard/reports\?report=[1-9][0-9]{0,18}$`)
 var deliveryTargetKey = regexp.MustCompile(`^[a-z][a-z0-9:_-]{0,127}$`)
 
 type UserNotification struct {
@@ -59,7 +63,7 @@ func (notification UserNotification) Validate() error {
 		notification.ResourceVersion <= 0 || notification.OccurredAt.IsZero() || notification.CreatedAt.IsZero() {
 		return fmt.Errorf("user notification identity and version facts are required")
 	}
-	if !notification.EventType.Valid() || notification.ResourceType != "micro_event" && notification.ResourceType != "hotspot" {
+	if !notification.EventType.Valid() || notification.ResourceType != "micro_event" && notification.ResourceType != "hotspot" && notification.ResourceType != "report" {
 		return fmt.Errorf("user notification event and resource type are invalid")
 	}
 	if strings.TrimSpace(notification.Title) == "" || len([]byte(notification.Title)) > 240 ||
@@ -68,7 +72,8 @@ func (notification UserNotification) Validate() error {
 		return fmt.Errorf("user notification safe projection is invalid")
 	}
 	validDeepLink := notification.ResourceType == "micro_event" && microEventDeepLink.MatchString(notification.DeepLink) ||
-		notification.ResourceType == "hotspot" && hotspotDeepLink.MatchString(notification.DeepLink)
+		notification.ResourceType == "hotspot" && hotspotDeepLink.MatchString(notification.DeepLink) ||
+		notification.ResourceType == "report" && reportDeepLink.MatchString(notification.DeepLink)
 	if len([]byte(notification.DeepLink)) > 256 || !validDeepLink {
 		return fmt.Errorf("user notification deep link is invalid")
 	}

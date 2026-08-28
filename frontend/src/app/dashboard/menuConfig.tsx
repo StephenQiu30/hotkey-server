@@ -1,7 +1,9 @@
 import {
   Activity,
   Database,
+  FileText,
   Flame,
+  LibraryBig,
   Radar,
   Search,
   ShieldCheck,
@@ -34,6 +36,17 @@ export const dashboardMenuItems: MenuItem[] = [
     path: "/dashboard/search",
     name: "全文检索",
     icon: <Search className="h-4 w-4" />,
+  },
+  {
+    path: "/dashboard/reports",
+    name: "日报",
+    icon: <FileText className="h-4 w-4" />,
+  },
+  {
+    path: "/dashboard/knowledge",
+    name: "知识投影",
+    icon: <LibraryBig className="h-4 w-4" />,
+    roles: dashboardRouteRoles["/dashboard/knowledge"],
   },
   {
     path: "/dashboard/contents",

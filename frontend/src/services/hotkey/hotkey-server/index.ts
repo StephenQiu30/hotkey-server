@@ -10,6 +10,7 @@ import * as contentLineage from "./contentLineage";
 import * as contents from "./contents";
 import * as documentVersions from "./documentVersions";
 import * as hotspots from "./hotspots";
+import * as knowledge from "./knowledge";
 import * as sourceMetricCapabilities from "./sourceMetricCapabilities";
 import * as microEvents from "./microEvents";
 import * as monitors from "./monitors";
@@ -18,6 +19,7 @@ import * as documentMatches from "./documentMatches";
 import * as monitorIntent from "./monitorIntent";
 import * as notifications from "./notifications";
 import * as operations from "./operations";
+import * as reports from "./reports";
 import * as search from "./search";
 import * as sources from "./sources";
 import * as sourceRights from "./sourceRights";
@@ -31,6 +33,7 @@ export default {
   contents,
   documentVersions,
   hotspots,
+  knowledge,
   sourceMetricCapabilities,
   microEvents,
   monitors,
@@ -39,6 +42,7 @@ export default {
   monitorIntent,
   notifications,
   operations,
+  reports,
   search,
   sources,
   sourceRights,

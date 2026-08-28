@@ -40,6 +40,7 @@ type reportService interface {
 // @Failure 404 {object} ReportResult[EmptyResponse]
 // @Failure 409 {object} ReportResult[EmptyResponse]
 // @Failure 503 {object} ReportResult[EmptyResponse]
+// @Router /api/v1/reports/{id}/build [post]
 func (handler *Handler) Build(c *gin.Context) error {
 	httptransport.SetModule(c, "report")
 	reportID, err := reportID(c)
@@ -82,6 +83,7 @@ func NewHandler(service reportService) *Handler { return &Handler{service: servi
 // @Failure 401 {object} ReportResult[EmptyResponse]
 // @Failure 403 {object} ReportResult[EmptyResponse]
 // @Failure 409 {object} ReportResult[EmptyResponse]
+// @Router /api/v1/reports [post]
 func (handler *Handler) Create(c *gin.Context) error {
 	httptransport.SetModule(c, "report")
 	var request CreateReportRequest
@@ -124,6 +126,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 // @Failure 400 {object} ReportResult[EmptyResponse]
 // @Failure 401 {object} ReportResult[EmptyResponse]
 // @Failure 503 {object} ReportResult[EmptyResponse]
+// @Router /api/v1/reports [get]
 func (handler *Handler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "report")
 	query, err := reportListQuery(c)
@@ -154,6 +157,7 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Failure 401 {object} ReportResult[EmptyResponse]
 // @Failure 404 {object} ReportResult[EmptyResponse]
 // @Failure 503 {object} ReportResult[EmptyResponse]
+// @Router /api/v1/reports/{id} [get]
 func (handler *Handler) Get(c *gin.Context) error {
 	httptransport.SetModule(c, "report")
 	reportID, err := reportID(c)
@@ -179,6 +183,7 @@ func (handler *Handler) Get(c *gin.Context) error {
 // @Failure 401 {object} ReportResult[EmptyResponse]
 // @Failure 404 {object} ReportResult[EmptyResponse]
 // @Failure 503 {object} ReportResult[EmptyResponse]
+// @Router /api/v1/reports/{id}/preview [post]
 func (handler *Handler) Preview(c *gin.Context) error {
 	httptransport.SetModule(c, "report")
 	reportID, err := reportID(c)
@@ -194,18 +199,60 @@ func (handler *Handler) Preview(c *gin.Context) error {
 	return nil
 }
 
+// SubmitForApproval freezes a draft for editor review.
+// @Summary Submit a report revision for approval
+// @Tags reports
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "report ID"
+// @Param request body ReportRevisionLifecycleRequest true "revision fence"
+// @Success 200 {object} ReportResult[ReportResponse]
+// @Failure 400 {object} ReportResult[EmptyResponse]
+// @Failure 401 {object} ReportResult[EmptyResponse]
+// @Failure 403 {object} ReportResult[EmptyResponse]
+// @Failure 409 {object} ReportResult[EmptyResponse]
+// @Router /api/v1/reports/{id}/submit [post]
 func (handler *Handler) SubmitForApproval(c *gin.Context) error {
 	return handler.revisionLifecycle(c, func(ctx context.Context, input reportapplication.RevisionLifecycleInput) (domain.Report, error) {
 		return handler.service.SubmitForApproval(ctx, input)
 	}, false)
 }
 
+// ApproveRevision publishes one evidence-complete immutable revision.
+// @Summary Approve a report revision
+// @Tags reports
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "report ID"
+// @Param request body ReportRevisionLifecycleRequest true "revision fence"
+// @Success 200 {object} ReportResult[ReportResponse]
+// @Failure 400 {object} ReportResult[EmptyResponse]
+// @Failure 401 {object} ReportResult[EmptyResponse]
+// @Failure 403 {object} ReportResult[EmptyResponse]
+// @Failure 409 {object} ReportResult[EmptyResponse]
+// @Router /api/v1/reports/{id}/approve [post]
 func (handler *Handler) ApproveRevision(c *gin.Context) error {
 	return handler.revisionLifecycle(c, func(ctx context.Context, input reportapplication.RevisionLifecycleInput) (domain.Report, error) {
 		return handler.service.ApproveRevision(ctx, input)
 	}, false)
 }
 
+// RejectRevision closes one pending revision with a stable reason code.
+// @Summary Reject a report revision
+// @Tags reports
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "report ID"
+// @Param request body ReportRevisionLifecycleRequest true "revision fence and reason"
+// @Success 200 {object} ReportResult[ReportResponse]
+// @Failure 400 {object} ReportResult[EmptyResponse]
+// @Failure 401 {object} ReportResult[EmptyResponse]
+// @Failure 403 {object} ReportResult[EmptyResponse]
+// @Failure 409 {object} ReportResult[EmptyResponse]
+// @Router /api/v1/reports/{id}/reject [post]
 func (handler *Handler) RejectRevision(c *gin.Context) error {
 	return handler.revisionLifecycle(c, func(ctx context.Context, input reportapplication.RevisionLifecycleInput) (domain.Report, error) {
 		return handler.service.RejectRevision(ctx, input)

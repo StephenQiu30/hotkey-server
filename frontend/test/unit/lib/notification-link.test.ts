@@ -5,8 +5,10 @@ describe("isSafeNotificationDeepLink", () => {
   it("keeps each notification resource on its own safe dashboard route", () => {
     expect(isSafeNotificationDeepLink("hotspot", "/dashboard/contents/9")).toBe(true);
     expect(isSafeNotificationDeepLink("micro_event", "/dashboard/events?event=9")).toBe(true);
+    expect(isSafeNotificationDeepLink("report", "/dashboard/reports?report=9")).toBe(true);
     expect(isSafeNotificationDeepLink("hotspot", "/dashboard/events?event=9")).toBe(false);
     expect(isSafeNotificationDeepLink("micro_event", "/dashboard/contents/9")).toBe(false);
     expect(isSafeNotificationDeepLink("hotspot", "https://evil.test")).toBe(false);
+    expect(isSafeNotificationDeepLink("report", "/dashboard/reports?report=9&next=https://evil.test")).toBe(false);
   });
 });

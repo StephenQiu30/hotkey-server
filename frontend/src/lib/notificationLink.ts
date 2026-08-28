@@ -1,6 +1,7 @@
 const RESOURCE_DEEP_LINKS: Readonly<Record<string, RegExp>> = {
   hotspot: /^\/dashboard\/contents\/[1-9][0-9]{0,18}$/,
   micro_event: /^\/dashboard\/events\?event=[1-9][0-9]{0,18}$/,
+  report: /^\/dashboard\/reports\?report=[1-9][0-9]{0,18}$/,
 };
 
 export function isSafeNotificationDeepLink(
