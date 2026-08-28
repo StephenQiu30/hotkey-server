@@ -49,6 +49,8 @@ func Test001PartialAcceptanceRecordsVerifiedBaselineAndHonestGaps(t *testing.T) 
 		"TestMonitorListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert",
 		"TestCodecRejectsNonCanonicalSignatureEncoding",
 		"monitor_list",
+		"TestSourceConnectionListCursorIsSignedExpiringAndSnapshotStableAcrossConcurrentInsert",
+		"source_connection_list",
 		"TestP0UserListCursorsUseSignedExpiringCodec",
 		"TestBrowserCIA11yAuditsWaitForVisualStateToSettle",
 		"TestP0LexicalRecallUsesOnlyAuditablePostgresFTS",
