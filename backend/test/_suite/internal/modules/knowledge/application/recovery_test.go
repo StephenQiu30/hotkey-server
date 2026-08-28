@@ -119,6 +119,24 @@ func TestVaultRecoveryStopsWhenEveryProtectedHumanRegionIsMissing(t *testing.T) 
 	}
 }
 
+func TestVaultRecoveryAuditsUnsafeRevisionWithoutPublishing(t *testing.T) {
+	fact, protected := recoveryFact(t)
+	unsafe := strings.Replace(protected, domain.HumanRegionBegin, domain.HumanRegionBegin+"\n<img src=x onerror=sentinel>", 1)
+	fact.Document.ContentHash = domain.HashContent("", unsafe)
+	vault := &recoveryVaultFake{missing: true}
+	revision := &recoveryProtectedSourceFake{content: unsafe}
+	audit := &vaultSecurityAuditFake{}
+	service := NewVaultRecoveryService(recoveryFactsFake{fact: fact}, vault, revision, nil, audit)
+
+	_, err := service.Recover(context.Background(), fact.Document.ID)
+	if !errors.Is(err, domain.ErrVaultContentUnsafe) || !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if vault.writes != 0 || len(audit.entries) != 1 || audit.entries[0].After["reason_code"] != domain.VaultReasonContentUnsafe {
+		t.Fatalf("unsafe recovery side effects/audit = vault:%#v audit:%#v", vault, audit.entries)
+	}
+}
+
 func recoveryFact(t *testing.T) (VaultRebuildFact, string) {
 	t.Helper()
 	input := domain.VaultDocumentRenderInput{

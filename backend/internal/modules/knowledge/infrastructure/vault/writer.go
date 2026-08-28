@@ -183,6 +183,12 @@ func (writer *Writer) Write(kind, key, content string) (string, error) {
 	if writer == nil {
 		return "", fmt.Errorf("vault writer is required")
 	}
+	if err := domain.ValidateVaultLocation(kind, key); err != nil {
+		return "", err
+	}
+	if err := domain.ValidateVaultMarkdown(content); err != nil {
+		return "", err
+	}
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
 	path, err := writer.safePath(kind, key)
@@ -195,6 +201,12 @@ func (writer *Writer) Write(kind, key, content string) (string, error) {
 func (writer *Writer) WriteAutomatic(kind, key, generated string) (string, error) {
 	if writer == nil {
 		return "", fmt.Errorf("vault writer is required")
+	}
+	if err := domain.ValidateVaultLocation(kind, key); err != nil {
+		return "", err
+	}
+	if err := domain.ValidateVaultMarkdown(generated); err != nil {
+		return "", err
 	}
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
@@ -210,6 +222,9 @@ func (writer *Writer) WriteAutomatic(kind, key, generated string) (string, error
 	if err != nil {
 		return "", err
 	}
+	if err := domain.ValidateVaultMarkdown(merged); err != nil {
+		return "", err
+	}
 	return writer.writeAtomic(path, merged)
 }
 
@@ -220,6 +235,12 @@ func (writer *Writer) WriteAutomatic(kind, key, generated string) (string, error
 func (writer *Writer) CompareAndSwap(kind, key, expectedHash, replacement string) (string, error) {
 	if writer == nil || len(expectedHash) != 64 || replacement == "" {
 		return "", fmt.Errorf("invalid Vault compare-and-swap request")
+	}
+	if err := domain.ValidateVaultLocation(kind, key); err != nil {
+		return "", err
+	}
+	if err := domain.ValidateVaultMarkdown(replacement); err != nil {
+		return "", err
 	}
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
@@ -244,6 +265,9 @@ func (writer *Writer) CompareAndSwap(kind, key, expectedHash, replacement string
 func (writer *Writer) Read(kind, key string) ([]byte, string, error) {
 	if writer == nil {
 		return nil, "", fmt.Errorf("vault writer is required")
+	}
+	if err := domain.ValidateVaultLocation(kind, key); err != nil {
+		return nil, "", err
 	}
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
@@ -335,11 +359,11 @@ func (writer *Writer) ListFiles() ([]domain.VaultFile, error) {
 }
 
 func (writer *Writer) safePath(kind, key string) (string, error) {
-	if err := writer.ensureRoot(); err != nil {
-		return "", err
-	}
 	path, err := domain.StablePath(writer.root, kind, key)
 	if err != nil {
+		return "", err
+	}
+	if err := writer.ensureRoot(); err != nil {
 		return "", err
 	}
 	if err := rejectSymlinkComponents(writer.root, filepath.Dir(path)); err != nil {
@@ -368,7 +392,7 @@ func (writer *Writer) ensureRoot() error {
 	}
 	if info, err := os.Lstat(writer.root); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("vault root must not be a symlink")
+			return domain.ErrVaultPathSymlink
 		}
 		if !info.IsDir() {
 			return fmt.Errorf("vault root is not a directory")
@@ -392,7 +416,7 @@ func rejectSymlinkComponents(root, target string) error {
 		}
 		current = filepath.Join(current, component)
 		if info, err := os.Lstat(current); err == nil && info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("vault path contains symlink")
+			return domain.ErrVaultPathSymlink
 		} else if err != nil && !os.IsNotExist(err) {
 			return err
 		}

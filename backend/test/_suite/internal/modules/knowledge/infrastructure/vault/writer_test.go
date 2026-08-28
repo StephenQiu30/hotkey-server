@@ -51,8 +51,47 @@ func TestWriterAutomaticUpdateAndSymlinkEscape(t *testing.T) {
 	if err := os.Symlink(escape, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writer.Write("topics", "escaped", "bad"); err == nil || !strings.Contains(err.Error(), "symlink") {
+	if _, err := writer.Write("topics", "escaped", "bad"); !errors.Is(err, domain.ErrVaultPathSymlink) || domain.VaultRejectionReason(err) != domain.VaultReasonPathSymlink || strings.Contains(err.Error(), root) {
 		t.Fatalf("symlink escape error = %v", err)
+	}
+}
+
+func TestWriterRejectsPathAndContentBeforeCreatingVaultRoot(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "not-created", "vault")
+	writer := NewWriter(root)
+	if _, err := writer.Write("events", "%2e%2e", "safe"); !errors.Is(err, domain.ErrVaultPathInvalid) {
+		t.Fatalf("encoded traversal error = %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(parent, "not-created")); !os.IsNotExist(err) {
+		t.Fatalf("invalid path performed file I/O: %v", err)
+	}
+	if _, err := writer.CompareAndSwap("reports", "17", domain.HashContent("", ""), `<script>alert(1)</script>`); !errors.Is(err, domain.ErrVaultContentUnsafe) {
+		t.Fatalf("unsafe content error = %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(parent, "not-created")); !os.IsNotExist(err) {
+		t.Fatalf("unsafe content performed file I/O: %v", err)
+	}
+}
+
+func TestWriterAutomaticRejectsUnsafeExistingHumanContentWithoutPublishing(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "events", "evt-1.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	unsafe := "Human\n\n<img src=x onerror=alert(1)>\n"
+	if err := os.WriteFile(path, []byte(unsafe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	writer := NewWriter(root)
+	if _, err := writer.WriteAutomatic("events", "evt-1", "Generated"); !errors.Is(err, domain.ErrVaultContentUnsafe) {
+		t.Fatalf("unsafe existing content error = %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != unsafe {
+		t.Fatalf("Vault content after rejected automatic update = %q/%v", content, err)
 	}
 }
 

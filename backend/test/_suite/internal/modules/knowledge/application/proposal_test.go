@@ -3,10 +3,13 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/domain"
+	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
@@ -43,12 +46,14 @@ func (fake *proposalStoreFake) MarkProposalConflict(_ context.Context, id, versi
 
 type proposalVaultFake struct {
 	content    string
+	reads      int
 	writes     int
 	compareErr error
 	readErr    error
 }
 
 func (fake *proposalVaultFake) Read(string, string) ([]byte, string, error) {
+	fake.reads++
 	return []byte(fake.content), "events/evt-1.md", fake.readErr
 }
 func (fake *proposalVaultFake) CompareAndSwap(_, _ string, expectedHash, replacement string) (string, error) {
@@ -66,6 +71,23 @@ func (fake *proposalVaultFake) CompareAndSwap(_, _ string, expectedHash, replace
 type proposalSnapshotFake struct{ err error }
 
 func (fake proposalSnapshotFake) Put(context.Context, string, string) error { return fake.err }
+
+type proposalSnapshotRecorder struct{ writes int }
+
+func (fake *proposalSnapshotRecorder) Put(context.Context, string, string) error {
+	fake.writes++
+	return nil
+}
+
+type vaultSecurityAuditFake struct{ entries []operationsdomain.AuditEntry }
+
+func (fake *vaultSecurityAuditFake) WriteIndependent(_ context.Context, entry operationsdomain.AuditEntry) error {
+	if err := entry.Validate(); err != nil {
+		return err
+	}
+	fake.entries = append(fake.entries, entry)
+	return nil
+}
 
 func TestProposalApplyRechecksBaseAndCreatesNewRevision(t *testing.T) {
 	old := canonicalVaultDocument(t, 7, 0, domain.DocumentEvent, 9, "Event", "old body")
@@ -146,6 +168,82 @@ func TestProposalApplyStopsOnRenamedOrDuplicateStableDocument(t *testing.T) {
 				t.Fatalf("conflict side effects: store=%#v vault=%#v", store, vault)
 			}
 		})
+	}
+}
+
+func TestProposalApplyRejectsAndAuditsUnsafeMarkdownBeforeVaultIO(t *testing.T) {
+	old := canonicalVaultDocument(t, 7, 0, domain.DocumentEvent, 9, "Event", "old body")
+	baseHash := domain.HashContent("", old)
+	document := domain.Document{ID: 7, Version: 1, RevisionNo: 0, Type: domain.DocumentEvent, VaultPath: "events/evt-1.md", ContentHash: baseHash, Status: domain.DocumentActive, EventID: ptr(9)}
+	store := &proposalStoreFake{}
+	snapshot := &proposalSnapshotRecorder{}
+	audit := &vaultSecurityAuditFake{}
+	service := NewProposalService(proposalDocumentsFake{document: document}, store, snapshot).WithVaultSecurityAudit(audit)
+	proposal := domain.Proposal{
+		ID: 5, Version: 2, DocumentID: document.ID, BaseRevisionNo: 0, BaseHash: baseHash,
+		ProposedFrontmatter: `{"title":"Event"}`, ProposedBody: `<script>alert("sentinel")</script>`, Status: domain.ProposalApproved,
+	}
+	vault := &proposalVaultFake{content: old}
+
+	_, err := service.Apply(context.Background(), proposal, vault)
+	if !errors.Is(err, domain.ErrVaultContentUnsafe) || !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if vault.reads != 0 || vault.writes != 0 || snapshot.writes != 0 || store.updated.ID != 0 {
+		t.Fatalf("unsafe publish side effects: vault=%#v snapshot=%#v store=%#v", vault, snapshot, store)
+	}
+	if len(audit.entries) != 1 {
+		t.Fatalf("audit entries = %#v", audit.entries)
+	}
+	entry := audit.entries[0]
+	if entry.Action != operationsdomain.ActionKnowledgeProjectionRejected || entry.ResourceType != "knowledge_document" || entry.ResourceID != document.ID || entry.Result != operationsdomain.AuditResultDenied || entry.After["reason_code"] != domain.VaultReasonContentUnsafe || strings.Contains(fmt.Sprint(entry), "sentinel") || strings.Contains(fmt.Sprint(entry), document.VaultPath) {
+		t.Fatalf("security audit = %#v", entry)
+	}
+}
+
+func TestProposalApplyRejectsAndAuditsUnsafePathWithoutHostDisclosure(t *testing.T) {
+	old := canonicalVaultDocument(t, 7, 0, domain.DocumentEvent, 9, "Event", "old body")
+	baseHash := domain.HashContent("", old)
+	sensitivePath := "/Users/private/secret-vault/events/7.md"
+	document := domain.Document{ID: 7, Version: 1, RevisionNo: 0, Type: domain.DocumentEvent, VaultPath: sensitivePath, ContentHash: baseHash, Status: domain.DocumentActive, EventID: ptr(9)}
+	audit := &vaultSecurityAuditFake{}
+	service := NewProposalService(proposalDocumentsFake{document: document}, &proposalStoreFake{}).WithVaultSecurityAudit(audit)
+	proposal := domain.Proposal{ID: 5, Version: 2, DocumentID: document.ID, BaseRevisionNo: 0, BaseHash: baseHash, ProposedFrontmatter: `{"title":"Event"}`, ProposedBody: "safe body", Status: domain.ProposalApproved}
+	vault := &proposalVaultFake{content: old}
+
+	_, err := service.Apply(context.Background(), proposal, vault)
+	if !errors.Is(err, domain.ErrVaultPathInvalid) || !errors.Is(err, sharedrepository.ErrInvalidInput) || strings.Contains(err.Error(), sensitivePath) {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if vault.reads != 0 || vault.writes != 0 || len(audit.entries) != 1 || audit.entries[0].After["reason_code"] != domain.VaultReasonPathInvalid || strings.Contains(fmt.Sprint(audit.entries[0]), sensitivePath) {
+		t.Fatalf("path rejection side effects/audit = vault:%#v audit:%#v", vault, audit.entries)
+	}
+}
+
+func TestProposalApplyAuditsSymlinkRejection(t *testing.T) {
+	old := canonicalVaultDocument(t, 7, 0, domain.DocumentEvent, 9, "Event", "old body")
+	baseHash := domain.HashContent("", old)
+	document := domain.Document{ID: 7, Version: 1, RevisionNo: 0, Type: domain.DocumentEvent, VaultPath: "events/7.md", ContentHash: baseHash, Status: domain.DocumentActive, EventID: ptr(9)}
+	audit := &vaultSecurityAuditFake{}
+	service := NewProposalService(proposalDocumentsFake{document: document}, &proposalStoreFake{}).WithVaultSecurityAudit(audit)
+	proposal := domain.Proposal{ID: 5, Version: 2, DocumentID: document.ID, BaseRevisionNo: 0, BaseHash: baseHash, ProposedFrontmatter: `{"title":"Event"}`, ProposedBody: "safe body", Status: domain.ProposalApproved}
+	vault := &proposalVaultFake{readErr: domain.ErrVaultPathSymlink}
+
+	_, err := service.Apply(context.Background(), proposal, vault)
+	if !errors.Is(err, domain.ErrVaultPathSymlink) || len(audit.entries) != 1 || audit.entries[0].After["reason_code"] != domain.VaultReasonPathSymlink || vault.writes != 0 {
+		t.Fatalf("symlink rejection = %v audit:%#v vault:%#v", err, audit.entries, vault)
+	}
+}
+
+func TestDocumentPathPartsRejectsNonCanonicalAndEncodedTraversal(t *testing.T) {
+	for _, path := range []string{
+		"events/../reports/1.md", "events/./1.md", "events//1.md", `events\\1.md`,
+		"events/%2e%2e.md", "events/%252e%252e.md", "/absolute/1.md", `C:\\absolute\\1.md`,
+	} {
+		document := domain.Document{VaultPath: path}
+		if _, _, err := documentPathParts(document); !errors.Is(err, domain.ErrVaultPathInvalid) || strings.Contains(err.Error(), path) {
+			t.Errorf("document path %q error = %v", path, err)
+		}
 	}
 }
 

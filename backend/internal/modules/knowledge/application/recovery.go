@@ -45,10 +45,15 @@ type VaultRecoveryService struct {
 	vault    Vault
 	revision VaultSnapshotReader
 	backup   VaultBackupReader
+	audit    VaultSecurityAuditWriter
 }
 
-func NewVaultRecoveryService(facts VaultRebuildFactReader, vault Vault, revision VaultSnapshotReader, backup VaultBackupReader) *VaultRecoveryService {
-	return &VaultRecoveryService{facts: facts, vault: vault, revision: revision, backup: backup}
+func NewVaultRecoveryService(facts VaultRebuildFactReader, vault Vault, revision VaultSnapshotReader, backup VaultBackupReader, audits ...VaultSecurityAuditWriter) *VaultRecoveryService {
+	service := &VaultRecoveryService{facts: facts, vault: vault, revision: revision, backup: backup}
+	if len(audits) > 0 {
+		service.audit = audits[0]
+	}
+	return service
 }
 
 // Recover restores only a missing current file from verified protected bytes.
@@ -68,14 +73,14 @@ func (service *VaultRecoveryService) Recover(ctx context.Context, documentID int
 	}
 	kind, key, err := documentPathParts(fact.Document)
 	if err != nil {
-		return VaultRecoveryResult{}, err
+		return VaultRecoveryResult{}, service.rejected(ctx, fact.Document.ID, err)
 	}
 
 	sources := domain.VaultRecoverySources{ExpectedHash: fact.Document.ContentHash}
 	current, _, readErr := service.vault.Read(kind, key)
 	missing := isMissing(readErr)
 	if readErr != nil && !missing {
-		return VaultRecoveryResult{}, readErr
+		return VaultRecoveryResult{}, service.rejected(ctx, fact.Document.ID, readErr)
 	}
 	if !missing {
 		sources.Current = string(current)
@@ -94,7 +99,7 @@ func (service *VaultRecoveryService) Recover(ctx context.Context, documentID int
 
 	recovered, err := domain.RecoverVaultDocument(sources, fact.RenderInput)
 	if err != nil {
-		return VaultRecoveryResult{}, classifyVaultRecoveryConflict(err)
+		return VaultRecoveryResult{}, service.rejected(ctx, fact.Document.ID, err)
 	}
 	if domain.HashContent("", recovered.Content) != fact.Document.ContentHash {
 		return VaultRecoveryResult{}, classifyVaultRecoveryConflict(fmt.Errorf("%w: recovered bytes do not match current projection", domain.ErrVaultConflict))
@@ -108,13 +113,23 @@ func (service *VaultRecoveryService) Recover(ctx context.Context, documentID int
 	}
 	receipt, err := service.vault.CompareAndSwap(kind, key, domain.HashContent("", ""), recovered.Content)
 	if err != nil {
-		return VaultRecoveryResult{}, classifyVaultRecoveryConflict(err)
+		return VaultRecoveryResult{}, service.rejected(ctx, fact.Document.ID, err)
 	}
 	if receipt != fact.Document.ContentHash {
 		return VaultRecoveryResult{}, sharedrepository.ErrUnavailable
 	}
 	result.Restored = true
 	return result, nil
+}
+
+func (service *VaultRecoveryService) rejected(ctx context.Context, documentID int64, err error) error {
+	if reason := domain.VaultRejectionReason(err); reason != "" {
+		if auditErr := writeVaultSecurityRejection(ctx, service.audit, documentID, err); auditErr != nil {
+			return auditErr
+		}
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
+	}
+	return classifyVaultRecoveryConflict(err)
 }
 
 func classifyVaultRecoveryConflict(err error) error {

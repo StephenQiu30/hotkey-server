@@ -251,6 +251,7 @@ func TestAuditActionWhitelistIsClosed(t *testing.T) {
 		operationsdomain.ActionSourceArchived, operationsdomain.ActionSourceRestored,
 		operationsdomain.ActionRightsPolicyCreated, operationsdomain.ActionRightsDecisionBatchRecorded,
 		operationsdomain.ActionSubscriptionCreated, operationsdomain.ActionSubscriptionUpdated, operationsdomain.ActionSubscriptionTokenRotated, operationsdomain.ActionSubscriptionDeleted,
+		operationsdomain.ActionKnowledgeProjectionRejected,
 	} {
 		if !action.Valid() {
 			t.Errorf("whitelisted action %q is invalid", action)

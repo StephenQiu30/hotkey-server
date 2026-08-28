@@ -49,6 +49,9 @@ const (
 	CodeAIRunLeaseExpired                = 70009
 	CodeReportEvidenceInvalid            = 80000
 	CodeReportContentUnsafe              = 80001
+	CodeKnowledgePathInvalid             = 81000
+	CodeKnowledgeContentUnsafe           = 81001
+	CodeKnowledgePathSymlink             = 81002
 	CodeInternal                         = 90000
 	CodeUnavailable                      = 90001
 	CodeBadGateway                       = 90002
@@ -109,6 +112,9 @@ func init() {
 		{Code: CodeAIRunLeaseExpired, HTTPStatus: stdhttp.StatusServiceUnavailable, Message: "AI run lease expired", Retryable: true},
 		{Code: CodeReportEvidenceInvalid, HTTPStatus: stdhttp.StatusConflict, Message: "report evidence invalid"},
 		{Code: CodeReportContentUnsafe, HTTPStatus: stdhttp.StatusBadRequest, Message: "report content unsafe"},
+		{Code: CodeKnowledgePathInvalid, HTTPStatus: stdhttp.StatusBadRequest, Message: "knowledge path invalid"},
+		{Code: CodeKnowledgeContentUnsafe, HTTPStatus: stdhttp.StatusBadRequest, Message: "knowledge content unsafe"},
+		{Code: CodeKnowledgePathSymlink, HTTPStatus: stdhttp.StatusBadRequest, Message: "knowledge path symlink rejected"},
 		{Code: CodeInternal, HTTPStatus: stdhttp.StatusInternalServerError, Message: "internal server error"},
 		{Code: CodeUnavailable, HTTPStatus: stdhttp.StatusServiceUnavailable, Message: "service unavailable", Retryable: true},
 		{Code: CodeBadGateway, HTTPStatus: stdhttp.StatusBadGateway, Message: "bad gateway", Retryable: true},

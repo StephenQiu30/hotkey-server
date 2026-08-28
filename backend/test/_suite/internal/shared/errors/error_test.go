@@ -123,6 +123,16 @@ func TestAICodesAreRegisteredWithStableContracts(t *testing.T) {
 	}
 }
 
+func TestKnowledgeSecurityCodesAreRegisteredWithStableContracts(t *testing.T) {
+	t.Parallel()
+	for _, code := range []int{CodeKnowledgePathInvalid, CodeKnowledgeContentUnsafe, CodeKnowledgePathSymlink} {
+		definition, ok := Lookup(code)
+		if !ok || definition.HTTPStatus != stdhttp.StatusBadRequest || definition.Retryable {
+			t.Errorf("knowledge security code %d = %#v/%v", code, definition, ok)
+		}
+	}
+}
+
 func TestRegisterCodeRejectsDuplicate(t *testing.T) {
 	definition := CodeDefinition{Code: 19999, HTTPStatus: stdhttp.StatusBadRequest, Message: "test code"}
 	if err := RegisterCode(definition); err != nil {

@@ -45,6 +45,14 @@ type ProposalService struct {
 	documents DocumentReader
 	proposals ProposalStore
 	snapshot  SnapshotStore
+	audit     VaultSecurityAuditWriter
+}
+
+func (service *ProposalService) WithVaultSecurityAudit(writer VaultSecurityAuditWriter) *ProposalService {
+	if service != nil {
+		service.audit = writer
+	}
+	return service
 }
 
 func NewProposalService(documents DocumentReader, proposals ProposalStore, snapshots ...SnapshotStore) *ProposalService {
@@ -153,17 +161,6 @@ func (service *ProposalService) Apply(ctx context.Context, proposal domain.Propo
 	if document.RevisionNo != proposal.BaseRevisionNo || document.ContentHash != proposal.BaseHash {
 		return domain.Document{}, sharedrepository.ErrConflict
 	}
-	kind, key, err := documentPathParts(document)
-	if err != nil {
-		return domain.Document{}, err
-	}
-	current, _, err := vault.Read(kind, key)
-	if err != nil && !isMissing(err) {
-		return domain.Document{}, err
-	}
-	if len(current) > 0 && !vaultContentMatchesBase(string(current), proposal.BaseHash) {
-		return domain.Document{}, service.persistConflict(ctx, proposal)
-	}
 	sourceID, err := documentSourceID(document)
 	if err != nil {
 		return domain.Document{}, err
@@ -171,6 +168,20 @@ func (service *ProposalService) Apply(ctx context.Context, proposal domain.Propo
 	title, err := proposalVaultTitle(proposal, document.Type, sourceID)
 	if err != nil {
 		return domain.Document{}, err
+	}
+	if err := domain.ValidateVaultMarkdown(title + "\n" + proposal.ProposedBody); err != nil {
+		return domain.Document{}, service.rejected(ctx, document.ID, err)
+	}
+	kind, key, err := documentPathParts(document)
+	if err != nil {
+		return domain.Document{}, service.rejected(ctx, document.ID, err)
+	}
+	current, _, err := vault.Read(kind, key)
+	if err != nil && !isMissing(err) {
+		return domain.Document{}, service.rejected(ctx, document.ID, err)
+	}
+	if len(current) > 0 && !vaultContentMatchesBase(string(current), proposal.BaseHash) {
+		return domain.Document{}, service.persistConflict(ctx, proposal)
 	}
 	renderInput := domain.VaultDocumentRenderInput{
 		DocumentID: document.ID, RevisionNo: document.RevisionNo + 1, Type: document.Type,
@@ -186,6 +197,9 @@ func (service *ProposalService) Apply(ctx context.Context, proposal domain.Propo
 		replacement, err = domain.UpdateVaultDocument(string(current), renderInput)
 	}
 	if err != nil {
+		if domain.VaultRejectionReason(err) != "" {
+			return domain.Document{}, service.rejected(ctx, document.ID, err)
+		}
 		return domain.Document{}, service.persistConflict(ctx, proposal)
 	}
 	snapshotKey := ""
@@ -200,7 +214,7 @@ func (service *ProposalService) Apply(ctx context.Context, proposal domain.Propo
 		return domain.Document{}, service.persistConflict(ctx, proposal)
 	}
 	if err != nil {
-		return domain.Document{}, err
+		return domain.Document{}, service.rejected(ctx, document.ID, err)
 	}
 	if contentHash != domain.HashContent("", replacement) {
 		return domain.Document{}, sharedrepository.ErrUnavailable
@@ -221,6 +235,16 @@ func (service *ProposalService) Apply(ctx context.Context, proposal domain.Propo
 		return domain.Document{}, sharedrepository.ErrUnavailable
 	}
 	return store.ApplyProposal(ctx, proposal.ID, proposal.Version, next, revision)
+}
+
+func (service *ProposalService) rejected(ctx context.Context, documentID int64, err error) error {
+	if reason := domain.VaultRejectionReason(err); reason != "" {
+		if auditErr := writeVaultSecurityRejection(ctx, service.audit, documentID, err); auditErr != nil {
+			return auditErr
+		}
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
+	}
+	return err
 }
 
 func (service *ProposalService) persistConflict(ctx context.Context, proposal domain.Proposal) error {
@@ -280,15 +304,20 @@ func (service *ProposalService) getDocument(ctx context.Context, id int64) (doma
 }
 
 func documentPathParts(document domain.Document) (string, string, error) {
-	clean := filepath.Clean(document.VaultPath)
-	if filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.Ext(clean) != ".md" {
-		return "", "", fmt.Errorf("invalid knowledge document path")
+	raw := document.VaultPath
+	clean := filepath.Clean(raw)
+	if raw == "" || strings.ContainsRune(raw, '\\') || filepath.ToSlash(clean) != raw || filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.Ext(clean) != ".md" {
+		return "", "", domain.ErrVaultPathInvalid
 	}
 	parts := strings.Split(filepath.ToSlash(clean), "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == ".md" {
-		return "", "", fmt.Errorf("invalid knowledge document path")
+		return "", "", domain.ErrVaultPathInvalid
 	}
-	return parts[0], strings.TrimSuffix(parts[1], ".md"), nil
+	kind, key := parts[0], strings.TrimSuffix(parts[1], ".md")
+	if err := domain.ValidateVaultLocation(kind, key); err != nil {
+		return "", "", err
+	}
+	return kind, key, nil
 }
 
 func isMissing(err error) bool {

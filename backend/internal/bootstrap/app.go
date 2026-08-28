@@ -718,8 +718,8 @@ func newKnowledgeSnapshotStore(cfg config.Config) (*knowledgeminio.Store, error)
 	return knowledgeminio.NewStore(cfg.MinIO)
 }
 
-func newKnowledgeRecoveryService(repository *knowledgepostgres.Repository, writer *knowledgevault.Writer, snapshots *knowledgeminio.Store) *knowledgeapplication.VaultRecoveryService {
-	return knowledgeapplication.NewVaultRecoveryService(repository, writer, snapshots, nil)
+func newKnowledgeRecoveryService(repository *knowledgepostgres.Repository, writer *knowledgevault.Writer, snapshots *knowledgeminio.Store, audit *operationspostgres.AuditWriter) *knowledgeapplication.VaultRecoveryService {
+	return knowledgeapplication.NewVaultRecoveryService(repository, writer, snapshots, nil, audit)
 }
 
 func newKnowledgeRecoveryHandler(service *knowledgeapplication.VaultRecoveryService) (*knowledgejobs.Handler, error) {

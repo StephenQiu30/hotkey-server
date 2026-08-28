@@ -20,6 +20,13 @@ func TestStablePathRejectsTraversal(t *testing.T) {
 			t.Errorf("reserved or unknown legacy kind %q was accepted", kind)
 		}
 	}
+	for _, key := range []string{
+		"/absolute", `C:\\absolute`, "../escape", `..\\escape`, "%2e%2e", "%252e%252e", "a%2fb", "a%5cb", ".hidden", "trailing.", "a/b", `a\\b`, "line\nbreak",
+	} {
+		if _, err := StablePath("/sensitive/host/vault", "events", key); !errors.Is(err, ErrVaultPathInvalid) || VaultRejectionReason(err) != VaultReasonPathInvalid || strings.Contains(err.Error(), "/sensitive/host/vault") {
+			t.Errorf("unsafe key %q error = %v", key, err)
+		}
+	}
 }
 
 func TestMergeAutomaticRegionPreservesHumanNotes(t *testing.T) {
@@ -113,6 +120,37 @@ func TestRenderVaultDocumentRejectsUnstableIdentityAndMarkerInjection(t *testing
 	}
 }
 
+func TestRenderVaultDocumentRejectsUnsafeMarkdownAndEncodedScriptURLs(t *testing.T) {
+	unsafe := []string{
+		`<script>alert(1)</script>`,
+		`<img src=x onerror=alert(1)>`,
+		`[run](javascript:alert(1))`,
+		`[run](java&#x73;cript:alert(1))`,
+		`[run](jav%61script:alert(1))`,
+		"[run](java\nscript:alert(1))",
+		`![payload](data:image/svg+xml,<svg onload=alert(1)>)`,
+		`<iframe srcdoc="payload"></iframe>`,
+	}
+	for _, generated := range unsafe {
+		t.Run(HashContent("", generated)[:8], func(t *testing.T) {
+			_, err := RenderVaultDocument(VaultDocumentRenderInput{
+				DocumentID: 17, RevisionNo: 1, Type: DocumentReport, SourceID: 91,
+				Title: "日报", Generated: generated,
+			})
+			if !errors.Is(err, ErrVaultContentUnsafe) || VaultRejectionReason(err) != VaultReasonContentUnsafe || strings.Contains(err.Error(), generated) {
+				t.Fatalf("unsafe Markdown error = %v", err)
+			}
+		})
+	}
+	benign := "## 摘要\n\n- [来源](https://example.com/report?id=1)\n- `status: active`"
+	if _, err := RenderVaultDocument(VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 1, Type: DocumentReport, SourceID: 91,
+		Title: "日报", Generated: benign,
+	}); err != nil {
+		t.Fatalf("safe Markdown error = %v", err)
+	}
+}
+
 func TestUpdateVaultDocumentPreservesHumanRegionByteForByte(t *testing.T) {
 	initial, err := RenderVaultDocument(VaultDocumentRenderInput{
 		DocumentID: 17, RevisionNo: 1, Type: DocumentReport, SourceID: 91,
@@ -181,6 +219,24 @@ func TestUpdateVaultDocumentStopsOnIdentityRevisionAndMarkerConflicts(t *testing
 				t.Fatal("UpdateVaultDocument() error = nil")
 			}
 		})
+	}
+}
+
+func TestUpdateVaultDocumentRejectsUnsafeExistingHumanRegion(t *testing.T) {
+	initial, err := RenderVaultDocument(VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 1, Type: DocumentReport, SourceID: 91,
+		Title: "日报", Generated: "generated",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial = strings.Replace(initial, HumanRegionBegin, HumanRegionBegin+"\n<img src=x onerror=alert(1)>", 1)
+	_, err = UpdateVaultDocument(initial, VaultDocumentRenderInput{
+		DocumentID: 17, RevisionNo: 2, Type: DocumentReport, SourceID: 91,
+		Title: "日报", Generated: "updated",
+	})
+	if !errors.Is(err, ErrVaultContentUnsafe) {
+		t.Fatalf("unsafe human region error = %v", err)
 	}
 }
 

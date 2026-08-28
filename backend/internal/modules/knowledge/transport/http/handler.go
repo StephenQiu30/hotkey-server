@@ -296,6 +296,12 @@ func positivePathID(c *gin.Context, resource string) (int64, error) {
 
 func knowledgeError(err error) error {
 	switch {
+	case errors.Is(err, knowledgedomain.ErrVaultPathInvalid):
+		return sharederrors.New(sharederrors.CodeKnowledgePathInvalid, stdhttp.StatusBadRequest, "")
+	case errors.Is(err, knowledgedomain.ErrVaultContentUnsafe):
+		return sharederrors.New(sharederrors.CodeKnowledgeContentUnsafe, stdhttp.StatusBadRequest, "")
+	case errors.Is(err, knowledgedomain.ErrVaultPathSymlink):
+		return sharederrors.New(sharederrors.CodeKnowledgePathSymlink, stdhttp.StatusBadRequest, "")
 	case errors.Is(err, sharedrepository.ErrNotFound):
 		return sharederrors.New(sharederrors.CodeNotFound, stdhttp.StatusNotFound, "knowledge resource not found")
 	case errors.Is(err, sharedrepository.ErrConflict), errors.Is(err, sharedrepository.ErrImmutable):

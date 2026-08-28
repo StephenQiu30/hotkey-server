@@ -182,6 +182,9 @@ func RenderVaultDocument(input VaultDocumentRenderInput) (string, error) {
 			return "", fmt.Errorf("generated content must not contain Vault region markers")
 		}
 	}
+	if err := ValidateVaultMarkdown(title + "\n" + generated); err != nil {
+		return "", err
+	}
 
 	var result strings.Builder
 	fmt.Fprintf(&result, "---\nhotkey_schema: 1\nhotkey_document_id: %d\nhotkey_document_type: %s\nhotkey_source_id: %d\nhotkey_revision: %d\n", input.DocumentID, input.Type, input.SourceID, input.RevisionNo)
@@ -205,6 +208,9 @@ func RenderVaultDocument(input VaultDocumentRenderInput) (string, error) {
 // existing human region forward. Identity and revision checks make a stale,
 // renamed or malformed file a conflict instead of an overwrite candidate.
 func UpdateVaultDocument(existing string, input VaultDocumentRenderInput) (string, error) {
+	if err := ValidateVaultMarkdown(existing); err != nil {
+		return "", err
+	}
 	identity, human, err := parseVaultDocument(existing)
 	if err != nil {
 		return "", err
@@ -254,6 +260,9 @@ func RecoverVaultDocument(sources VaultRecoverySources, input VaultDocumentRende
 		}
 		content, err := UpdateVaultDocument(candidate.content, input)
 		if err != nil {
+			if errors.Is(err, ErrVaultContentUnsafe) {
+				return VaultRecoveryResult{}, err
+			}
 			return VaultRecoveryResult{}, fmt.Errorf("%w: protected source identity changed", ErrVaultConflict)
 		}
 		return VaultRecoveryResult{Content: content, Source: candidate.source}, nil
@@ -325,14 +334,17 @@ func validDocumentType(documentType DocumentType) bool {
 }
 
 func StablePath(root, kind, key string) (string, error) {
-	if strings.TrimSpace(root) == "" || !legacyKnowledgeKind(kind) || strings.TrimSpace(key) == "" || filepath.IsAbs(key) || strings.ContainsAny(key, `/\\`) || key == "." || key == ".." {
-		return "", fmt.Errorf("invalid vault path")
+	if strings.TrimSpace(root) == "" {
+		return "", ErrVaultPathInvalid
+	}
+	if err := ValidateVaultLocation(kind, key); err != nil {
+		return "", err
 	}
 	cleanRoot := filepath.Clean(root)
 	path := filepath.Join(cleanRoot, kind, key+".md")
 	rel, err := filepath.Rel(cleanRoot, path)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("vault path escapes root")
+		return "", ErrVaultPathInvalid
 	}
 	return path, nil
 }
