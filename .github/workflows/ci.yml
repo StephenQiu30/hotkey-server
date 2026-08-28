@@ -364,9 +364,9 @@ jobs:
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
           agent-browser cookies clear
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser wait --load networkidle
           agent-browser network requests --clear
           agent-browser errors --clear
-          agent-browser wait --load networkidle
           agent-browser find label "邮箱" fill "$HOTKEY_BROWSER_EMAIL"
           agent-browser find label "密码" fill "$HOTKEY_BROWSER_PASSWORD"
           agent-browser find role button click --name "进入工作台" --exact

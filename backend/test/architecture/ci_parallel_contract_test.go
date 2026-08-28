@@ -50,4 +50,11 @@ func TestBackendCIPreservesCanonicalCoverageAcrossParallelGates(t *testing.T) {
 	if strings.Contains(workflow[browserStart:finalStart], "\n    needs:") {
 		t.Error("browser smoke must start in parallel because it consumes no preceding job artifact")
 	}
+	browserWorkflow := workflow[browserStart:finalStart]
+	anonymousReady := strings.Index(browserWorkflow, "agent-browser wait --load networkidle")
+	networkReset := strings.Index(browserWorkflow, "agent-browser network requests --clear")
+	errorReset := strings.Index(browserWorkflow, "agent-browser errors --clear")
+	if anonymousReady < 0 || networkReset <= anonymousReady || errorReset <= anonymousReady {
+		t.Error("browser smoke must finish anonymous login bootstrap before resetting captured network and page errors")
+	}
 }
