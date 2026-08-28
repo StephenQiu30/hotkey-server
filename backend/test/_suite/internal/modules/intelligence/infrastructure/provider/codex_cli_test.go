@@ -322,6 +322,8 @@ func TestCodexCLIAdapterBuildsExplicitEnvironmentWithoutWorkerSecrets(t *testing
 		"HOTKEY_REQUEST_COOKIE":          "secret-user-cookie",
 		"OPENAI_API_KEY":                 "secret-provider-key",
 		"DEEPSEEK_API_KEY":               "secret-provider-key-two",
+		"CODEX_API_KEY":                  "secret-codex-api-key",
+		"CODEX_AUTH_TOKEN":               "secret-codex-auth-token",
 		"AWS_ACCESS_KEY_ID":              "secret-cloud-access-key",
 		"AWS_SECRET_ACCESS_KEY":          "secret-cloud-access-value",
 		"GOOGLE_APPLICATION_CREDENTIALS": "/secret/cloud/credentials.json",
@@ -329,6 +331,8 @@ func TestCodexCLIAdapterBuildsExplicitEnvironmentWithoutWorkerSecrets(t *testing
 	for name, value := range secrets {
 		t.Setenv(name, value)
 	}
+	inheritedCodexHome := "/secret/codex-home-with-auth-json"
+	t.Setenv("CODEX_HOME", inheritedCodexHome)
 	fakeExecutable := writeCodexCLIFixture(t, fixtureDirectory, `#!/bin/sh
 set -eu
 fixture_directory=$(dirname "$0")
@@ -358,6 +362,9 @@ printf '{"ok":true}'
 		if strings.Contains(string(environment), name+"=") || strings.Contains(string(environment), secret) {
 			t.Fatalf("child environment leaked %s", name)
 		}
+	}
+	if strings.Contains(string(environment), inheritedCodexHome) {
+		t.Fatal("child environment inherited the worker Codex authentication home")
 	}
 	allowedNames := map[string]bool{
 		"HOME": true, "TMPDIR": true, "CODEX_HOME": true, "PATH": true,
