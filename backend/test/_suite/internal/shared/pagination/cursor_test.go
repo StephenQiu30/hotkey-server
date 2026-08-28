@@ -80,6 +80,34 @@ func TestCodecRejectsTamperingWrongKeyAndExpiredCursor(t *testing.T) {
 	}
 }
 
+func TestCodecRejectsNonCanonicalSignatureEncoding(t *testing.T) {
+	codec, err := NewCodec(testCursorSecret, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := codec.Encode("id", false, "canonical", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := nonCanonicalSignatureAlias(t, encoded)
+	if _, err := codec.Decode(alias, "id", false, "canonical"); !errors.Is(err, ErrInvalidCursor) {
+		t.Fatalf("non-canonical cursor error = %v, want invalid cursor", err)
+	}
+
+	sealed, err := codec.Seal("canonical_list", struct {
+		ID int64 `json:"id"`
+	}{ID: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		ID int64 `json:"id"`
+	}
+	if err := codec.Open(nonCanonicalSignatureAlias(t, sealed), "canonical_list", &decoded); !errors.Is(err, ErrInvalidCursor) {
+		t.Fatalf("non-canonical sealed cursor error = %v, want invalid cursor", err)
+	}
+}
+
 func TestCodecRejectsUnsafeConstructionAndUnboundedCursorFields(t *testing.T) {
 	for _, candidate := range []struct {
 		secret string
@@ -141,4 +169,20 @@ func TestCodecSealsTypedPayloadWithPurposeAndExpiry(t *testing.T) {
 	if err := codec.Open(encoded, "micro_event_list", &decoded); !errors.Is(err, ErrExpiredCursor) {
 		t.Fatalf("expired payload error = %v", err)
 	}
+}
+
+func nonCanonicalSignatureAlias(t *testing.T, encoded string) string {
+	t.Helper()
+	parts := strings.Split(encoded, ".")
+	if len(parts) != 2 || parts[1] == "" {
+		t.Fatalf("signed cursor = %q", encoded)
+	}
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	last := len(parts[1]) - 1
+	index := strings.IndexByte(alphabet, parts[1][last])
+	if index < 0 || index%4 != 0 || index+1 >= len(alphabet) {
+		t.Fatalf("canonical signature suffix = %q", parts[1][last])
+	}
+	parts[1] = parts[1][:last] + string(alphabet[index+1])
+	return parts[0] + "." + parts[1]
 }

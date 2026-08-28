@@ -34,6 +34,7 @@ var (
 	ErrExpiredCursor     = errors.New("cursor expired")
 	cursorSortPattern    = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	cursorPurposePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+	strictRawURLEncoding = base64.RawURLEncoding.Strict()
 )
 
 type Cursor struct {
@@ -190,7 +191,7 @@ func (codec *Codec) verifyPayload(encoded string, maximumSize int) ([]byte, erro
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return nil, ErrInvalidCursor
 	}
-	signature, err := base64.RawURLEncoding.DecodeString(parts[1])
+	signature, err := strictRawURLEncoding.DecodeString(parts[1])
 	if err != nil || len(signature) != sha256.Size {
 		return nil, ErrInvalidCursor
 	}
@@ -199,7 +200,7 @@ func (codec *Codec) verifyPayload(encoded string, maximumSize int) ([]byte, erro
 	if !hmac.Equal(signature, want.Sum(nil)) {
 		return nil, ErrInvalidCursor
 	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	payload, err := strictRawURLEncoding.DecodeString(parts[0])
 	if err != nil || len(payload) == 0 || len(payload) > maximumSize {
 		return nil, ErrInvalidCursor
 	}
@@ -217,7 +218,7 @@ func (codec *Codec) Decode(encoded, sort string, descending bool, filterFingerpr
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return Cursor{}, ErrInvalidCursor
 	}
-	signature, err := base64.RawURLEncoding.DecodeString(parts[1])
+	signature, err := strictRawURLEncoding.DecodeString(parts[1])
 	if err != nil || len(signature) != sha256.Size {
 		return Cursor{}, ErrInvalidCursor
 	}
@@ -226,7 +227,7 @@ func (codec *Codec) Decode(encoded, sort string, descending bool, filterFingerpr
 	if !hmac.Equal(signature, want.Sum(nil)) {
 		return Cursor{}, ErrInvalidCursor
 	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	payload, err := strictRawURLEncoding.DecodeString(parts[0])
 	if err != nil || len(payload) == 0 || len(payload) > maximumEncodedCursorSize {
 		return Cursor{}, ErrInvalidCursor
 	}
