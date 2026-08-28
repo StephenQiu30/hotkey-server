@@ -12,6 +12,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
@@ -525,6 +526,67 @@ func TestCollectionRepositoryRetryHookFailureRollsBack(t *testing.T) {
 	}
 	if _, err := repository.RetryRunWithHook(context.Background(), run.ID, nil); !errors.Is(err, sharedrepository.ErrInvalidInput) {
 		t.Fatalf("RetryRunWithHook(nil) error = %v, want invalid input", err)
+	}
+}
+
+func TestCollectionRunListCursorIsSignedExpiringAndSnapshotStableAcrossConcurrentInsert(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	codec, err := pagination.NewCodec(strings.Repeat("collection-run-list-secret-", 2), time.Minute)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(): %v", err)
+	}
+	repository := sourcepostgres.NewCollectionRepositoryWithCursorCodec(runtime, codec)
+	create := func(name string) domain.CollectionRun {
+		t.Helper()
+		request := collectionRequestForRepository(t, runtime, name, 1)
+		run, created, err := repository.CreateOrReuseRun(context.Background(), request)
+		if err != nil || !created {
+			t.Fatalf("CreateOrReuseRun(%s) run/created/error = %#v/%t/%v", name, run, created, err)
+		}
+		return run
+	}
+	firstFixture := create("cursor-first")
+	secondFixture := create("cursor-second")
+	thirdFixture := create("cursor-third")
+
+	first, err := repository.ListRuns(context.Background(), domain.CollectionRunListQuery{Limit: 2})
+	if err != nil || len(first.Items) != 2 || first.NextCursor == "" {
+		t.Fatalf("ListRuns(first) page/error = %#v/%v", first, err)
+	}
+	if first.Items[0].ID != firstFixture.ID || first.Items[1].ID != secondFixture.ID || strings.Count(first.NextCursor, ".") != 1 {
+		t.Fatalf("first page = %#v", first)
+	}
+	concurrent := create("cursor-concurrent")
+
+	second, err := repository.ListRuns(context.Background(), domain.CollectionRunListQuery{Cursor: first.NextCursor, Limit: 2})
+	if err != nil || len(second.Items) != 1 || second.Items[0].ID != thirdFixture.ID || second.NextCursor != "" {
+		t.Fatalf("ListRuns(second) page/error = %#v/%v; concurrent=%d", second, err, concurrent.ID)
+	}
+
+	tampered := first.NextCursor[:len(first.NextCursor)-1] + "A"
+	if strings.HasSuffix(first.NextCursor, "A") {
+		tampered = first.NextCursor[:len(first.NextCursor)-1] + "B"
+	}
+	if _, err := repository.ListRuns(context.Background(), domain.CollectionRunListQuery{Cursor: tampered, Limit: 2}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("tampered cursor error = %v, want invalid input", err)
+	}
+	if _, err := repository.ListRuns(context.Background(), domain.CollectionRunListQuery{Limit: 201}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("oversized page error = %v, want invalid input", err)
+	}
+
+	shortCodec, err := pagination.NewCodec(strings.Repeat("short-collection-run-secret-", 2), time.Millisecond)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(short): %v", err)
+	}
+	shortRepository := sourcepostgres.NewCollectionRepositoryWithCursorCodec(runtime, shortCodec)
+	expiring, err := shortRepository.ListRuns(context.Background(), domain.CollectionRunListQuery{Limit: 2})
+	if err != nil || expiring.NextCursor == "" {
+		t.Fatalf("ListRuns(expiring) page/error = %#v/%v", expiring, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := shortRepository.ListRuns(context.Background(), domain.CollectionRunListQuery{Cursor: expiring.NextCursor, Limit: 2}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired cursor error = %v, want invalid input", err)
 	}
 }
 

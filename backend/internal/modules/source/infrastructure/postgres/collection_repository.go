@@ -30,13 +30,21 @@ type CollectionRepository struct {
 var _ domain.CollectionRepository = (*CollectionRepository)(nil)
 
 const (
-	collectionRunListDefaultLimit = 50
-	collectionRunListMaximumLimit = 200
-	collectionRunListFingerprint  = "collection-runs"
-	collectionCaptureDefaultLimit = 100
-	collectionCaptureMaximumLimit = 200
-	collectionCaptureFingerprint  = "captured-items"
+	collectionRunListDefaultLimit  = 50
+	collectionRunListMaximumLimit  = 200
+	collectionRunListFingerprint   = "collection-runs"
+	collectionRunListCursorVersion = 1
+	collectionCaptureDefaultLimit  = 100
+	collectionCaptureMaximumLimit  = 200
+	collectionCaptureFingerprint   = "captured-items"
 )
+
+type collectionRunListCursor struct {
+	Version           int    `json:"v"`
+	FilterFingerprint string `json:"filter"`
+	SnapshotID        int64  `json:"snapshot_id"`
+	AfterID           int64  `json:"after_id"`
+}
 
 func NewCollectionRepository(runtime *database.Runtime) *CollectionRepository {
 	return NewCollectionRepositoryWithCursorCodec(runtime, sourceTestCursorCodec(runtime, "collections"))
@@ -161,19 +169,22 @@ WHERE collection_run_id=$1`, runID); err != nil {
 // neither this query nor its domain projection includes request state, source
 // identity, query signature or any upstream connection detail.
 func (repository *CollectionRepository) ListRuns(ctx context.Context, query domain.CollectionRunListQuery) (domain.CollectionRunPage, error) {
-	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || repository.cursorCodec == nil {
 		return domain.CollectionRunPage{}, sharedrepository.ErrUnavailable
 	}
-	limit, cursorID, err := repository.collectionRunListParameters(query)
+	limit, cursor, err := repository.collectionRunListParameters(ctx, query)
 	if err != nil {
 		return domain.CollectionRunPage{}, err
+	}
+	if cursor.SnapshotID == 0 {
+		return domain.CollectionRunPage{Items: []domain.CollectionRunSummary{}}, nil
 	}
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `
 SELECT `+collectionRunSummaryColumns+`
 FROM collection_runs
-WHERE id > $1
+WHERE id > $1 AND id <= $2
 ORDER BY id ASC
-LIMIT $2`, cursorID, limit+1)
+LIMIT $3`, cursor.AfterID, cursor.SnapshotID, limit+1)
 	if err != nil {
 		return domain.CollectionRunPage{}, databaserepository.MapError(err)
 	}
@@ -206,7 +217,8 @@ LIMIT $2`, cursorID, limit+1)
 		return page, nil
 	}
 	page.Items = page.Items[:limit]
-	nextCursor, err := repository.cursorCodec.Encode("id", false, collectionRunListFingerprint, page.Items[len(page.Items)-1].ID)
+	cursor.AfterID = page.Items[len(page.Items)-1].ID
+	nextCursor, err := repository.cursorCodec.Seal("collection_run_list", cursor)
 	if err != nil {
 		return domain.CollectionRunPage{}, fmt.Errorf("%w: encode collection run cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
@@ -990,19 +1002,27 @@ ORDER BY id ASC`, runID)
 	return targets, nil
 }
 
-func (repository *CollectionRepository) collectionRunListParameters(query domain.CollectionRunListQuery) (int, int64, error) {
+func (repository *CollectionRepository) collectionRunListParameters(ctx context.Context, query domain.CollectionRunListQuery) (int, collectionRunListCursor, error) {
 	limit := query.Limit
 	if limit == 0 {
 		limit = collectionRunListDefaultLimit
 	}
 	if limit < 1 || limit > collectionRunListMaximumLimit {
-		return 0, 0, fmt.Errorf("%w: collection run limit must be 1-%d", sharedrepository.ErrInvalidInput, collectionRunListMaximumLimit)
+		return 0, collectionRunListCursor{}, fmt.Errorf("%w: collection run limit must be 1-%d", sharedrepository.ErrInvalidInput, collectionRunListMaximumLimit)
 	}
-	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", false, collectionRunListFingerprint)
-	if err != nil {
-		return 0, 0, fmt.Errorf("%w: collection run cursor: %v", sharedrepository.ErrInvalidInput, err)
+	cursor := collectionRunListCursor{Version: collectionRunListCursorVersion, FilterFingerprint: collectionRunListFingerprint}
+	if query.Cursor != "" {
+		if err := repository.cursorCodec.Open(query.Cursor, "collection_run_list", &cursor); err != nil ||
+			cursor.Version != collectionRunListCursorVersion || cursor.FilterFingerprint != collectionRunListFingerprint ||
+			cursor.SnapshotID <= 0 || cursor.AfterID <= 0 || cursor.AfterID >= cursor.SnapshotID {
+			return 0, collectionRunListCursor{}, fmt.Errorf("%w: collection run cursor is invalid", sharedrepository.ErrInvalidInput)
+		}
+		return limit, cursor, nil
 	}
-	return limit, cursor.ID, nil
+	if err := repository.runtime.SQL.QueryRowContext(ctx, `SELECT COALESCE(MAX(id), 0) FROM collection_runs`).Scan(&cursor.SnapshotID); err != nil {
+		return 0, collectionRunListCursor{}, databaserepository.MapError(err)
+	}
+	return limit, cursor, nil
 }
 
 func (repository *CollectionRepository) capturedItemListParameters(query domain.CapturedItemQuery) (int, int64, error) {

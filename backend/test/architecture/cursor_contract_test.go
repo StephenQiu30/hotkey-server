@@ -26,6 +26,9 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 		"internal/modules/source/infrastructure/postgres/repository.go": {
 			"NewRepositoryWithCursorCodec", `cursorCodec.Seal("source_connection_list"`, `cursorCodec.Open(query.Cursor, "source_connection_list"`,
 		},
+		"internal/modules/source/infrastructure/postgres/collection_repository.go": {
+			"NewCollectionRepositoryWithCursorCodec", `cursorCodec.Seal("collection_run_list"`, `cursorCodec.Open(query.Cursor, "collection_run_list"`,
+		},
 		"internal/modules/report/infrastructure/postgres/repository.go": {
 			"NewRepositoryWithCursorCodec", `cursorCodec.Decode(query.Cursor, "id", true, reportListFingerprint(query))`,
 			`cursorCodec.Encode("id", true, reportListFingerprint(query)`,
