@@ -28,8 +28,9 @@ describe("EventsPage", () => {
             event_started_at: "2026-08-27T04:00:00Z",
             content_family_count: 2,
             document_count: 5,
+            relevance_score: 0.34,
             latest_heat: { heat_score: 82.45, reason_codes: ["velocity_rising", "multi_source"] },
-            evidence_state: { state: "multiple_independent_origins" },
+            evidence_state: { state: "multiple_origins" },
           },
         ],
       },
@@ -41,6 +42,7 @@ describe("EventsPage", () => {
 
     expect(await screen.findByText("OpenAI · 发布新模型")).toBeInTheDocument();
     expect(screen.getByText("2 个内容家族 · 5 篇文档")).toBeInTheDocument();
+    expect(screen.getByText("34.0%")).toBeInTheDocument();
     expect(screen.getByText("82.5")).toBeInTheDocument();
     expect(screen.getByText("多个独立出处")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看治理与证据" })).toHaveAttribute(

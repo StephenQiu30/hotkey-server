@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance m4-fault-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance m4-fault-recovery-acceptance source-resource-limit-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -100,6 +100,18 @@ event-governance-role-acceptance:
 		-run '^(TestMicroEventRoutesRequireAuthenticationAndProtectMutations|TestMicroEventRoutesEnforceFourRoleReadAndGovernanceBoundary)$$' \
 		-count=1 -v
 	cd ../frontend && npm run test:unit -- dashboard-event-governance-page.test.tsx
+
+event-semantic-separation-acceptance: test-env
+	$(GO) run ./test/runner test -p=1 \
+		./internal/modules/event/domain \
+		./internal/modules/event/transport/http \
+		-run '^(TestRelevanceHeatClaimEvidenceAndEventEvidenceStateRemainIndependent|TestMicroEventResponseKeepsRelevanceHeatAndEvidenceStateSeparate)$$' \
+		-count=1 -v
+	$(GO) run ./test/runner test -tags=integration -p=1 \
+		./internal/modules/report/infrastructure/postgres \
+		-run '^TestReportPublicationRevalidatesCitationFactsInsteadOfAggregateEvidenceState$$' \
+		-count=1 -v
+	cd ../frontend && npm run test:unit -- dashboard-events-page.test.tsx dashboard-reports-page.test.tsx
 
 build:
 	$(GO) build ./...

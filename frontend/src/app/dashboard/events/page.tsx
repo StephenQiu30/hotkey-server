@@ -29,6 +29,9 @@ const statusLabels: Record<string, string> = {
 const evidenceLabels: Record<string, string> = {
   no_citable_body: "无可引用正文",
   single_origin: "单一出处",
+  multiple_origins: "多个独立出处",
+  conflicting_reports: "存在争议",
+  // Historical read aliases remain display-only; the API emits the canonical values above.
   multiple_independent_origins: "多个独立出处",
   disputed: "存在争议",
   publisher_corrected: "发布者已更正",
@@ -54,6 +57,9 @@ function eventTitle(event: HotKeyAPI.MicroEventResponseDTO) {
 
 function MicroEventCard({ event }: { event: HotKeyAPI.MicroEventResponseDTO }) {
   const heat = event.latest_heat?.heat_score;
+  const relevance = typeof event.relevance_score === "number" && Number.isFinite(event.relevance_score)
+    ? event.relevance_score
+    : undefined;
   const evidenceState = event.evidence_state?.state;
 
   return (
@@ -71,7 +77,7 @@ function MicroEventCard({ event }: { event: HotKeyAPI.MicroEventResponseDTO }) {
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+      <CardContent className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-5">
         <div>
           <p className="text-xs text-muted-foreground">事件开始</p>
           <p className="mt-1 font-medium">{formatDateTime(event.event_started_at)}</p>
@@ -80,6 +86,12 @@ function MicroEventCard({ event }: { event: HotKeyAPI.MicroEventResponseDTO }) {
           <p className="text-xs text-muted-foreground">聚合规模</p>
           <p className="mt-1 font-medium">
             {event.content_family_count ?? 0} 个内容家族 · {event.document_count ?? 0} 篇文档
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">相关性</p>
+          <p className="mt-1 font-medium">
+            {relevance === undefined ? "尚无相关样本" : `${(relevance * 100).toFixed(1)}%`}
           </p>
         </div>
         <div>
@@ -96,12 +108,12 @@ function MicroEventCard({ event }: { event: HotKeyAPI.MicroEventResponseDTO }) {
           </p>
         </div>
         {event.latest_heat?.reason_codes?.length ? (
-          <p className="mono break-words text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">
+          <p className="mono break-words text-xs text-muted-foreground sm:col-span-2 lg:col-span-5">
             Heat 理由：{event.latest_heat.reason_codes.join(" · ")}
           </p>
         ) : null}
         {event.id ? (
-          <div className="sm:col-span-2 lg:col-span-4">
+          <div className="sm:col-span-2 lg:col-span-5">
             <Button asChild size="sm" variant="outline">
               <Link href={`/dashboard/events/${event.id}/governance`}>查看治理与证据</Link>
             </Button>
@@ -143,7 +155,7 @@ export default function EventsPage() {
             刷新事件
           </Button>
         }
-        description="查看已接受匹配按内容家族去重后形成的语义事件，以及对应 Heat 与证据状态。"
+        description="分别查看已接受匹配的相关性、确定性 Heat 与证据状态；这些维度不会互相替代。"
         eyebrow="Events"
         title="语义事件"
       />

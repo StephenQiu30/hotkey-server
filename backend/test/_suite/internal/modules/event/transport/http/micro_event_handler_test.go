@@ -90,6 +90,27 @@ func TestMicroEventResponseExposesHeatProfileAvailabilityAndWarmingUp(t *testing
 	}
 }
 
+func TestMicroEventResponseKeepsRelevanceHeatAndEvidenceStateSeparate(t *testing.T) {
+	relevance := .34
+	projection := application.MicroEventProjectionDTO{
+		ID: 7, Version: 3, EventKey: "semantic-event", Status: "active", RelevanceScore: &relevance,
+		LatestHeat: &application.EventHeatSnapshotDTO{HeatScore: 82.45, ReasonCodes: []string{"velocity_rising"}},
+		LatestEvidenceState: &application.EvidenceStateSnapshotDTO{
+			State: "multiple_origins", IndependentOriginCount: 2, ReasonCodes: []string{"multiple_origins"},
+		},
+	}
+
+	response := microEventResponseDTO(projection)
+	if response.RelevanceScore == nil || *response.RelevanceScore != .34 || response.LatestHeat == nil ||
+		response.LatestHeat.HeatScore != 82.45 || response.EvidenceState == nil ||
+		response.EvidenceState.State != "multiple_origins" || response.EvidenceState.IndependentOriginCount != 2 {
+		t.Fatalf("separated event response = %#v", response)
+	}
+	if response.EvidenceSummary != nil {
+		t.Fatalf("aggregate evidence state invented ClaimEvidence summary = %#v", response.EvidenceSummary)
+	}
+}
+
 func TestMicroEventResponseExposesOnlyActiveGovernanceMemberHandles(t *testing.T) {
 	response := microEventResponseDTO(application.MicroEventProjectionDTO{Members: []application.MicroEventMemberProjectionDTO{{
 		ID: 19, Version: 2, ContentFamilyID: 23, MembershipDecisionID: 29,
