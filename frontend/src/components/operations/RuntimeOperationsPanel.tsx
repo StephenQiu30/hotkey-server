@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Activity, AlertCircle, Clock3, Loader2, RefreshCw } from "lucide-react";
+import { Activity, AlertCircle, Clock3, ExternalLink, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -214,6 +214,49 @@ export function RuntimeOperationsPanel() {
                     </div>
                   ))}
             </CardContent>
+
+            {!loading && (overview?.alerts?.length ?? 0) > 0 ? (
+              <CardContent className="space-y-3 border-b bg-destructive/5 p-4">
+                <div className="flex items-center gap-2">
+                  <TriangleAlert className="h-4 w-4 text-destructive" aria-hidden="true" />
+                  <h3 className="font-semibold">运行告警</h3>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {overview?.alerts?.map((alert) => (
+                    <article key={alert.alert_id} className="rounded-md border border-destructive/30 bg-background p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="destructive">{alert.severity?.toUpperCase() ?? "P1"}</Badge>
+                        <code className="text-xs font-semibold">{alert.alert_id}</code>
+                        <span className="text-xs text-muted-foreground">
+                          影响 {alert.affected_count ?? 0} 个任务
+                        </span>
+                      </div>
+                      <p className="mt-3 font-mono text-xs text-muted-foreground">{alert.reason_code}</p>
+                      <p className="mt-2 text-sm">
+                        任务 #{alert.job_id}
+                        {alert.event_id ? ` · 事件 #${alert.event_id}` : ""}
+                      </p>
+                      {alert.trace_id ? (
+                        <p className="mt-2 break-all font-mono text-xs" aria-label="Trace ID">
+                          {alert.trace_id}
+                        </p>
+                      ) : null}
+                      {alert.runbook_url ? (
+                        <a
+                          className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          href={alert.runbook_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          打开处置手册
+                          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                        </a>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </CardContent>
+            ) : null}
 
             {loading ? (
               <div className="space-y-3 p-5" aria-label="正在加载运行任务">

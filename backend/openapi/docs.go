@@ -8525,9 +8525,47 @@ const docTemplate = `{
                 }
             }
         },
+        "domain.RuntimeAlert": {
+            "type": "object",
+            "properties": {
+                "affected_count": {
+                    "type": "integer"
+                },
+                "alert_id": {
+                    "type": "string"
+                },
+                "event_id": {
+                    "type": "integer"
+                },
+                "job_id": {
+                    "type": "integer"
+                },
+                "reason_code": {
+                    "type": "string"
+                },
+                "runbook_url": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "triggered_at": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.RuntimeOverview": {
             "type": "object",
             "properties": {
+                "alerts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.RuntimeAlert"
+                    }
+                },
                 "available_jobs": {
                     "type": "integer"
                 },

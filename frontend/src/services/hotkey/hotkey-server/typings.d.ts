@@ -2649,7 +2649,20 @@ required property without making explicit null impossible to bind. */
     version?: number;
   };
 
+  type RuntimeAlert = {
+    affected_count?: number;
+    alert_id?: string;
+    event_id?: number;
+    job_id?: number;
+    reason_code?: string;
+    runbook_url?: string;
+    severity?: string;
+    trace_id?: string;
+    triggered_at?: string;
+  };
+
   type RuntimeOverview = {
+    alerts?: RuntimeAlert[];
     available_jobs?: number;
     cancelled_jobs?: number;
     completed_jobs?: number;

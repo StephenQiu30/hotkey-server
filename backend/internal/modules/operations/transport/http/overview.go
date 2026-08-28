@@ -28,7 +28,7 @@ func RegisterOverviewRoutes(router *gin.Engine, service *operationsapplication.O
 	admin.GET("", httptransport.Wrap(handler.Get))
 }
 
-// Get returns queue counters and the oldest available schedule time.
+// Get returns queue counters, the oldest available schedule time and bounded alerts.
 // @Summary Get runtime overview
 // @Tags operations
 // @Produce json
