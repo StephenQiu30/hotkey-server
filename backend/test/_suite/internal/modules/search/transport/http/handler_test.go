@@ -16,12 +16,14 @@ import (
 )
 
 type searchServiceStub struct {
-	query  searchdomain.Query
-	result searchapplication.Result
-	err    error
+	request searchapplication.Request
+	query   searchdomain.Query
+	result  searchapplication.Result
+	err     error
 }
 
 func (service *searchServiceStub) Search(_ context.Context, request searchapplication.Request) (searchapplication.Result, error) {
+	service.request = request
 	service.query = request.Query
 	return service.result, service.err
 }
@@ -30,6 +32,26 @@ type viewerAuthenticator struct{}
 
 func (viewerAuthenticator) Authenticate(context.Context, string) (httptransport.Subject, error) {
 	return httptransport.Subject{UserID: 7, SessionID: 11, Role: httptransport.RoleViewer}, nil
+}
+
+func TestSearchRouteForwardsOpaqueCursorAndReturnsNextCursor(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &searchServiceStub{result: searchapplication.Result{NextCursor: "next.opaque"}}
+	router := gin.New()
+	RegisterRoutes(router, service, viewerAuthenticator{})
+	request := httptest.NewRequest(stdhttp.MethodGet, "/api/v1/search?q=release&cursor=current.opaque&limit=1", nil)
+	request.Header.Set("Authorization", "Bearer token")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != stdhttp.StatusOK {
+		t.Fatalf("status/body = %d/%s", response.Code, response.Body.String())
+	}
+	if service.request.Cursor != "current.opaque" || service.request.Query.Limit != 1 {
+		t.Fatalf("search request = %#v", service.request)
+	}
+	if body := response.Body.String(); !strings.Contains(body, `"next_cursor":"next.opaque"`) {
+		t.Fatalf("response omitted opaque next cursor: %s", body)
+	}
 }
 
 func TestSearchRouteParsesFiltersAndReturnsOnlyBoundedDTO(t *testing.T) {

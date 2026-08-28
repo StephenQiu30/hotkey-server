@@ -6922,6 +6922,12 @@ const docTemplate = `{
                         "description": "result limit",
                         "name": "limit",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "opaque signed search snapshot cursor",
+                        "name": "cursor",
+                        "in": "query"
                     }
                 ],
                 "responses": {

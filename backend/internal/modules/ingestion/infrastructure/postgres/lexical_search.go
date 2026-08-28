@@ -25,9 +25,11 @@ func (repository *ContentRepository) Search(ctx context.Context, query searchdom
 	if !query.Includes(searchdomain.ResourceContent) {
 		return []searchdomain.Candidate{}, nil
 	}
+	hasAfter, afterScore, afterOccurredAt, afterType, afterID := contentSearchPageArguments(query)
 	rows, err := repository.runtime.SQL.QueryContext(ctx, contentLexicalSearchSQL,
 		query.Keyword, query.Entity, nullableSearchID(query.SourceConnectionID), nullableSearchID(query.MonitorID),
-		query.Status, nullableSearchTime(query.From), nullableSearchTime(query.To), query.Limit,
+		query.Status, nullableSearchTime(query.From), nullableSearchTime(query.To), query.Sort, nullableSearchSnapshot(query.SnapshotAt),
+		hasAfter, afterScore, afterOccurredAt, afterType, afterID, query.CandidateLimit,
 	)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
@@ -84,9 +86,11 @@ func (repository *ContentRepository) ExplainSearch(ctx context.Context, query se
 		return nil, fmt.Errorf("%w: invalid content search plan query", sharedrepository.ErrInvalidInput)
 	}
 	var plan []byte
+	hasAfter, afterScore, afterOccurredAt, afterType, afterID := contentSearchPageArguments(query)
 	err := repository.runtime.SQL.QueryRowContext(ctx, "EXPLAIN (FORMAT JSON,COSTS FALSE) "+contentLexicalSearchSQL,
 		query.Keyword, query.Entity, nullableSearchID(query.SourceConnectionID), nullableSearchID(query.MonitorID),
-		query.Status, nullableSearchTime(query.From), nullableSearchTime(query.To), query.Limit,
+		query.Status, nullableSearchTime(query.From), nullableSearchTime(query.To), query.Sort, nullableSearchSnapshot(query.SnapshotAt),
+		hasAfter, afterScore, afterOccurredAt, afterType, afterID, query.CandidateLimit,
 	).Scan(&plan)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
@@ -106,6 +110,20 @@ func nullableSearchTime(value *time.Time) sql.NullTime {
 		return sql.NullTime{}
 	}
 	return sql.NullTime{Time: value.UTC(), Valid: true}
+}
+
+func nullableSearchSnapshot(value time.Time) sql.NullTime {
+	if value.IsZero() {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: value.UTC(), Valid: true}
+}
+
+func contentSearchPageArguments(query searchdomain.Query) (bool, float64, time.Time, string, int64) {
+	if query.After == nil {
+		return false, 0, time.Time{}, "", 0
+	}
+	return true, query.After.Score, query.After.OccurredAt.UTC(), string(query.After.Type), query.After.ID
 }
 
 const contentLexicalSearchSQL = `
@@ -134,8 +152,9 @@ WITH input AS MATERIALIZED (
     ON search.document_version_id=version.id
    AND search.source_connection_id=document.source_connection_id
    AND search.normalized_text_sha256=version.content_sha256
-   AND search.lifecycle_state='active'
-   AND search.retention_until>CURRENT_TIMESTAMP
+    AND search.lifecycle_state='active'
+    AND search.retention_until>CURRENT_TIMESTAMP
+    AND ($9::timestamptz IS NULL OR search.created_at<=$9)
   CROSS JOIN input
   WHERE content.content_status='active' AND content.deleted_at IS NULL
     AND current_rights_action_allowed(
@@ -172,8 +191,29 @@ WITH input AS MATERIALIZED (
 )
 SELECT id,source_connection_id,title,excerpt,status,occurred_at,score
 FROM deduplicated
-ORDER BY score DESC,occurred_at DESC,id DESC
-LIMIT $8`
+WHERE $10::boolean=false OR (
+  $8::text='relevance' AND (
+    score<$11 OR score=$11 AND (
+      occurred_at<$12 OR occurred_at=$12 AND (
+        'content'::text>$13 OR 'content'::text=$13 AND id<$14
+      )
+    )
+  )
+  OR $8::text='latest' AND (
+    occurred_at<$12 OR occurred_at=$12 AND (
+      'content'::text>$13 OR 'content'::text=$13 AND (
+        score<$11 OR score=$11 AND id<$14
+      )
+    )
+  )
+)
+ORDER BY
+  CASE WHEN $8::text='relevance' THEN score END DESC,
+  CASE WHEN $8::text='latest' THEN occurred_at END DESC,
+  CASE WHEN $8::text='relevance' THEN occurred_at END DESC,
+  CASE WHEN $8::text='latest' THEN score END DESC,
+  id DESC
+LIMIT $15`
 
 const contentSearchVisibilitySQL = `
 SELECT EXISTS (

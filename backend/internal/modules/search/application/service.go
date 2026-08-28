@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	stdhtml "html"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	searchdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/search/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 )
 
 var (
@@ -50,6 +53,7 @@ type SubjectReader interface {
 type Request struct {
 	Query   searchdomain.Query
 	Subject Subject
+	Cursor  string
 }
 
 type Readers struct {
@@ -59,8 +63,10 @@ type Readers struct {
 }
 
 type Service struct {
-	readers  Readers
-	subjects SubjectReader
+	readers     Readers
+	subjects    SubjectReader
+	cursorCodec *pagination.Codec
+	now         func() time.Time
 }
 
 type Item struct {
@@ -80,16 +86,33 @@ type Result struct {
 	NextCursor string
 }
 
+type searchResultCursor struct {
+	Version           int                   `json:"v"`
+	SubjectUserID     int64                 `json:"user_id"`
+	SubjectRole       string                `json:"role"`
+	FilterFingerprint string                `json:"filter"`
+	SnapshotAt        time.Time             `json:"as_of"`
+	Position          searchdomain.Position `json:"position"`
+}
+
 func NewService(readers Readers, subjects SubjectReader) (*Service, error) {
-	if readers.Content == nil || readers.Event == nil || readers.Knowledge == nil || subjects == nil {
+	return NewServiceWithCursorCodec(readers, subjects, pagination.NewTestCodec("search-application"))
+}
+
+func NewServiceWithCursorCodec(readers Readers, subjects SubjectReader, cursorCodec *pagination.Codec) (*Service, error) {
+	if readers.Content == nil || readers.Event == nil || readers.Knowledge == nil || subjects == nil || cursorCodec == nil {
 		return nil, fmt.Errorf("all lexical search readers and current subject reader are required")
 	}
-	return &Service{readers: readers, subjects: subjects}, nil
+	return &Service{readers: readers, subjects: subjects, cursorCodec: cursorCodec, now: func() time.Time { return time.Now().UTC() }}, nil
 }
 
 func (service *Service) Search(ctx context.Context, request Request) (Result, error) {
-	if service == nil {
+	if service == nil || service.cursorCodec == nil || service.now == nil {
 		return Result{}, ErrUnavailable
+	}
+	request.Cursor = strings.TrimSpace(request.Cursor)
+	if len(request.Cursor) > 8192 || strings.ContainsAny(request.Cursor, "\r\n") {
+		return Result{}, ErrInvalidQuery
 	}
 	if !request.Subject.valid() {
 		return Result{}, ErrInvalidQuery
@@ -110,6 +133,23 @@ func (service *Service) Search(ctx context.Context, request Request) (Result, er
 	if !scopeVisible {
 		return Result{Items: []Item{}}, nil
 	}
+	fingerprint, err := searchFilterFingerprint(query)
+	if err != nil {
+		return Result{}, ErrInvalidQuery
+	}
+	cursor := searchResultCursor{
+		Version: 1, SubjectUserID: currentSubject.UserID, SubjectRole: currentSubject.Role,
+		FilterFingerprint: fingerprint, SnapshotAt: service.now().UTC(),
+	}
+	if request.Cursor != "" {
+		cursor, err = decodeSearchResultCursor(service.cursorCodec, request.Cursor, currentSubject, fingerprint)
+		if err != nil {
+			return Result{}, ErrInvalidQuery
+		}
+		query.After = &cursor.Position
+	}
+	query.SnapshotAt = cursor.SnapshotAt
+	query.CandidateLimit = query.Limit + 1
 	owners := []struct {
 		resourceType searchdomain.ResourceType
 		reader       LexicalReader
@@ -131,8 +171,14 @@ func (service *Service) Search(ctx context.Context, request Request) (Result, er
 			}
 			return Result{}, fmt.Errorf("%w", ErrUnavailable)
 		}
+		if len(items) > query.CandidateLimit {
+			return Result{}, fmt.Errorf("%w", ErrInvalidProjection)
+		}
 		for _, candidate := range items {
 			if candidate.Type != owner.resourceType || candidate.Validate() != nil {
+				return Result{}, fmt.Errorf("%w", ErrInvalidProjection)
+			}
+			if query.After != nil && !candidateFollowsPosition(candidate, *query.After, query.Sort) {
 				return Result{}, fmt.Errorf("%w", ErrInvalidProjection)
 			}
 			key := fmt.Sprintf("%s:%d", candidate.Type, candidate.ID)
@@ -161,10 +207,8 @@ func (service *Service) Search(ctx context.Context, request Request) (Result, er
 		}
 		return candidates[left].ID > candidates[right].ID
 	})
-	if len(candidates) > query.Limit {
-		candidates = candidates[:query.Limit]
-	}
-	result := Result{Items: make([]Item, 0, len(candidates))}
+	result := Result{Items: make([]Item, 0, min(query.Limit+1, len(candidates)))}
+	visiblePositions := make([]searchdomain.Position, 0, min(query.Limit+1, len(candidates)))
 	for _, candidate := range candidates {
 		visible, err := readerForType(service.readers, candidate.Type).CanDisplay(ctx, query, candidate)
 		if err != nil {
@@ -193,8 +237,90 @@ func (service *Service) Search(ctx context.Context, request Request) (Result, er
 			TitleHighlight: highlight(candidate.Title, query.Keyword), SnippetHighlight: highlight(candidate.Snippet, query.Keyword),
 			Status: candidate.Status, OccurredAt: candidate.OccurredAt, Score: candidate.Score,
 		})
+		visiblePositions = append(visiblePositions, searchdomain.Position{
+			Type: candidate.Type, ID: candidate.ID, OccurredAt: candidate.OccurredAt, Score: candidate.Score,
+		})
+		if len(result.Items) > query.Limit {
+			break
+		}
+	}
+	if len(result.Items) > query.Limit {
+		cursor.Position = visiblePositions[query.Limit-1]
+		result.NextCursor, err = encodeSearchResultCursor(service.cursorCodec, cursor)
+		if err != nil {
+			return Result{}, fmt.Errorf("%w", ErrUnavailable)
+		}
+		result.Items = result.Items[:query.Limit]
 	}
 	return result, nil
+}
+
+func encodeSearchResultCursor(cursorCodec *pagination.Codec, cursor searchResultCursor) (string, error) {
+	cursor.Version = 1
+	return cursorCodec.Seal("search_result_list", cursor)
+}
+
+func decodeSearchResultCursor(cursorCodec *pagination.Codec, value string, subject Subject, fingerprint string) (searchResultCursor, error) {
+	var cursor searchResultCursor
+	if err := cursorCodec.Open(value, "search_result_list", &cursor); err != nil {
+		return searchResultCursor{}, err
+	}
+	if cursor.Version != 1 || cursor.SubjectUserID != subject.UserID || cursor.SubjectRole != subject.Role ||
+		cursor.FilterFingerprint != fingerprint || cursor.SnapshotAt.IsZero() || cursor.Position.Validate() != nil {
+		return searchResultCursor{}, ErrInvalidQuery
+	}
+	cursor.SnapshotAt = cursor.SnapshotAt.UTC()
+	cursor.Position.OccurredAt = cursor.Position.OccurredAt.UTC()
+	return cursor, nil
+}
+
+func searchFilterFingerprint(query searchdomain.Query) (string, error) {
+	query = query.Normalized()
+	type fingerprint struct {
+		Keyword            string                      `json:"q"`
+		Types              []searchdomain.ResourceType `json:"types"`
+		SourceConnectionID *int64                      `json:"source_id,omitempty"`
+		MonitorID          *int64                      `json:"monitor_id,omitempty"`
+		Entity             string                      `json:"entity,omitempty"`
+		Status             string                      `json:"status,omitempty"`
+		Sort               string                      `json:"sort"`
+		From               *time.Time                  `json:"from,omitempty"`
+		To                 *time.Time                  `json:"to,omitempty"`
+	}
+	payload, err := json.Marshal(fingerprint{
+		Keyword: query.Keyword, Types: query.Types, SourceConnectionID: query.SourceConnectionID, MonitorID: query.MonitorID,
+		Entity: query.Entity, Status: query.Status, Sort: query.Sort, From: query.From, To: query.To,
+	})
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(payload)
+	return fmt.Sprintf("%x", digest), nil
+}
+
+func candidateFollowsPosition(candidate searchdomain.Candidate, after searchdomain.Position, sortOrder string) bool {
+	if sortOrder == searchdomain.SortLatest {
+		if !candidate.OccurredAt.Equal(after.OccurredAt) {
+			return candidate.OccurredAt.Before(after.OccurredAt)
+		}
+		if candidate.Type != after.Type {
+			return candidate.Type > after.Type
+		}
+		if candidate.Score != after.Score {
+			return candidate.Score < after.Score
+		}
+		return candidate.ID < after.ID
+	}
+	if candidate.Score != after.Score {
+		return candidate.Score < after.Score
+	}
+	if !candidate.OccurredAt.Equal(after.OccurredAt) {
+		return candidate.OccurredAt.Before(after.OccurredAt)
+	}
+	if candidate.Type != after.Type {
+		return candidate.Type > after.Type
+	}
+	return candidate.ID < after.ID
 }
 
 func readerForType(readers Readers, resourceType searchdomain.ResourceType) LexicalReader {

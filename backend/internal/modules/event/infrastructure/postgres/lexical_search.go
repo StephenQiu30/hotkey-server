@@ -25,9 +25,11 @@ func (repository *MicroEventQueryPostgresRepository) Search(ctx context.Context,
 	if !query.Includes(searchdomain.ResourceEvent) || query.SourceConnectionID != nil {
 		return []searchdomain.Candidate{}, nil
 	}
+	hasAfter, afterScore, afterOccurredAt, afterType, afterID := eventSearchPageArguments(query)
 	rows, err := repository.runtime.SQL.QueryContext(ctx, eventLexicalSearchSQL,
 		query.Keyword, query.Entity, eventSearchNullableID(query.MonitorID), query.Status,
-		eventSearchNullableTime(query.From), eventSearchNullableTime(query.To), query.Limit,
+		eventSearchNullableTime(query.From), eventSearchNullableTime(query.To), query.Sort, eventSearchSnapshot(query.SnapshotAt),
+		hasAfter, afterScore, afterOccurredAt, afterType, afterID, query.CandidateLimit,
 	)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
@@ -84,9 +86,11 @@ func (repository *MicroEventQueryPostgresRepository) ExplainSearch(ctx context.C
 		return nil, fmt.Errorf("%w: invalid event search plan query", sharedrepository.ErrInvalidInput)
 	}
 	var plan []byte
+	hasAfter, afterScore, afterOccurredAt, afterType, afterID := eventSearchPageArguments(query)
 	err := repository.runtime.SQL.QueryRowContext(ctx, "EXPLAIN (FORMAT JSON,COSTS FALSE) "+eventLexicalSearchSQL,
 		query.Keyword, query.Entity, eventSearchNullableID(query.MonitorID), query.Status,
-		eventSearchNullableTime(query.From), eventSearchNullableTime(query.To), query.Limit,
+		eventSearchNullableTime(query.From), eventSearchNullableTime(query.To), query.Sort, eventSearchSnapshot(query.SnapshotAt),
+		hasAfter, afterScore, afterOccurredAt, afterType, afterID, query.CandidateLimit,
 	).Scan(&plan)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
@@ -106,6 +110,20 @@ func eventSearchNullableTime(value *time.Time) sql.NullTime {
 		return sql.NullTime{}
 	}
 	return sql.NullTime{Time: value.UTC(), Valid: true}
+}
+
+func eventSearchSnapshot(value time.Time) sql.NullTime {
+	if value.IsZero() {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: value.UTC(), Valid: true}
+}
+
+func eventSearchPageArguments(query searchdomain.Query) (bool, float64, time.Time, string, int64) {
+	if query.After == nil {
+		return false, 0, time.Time{}, "", 0
+	}
+	return true, query.After.Score, query.After.OccurredAt.UTC(), string(query.After.Type), query.After.ID
 }
 
 const eventLexicalSearchSQL = `
@@ -129,10 +147,12 @@ WITH input AS MATERIALIZED (
     WHERE summary.id=(
       SELECT current_summary.id FROM micro_event_summaries AS current_summary
       WHERE current_summary.micro_event_id=event.id AND current_summary.micro_event_version=event.version
+        AND ($8::timestamptz IS NULL OR current_summary.created_at<=$8)
       ORDER BY current_summary.created_at DESC,current_summary.id DESC LIMIT 1
     )
   ) AS summary ON true
-  WHERE ($3::bigint IS NULL OR EXISTS (
+  WHERE ($8::timestamptz IS NULL OR event.created_at<=$8)
+    AND ($3::bigint IS NULL OR EXISTS (
     SELECT 1 FROM micro_event_membership_decisions AS decision
     WHERE decision.resulting_micro_event_id=event.id AND decision.monitor_id=$3
   ))
@@ -155,8 +175,29 @@ WITH input AS MATERIALIZED (
 )
 SELECT id,title,snippet,status,event_started_at,score
 FROM candidates
-ORDER BY score DESC,event_started_at DESC,id DESC
-LIMIT $7`
+WHERE $9::boolean=false OR (
+  $7::text='relevance' AND (
+    score<$10 OR score=$10 AND (
+      event_started_at<$11 OR event_started_at=$11 AND (
+        'event'::text>$12 OR 'event'::text=$12 AND id<$13
+      )
+    )
+  )
+  OR $7::text='latest' AND (
+    event_started_at<$11 OR event_started_at=$11 AND (
+      'event'::text>$12 OR 'event'::text=$12 AND (
+        score<$10 OR score=$10 AND id<$13
+      )
+    )
+  )
+)
+ORDER BY
+  CASE WHEN $7::text='relevance' THEN score END DESC,
+  CASE WHEN $7::text='latest' THEN event_started_at END DESC,
+  CASE WHEN $7::text='relevance' THEN event_started_at END DESC,
+  CASE WHEN $7::text='latest' THEN score END DESC,
+  id DESC
+LIMIT $14`
 
 const eventSearchVisibilitySQL = `
 SELECT EXISTS (

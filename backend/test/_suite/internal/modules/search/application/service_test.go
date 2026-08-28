@@ -3,23 +3,42 @@ package application
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	searchdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/search/domain"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 )
 
 type lexicalReaderStub struct {
 	calls      int
 	visible    *bool
 	candidates []searchdomain.Candidate
+	createdAt  map[string]time.Time
+	queries    []searchdomain.Query
 	err        error
 }
 
-func (reader *lexicalReaderStub) Search(_ context.Context, _ searchdomain.Query) ([]searchdomain.Candidate, error) {
+func (reader *lexicalReaderStub) Search(_ context.Context, query searchdomain.Query) ([]searchdomain.Candidate, error) {
 	reader.calls++
-	return append([]searchdomain.Candidate(nil), reader.candidates...), reader.err
+	reader.queries = append(reader.queries, query)
+	items := make([]searchdomain.Candidate, 0, len(reader.candidates))
+	for _, candidate := range reader.candidates {
+		key := string(candidate.Type) + ":" + strconv.FormatInt(candidate.ID, 10)
+		if createdAt := reader.createdAt[key]; !query.SnapshotAt.IsZero() && createdAt.After(query.SnapshotAt) {
+			continue
+		}
+		if query.After != nil && !searchCandidateFollows(candidate, *query.After, query.Sort) {
+			continue
+		}
+		items = append(items, candidate)
+	}
+	if query.CandidateLimit > 0 && len(items) > query.CandidateLimit {
+		items = items[:query.CandidateLimit]
+	}
+	return items, reader.err
 }
 
 func (reader *lexicalReaderStub) CanDisplay(_ context.Context, _ searchdomain.Query, _ searchdomain.Candidate) (bool, error) {
@@ -51,6 +70,122 @@ func (reader *subjectReaderStub) CurrentSearchSubject(context.Context, int64) (S
 }
 
 var viewerSubject = Subject{UserID: 7, Role: "viewer"}
+
+func searchCandidateFollows(candidate searchdomain.Candidate, after searchdomain.Position, sortOrder string) bool {
+	if sortOrder == searchdomain.SortLatest {
+		if !candidate.OccurredAt.Equal(after.OccurredAt) {
+			return candidate.OccurredAt.Before(after.OccurredAt)
+		}
+		if candidate.Type != after.Type {
+			return candidate.Type > after.Type
+		}
+		if candidate.Score != after.Score {
+			return candidate.Score < after.Score
+		}
+		return candidate.ID < after.ID
+	}
+	if candidate.Score != after.Score {
+		return candidate.Score < after.Score
+	}
+	if !candidate.OccurredAt.Equal(after.OccurredAt) {
+		return candidate.OccurredAt.Before(after.OccurredAt)
+	}
+	if candidate.Type != after.Type {
+		return candidate.Type > after.Type
+	}
+	return candidate.ID < after.ID
+}
+
+func TestServiceCursorIsSignedBoundExpiringAndSnapshotStableAcrossOwners(t *testing.T) {
+	snapshotAt := time.Date(2026, 8, 29, 1, 0, 0, 0, time.UTC)
+	content := &lexicalReaderStub{createdAt: map[string]time.Time{}, candidates: []searchdomain.Candidate{
+		{Type: searchdomain.ResourceContent, ID: 9, Title: "content first", OccurredAt: snapshotAt.Add(-time.Minute), Score: 0.8},
+		{Type: searchdomain.ResourceContent, ID: 8, Title: "content second", OccurredAt: snapshotAt.Add(-time.Minute), Score: 0.6},
+	}}
+	event := &lexicalReaderStub{createdAt: map[string]time.Time{}, candidates: []searchdomain.Candidate{
+		{Type: searchdomain.ResourceEvent, ID: 3, Title: "event first", OccurredAt: snapshotAt.Add(-time.Minute), Score: 0.9},
+		{Type: searchdomain.ResourceEvent, ID: 2, Title: "event second", OccurredAt: snapshotAt.Add(-time.Minute), Score: 0.7},
+	}}
+	knowledge := &lexicalReaderStub{createdAt: map[string]time.Time{}}
+	for _, reader := range []*lexicalReaderStub{content, event} {
+		for _, candidate := range reader.candidates {
+			reader.createdAt[string(candidate.Type)+":"+strconv.FormatInt(candidate.ID, 10)] = snapshotAt.Add(-time.Hour)
+		}
+	}
+	codec, err := pagination.NewCodec("search-cursor-application-test-secret-32-bytes", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subjects := &subjectReaderStub{subject: viewerSubject}
+	service, err := NewServiceWithCursorCodec(Readers{Content: content, Event: event, Knowledge: knowledge}, subjects, codec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.now = func() time.Time { return snapshotAt }
+	request := Request{Subject: viewerSubject, Query: searchdomain.Query{Keyword: "release", Limit: 2}}
+	first, err := service.Search(context.Background(), request)
+	if err != nil || len(first.Items) != 2 || first.Items[0].ID != 3 || first.Items[1].ID != 9 || first.NextCursor == "" {
+		t.Fatalf("first search page = %#v / %v", first, err)
+	}
+	if _, err := strconv.ParseInt(first.NextCursor, 10, 64); err == nil {
+		t.Fatalf("search cursor is a naked integer: %q", first.NextCursor)
+	}
+	knowledge.candidates = []searchdomain.Candidate{{
+		Type: searchdomain.ResourceKnowledge, ID: 11, Title: "concurrent", OccurredAt: snapshotAt, Score: 0.85,
+	}}
+	knowledge.createdAt["knowledge:11"] = snapshotAt.Add(time.Second)
+	request.Cursor = first.NextCursor
+	second, err := service.Search(context.Background(), request)
+	if err != nil || len(second.Items) != 2 || second.Items[0].ID != 2 || second.Items[1].ID != 8 || second.NextCursor != "" {
+		t.Fatalf("second search page = %#v / %v", second, err)
+	}
+	if len(content.queries) < 2 || content.queries[1].After == nil || !content.queries[1].SnapshotAt.Equal(snapshotAt) || content.queries[1].CandidateLimit != 3 {
+		t.Fatalf("decoded page query = %#v", content.queries)
+	}
+
+	tampered := "A" + first.NextCursor[1:]
+	if tampered == first.NextCursor {
+		tampered = "B" + first.NextCursor[1:]
+	}
+	request.Cursor = tampered
+	if _, err := service.Search(context.Background(), request); !errors.Is(err, ErrInvalidQuery) {
+		t.Fatalf("tampered cursor error = %v, want invalid query", err)
+	}
+	request.Cursor = first.NextCursor
+	request.Query.Status = "active"
+	if _, err := service.Search(context.Background(), request); !errors.Is(err, ErrInvalidQuery) {
+		t.Fatalf("cross-filter cursor error = %v, want invalid query", err)
+	}
+	request.Query.Status = ""
+	request.Subject = Subject{UserID: 8, Role: "admin"}
+	subjects.subject = request.Subject
+	if _, err := service.Search(context.Background(), request); !errors.Is(err, ErrInvalidQuery) {
+		t.Fatalf("cross-subject cursor error = %v, want invalid query", err)
+	}
+
+	expiringCodec, err := pagination.NewCodec("expiring-search-cursor-test-secret-32-bytes", time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subjects.subject = viewerSubject
+	expiringService, err := NewServiceWithCursorCodec(Readers{Content: content, Event: event, Knowledge: knowledge}, subjects, expiringCodec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiringService.now = func() time.Time { return snapshotAt }
+	expiringFirst, err := expiringService.Search(context.Background(), Request{
+		Subject: viewerSubject, Query: searchdomain.Query{Keyword: "release", Limit: 1},
+	})
+	if err != nil || expiringFirst.NextCursor == "" {
+		t.Fatalf("expiring first page = %#v / %v", expiringFirst, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := expiringService.Search(context.Background(), Request{
+		Subject: viewerSubject, Query: searchdomain.Query{Keyword: "release", Limit: 1}, Cursor: expiringFirst.NextCursor,
+	}); !errors.Is(err, ErrInvalidQuery) {
+		t.Fatalf("expired cursor error = %v, want invalid query", err)
+	}
+}
 
 func TestServiceQueriesOnlySelectedOwnersAndReturnsStableSafeHighlights(t *testing.T) {
 	now := time.Date(2026, 8, 28, 8, 0, 0, 0, time.UTC)

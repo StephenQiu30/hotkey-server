@@ -590,8 +590,8 @@ func newInstantSearchService(sources *sourcepostgres.Repository, connectors *sou
 	return sourceapplication.NewInstantSearchService(sourceapplication.InstantSearchDependencies{Sources: sources, Connectors: connectors})
 }
 
-func newSearchService(contents *ingestionpostgres.ContentRepository, events *eventpostgres.MicroEventQueryPostgresRepository, knowledge *knowledgepostgres.Repository, authorization *searchAuthorizationReader) (*searchapplication.Service, error) {
-	return searchapplication.NewService(searchapplication.Readers{Content: contents, Event: events, Knowledge: knowledge}, authorization)
+func newSearchService(contents *ingestionpostgres.ContentRepository, events *eventpostgres.MicroEventQueryPostgresRepository, knowledge *knowledgepostgres.Repository, authorization *searchAuthorizationReader, cursorCodec *pagination.Codec) (*searchapplication.Service, error) {
+	return searchapplication.NewServiceWithCursorCodec(searchapplication.Readers{Content: contents, Event: events, Knowledge: knowledge}, authorization, cursorCodec)
 }
 
 type searchAuthorizationReader struct {

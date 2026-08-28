@@ -21,6 +21,9 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 			"NewRepositoryWithCursorCodec", `cursorCodec.Decode(query.Cursor, "id", true, reportListFingerprint(query))`,
 			`cursorCodec.Encode("id", true, reportListFingerprint(query)`,
 		},
+		"internal/modules/search/application/service.go": {
+			`cursorCodec.Seal("search_result_list"`, `cursorCodec.Open(value, "search_result_list"`,
+		},
 		"internal/shared/pagination/cursor.go": {
 			"hmac.Equal", "ErrExpiredCursor", "ErrStaleCursor", "maximumEncodedCursorSize",
 		},

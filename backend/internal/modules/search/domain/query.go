@@ -45,6 +45,26 @@ type Query struct {
 	From               *time.Time
 	To                 *time.Time
 	Limit              int
+	// CandidateLimit, SnapshotAt and After are application-owned paging
+	// controls. They are never accepted directly from HTTP clients.
+	CandidateLimit int
+	SnapshotAt     time.Time
+	After          *Position
+}
+
+type Position struct {
+	Type       ResourceType `json:"type"`
+	ID         int64        `json:"id"`
+	OccurredAt time.Time    `json:"occurred_at"`
+	Score      float64      `json:"score"`
+}
+
+func (position Position) Validate() error {
+	if !position.Type.Valid() || position.ID <= 0 || position.OccurredAt.IsZero() || position.OccurredAt.Location() != time.UTC ||
+		math.IsNaN(position.Score) || math.IsInf(position.Score, 0) || position.Score < 0 || position.Score > 100 {
+		return fmt.Errorf("invalid search position")
+	}
+	return nil
 }
 
 func (query Query) Normalized() Query {
@@ -57,6 +77,9 @@ func (query Query) Normalized() Query {
 	}
 	if query.Limit == 0 {
 		query.Limit = DefaultLimit
+	}
+	if query.CandidateLimit == 0 {
+		query.CandidateLimit = query.Limit
 	}
 	selected := make(map[ResourceType]struct{}, len(query.Types))
 	for _, resourceType := range query.Types {
@@ -80,6 +103,14 @@ func (query Query) Normalized() Query {
 		value := query.To.UTC()
 		query.To = &value
 	}
+	if !query.SnapshotAt.IsZero() {
+		query.SnapshotAt = query.SnapshotAt.UTC()
+	}
+	if query.After != nil {
+		position := *query.After
+		position.OccurredAt = position.OccurredAt.UTC()
+		query.After = &position
+	}
 	return query
 }
 
@@ -90,6 +121,9 @@ func (query Query) Validate() error {
 	}
 	if query.Limit < 1 || query.Limit > MaximumLimit {
 		return fmt.Errorf("invalid search limit")
+	}
+	if query.CandidateLimit < query.Limit || query.CandidateLimit > MaximumLimit+1 {
+		return fmt.Errorf("invalid search candidate limit")
 	}
 	for _, resourceType := range query.Types {
 		if !resourceType.Valid() {
@@ -111,6 +145,11 @@ func (query Query) Validate() error {
 	if query.From != nil && query.From.IsZero() || query.To != nil && query.To.IsZero() ||
 		query.From != nil && query.To != nil && query.From.After(*query.To) {
 		return fmt.Errorf("invalid search time range")
+	}
+	if query.After != nil {
+		if query.SnapshotAt.IsZero() || query.After.Validate() != nil {
+			return fmt.Errorf("invalid search page")
+		}
 	}
 	return nil
 }

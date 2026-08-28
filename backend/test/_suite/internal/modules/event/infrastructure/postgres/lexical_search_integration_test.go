@@ -80,3 +80,48 @@ INSERT INTO micro_events (
 }
 
 func eventSearchTime(value time.Time) *time.Time { return &value }
+
+func TestMicroEventLexicalSearchUsesSnapshotKeysetOrdering(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC().Truncate(time.Microsecond)
+	eventIDs := make([]int64, 0, 3)
+	for index, createdAt := range []time.Time{base.Add(-2 * time.Minute), base.Add(-time.Minute), base.Add(time.Second)} {
+		var eventID int64
+		if err := runtime.SQL.QueryRow(`
+INSERT INTO micro_events (
+  event_key,status,primary_subject_key,primary_action_key,event_started_at,
+  clustering_profile_version,created_at,updated_at
+) VALUES ($1,'active','Release','snapshot ordering',$2,'lexical-v1',$3,$3) RETURNING id`,
+			strings.Repeat(string(rune('b'+index)), 64), base.Add(-time.Hour), createdAt).Scan(&eventID); err != nil {
+			t.Fatal(err)
+		}
+		eventIDs = append(eventIDs, eventID)
+	}
+	repository, err := NewMicroEventQueryPostgresRepository(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := searchdomain.Query{
+		Keyword: "release", Types: []searchdomain.ResourceType{searchdomain.ResourceEvent}, Sort: searchdomain.SortLatest,
+		Limit: 1, CandidateLimit: 2, SnapshotAt: base,
+	}.Normalized()
+	first, err := repository.Search(ctx, query)
+	if err != nil || len(first) != 2 || first[0].ID != eventIDs[1] || first[1].ID != eventIDs[0] {
+		t.Fatalf("snapshot first candidates = %#v / %v", first, err)
+	}
+	query.After = &searchdomain.Position{
+		Type: first[0].Type, ID: first[0].ID, Score: first[0].Score, OccurredAt: first[0].OccurredAt,
+	}
+	second, err := repository.Search(ctx, query)
+	if err != nil || len(second) != 1 || second[0].ID != eventIDs[0] || second[0].ID == eventIDs[2] {
+		t.Fatalf("snapshot second candidates = %#v / %v; concurrent=%d", second, err, eventIDs[2])
+	}
+}

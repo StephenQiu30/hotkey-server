@@ -39,6 +39,7 @@ func NewHandler(service searchService) *Handler { return &Handler{service: servi
 // @Param from query string false "inclusive RFC3339 start"
 // @Param to query string false "inclusive RFC3339 end"
 // @Param limit query int false "result limit" minimum(1) maximum(100)
+// @Param cursor query string false "opaque signed search snapshot cursor"
 // @Success 200 {object} SearchResult[SearchPageResponseDTO]
 // @Failure 400 {object} SearchResult[SearchEmptyResponseDTO]
 // @Failure 401 {object} SearchResult[SearchEmptyResponseDTO]
@@ -61,6 +62,7 @@ func (handler *Handler) List(c *gin.Context) error {
 	}
 	result, err := handler.service.Search(c.Request.Context(), searchapplication.Request{
 		Query: query, Subject: searchapplication.Subject{UserID: subject.UserID, Role: string(subject.Role)},
+		Cursor: strings.TrimSpace(c.Query("cursor")),
 	})
 	if err != nil {
 		return searchError(err)

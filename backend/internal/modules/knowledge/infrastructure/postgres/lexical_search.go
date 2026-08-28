@@ -25,9 +25,11 @@ func (repository *Repository) Search(ctx context.Context, query searchdomain.Que
 	if !query.Includes(searchdomain.ResourceKnowledge) || query.SourceConnectionID != nil || query.MonitorID != nil {
 		return []searchdomain.Candidate{}, nil
 	}
+	hasAfter, afterScore, afterOccurredAt, afterType, afterID := knowledgeSearchPageArguments(query)
 	rows, err := repository.runtime.SQL.QueryContext(ctx, knowledgeLexicalSearchSQL,
 		query.Keyword, query.Entity, query.Status, knowledgeSearchNullableTime(query.From),
-		knowledgeSearchNullableTime(query.To), query.Limit,
+		knowledgeSearchNullableTime(query.To), query.Sort, knowledgeSearchSnapshot(query.SnapshotAt),
+		hasAfter, afterScore, afterOccurredAt, afterType, afterID, query.CandidateLimit,
 	)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
@@ -83,9 +85,11 @@ func (repository *Repository) ExplainSearch(ctx context.Context, query searchdom
 		return nil, fmt.Errorf("%w: invalid knowledge search plan query", sharedrepository.ErrInvalidInput)
 	}
 	var plan []byte
+	hasAfter, afterScore, afterOccurredAt, afterType, afterID := knowledgeSearchPageArguments(query)
 	err := repository.runtime.SQL.QueryRowContext(ctx, "EXPLAIN (FORMAT JSON,COSTS FALSE) "+knowledgeLexicalSearchSQL,
 		query.Keyword, query.Entity, query.Status, knowledgeSearchNullableTime(query.From),
-		knowledgeSearchNullableTime(query.To), query.Limit,
+		knowledgeSearchNullableTime(query.To), query.Sort, knowledgeSearchSnapshot(query.SnapshotAt),
+		hasAfter, afterScore, afterOccurredAt, afterType, afterID, query.CandidateLimit,
 	).Scan(&plan)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
@@ -98,6 +102,20 @@ func knowledgeSearchNullableTime(value *time.Time) sql.NullTime {
 		return sql.NullTime{}
 	}
 	return sql.NullTime{Time: value.UTC(), Valid: true}
+}
+
+func knowledgeSearchSnapshot(value time.Time) sql.NullTime {
+	if value.IsZero() {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: value.UTC(), Valid: true}
+}
+
+func knowledgeSearchPageArguments(query searchdomain.Query) (bool, float64, time.Time, string, int64) {
+	if query.After == nil {
+		return false, 0, time.Time{}, "", 0
+	}
+	return true, query.After.Score, query.After.OccurredAt.UTC(), string(query.After.Type), query.After.ID
 }
 
 const knowledgeLexicalSearchSQL = `
@@ -119,6 +137,7 @@ WITH input AS MATERIALIZED (
   JOIN knowledge_change_proposals AS proposal
     ON proposal.id=revision.proposal_id AND proposal.status='applied'
   WHERE document.status='active'
+    AND ($7::timestamptz IS NULL OR document.created_at<=$7 AND revision.created_at<=$7)
     AND ($3::text='' OR document.status=$3)
     AND ($4::timestamptz IS NULL OR revision.created_at>=$4)
     AND ($5::timestamptz IS NULL OR revision.created_at<=$5)
@@ -142,8 +161,29 @@ WITH input AS MATERIALIZED (
 )
 SELECT id,title,snippet,status,occurred_at,score
 FROM candidates
-ORDER BY score DESC,occurred_at DESC,id DESC
-LIMIT $6`
+WHERE $8::boolean=false OR (
+  $6::text='relevance' AND (
+    score<$9 OR score=$9 AND (
+      occurred_at<$10 OR occurred_at=$10 AND (
+        'knowledge'::text>$11 OR 'knowledge'::text=$11 AND id<$12
+      )
+    )
+  )
+  OR $6::text='latest' AND (
+    occurred_at<$10 OR occurred_at=$10 AND (
+      'knowledge'::text>$11 OR 'knowledge'::text=$11 AND (
+        score<$9 OR score=$9 AND id<$12
+      )
+    )
+  )
+)
+ORDER BY
+  CASE WHEN $6::text='relevance' THEN score END DESC,
+  CASE WHEN $6::text='latest' THEN occurred_at END DESC,
+  CASE WHEN $6::text='relevance' THEN occurred_at END DESC,
+  CASE WHEN $6::text='latest' THEN score END DESC,
+  id DESC
+LIMIT $13`
 
 const knowledgeSearchVisibilitySQL = `
 SELECT EXISTS (

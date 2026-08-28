@@ -1001,6 +1001,8 @@ required property without making explicit null impossible to bind. */
     to?: string;
     /** result limit */
     limit?: number;
+    /** opaque signed search snapshot cursor */
+    cursor?: string;
   };
 
   type getSourceConnectionsIdParams = {
