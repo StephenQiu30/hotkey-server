@@ -27,6 +27,25 @@ func TestS03CapacityAndRecoveryEvidenceStayMeasuredAndReproducible(t *testing.T)
 			`CandidateRTOMet`,
 			`os.O_WRONLY|os.O_CREATE|os.O_EXCL`,
 		},
+		"backend/test/tools/joint-recovery-drill/main.go": {
+			`Version: "hotkey-joint-recovery-v1"`,
+			`"postgres_facts"`,
+			`"minio_evidence"`,
+			`"vault_all_files"`,
+			`"vault_manual_regions"`,
+			`"river_jobs_attempts"`,
+			`exec.CommandContext(ctx, "pg_dump"`,
+			`exec.CommandContext(ctx, "pg_restore"`,
+			`ProductionEgressDisabled`,
+			`os.O_WRONLY|os.O_CREATE|os.O_EXCL`,
+		},
+		"backend/Makefile": {
+			"joint-recovery-acceptance:",
+		},
+		".github/workflows/ci.yml": {
+			"Joint PostgreSQL MinIO Vault and River recovery acceptance",
+			"make joint-recovery-acceptance",
+		},
 		"docs/operations/004-可观测性SLO与事件响应.md": {
 			"make capacity-fixture",
 			"make capacity-baseline",
@@ -35,6 +54,7 @@ func TestS03CapacityAndRecoveryEvidenceStayMeasuredAndReproducible(t *testing.T)
 		"docs/operations/002-备份恢复与重建.md": {
 			"hotkey-recovery-manifest-v1",
 			"make recovery-evidence",
+			"make joint-recovery-acceptance",
 			"incident_cutoff_at - recovery_point_at",
 			"services_readable_at - drill_started_at",
 			"不替代本手册的真实备份、恢复和对账命令",
