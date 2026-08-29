@@ -152,6 +152,7 @@ WITH input AS MATERIALIZED (
     )
   ) AS summary ON true
   WHERE ($8::timestamptz IS NULL OR event.created_at<=$8)
+    AND ` + microEventCurrentDisplayRightsCondition + `
     AND ($3::bigint IS NULL OR EXISTS (
     SELECT 1 FROM micro_event_membership_decisions AS decision
     WHERE decision.resulting_micro_event_id=event.id AND decision.monitor_id=$3
@@ -203,6 +204,7 @@ const eventSearchVisibilitySQL = `
 SELECT EXISTS (
   SELECT 1 FROM micro_events AS event
   WHERE event.id=$1
+    AND ` + microEventCurrentDisplayRightsCondition + `
     AND ($2::bigint IS NULL OR EXISTS (
       SELECT 1 FROM micro_event_membership_decisions AS decision
       WHERE decision.resulting_micro_event_id=event.id AND decision.monitor_id=$2

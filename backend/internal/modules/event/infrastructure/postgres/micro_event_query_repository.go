@@ -168,6 +168,39 @@ LEFT JOIN LATERAL (
 ) AS evidence_state ON true
 `
 
+// A Micro Event projection aggregates member-derived text, summaries and
+// links. Until every active member is still the current readable Document
+// version with its exact current display_private allow, the whole projection
+// fails closed so a revoked member cannot leak through aggregate read models.
+const microEventCurrentDisplayRightsCondition = `EXISTS (
+  SELECT 1
+  FROM micro_event_members AS rights_event_member
+  JOIN content_family_members AS rights_family_member
+    ON rights_family_member.family_id=rights_event_member.content_family_id
+   AND rights_family_member.active
+  JOIN document_versions AS rights_version
+    ON rights_version.id=rights_family_member.document_version_id
+  JOIN documents AS rights_document ON rights_document.id=rights_version.document_id
+  WHERE rights_event_member.micro_event_id=event.id AND rights_event_member.active
+  GROUP BY rights_event_member.micro_event_id
+  HAVING count(DISTINCT rights_event_member.id)=(
+    SELECT count(*)
+    FROM micro_event_members AS expected_rights_member
+    WHERE expected_rights_member.micro_event_id=event.id AND expected_rights_member.active
+  )
+  AND bool_and(
+    rights_document.document_state='active'
+    AND rights_document.current_document_version_id=rights_version.id
+    AND rights_version.lifecycle_state='readable'
+    AND current_rights_action_allowed(
+      rights_version.display_private_rights_decision_id,
+      rights_document.source_connection_id,
+      'document_version',rights_version.id::text,rights_version.content_sha256,
+      'display_private',CURRENT_TIMESTAMP
+    )
+  )
+)`
+
 func microEventProjectionSelect(heatAsOfPredicate, overrideAsOfPredicate, relevanceAsOfPredicate, relevanceMonitorPredicate, evidenceAsOfPredicate string) string {
 	return fmt.Sprintf(microEventProjectionSelectFormat, heatAsOfPredicate, overrideAsOfPredicate,
 		relevanceAsOfPredicate, relevanceMonitorPredicate, evidenceAsOfPredicate)
@@ -308,7 +341,8 @@ func (repository *MicroEventQueryPostgresRepository) ListMicroEvents(ctx context
 	}
 	statement := microEventProjectionSelect("snapshot.calculated_at<=$2", "decision_override.created_at<=$2",
 		"decision.decided_at<=$2", relevanceMonitorPredicate, "snapshot.created_at<=$2") + `
-WHERE event.status=ANY($1) AND event.created_at<=$2 AND event.id<=$4`
+WHERE event.status=ANY($1) AND event.created_at<=$2 AND event.id<=$4
+  AND ` + microEventCurrentDisplayRightsCondition
 	if query.MonitorID > 0 {
 		statement += ` AND relevance.score IS NOT NULL`
 	}
@@ -425,7 +459,8 @@ func (repository *MicroEventQueryPostgresRepository) GetMicroEvent(ctx context.C
 		return eventapplication.MicroEventProjectionDTO{}, eventapplication.ErrInvalidMicroEventQuery
 	}
 	rows, err := repository.queryExecutor(ctx).QueryContext(ctx, microEventProjectionSelect("true", "true", "true", "true", "true")+`
-WHERE event.id=$1 GROUP BY event.id,storyline.value,heat.value,heat.score,heat.window_ended_at,relevance.score,evidence_state.value`, id)
+WHERE event.id=$1 AND `+microEventCurrentDisplayRightsCondition+`
+GROUP BY event.id,storyline.value,heat.value,heat.score,heat.window_ended_at,relevance.score,evidence_state.value`, id)
 	if err != nil {
 		return eventapplication.MicroEventProjectionDTO{}, databaserepository.MapError(err)
 	}
@@ -444,8 +479,12 @@ WHERE event.id=$1 GROUP BY event.id,storyline.value,heat.value,heat.score,heat.w
 	if err != nil {
 		return eventapplication.MicroEventProjectionDTO{}, err
 	}
-	members, err := repository.queryExecutor(ctx).QueryContext(ctx, `SELECT id,version,content_family_id,membership_decision_id,clustering_profile_version
-FROM micro_event_members WHERE micro_event_id=$1 AND active ORDER BY content_family_id,id`, id)
+	members, err := repository.queryExecutor(ctx).QueryContext(ctx, `
+SELECT member.id,member.version,member.content_family_id,member.membership_decision_id,member.clustering_profile_version
+FROM micro_event_members AS member
+JOIN micro_events AS event ON event.id=member.micro_event_id
+WHERE member.micro_event_id=$1 AND member.active AND `+microEventCurrentDisplayRightsCondition+`
+ORDER BY member.content_family_id,member.id`, id)
 	if err != nil {
 		return eventapplication.MicroEventProjectionDTO{}, databaserepository.MapError(err)
 	}
@@ -472,10 +511,13 @@ func (repository *MicroEventQueryPostgresRepository) GetMicroEventSummary(ctx co
 	executor := repository.queryExecutor(ctx)
 	var summary eventapplication.EvidenceSummaryDTO
 	if err := executor.QueryRowContext(ctx, `
-SELECT id,version,micro_event_id,micro_event_version,summary_profile_version,created_at
-FROM micro_event_summaries
-WHERE micro_event_id=$1 AND micro_event_version=$2
-ORDER BY created_at DESC,id DESC LIMIT 1`, eventID, eventVersion).Scan(&summary.ID, &summary.Version,
+SELECT event_summary.id,event_summary.version,event_summary.micro_event_id,event_summary.micro_event_version,
+       event_summary.summary_profile_version,event_summary.created_at
+FROM micro_event_summaries AS event_summary
+JOIN micro_events AS event ON event.id=event_summary.micro_event_id
+WHERE event_summary.micro_event_id=$1 AND event_summary.micro_event_version=$2
+  AND `+microEventCurrentDisplayRightsCondition+`
+ORDER BY event_summary.created_at DESC,event_summary.id DESC LIMIT 1`, eventID, eventVersion).Scan(&summary.ID, &summary.Version,
 		&summary.MicroEventID, &summary.EventVersion, &summary.SummaryProfileVersion, &summary.CreatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, eventapplication.ErrEvidenceSummaryUnavailable
@@ -488,8 +530,10 @@ SELECT sentence.id,sentence.version,sentence.micro_event_summary_id,sentence.ord
        COALESCE(jsonb_agg(citation.claim_evidence_version_id ORDER BY citation.ordinal)
          FILTER (WHERE citation.id IS NOT NULL),'[]'::jsonb)
 FROM micro_event_summary_sentences AS sentence
+JOIN micro_event_summaries AS event_summary ON event_summary.id=sentence.micro_event_summary_id
+JOIN micro_events AS event ON event.id=event_summary.micro_event_id
 LEFT JOIN micro_event_summary_sentence_evidences AS citation ON citation.summary_sentence_id=sentence.id
-WHERE sentence.micro_event_summary_id=$1
+WHERE sentence.micro_event_summary_id=$1 AND `+microEventCurrentDisplayRightsCondition+`
 GROUP BY sentence.id ORDER BY sentence.ordinal`, summary.ID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
@@ -558,6 +602,10 @@ WITH projection AS (
   HAVING count(*)=1
  ) AS lineage ON true
  WHERE claim.micro_event_id=$1 AND evidence.id>$2 AND evidence.created_at<=$3
+   AND EXISTS (
+     SELECT 1 FROM micro_events AS event
+     WHERE event.id=claim.micro_event_id AND `+microEventCurrentDisplayRightsCondition+`
+   )
 )
 SELECT id,version,claim_id,claim_version,document_version_id,text_quote_selector_id,content_family_id,lineage_root_document_version_id,
        lineage_decision_id,member_version,subject,predicate,object,relation,

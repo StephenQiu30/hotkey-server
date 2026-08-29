@@ -5,7 +5,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"strings"
+	"fmt"
 	"testing"
 	"time"
 
@@ -25,16 +25,9 @@ func TestMicroEventQueryRepositorySearchesPostgresFTSAndTrigramFields(t *testing
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	var eventID int64
-	if err := runtime.SQL.QueryRow(`
-INSERT INTO micro_events (
-  event_key,status,primary_subject_key,primary_action_key,location_keys,identifier_keys,
-  event_started_at,clustering_profile_version
-) VALUES ($1,'review_pending',$2,$3,$4,$5,$6,'lexical-v1') RETURNING id`,
-		strings.Repeat("a", 64), `芯片 <img src=x onerror=sentinel>`, "Release update",
-		[]string{"上海", "CN"}, []string{"Acme-42"}, now).Scan(&eventID); err != nil {
-		t.Fatal(err)
-	}
+	eventID := seedAuthorizedMicroEventSearchProjection(t, runtime, "lexical-fields", now, now)
+	updateMicroEventSearchProjection(t, runtime, eventID, `芯片 <img src=x onerror=sentinel>`, "Release update",
+		[]string{"上海", "CN"}, []string{"Acme-42"}, "review_pending", now, now)
 	repository, err := NewMicroEventQueryPostgresRepository(runtime)
 	if err != nil {
 		t.Fatal(err)
@@ -94,15 +87,8 @@ func TestMicroEventLexicalSearchUsesSnapshotKeysetOrdering(t *testing.T) {
 	base := time.Now().UTC().Truncate(time.Microsecond)
 	eventIDs := make([]int64, 0, 3)
 	for index, createdAt := range []time.Time{base.Add(-2 * time.Minute), base.Add(-time.Minute), base.Add(time.Second)} {
-		var eventID int64
-		if err := runtime.SQL.QueryRow(`
-INSERT INTO micro_events (
-  event_key,status,primary_subject_key,primary_action_key,event_started_at,
-  clustering_profile_version,created_at,updated_at
-) VALUES ($1,'active','Release','snapshot ordering',$2,'lexical-v1',$3,$3) RETURNING id`,
-			strings.Repeat(string(rune('b'+index)), 64), base.Add(-time.Hour), createdAt).Scan(&eventID); err != nil {
-			t.Fatal(err)
-		}
+		eventID := seedAuthorizedMicroEventSearchProjection(t, runtime, "snapshot-"+string(rune('a'+index)), base.Add(-time.Hour), createdAt)
+		updateMicroEventSearchProjection(t, runtime, eventID, "Release", "snapshot ordering", nil, nil, "active", base.Add(-time.Hour), createdAt)
 		eventIDs = append(eventIDs, eventID)
 	}
 	repository, err := NewMicroEventQueryPostgresRepository(runtime)
@@ -123,5 +109,52 @@ INSERT INTO micro_events (
 	second, err := repository.Search(ctx, query)
 	if err != nil || len(second) != 1 || second[0].ID != eventIDs[0] || second[0].ID == eventIDs[2] {
 		t.Fatalf("snapshot second candidates = %#v / %v; concurrent=%d", second, err, eventIDs[2])
+	}
+}
+
+func seedAuthorizedMicroEventSearchProjection(t *testing.T, runtime *database.Runtime, suffix string, occurredAt, createdAt time.Time) int64 {
+	t.Helper()
+	fixture := seedMicroEventAssignmentFixture(t, runtime, "event-search-"+suffix, "accepted")
+	fixture.occurredAt = occurredAt
+	repository, err := NewMicroEventRepository(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := microEventCommitFixture(fixture, "create", 0, 0,
+		fmt.Sprintf("%064x", uint64(occurredAt.UnixNano())^uint64(len(suffix))), "event-search-"+suffix)
+	command.EventKey = fmt.Sprintf("%064x", uint64(createdAt.UnixNano())^uint64(len(suffix)*31))
+	result, err := repository.CommitMicroEventMembership(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result.Event.ID
+}
+
+func updateMicroEventSearchProjection(t *testing.T, runtime *database.Runtime, eventID int64, subject, action string,
+	locations, identifiers []string, status string, startedAt, createdAt time.Time,
+) {
+	t.Helper()
+	if locations == nil {
+		locations = []string{}
+	}
+	if identifiers == nil {
+		identifiers = []string{}
+	}
+	transaction, err := runtime.SQL.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transaction.Rollback()
+	if _, err := transaction.Exec(`SET LOCAL session_replication_role='replica'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transaction.Exec(`UPDATE micro_events
+SET status=$1,primary_subject_key=$2,primary_action_key=$3,location_keys=$4,identifier_keys=$5,
+    event_started_at=$6,created_at=$7,updated_at=$7
+WHERE id=$8`, status, subject, action, locations, identifiers, startedAt, createdAt, eventID); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
 	}
 }

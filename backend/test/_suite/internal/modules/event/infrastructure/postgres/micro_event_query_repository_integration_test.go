@@ -10,7 +10,9 @@ import (
 	"time"
 
 	eventapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/application"
+	searchdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/search/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
 
@@ -153,6 +155,41 @@ VALUES ('evidence-state-query-fixture-v1','active',$1,$2) RETURNING id`, actorID
 	if len(rssOnly.Items) != 1 || rssOnly.Items[0].ID != rssResult.Event.ID {
 		t.Fatalf("rss filtered page = %#v", rssOnly)
 	}
+	if detail, err := service.Get(ctx, xResult.Event.ID); err != nil || detail.ID != xResult.Event.ID {
+		t.Fatalf("authorized event detail = %#v/%v", detail, err)
+	}
+	searchQuery := searchdomain.Query{Keyword: "shared", Types: []searchdomain.ResourceType{searchdomain.ResourceEvent}, Limit: 10}
+	searchItems, err := readRepository.Search(ctx, searchQuery)
+	if err != nil || !containsMicroEventSearchCandidate(searchItems, xResult.Event.ID) {
+		t.Fatalf("authorized event search = %#v/%v", searchItems, err)
+	}
+
+	revokeMicroEventDisplayRights(t, runtime, xFixture)
+	if _, err := service.Get(ctx, xResult.Event.ID); !errors.Is(err, sharedrepository.ErrNotFound) {
+		t.Fatalf("revoked event detail error = %v, want not found", err)
+	}
+	visiblePage, err := service.List(ctx, eventapplication.MicroEventListQuery{Sort: "latest", Limit: 10})
+	if err != nil {
+		t.Fatalf("list after rights revocation: %v", err)
+	}
+	for _, item := range visiblePage.Items {
+		if item.ID == xResult.Event.ID {
+			t.Fatalf("revoked event remained in list: %#v", item)
+		}
+	}
+	searchItems, err = readRepository.Search(ctx, searchQuery)
+	if err != nil || containsMicroEventSearchCandidate(searchItems, xResult.Event.ID) {
+		t.Fatalf("revoked event search = %#v/%v, want event hidden", searchItems, err)
+	}
+}
+
+func containsMicroEventSearchCandidate(items []searchdomain.Candidate, eventID int64) bool {
+	for _, item := range items {
+		if item.ID == eventID {
+			return true
+		}
+	}
+	return false
 }
 
 func setMicroEventQueryFixtureDimensions(t *testing.T, runtime *database.Runtime, fixture microEventAssignmentFixture, sourceType string, relevance float64) {

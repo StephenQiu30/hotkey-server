@@ -263,6 +263,7 @@ func TestMicroEventServiceUsesRightsBoundANNAsIndependentDenseSignal(t *testing.
 type microEventAssignmentFixture struct {
 	familyID, matchDecisionID, monitorID, monitorVersionID int64
 	sourceID, documentVersionID, retainDecisionID          int64
+	displayDecisionID                                      int64
 	occurredAt                                             time.Time
 }
 
@@ -303,7 +304,10 @@ RETURNING id`, documentID, observationID, strings.Repeat("c", 64), strings.Repea
 		t.Fatal(err)
 	}
 	fixture.documentVersionID = documentVersionID
-	var storeDecisionID, retainDecisionID int64
+	if _, err := transaction.Exec(`UPDATE documents SET current_document_version_id=$1 WHERE id=$2`, documentVersionID, documentID); err != nil {
+		t.Fatal(err)
+	}
+	var storeDecisionID, retainDecisionID, displayDecisionID int64
 	if err := transaction.QueryRow(`INSERT INTO source_rights_decisions (
 decision_batch_id,source_connection_id,policy_id,policy_revision,policy_scope_type,policy_scope_subject,priority_rank,
 basis_summary,subject_type,subject_key,input_digest,action,decision,reason_codes,evaluator,evaluated_at,effective_from)
@@ -323,6 +327,21 @@ VALUES ($1,$2,$3,1,'source_endpoint',$4,200,'fixture retention','document_versio
 		t.Fatal(err)
 	}
 	fixture.retainDecisionID = retainDecisionID
+	if err := transaction.QueryRow(`INSERT INTO source_rights_decisions (
+decision_batch_id,source_connection_id,policy_id,policy_revision,policy_scope_type,policy_scope_subject,priority_rank,
+basis_summary,subject_type,subject_key,input_digest,action,decision,reason_codes,evaluator,evaluated_at,effective_from)
+VALUES ($1,$2,$3,1,'source_endpoint',$4,200,'fixture display','document_version',$5,$6,
+'display_private','allow',ARRAY['fixture'],'fixture',$7,$7) RETURNING id`,
+		760000+documentVersionID, sourceID, 770000+documentVersionID, "https://"+suffix+".example/feed",
+		fmt.Sprint(documentVersionID), strings.Repeat("d", 64), now.Add(-time.Hour)).Scan(&displayDecisionID); err != nil {
+		t.Fatal(err)
+	}
+	fixture.displayDecisionID = displayDecisionID
+	if _, err := transaction.Exec(`UPDATE document_versions
+SET lifecycle_state='readable',display_private_rights_decision_id=$1
+WHERE id=$2`, displayDecisionID, documentVersionID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := transaction.Exec(`INSERT INTO document_version_search_indexes (
 document_version_id,source_connection_id,derived_artifact_id,store_derived_rights_decision_id,retain_rights_decision_id,
 normalization_profile_version,normalized_text_sha256,title_search_vector,body_search_vector,title_trigrams,body_trigrams,
@@ -378,6 +397,31 @@ ARRAY['fixture'],$5,$6) RETURNING id`, fixture.monitorID, fixture.monitorVersion
 		t.Fatalf("commit fixture transaction: %v", err)
 	}
 	return fixture
+}
+
+func revokeMicroEventDisplayRights(t *testing.T, runtime *database.Runtime, fixture microEventAssignmentFixture) {
+	t.Helper()
+	transaction, err := runtime.SQL.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transaction.Rollback()
+	if _, err := transaction.Exec(`SET LOCAL session_replication_role='replica'`); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
+	if _, err := transaction.Exec(`INSERT INTO source_rights_decisions (
+decision_batch_id,source_connection_id,policy_id,policy_revision,policy_scope_type,policy_scope_subject,priority_rank,
+basis_summary,subject_type,subject_key,input_digest,action,decision,reason_codes,evaluator,evaluated_at,effective_from)
+VALUES ($1,$2,$3,2,'source_endpoint',$4,300,'fixture display revocation','document_version',$5,$6,
+'display_private','deny',ARRAY['fixture_revoked'],'fixture',$7,$7)`,
+		780000+fixture.documentVersionID, fixture.sourceID, 790000+fixture.documentVersionID,
+		fmt.Sprintf("source:%d", fixture.sourceID), fmt.Sprint(fixture.documentVersionID), strings.Repeat("d", 64), now); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func attachMicroEventEmbeddingFixture(t *testing.T, runtime *database.Runtime, fixture microEventAssignmentFixture) {
