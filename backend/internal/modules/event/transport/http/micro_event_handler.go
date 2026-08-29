@@ -45,6 +45,7 @@ func NewMicroEventHandler(queries *eventapplication.MicroEventQueryService, gove
 // @Failure 503 {object} MicroEventV2Result[EmptyResponse]
 // @Router /api/v1/micro-events [get]
 func (handler *MicroEventHandler) List(c *gin.Context) error {
+	c.Header("Cache-Control", "private, no-store")
 	limit, err := queryLimit(c.Query("limit"))
 	if err != nil {
 		return err
@@ -127,6 +128,7 @@ func optionalRFC3339QueryTime(raw string) (*time.Time, error) {
 // @Failure 404 {object} MicroEventV2Result[EmptyResponse]
 // @Router /api/v1/micro-events/{id} [get]
 func (handler *MicroEventHandler) Get(c *gin.Context) error {
+	c.Header("Cache-Control", "private, no-store")
 	id, err := pathID(c, "id")
 	if err != nil {
 		return err
@@ -155,6 +157,7 @@ func (handler *MicroEventHandler) Get(c *gin.Context) error {
 // @Failure 404 {object} MicroEventV2Result[EmptyResponse]
 // @Router /api/v1/micro-events/{id}/evidence [get]
 func (handler *MicroEventHandler) Evidence(c *gin.Context) error {
+	c.Header("Cache-Control", "private, no-store")
 	id, err := pathID(c, "id")
 	if err != nil {
 		return err

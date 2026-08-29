@@ -59,6 +59,9 @@ func TestContentRoutes(t *testing.T) {
 			if response.Code != stdhttp.StatusOK {
 				t.Fatalf("status = %d, want 200: %s", response.Code, response.Body.String())
 			}
+			if got := response.Header().Get("Cache-Control"); got != "private, no-store" {
+				t.Fatalf("Cache-Control = %q, want private, no-store", got)
+			}
 			assertContentSuccessResponse(t, response)
 			if strings.Contains(response.Body.String(), "private-body-not-for-api") {
 				t.Fatalf("safe DTO leaked Content excerpt: %s", response.Body.String())
@@ -113,6 +116,9 @@ func TestContentRoutes(t *testing.T) {
 			response := performContentRequest(router, stdhttp.MethodGet, "/api/v1/contents/"+strconvFormat(test.id), "viewer")
 			if response.Code != stdhttp.StatusNotFound {
 				t.Fatalf("status = %d, want 404: %s", response.Code, response.Body.String())
+			}
+			if got := response.Header().Get("Cache-Control"); got != "private, no-store" {
+				t.Fatalf("revoked/missing response Cache-Control = %q, want private, no-store", got)
 			}
 			assertContentErrorResponse(t, response, sharederrors.CodeNotFound)
 		})

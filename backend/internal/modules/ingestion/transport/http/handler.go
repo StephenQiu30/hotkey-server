@@ -65,6 +65,7 @@ func NewHandler(service contentQueryService, metrics *observability.Metrics) *Ha
 // @Router /api/v1/contents [get]
 func (handler *Handler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "ingestion")
+	c.Header("Cache-Control", "private, no-store")
 	query, err := contentListQuery(c)
 	if err != nil {
 		handler.record(contentQueryListOperation, err)
@@ -102,6 +103,7 @@ func (handler *Handler) List(c *gin.Context) error {
 // @Router /api/v1/hotspots [get]
 func (handler *Handler) Hotspots(c *gin.Context) error {
 	httptransport.SetModule(c, "ingestion")
+	c.Header("Cache-Control", "private, no-store")
 	query, err := contentListQuery(c)
 	if err != nil {
 		handler.record(contentQueryListOperation, err)
@@ -135,6 +137,7 @@ func (handler *Handler) Hotspots(c *gin.Context) error {
 // @Router /api/v1/contents/{id} [get]
 func (handler *Handler) Get(c *gin.Context) error {
 	httptransport.SetModule(c, "ingestion")
+	c.Header("Cache-Control", "private, no-store")
 	id, err := contentID(c)
 	if err != nil {
 		handler.record(contentQueryGetOperation, err)
@@ -165,6 +168,7 @@ func (handler *Handler) Get(c *gin.Context) error {
 // @Router /api/v1/contents/{id}/document [get]
 func (handler *Handler) Document(c *gin.Context) error {
 	httptransport.SetModule(c, "ingestion")
+	c.Header("Cache-Control", "private, no-store")
 	id, err := contentID(c)
 	if err != nil {
 		handler.record(contentDocumentOperation, err)

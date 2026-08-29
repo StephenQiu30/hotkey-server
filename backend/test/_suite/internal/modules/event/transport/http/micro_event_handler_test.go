@@ -41,6 +41,9 @@ func TestMicroEventListForwardsMultidimensionalFiltersAndOpaqueCursor(t *testing
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("list status = %d: %s", recorder.Code, recorder.Body.String())
 	}
+	if got := recorder.Header().Get("Cache-Control"); got != "private, no-store" {
+		t.Fatalf("list Cache-Control = %q, want private, no-store", got)
+	}
 	if repository.lastList.Sort != "relevance" || repository.lastList.Cursor != "fixture-cursor" || repository.lastList.Limit != 30 ||
 		repository.lastList.MonitorID != 17 || len(repository.lastList.Statuses) != 2 || len(repository.lastList.SourceTypes) != 2 ||
 		len(repository.lastList.EvidenceStates) != 2 || repository.lastList.StartedFrom == nil || repository.lastList.StartedTo == nil ||
@@ -146,6 +149,9 @@ func TestMicroEventEvidenceForwardsOpaqueCursor(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("evidence status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Cache-Control"); got != "private, no-store" {
+		t.Fatalf("evidence Cache-Control = %q, want private, no-store", got)
 	}
 	if repository.lastEvidence.MicroEventID != 7 || repository.lastEvidence.Cursor != "opaque.signed" || repository.lastEvidence.Limit != 1 {
 		t.Fatalf("evidence query = %#v", repository.lastEvidence)

@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -163,6 +164,10 @@ VALUES ('evidence-state-query-fixture-v1','active',$1,$2) RETURNING id`, actorID
 	if err != nil || !containsMicroEventSearchCandidate(searchItems, xResult.Event.ID) {
 		t.Fatalf("authorized event search = %#v/%v", searchItems, err)
 	}
+	notificationFacts := insertMicroEventRevocationNotificationFacts(
+		t, runtime, actorID, xFixture.monitorID, xResult.Event.ID, xResult.Event.Version, now,
+	)
+	beforeRevocation := readMicroEventRevocationNotificationFacts(t, runtime, notificationFacts)
 
 	revokeMicroEventDisplayRights(t, runtime, xFixture)
 	if _, err := service.Get(ctx, xResult.Event.ID); !errors.Is(err, sharedrepository.ErrNotFound) {
@@ -181,6 +186,82 @@ VALUES ('evidence-state-query-fixture-v1','active',$1,$2) RETURNING id`, actorID
 	if err != nil || containsMicroEventSearchCandidate(searchItems, xResult.Event.ID) {
 		t.Fatalf("revoked event search = %#v/%v, want event hidden", searchItems, err)
 	}
+	afterRevocation := readMicroEventRevocationNotificationFacts(t, runtime, notificationFacts)
+	if afterRevocation != beforeRevocation {
+		t.Fatalf("rights revocation changed durable notification facts\nbefore=%#v\nafter=%#v", beforeRevocation, afterRevocation)
+	}
+}
+
+type microEventRevocationNotificationFactIDs struct {
+	outbox, notification, receipt, deliveryAttempt int64
+}
+
+type microEventRevocationNotificationFacts struct {
+	outbox, notification, receipt, deliveryAttempt string
+}
+
+func insertMicroEventRevocationNotificationFacts(
+	t *testing.T,
+	runtime *database.Runtime,
+	userID, monitorID, eventID, eventVersion int64,
+	occurredAt time.Time,
+) microEventRevocationNotificationFactIDs {
+	t.Helper()
+	if _, err := runtime.SQL.Exec(`UPDATE monitors SET created_by=$1,updated_by=$1 WHERE id=$2`, userID, monitorID); err != nil {
+		t.Fatal(err)
+	}
+	var ids microEventRevocationNotificationFactIDs
+	if err := runtime.SQL.QueryRow(`INSERT INTO notification_outbox_events(
+event_type,resource_type,resource_id,resource_version,monitor_id,occurred_at,title,summary,resource_status,deep_link,dedupe_key)
+VALUES ('micro_event.updated','micro_event',$1,$2,$3,$4,'事件更新','撤权前的不可变通知事实','active',$5,$6)
+RETURNING id`, eventID, eventVersion, monitorID, occurredAt,
+		fmt.Sprintf("/dashboard/events?event=%d", eventID), fmt.Sprintf("rights-revocation:event:%d:v%d", eventID, eventVersion),
+	).Scan(&ids.outbox); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO user_notifications(
+outbox_event_id,user_id,monitor_id,event_type,resource_type,resource_id,resource_version,occurred_at,title,summary,resource_status,deep_link)
+VALUES ($1,$2,$3,'micro_event.updated','micro_event',$4,$5,$6,'事件更新','撤权前的不可变通知事实','active',$7)
+RETURNING id`, ids.outbox, userID, monitorID, eventID, eventVersion, occurredAt,
+		fmt.Sprintf("/dashboard/events?event=%d", eventID),
+	).Scan(&ids.notification); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO notification_read_receipts(user_id,read_through_id)
+VALUES ($1,$2) RETURNING id`, userID, ids.notification).Scan(&ids.receipt); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`INSERT INTO notification_delivery_attempts(
+user_notification_id,channel,delivery_target_key,attempt_no,status,attempted_at)
+VALUES ($1,'websocket','browser_ws',1,'succeeded',$2) RETURNING id`, ids.notification, occurredAt,
+	).Scan(&ids.deliveryAttempt); err != nil {
+		t.Fatal(err)
+	}
+	return ids
+}
+
+func readMicroEventRevocationNotificationFacts(
+	t *testing.T,
+	runtime *database.Runtime,
+	ids microEventRevocationNotificationFactIDs,
+) microEventRevocationNotificationFacts {
+	t.Helper()
+	var facts microEventRevocationNotificationFacts
+	for _, item := range []struct {
+		query string
+		id    int64
+		value *string
+	}{
+		{`SELECT row_to_json(fact)::text FROM notification_outbox_events AS fact WHERE id=$1`, ids.outbox, &facts.outbox},
+		{`SELECT row_to_json(fact)::text FROM user_notifications AS fact WHERE id=$1`, ids.notification, &facts.notification},
+		{`SELECT row_to_json(fact)::text FROM notification_read_receipts AS fact WHERE id=$1`, ids.receipt, &facts.receipt},
+		{`SELECT row_to_json(fact)::text FROM notification_delivery_attempts AS fact WHERE id=$1`, ids.deliveryAttempt, &facts.deliveryAttempt},
+	} {
+		if err := runtime.SQL.QueryRow(item.query, item.id).Scan(item.value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return facts
 }
 
 func containsMicroEventSearchCandidate(items []searchdomain.Candidate, eventID int64) bool {
