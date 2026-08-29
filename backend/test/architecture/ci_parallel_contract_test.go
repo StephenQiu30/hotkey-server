@@ -14,7 +14,9 @@ func TestBackendCIPreservesCanonicalCoverageAcrossParallelGates(t *testing.T) {
 
 	for _, fragment := range []string{
 		"ci-static: openapi-check vet build architecture repository",
-		"ci-runtime: database-runtime schema test",
+		"ci-test: test-env",
+		"grep -v -e '/internal/platform/database$$' -e '/internal/shared/repository$$'",
+		"ci-runtime: database-runtime schema ci-test",
 		"ci-vulnerability: vulnerability",
 		"ci: ci-static ci-runtime ci-vulnerability",
 	} {

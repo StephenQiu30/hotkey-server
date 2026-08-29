@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test worker-recovery-acceptance m4-fault-recovery-acceptance source-resource-limit-acceptance request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test ci-test worker-recovery-acceptance m4-fault-recovery-acceptance source-resource-limit-acceptance request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -27,6 +27,13 @@ vet:
 
 test: test-env
 	$(GO) run ./test/runner test -p=1 ./... -count=1
+
+# database-runtime already executes these exact packages against the disposable
+# database. Keep the public test target exhaustive while avoiding duplicate CI work.
+ci-test: test-env
+	@packages="$$( $(GO) list ./... | grep -v -e '/internal/platform/database$$' -e '/internal/shared/repository$$' )"; \
+		test -n "$$packages"; \
+		$(GO) run ./test/runner test -p=1 $$packages -count=1
 
 worker-recovery-acceptance: test-env minio-test-env
 	$(GO) run ./test/runner test -tags=integration -p=1 \
@@ -214,7 +221,7 @@ vulnerability:
 
 ci-static: openapi-check vet build architecture repository
 
-ci-runtime: database-runtime schema test
+ci-runtime: database-runtime schema ci-test
 
 ci-vulnerability: vulnerability
 

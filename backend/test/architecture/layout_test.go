@@ -348,6 +348,7 @@ func TestBackendMakefileIsCanonicalAcceptanceEntryPoint(t *testing.T) {
 		"openapi-check: openapi",
 		"vet:",
 		"test: test-env",
+		"ci-test: test-env",
 		"build:",
 		"architecture:",
 		"repository:",
@@ -355,7 +356,7 @@ func TestBackendMakefileIsCanonicalAcceptanceEntryPoint(t *testing.T) {
 		"schema: test-env",
 		"vulnerability:",
 		"ci-static: openapi-check vet build architecture repository",
-		"ci-runtime: database-runtime schema test",
+		"ci-runtime: database-runtime schema ci-test",
 		"ci-vulnerability: vulnerability",
 		"ci: ci-static ci-runtime ci-vulnerability",
 	} {
