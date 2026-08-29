@@ -151,7 +151,6 @@ jobs:
       HOTKEY_TEST_MINIO_SECRET_KEY: hotkeytest-secret
       HOTKEY_TEST_MINIO_BUCKET: hotkey-worker-recovery
       HOTKEY_RECOVERY_MINIO_CONTAINER: hotkey-worker-recovery-${{ github.run_id }}
-      HOTKEY_JOINT_RECOVERY_OUTPUT: ${{ runner.temp }}/joint-recovery-${{ github.run_id }}.json
       HOTKEY_JOINT_RECOVERY_ENVIRONMENT: github-actions-isolated-recovery
       HOTKEY_JOINT_RECOVERY_HARDWARE: ubuntu-latest-hosted-runner
       HOTKEY_JOINT_RECOVERY_GIT_REVISION: ${{ github.sha }}
@@ -195,6 +194,8 @@ jobs:
         run: make m4-fault-recovery-acceptance
 
       - name: Joint PostgreSQL MinIO Vault and River recovery acceptance
+        env:
+          HOTKEY_JOINT_RECOVERY_OUTPUT: ${{ runner.temp }}/joint-recovery-${{ github.run_id }}.json
         run: make joint-recovery-acceptance
 
       - name: Remove isolated MinIO
