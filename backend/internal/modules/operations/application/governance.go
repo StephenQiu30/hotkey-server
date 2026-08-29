@@ -30,8 +30,10 @@ type GovernanceStore interface {
 type RetentionStore interface {
 	List(context.Context) ([]operationsdomain.RetentionPolicy, error)
 	Find(context.Context, int64) (operationsdomain.RetentionPolicy, error)
-	Preview(context.Context, operationsdomain.RetentionPolicy, time.Time, int) (int64, bool, error)
-	ApplyRetentionBatch(context.Context, operationsdomain.RetentionPolicy, time.Time, int) (int64, error)
+	CreateRun(context.Context, operationsdomain.RetentionPolicy, time.Time, int, int64, time.Time) (operationsdomain.RetentionRun, error)
+	FindRun(context.Context, int64) (operationsdomain.RetentionRun, error)
+	ApproveRun(context.Context, int64, string, int64, time.Time) (operationsdomain.RetentionRun, error)
+	ExecuteApprovedRun(context.Context, int64, string, int64, time.Time) (operationsdomain.RetentionRun, error)
 }
 
 type GovernanceService struct {
@@ -85,49 +87,110 @@ func (service *GovernanceService) PreviewRetention(ctx context.Context, input Re
 	if err := requireGovernanceAdmin(input.Subject); err != nil {
 		return operationsdomain.CleanupResult{}, err
 	}
-	policy, cutoff, err := service.retentionBoundary(ctx, input)
-	if err != nil {
-		return operationsdomain.CleanupResult{}, err
-	}
-	affected, hasMore, err := service.retention.Preview(ctx, policy, cutoff, input.BatchSize)
-	if err != nil {
-		return operationsdomain.CleanupResult{}, err
-	}
-	return operationsdomain.CleanupResult{DataClass: policy.DataClass, Cutoff: cutoff, Affected: affected, BatchSize: input.BatchSize, HasMore: hasMore, DryRun: true}, nil
-}
-
-func (service *GovernanceService) RunRetention(ctx context.Context, input RetentionInput) (operationsdomain.CleanupResult, error) {
-	if err := requireGovernanceAdmin(input.Subject); err != nil {
-		return operationsdomain.CleanupResult{}, err
-	}
 	var result operationsdomain.CleanupResult
 	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
 		policy, cutoff, err := service.retentionBoundary(transactionCtx, input)
 		if err != nil {
 			return err
 		}
-		affected, err := service.retention.ApplyRetentionBatch(transactionCtx, policy, cutoff, input.BatchSize)
+		run, err := service.retention.CreateRun(transactionCtx, policy, cutoff, input.BatchSize, input.Subject.UserID, service.now().UTC())
 		if err != nil {
 			return err
 		}
-		remaining, truncated, err := service.retention.Preview(transactionCtx, policy, cutoff, 1)
-		if err != nil {
+		if err := service.writeRetentionAudit(transactionCtx, input.Subject.UserID, run, operationsdomain.ActionRetentionPreviewed); err != nil {
 			return err
 		}
-		hasMore := remaining > 0 || truncated
-		entry := operationsdomain.AuditEntry{
-			ActorType: "user", ActorID: input.Subject.UserID, Action: operationsdomain.ActionRetentionExecuted,
-			ResourceType: "retention_policy", ResourceID: policy.ID, Result: operationsdomain.AuditResultSuccess,
-			RequestID: requestcontext.RequestID(transactionCtx), TraceID: requestcontext.TraceID(transactionCtx),
-			After: map[string]any{"affected": affected, "batch_size": int64(input.BatchSize)},
-		}
-		if err := service.audit.Write(transactionCtx, entry); err != nil {
-			return err
-		}
-		result = operationsdomain.CleanupResult{DataClass: policy.DataClass, Cutoff: cutoff, Affected: affected, BatchSize: input.BatchSize, HasMore: hasMore, DryRun: false}
+		result = cleanupResult(run, true)
 		return nil
 	})
 	return result, err
+}
+
+type RetentionRunInput struct {
+	Subject       identitydomain.Subject
+	RunID         int64
+	CandidateHash string
+}
+
+func (service *GovernanceService) ApproveRetention(ctx context.Context, input RetentionRunInput) (operationsdomain.CleanupResult, error) {
+	if err := requireGovernanceAdmin(input.Subject); err != nil {
+		return operationsdomain.CleanupResult{}, err
+	}
+	var result operationsdomain.CleanupResult
+	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+		run, err := service.retention.ApproveRun(transactionCtx, input.RunID, input.CandidateHash, input.Subject.UserID, service.now().UTC())
+		if err != nil {
+			return err
+		}
+		if err := service.writeRetentionAudit(transactionCtx, input.Subject.UserID, run, operationsdomain.ActionRetentionApproved); err != nil {
+			return err
+		}
+		result = cleanupResult(run, true)
+		return nil
+	})
+	return result, err
+}
+
+func (service *GovernanceService) ExecuteRetention(ctx context.Context, input RetentionRunInput) (operationsdomain.CleanupResult, error) {
+	if err := requireGovernanceAdmin(input.Subject); err != nil {
+		return operationsdomain.CleanupResult{}, err
+	}
+	var result operationsdomain.CleanupResult
+	blocked := false
+	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+		run, err := service.retention.ExecuteApprovedRun(transactionCtx, input.RunID, input.CandidateHash, input.Subject.UserID, service.now().UTC())
+		if err != nil {
+			return err
+		}
+		blocked = run.Status == operationsdomain.RetentionRunBlocked
+		action := operationsdomain.ActionRetentionExecuted
+		if blocked {
+			action = operationsdomain.ActionRetentionBlocked
+		}
+		if err := service.writeRetentionAudit(transactionCtx, input.Subject.UserID, run, action); err != nil {
+			return err
+		}
+		result = cleanupResult(run, false)
+		return nil
+	})
+	if err != nil {
+		return operationsdomain.CleanupResult{}, err
+	}
+	if blocked {
+		return operationsdomain.CleanupResult{}, sharedrepository.ErrConflict
+	}
+	return result, nil
+}
+
+func (service *GovernanceService) writeRetentionAudit(ctx context.Context, actorID int64, run operationsdomain.RetentionRun, action operationsdomain.AuditAction) error {
+	after := map[string]any{"batch_size": int64(run.BatchSize), "candidate_count": run.CandidateCount, "policy_version": run.PolicyVersion, "candidate_hash": run.CandidateHash}
+	switch action {
+	case operationsdomain.ActionRetentionPreviewed:
+		after["approval_status"] = "pending"
+	case operationsdomain.ActionRetentionApproved:
+		after["approval_status"] = "approved"
+	case operationsdomain.ActionRetentionBlocked:
+		after["reason_code"] = run.FailureCode
+	case operationsdomain.ActionRetentionExecuted:
+		after["affected"] = run.Affected
+	}
+	return service.audit.Write(ctx, operationsdomain.AuditEntry{
+		ActorType: "user", ActorID: actorID, Action: action,
+		ResourceType: "retention_run", ResourceID: run.ID, Result: operationsdomain.AuditResultSuccess,
+		RequestID: requestcontext.RequestID(ctx), TraceID: requestcontext.TraceID(ctx), After: after,
+	})
+}
+
+func cleanupResult(run operationsdomain.RetentionRun, dryRun bool) operationsdomain.CleanupResult {
+	affected := run.Affected
+	if dryRun {
+		affected = run.CandidateCount
+	}
+	return operationsdomain.CleanupResult{
+		RunID: run.ID, PolicyVersion: run.PolicyVersion, DataClass: run.DataClass, Cutoff: run.Cutoff,
+		Affected: affected, BatchSize: run.BatchSize, HasMore: run.HasMore, CandidateHash: run.CandidateHash,
+		Status: run.Status, FailureCode: run.FailureCode, DryRun: dryRun,
+	}
 }
 
 func (service *GovernanceService) Audit(ctx context.Context, subject identitydomain.Subject, query operationsdomain.AuditQuery) (operationsdomain.AuditPage, error) {

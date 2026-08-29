@@ -21,4 +21,12 @@ func TestRetentionPolicyValidationAllowsOnlyFixedSevenDataClasses(t *testing.T) 
 	if err := (RetentionPolicy{ID: 8, Version: 1, DataClass: "arbitrary_extra_class", RetentionDays: 30, Action: "delete"}).Validate(); err == nil {
 		t.Fatal("Validate(arbitrary_extra_class) error = nil, want fixed catalog rejection")
 	}
+	for _, dataClass := range []string{"delivery_attempts", "audit_logs"} {
+		if !ProtectedRetentionDataClass(dataClass) {
+			t.Errorf("ProtectedRetentionDataClass(%q) = false, want protected durable fact", dataClass)
+		}
+	}
+	if ProtectedRetentionDataClass("content_metric_snapshots") {
+		t.Fatal("content_metric_snapshots unexpectedly protected")
+	}
 }

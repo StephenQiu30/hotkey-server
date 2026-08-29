@@ -546,7 +546,7 @@ FROM audit_logs WHERE action='request.boundary_rejected'`).Scan(&auditCount, &re
 	if auditCount != 1 || resourceType != "request_boundary" || result != "denied" || len(ipHash) != 64 {
 		t.Fatalf("boundary audit identity = %d/%q/%q/%q", auditCount, resourceType, result, ipHash)
 	}
-	if afterData != `{"reason_code": "login_attempts_exceeded", "boundary_profile_version": "p0-request-boundaries-v1"}` {
+	if afterData != `{"reason_code": "login_attempts_exceeded", "boundary_profile_version": "p0-request-boundaries-v2"}` {
 		t.Fatalf("boundary audit metadata = %s", afterData)
 	}
 	for _, forbidden := range []string{emailCanary, passwordCanary, "/api/v1/auth/login", "authorization"} {

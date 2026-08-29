@@ -213,10 +213,15 @@ required property without making explicit null impossible to bind. */
   type CleanupResult = {
     affected?: number;
     batch_size?: number;
+    candidate_hash?: string;
     cutoff?: string;
     data_class?: string;
     dry_run?: boolean;
+    failure_code?: string;
     has_more?: boolean;
+    policy_version?: number;
+    run_id?: number;
+    status?: string;
   };
 
   type CollectionResultHttpCollectionRunPageResponse = {
@@ -2072,8 +2077,13 @@ probability or a cross-channel relevance percentage. */
     id: number;
   };
 
-  type postOperationsRetentionPoliciesIdRunParams = {
-    /** retention policy ID */
+  type postOperationsRetentionRunsIdApproveParams = {
+    /** retention run ID */
+    id: number;
+  };
+
+  type postOperationsRetentionRunsIdExecuteParams = {
+    /** retention run ID */
     id: number;
   };
 
@@ -2575,6 +2585,10 @@ required property without making explicit null impossible to bind. */
     message?: string;
   };
 
+  type RetentionConfirmationRequest = {
+    candidate_hash: string;
+  };
+
   type RetentionPolicyResponse = {
     action?: string;
     data_class?: string;
@@ -2586,7 +2600,7 @@ required property without making explicit null impossible to bind. */
     version?: number;
   };
 
-  type RetentionRunRequest = {
+  type RetentionPreviewRequest = {
     batch_size: number;
     expected_version: number;
   };

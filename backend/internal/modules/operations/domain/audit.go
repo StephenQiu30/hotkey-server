@@ -48,6 +48,9 @@ const (
 	ActionSubscriptionDeleted         AuditAction = "subscription.deleted"
 	ActionJobCancelled                AuditAction = "job.cancelled"
 	ActionJobRetried                  AuditAction = "job.retried"
+	ActionRetentionPreviewed          AuditAction = "retention.previewed"
+	ActionRetentionApproved           AuditAction = "retention.approved"
+	ActionRetentionBlocked            AuditAction = "retention.blocked"
 	ActionRetentionExecuted           AuditAction = "retention.executed"
 	ActionKnowledgeProjectionRejected AuditAction = "knowledge.projection_rejected"
 	ActionReportContentRejected       AuditAction = "report.content_rejected"
@@ -67,7 +70,7 @@ var allowedActions = map[AuditAction]struct{}{
 	ActionRightsPolicyCreated: {}, ActionRightsDecisionBatchRecorded: {},
 	ActionMetricCapabilityDrafted: {}, ActionMetricCapabilityPublished: {}, ActionMetricCapabilityArchived: {},
 	ActionSubscriptionCreated: {}, ActionSubscriptionUpdated: {}, ActionSubscriptionTokenRotated: {}, ActionSubscriptionDeleted: {},
-	ActionJobCancelled: {}, ActionJobRetried: {},
+	ActionJobCancelled: {}, ActionJobRetried: {}, ActionRetentionPreviewed: {}, ActionRetentionApproved: {}, ActionRetentionBlocked: {},
 	ActionRetentionExecuted:           {},
 	ActionKnowledgeProjectionRejected: {},
 	ActionReportContentRejected:       {},
@@ -139,8 +142,9 @@ var safeMetadataKeys = map[string]struct{}{
 	"monitor_version": {}, "draft_version": {}, "source_version": {}, "subscription_version": {}, "config_version": {}, "revision": {}, "rule_count": {}, "source_count": {},
 	"compiled_profile_id": {}, "intent_revision_id": {},
 	"status": {}, "previous_status": {}, "approval_status": {}, "config_hash": {}, "published_at": {},
-	"enabled": {}, "deleted": {}, "credential_configured": {}, "affected": {}, "batch_size": {}, "decision_count": {},
-	"key_version": {}, "rotated_count": {}, "remaining_count": {},
+	"enabled": {}, "deleted": {}, "credential_configured": {}, "affected": {}, "batch_size": {}, "candidate_count": {}, "policy_version": {}, "decision_count": {},
+	"candidate_hash": {},
+	"key_version":    {}, "rotated_count": {}, "remaining_count": {},
 	"capability_source_type": {}, "capability_profile_version": {}, "capability_status": {}, "capability_profile_record_version": {}, "boundary_profile_version": {}, "reason_code": {},
 }
 
@@ -193,7 +197,7 @@ func SanitizeMetadata(metadata map[string]any) map[string]any {
 
 func validMetadataValue(key string, value any) bool {
 	switch key {
-	case "monitor_version", "draft_version", "source_version", "subscription_version", "config_version", "revision", "rule_count", "source_count", "compiled_profile_id", "intent_revision_id", "affected", "batch_size", "decision_count", "key_version", "rotated_count", "remaining_count":
+	case "monitor_version", "draft_version", "source_version", "subscription_version", "config_version", "revision", "rule_count", "source_count", "compiled_profile_id", "intent_revision_id", "affected", "batch_size", "candidate_count", "policy_version", "decision_count", "key_version", "rotated_count", "remaining_count":
 		switch value.(type) {
 		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 			return true
@@ -233,7 +237,7 @@ func validMetadataValue(key string, value any) bool {
 		state, ok := value.(string)
 		_, allowed := allowedApprovalStates[state]
 		return ok && allowed
-	case "config_hash":
+	case "config_hash", "candidate_hash":
 		hash, ok := value.(string)
 		return ok && lowerHex64.MatchString(hash)
 	case "published_at":
@@ -254,7 +258,7 @@ func validActorType(value string) bool {
 
 func validResourceType(value string) bool {
 	return value == "monitor" || value == "source_connection" || value == "source_credential_keyring" || value == "rights_policy" || value == "rights_decision_batch" ||
-		value == "metric_capability_profile" || value == "report_subscription" || value == "retention_policy" || value == "river_job" || value == "knowledge_document" || value == "collection_run" || value == "report" || value == "request_boundary"
+		value == "metric_capability_profile" || value == "report_subscription" || value == "retention_policy" || value == "retention_run" || value == "river_job" || value == "knowledge_document" || value == "collection_run" || value == "report" || value == "request_boundary"
 }
 
 func validCommandReceipt(idempotencyKey, commandFingerprint string) bool {

@@ -18,6 +18,7 @@ import (
 
 type governanceServiceFake struct {
 	retentionInput operationsapplication.RetentionInput
+	retentionRun   operationsapplication.RetentionRunInput
 	auditSubject   identitydomain.Subject
 	auditQuery     operationsdomain.AuditQuery
 	auditPage      operationsdomain.AuditPage
@@ -34,11 +35,15 @@ func (service *governanceServiceFake) PreviewRetention(_ context.Context, input 
 		return operationsdomain.CleanupResult{}, sharedrepository.ErrInvalidInput
 	}
 	service.retentionInput = input
-	return operationsdomain.CleanupResult{DataClass: "sessions", Affected: 4, BatchSize: input.BatchSize, DryRun: true}, nil
+	return operationsdomain.CleanupResult{RunID: 11, PolicyVersion: 2, DataClass: "sessions", Affected: 4, BatchSize: input.BatchSize, CandidateHash: strings.Repeat("a", 64), Status: "pending_approval", DryRun: true}, nil
 }
-func (service *governanceServiceFake) RunRetention(_ context.Context, input operationsapplication.RetentionInput) (operationsdomain.CleanupResult, error) {
-	service.retentionInput = input
-	return operationsdomain.CleanupResult{DataClass: "sessions", Affected: 4, BatchSize: input.BatchSize}, nil
+func (service *governanceServiceFake) ApproveRetention(_ context.Context, input operationsapplication.RetentionRunInput) (operationsdomain.CleanupResult, error) {
+	service.retentionRun = input
+	return operationsdomain.CleanupResult{RunID: input.RunID, DataClass: "sessions", Affected: 4, CandidateHash: input.CandidateHash, Status: "approved", DryRun: true}, nil
+}
+func (service *governanceServiceFake) ExecuteRetention(_ context.Context, input operationsapplication.RetentionRunInput) (operationsdomain.CleanupResult, error) {
+	service.retentionRun = input
+	return operationsdomain.CleanupResult{RunID: input.RunID, DataClass: "sessions", Affected: 4, CandidateHash: input.CandidateHash, Status: "completed"}, nil
 }
 func (service *governanceServiceFake) Audit(_ context.Context, subject identitydomain.Subject, query operationsdomain.AuditQuery) (operationsdomain.AuditPage, error) {
 	service.auditSubject, service.auditQuery = subject, query
@@ -63,8 +68,9 @@ func TestGovernanceHandlersExposeSafeContractsAndBoundedInput(t *testing.T) {
 		{http.MethodGet, "/usage", "", `"manual_searches"`},
 		{http.MethodGet, "/retention", "", `"data_class":"sessions"`},
 		{http.MethodGet, "/audit", "", `"retention.executed"`},
-		{http.MethodPost, "/preview/1", `{"expected_version":2,"batch_size":100}`, `"dry_run":true`},
-		{http.MethodPost, "/run/1", `{"expected_version":2,"batch_size":100}`, `"affected":4`},
+		{http.MethodPost, "/preview/1", `{"expected_version":2,"batch_size":100}`, `"status":"pending_approval"`},
+		{http.MethodPost, "/approve/11", `{"candidate_hash":"` + strings.Repeat("a", 64) + `"}`, `"status":"approved"`},
+		{http.MethodPost, "/execute/11", `{"candidate_hash":"` + strings.Repeat("a", 64) + `"}`, `"status":"completed"`},
 	} {
 		recorder := httptest.NewRecorder()
 		httpRequest := httptest.NewRequest(request.method, request.path, strings.NewReader(request.body))
@@ -84,6 +90,9 @@ func TestGovernanceHandlersExposeSafeContractsAndBoundedInput(t *testing.T) {
 	}
 	if service.retentionInput.PolicyID != 1 || service.retentionInput.ExpectedVersion != 2 || service.retentionInput.BatchSize != 100 || service.retentionInput.Subject.UserID != 7 {
 		t.Fatalf("retention input = %#v", service.retentionInput)
+	}
+	if service.retentionRun.RunID != 11 || service.retentionRun.CandidateHash != strings.Repeat("a", 64) || service.retentionRun.Subject.UserID != 7 {
+		t.Fatalf("retention run input = %#v", service.retentionRun)
 	}
 }
 
@@ -146,6 +155,7 @@ func governanceRouter(service governanceService, role httptransport.Role) *gin.E
 	router.GET("/retention", auth, httptransport.RequireRoles(httptransport.RoleAdmin), httptransport.Wrap(handler.RetentionPolicies))
 	router.GET("/audit", auth, httptransport.RequireRoles(httptransport.RoleAdmin), httptransport.Wrap(handler.Audit))
 	router.POST("/preview/:id", auth, httptransport.RequireRoles(httptransport.RoleAdmin), httptransport.Wrap(handler.PreviewRetention))
-	router.POST("/run/:id", auth, httptransport.RequireRoles(httptransport.RoleAdmin), httptransport.Wrap(handler.RunRetention))
+	router.POST("/approve/:id", auth, httptransport.RequireRoles(httptransport.RoleAdmin), httptransport.Wrap(handler.ApproveRetention))
+	router.POST("/execute/:id", auth, httptransport.RequireRoles(httptransport.RoleAdmin), httptransport.Wrap(handler.ExecuteRetention))
 	return router
 }

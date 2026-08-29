@@ -1,5 +1,5 @@
 {
-  "profile_version": "p0-request-boundaries-v1",
+  "profile_version": "p0-request-boundaries-v2",
   "stable_error_codes": {
     "rate_limited": 10004,
     "attempts_exceeded": 10004,
@@ -82,7 +82,8 @@
         {"method": "POST", "path": "/api/v1/operations/jobs/:id/cancel"},
         {"method": "POST", "path": "/api/v1/operations/jobs/:id/retry"},
         {"method": "POST", "path": "/api/v1/operations/retention-policies/:id/preview"},
-        {"method": "POST", "path": "/api/v1/operations/retention-policies/:id/run"}
+        {"method": "POST", "path": "/api/v1/operations/retention-runs/:id/approve"},
+        {"method": "POST", "path": "/api/v1/operations/retention-runs/:id/execute"}
       ],
       "rate": {"limit": 60, "window": "1m0s"},
       "max_concurrent": 4,

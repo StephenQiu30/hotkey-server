@@ -89,7 +89,7 @@ source-management-audit-acceptance: test-env
 	$(GO) run ./test/runner test -p=1 \
 		./internal/modules/source/application \
 		./internal/modules/operations/infrastructure/postgres \
-		-run '^(TestSourceServiceCreatesAndRotatesEncryptedManagedCredential|TestSourceServiceAuditsBudgetConfigurationChangeWithoutPersistingConfiguration|TestManualCollectionUsesDurableCooldownAndActivePublishedTargets|TestCollectionControlListsRetriesAndPersistsSafeHealth|TestGovernanceAuditQueryCoversFiveSourceManagementCategoriesWithoutSyntheticSecrets|TestRetentionPreviewRunIsBoundedProtectedAndAudited)$$' \
+		-run '^(TestSourceServiceCreatesAndRotatesEncryptedManagedCredential|TestSourceServiceAuditsBudgetConfigurationChangeWithoutPersistingConfiguration|TestManualCollectionUsesDurableCooldownAndActivePublishedTargets|TestCollectionControlListsRetriesAndPersistsSafeHealth|TestGovernanceAuditQueryCoversFiveSourceManagementCategoriesWithoutSyntheticSecrets|TestRetentionRunRequiresFrozenPreviewApprovalAndStopsOnCandidateDrift)$$' \
 		-count=1 -v
 
 # This target is intentionally excluded from CI. It requires an explicitly

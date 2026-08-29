@@ -17,7 +17,8 @@ type governanceService interface {
 	Usage(context.Context, identitydomain.Subject) (domain.UsageOverview, error)
 	RetentionPolicies(context.Context, identitydomain.Subject) ([]domain.RetentionPolicy, error)
 	PreviewRetention(context.Context, operationsapplication.RetentionInput) (domain.CleanupResult, error)
-	RunRetention(context.Context, operationsapplication.RetentionInput) (domain.CleanupResult, error)
+	ApproveRetention(context.Context, operationsapplication.RetentionRunInput) (domain.CleanupResult, error)
+	ExecuteRetention(context.Context, operationsapplication.RetentionRunInput) (domain.CleanupResult, error)
 	Audit(context.Context, identitydomain.Subject, domain.AuditQuery) (domain.AuditPage, error)
 }
 
@@ -37,7 +38,8 @@ func RegisterGovernanceRoutes(router *gin.Engine, service *operationsapplication
 	admin := router.Group("/api/v1/operations", httptransport.RequireAuthentication(authenticator), httptransport.RequireRoles(httptransport.RoleAdmin))
 	admin.GET("/retention-policies", httptransport.Wrap(handler.RetentionPolicies))
 	admin.POST("/retention-policies/:id/preview", httptransport.Wrap(handler.PreviewRetention))
-	admin.POST("/retention-policies/:id/run", httptransport.Wrap(handler.RunRetention))
+	admin.POST("/retention-runs/:id/approve", httptransport.Wrap(handler.ApproveRetention))
+	admin.POST("/retention-runs/:id/execute", httptransport.Wrap(handler.ExecuteRetention))
 	admin.GET("/audit-logs", httptransport.Wrap(handler.Audit))
 }
 
@@ -58,9 +60,13 @@ type RetentionPolicyResponse struct {
 	Protected     bool   `json:"protected"`
 }
 
-type RetentionRunRequest struct {
+type RetentionPreviewRequest struct {
 	ExpectedVersion int64 `json:"expected_version" binding:"required"`
 	BatchSize       int   `json:"batch_size" binding:"required"`
+}
+
+type RetentionConfirmationRequest struct {
+	CandidateHash string `json:"candidate_hash" binding:"required"`
 }
 
 // Usage returns current-user hard quotas and workspace observed usage.
@@ -122,38 +128,16 @@ func (handler *GovernanceHandler) RetentionPolicies(c *gin.Context) error {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "retention policy ID"
-// @Param request body RetentionRunRequest true "preview boundary"
+// @Param request body RetentionPreviewRequest true "preview boundary"
 // @Success 200 {object} GovernanceResult[domain.CleanupResult]
 // @Failure 400 {object} GovernanceResult[EmptyResponse]
 // @Failure 401 {object} GovernanceResult[EmptyResponse]
 // @Failure 403 {object} GovernanceResult[EmptyResponse]
 // @Failure 404 {object} GovernanceResult[EmptyResponse]
 // @Failure 409 {object} GovernanceResult[EmptyResponse]
+// @Failure 503 {object} GovernanceResult[EmptyResponse]
 // @Router /api/v1/operations/retention-policies/{id}/preview [post]
 func (handler *GovernanceHandler) PreviewRetention(c *gin.Context) error {
-	return handler.retention(c, true)
-}
-
-// RunRetention deletes one confirmed bounded batch and writes its audit fact.
-// @Summary Run a retention batch
-// @Tags operations
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param id path int true "retention policy ID"
-// @Param request body RetentionRunRequest true "execution boundary"
-// @Success 200 {object} GovernanceResult[domain.CleanupResult]
-// @Failure 400 {object} GovernanceResult[EmptyResponse]
-// @Failure 401 {object} GovernanceResult[EmptyResponse]
-// @Failure 403 {object} GovernanceResult[EmptyResponse]
-// @Failure 404 {object} GovernanceResult[EmptyResponse]
-// @Failure 409 {object} GovernanceResult[EmptyResponse]
-// @Router /api/v1/operations/retention-policies/{id}/run [post]
-func (handler *GovernanceHandler) RunRetention(c *gin.Context) error {
-	return handler.retention(c, false)
-}
-
-func (handler *GovernanceHandler) retention(c *gin.Context, preview bool) error {
 	httptransport.SetModule(c, "operations")
 	subject, err := governanceSubject(c)
 	if err != nil {
@@ -161,18 +145,82 @@ func (handler *GovernanceHandler) retention(c *gin.Context, preview bool) error 
 	}
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id <= 0 {
-		return operationsapplication.GovernanceHTTPError(fmt.Errorf("%w: invalid retention id", sharedrepository.ErrInvalidInput))
+		return operationsapplication.GovernanceHTTPError(fmt.Errorf("%w: invalid retention policy id", sharedrepository.ErrInvalidInput))
 	}
-	var request RetentionRunRequest
+	var request RetentionPreviewRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		return operationsapplication.GovernanceHTTPError(fmt.Errorf("%w: invalid retention request", sharedrepository.ErrInvalidInput))
+		return operationsapplication.GovernanceHTTPError(fmt.Errorf("%w: invalid retention preview", sharedrepository.ErrInvalidInput))
 	}
-	input := operationsapplication.RetentionInput{Subject: subject, PolicyID: id, ExpectedVersion: request.ExpectedVersion, BatchSize: request.BatchSize}
+	result, err := handler.service.PreviewRetention(c.Request.Context(), operationsapplication.RetentionInput{
+		Subject: subject, PolicyID: id, ExpectedVersion: request.ExpectedVersion, BatchSize: request.BatchSize,
+	})
+	if err != nil {
+		return operationsapplication.GovernanceHTTPError(err)
+	}
+	httptransport.OK(c, result)
+	return nil
+}
+
+// ApproveRetention freezes an exact preview hash before execution.
+// @Summary Approve a frozen retention run
+// @Tags operations
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "retention run ID"
+// @Param request body RetentionConfirmationRequest true "frozen candidate hash"
+// @Success 200 {object} GovernanceResult[domain.CleanupResult]
+// @Failure 400 {object} GovernanceResult[EmptyResponse]
+// @Failure 401 {object} GovernanceResult[EmptyResponse]
+// @Failure 403 {object} GovernanceResult[EmptyResponse]
+// @Failure 404 {object} GovernanceResult[EmptyResponse]
+// @Failure 409 {object} GovernanceResult[EmptyResponse]
+// @Failure 503 {object} GovernanceResult[EmptyResponse]
+// @Router /api/v1/operations/retention-runs/{id}/approve [post]
+func (handler *GovernanceHandler) ApproveRetention(c *gin.Context) error {
+	return handler.retentionRun(c, true)
+}
+
+// ExecuteRetention revalidates policy and exact candidates before deleting.
+// @Summary Execute an approved retention run
+// @Tags operations
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "retention run ID"
+// @Param request body RetentionConfirmationRequest true "frozen candidate hash"
+// @Success 200 {object} GovernanceResult[domain.CleanupResult]
+// @Failure 400 {object} GovernanceResult[EmptyResponse]
+// @Failure 401 {object} GovernanceResult[EmptyResponse]
+// @Failure 403 {object} GovernanceResult[EmptyResponse]
+// @Failure 404 {object} GovernanceResult[EmptyResponse]
+// @Failure 409 {object} GovernanceResult[EmptyResponse]
+// @Failure 503 {object} GovernanceResult[EmptyResponse]
+// @Router /api/v1/operations/retention-runs/{id}/execute [post]
+func (handler *GovernanceHandler) ExecuteRetention(c *gin.Context) error {
+	return handler.retentionRun(c, false)
+}
+
+func (handler *GovernanceHandler) retentionRun(c *gin.Context, approve bool) error {
+	httptransport.SetModule(c, "operations")
+	subject, err := governanceSubject(c)
+	if err != nil {
+		return err
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		return operationsapplication.GovernanceHTTPError(fmt.Errorf("%w: invalid retention run id", sharedrepository.ErrInvalidInput))
+	}
+	var request RetentionConfirmationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		return operationsapplication.GovernanceHTTPError(fmt.Errorf("%w: invalid retention confirmation", sharedrepository.ErrInvalidInput))
+	}
+	input := operationsapplication.RetentionRunInput{Subject: subject, RunID: id, CandidateHash: request.CandidateHash}
 	var result domain.CleanupResult
-	if preview {
-		result, err = handler.service.PreviewRetention(c.Request.Context(), input)
+	if approve {
+		result, err = handler.service.ApproveRetention(c.Request.Context(), input)
 	} else {
-		result, err = handler.service.RunRetention(c.Request.Context(), input)
+		result, err = handler.service.ExecuteRetention(c.Request.Context(), input)
 	}
 	if err != nil {
 		return operationsapplication.GovernanceHTTPError(err)

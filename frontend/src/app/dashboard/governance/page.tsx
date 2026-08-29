@@ -23,13 +23,14 @@ import { useAuthStore } from "@/stores/authStore";
 import { PageShell } from "@/layouts/PageShell";
 import {
   getOperationsAuditLogs, getOperationsRetentionPolicies, getOperationsUsage,
-  postOperationsRetentionPoliciesIdPreview, postOperationsRetentionPoliciesIdRun,
+  postOperationsRetentionPoliciesIdPreview, postOperationsRetentionRunsIdApprove,
+  postOperationsRetentionRunsIdExecute,
 } from "@/services/hotkey/hotkey-server/operations";
 
 const AUDIT_LIMIT = 20;
 const dataClassLabels: Record<string, string> = {
   captured_items: "采集临时项", content_metric_snapshots: "内容指标", event_metric_snapshots: "事件指标",
-  sessions: "失效会话", delivery_attempts: "投递尝试", job_attempts: "任务尝试", audit_logs: "审计日志",
+  sessions: "失效会话", delivery_attempts: "投递尝试（受保护）", job_attempts: "任务尝试", audit_logs: "审计日志",
 };
 
 type RetentionPreview = { policy: HotKeyAPI.RetentionPolicyResponse; result: HotKeyAPI.CleanupResult };
@@ -124,12 +125,28 @@ export default function GovernancePage() {
     finally { setBusyPolicy(undefined); }
   };
 
-  const runRetention = async () => {
-    const policy = preview?.policy;
-    if (policy?.id == null || policy.version == null) return;
-    setBusyPolicy(policy.id);
+  const approveRetention = async () => {
+    const runID = preview?.result.run_id;
+    const candidateHash = preview?.result.candidate_hash;
+    const policyID = preview?.policy.id;
+    if (runID == null || !candidateHash || policyID == null) return;
+    setBusyPolicy(policyID);
     try {
-      const result = await postOperationsRetentionPoliciesIdRun({ id: policy.id }, { expected_version: policy.version, batch_size: Number(batchSize) });
+      const result = await postOperationsRetentionRunsIdApprove({ id: runID }, { candidate_hash: candidateHash });
+      if (result.data) setPreview((current) => current ? { ...current, result: result.data! } : current);
+      toast.success("固定候选清单已批准，执行前仍会重新校验");
+    } catch (reason) { toast.error(reason instanceof Error ? reason.message : "保留批准失败"); }
+    finally { setBusyPolicy(undefined); }
+  };
+
+  const executeRetention = async () => {
+    const runID = preview?.result.run_id;
+    const candidateHash = preview?.result.candidate_hash;
+    const policyID = preview?.policy.id;
+    if (runID == null || !candidateHash || policyID == null || preview?.result.status !== "approved") return;
+    setBusyPolicy(policyID);
+    try {
+      const result = await postOperationsRetentionRunsIdExecute({ id: runID }, { candidate_hash: candidateHash });
       toast.success(`已处理 ${result.data?.affected ?? 0} 条${result.data?.has_more ? "，仍有后续批次" : ""}`);
       setPreview(undefined);
       await load();
@@ -156,7 +173,7 @@ export default function GovernancePage() {
 
     <section className="mt-10" aria-labelledby="retention-title">
       <Card className="overflow-hidden">
-        <CardHeader className="flex flex-row flex-wrap items-center gap-3 border-b"><div><CardTitle id="retention-title" className="flex items-center gap-2"><Archive className="h-4 w-4" />数据保留</CardTitle><p className="mt-2 text-sm text-muted-foreground">先 dry-run，再确认执行；每次最多处理 1000 条。</p></div>
+        <CardHeader className="flex flex-row flex-wrap items-center gap-3 border-b"><div><CardTitle id="retention-title" className="flex items-center gap-2"><Archive className="h-4 w-4" />数据保留</CardTitle><p className="mt-2 text-sm text-muted-foreground">先生成固定候选清单与 Hash，明确批准后执行；每次最多处理 1000 条。</p></div>
           <Select value={batchSize} onValueChange={setBatchSize}><SelectTrigger aria-label="保留批量上限" className="ml-auto w-36"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="100">每批 100 条</SelectItem><SelectItem value="500">每批 500 条</SelectItem><SelectItem value="1000">每批 1000 条</SelectItem></SelectContent></Select></CardHeader>
           <Table className="min-w-[760px]" scrollAreaLabel="数据保留策略表"><TableHeader><TableRow><TableHead>数据类</TableHead><TableHead>保留期</TableHead><TableHead>状态</TableHead><TableHead>说明</TableHead><TableHead className="text-right">操作</TableHead></TableRow></TableHeader>
             <TableBody>{policies.map((policy) => <TableRow key={policy.id}><TableCell className="font-medium">{dataClassLabels[policy.data_class ?? ""] ?? policy.data_class}</TableCell><TableCell>{policy.retention_days} 天</TableCell><TableCell><Badge variant={policy.protected ? "secondary" : policy.enabled ? "default" : "outline"}>{policy.protected ? "受保护" : policy.enabled ? "启用" : "停用"}</Badge></TableCell><TableCell className="max-w-sm text-xs text-muted-foreground">{policy.description}</TableCell><TableCell className="text-right"><Button size="sm" variant="outline" disabled={!policy.enabled || policy.protected || busyPolicy === policy.id} onClick={(event) => void previewRetention(policy, event.currentTarget)}>{busyPolicy === policy.id ? <Loader2 className="animate-spin" /> : null}预览清理</Button></TableCell></TableRow>)}</TableBody>
@@ -167,8 +184,8 @@ export default function GovernancePage() {
     <section className="mt-10" aria-labelledby="audit-title">
       <Card className="overflow-hidden"><CardHeader className="border-b"><CardTitle id="audit-title" className="flex items-center gap-2"><ScrollText className="h-4 w-4" />审计记录</CardTitle>
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
-          <Select value={actionFilter} onValueChange={setActionFilter}><SelectTrigger aria-label="筛选审计动作"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全部动作</SelectItem><SelectItem value="retention.executed">保留执行</SelectItem><SelectItem value="monitor.published">监控发布</SelectItem><SelectItem value="source.created">来源创建</SelectItem><SelectItem value="subscription.created">订阅创建</SelectItem></SelectContent></Select>
-          <Select value={resourceFilter} onValueChange={setResourceFilter}><SelectTrigger aria-label="筛选资源类型"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全部资源</SelectItem><SelectItem value="retention_policy">保留策略</SelectItem><SelectItem value="monitor">监控</SelectItem><SelectItem value="source_connection">来源连接</SelectItem><SelectItem value="report_subscription">报告订阅</SelectItem></SelectContent></Select>
+          <Select value={actionFilter} onValueChange={setActionFilter}><SelectTrigger aria-label="筛选审计动作"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全部动作</SelectItem><SelectItem value="retention.previewed">保留预览</SelectItem><SelectItem value="retention.approved">保留批准</SelectItem><SelectItem value="retention.executed">保留执行</SelectItem><SelectItem value="retention.blocked">保留阻断</SelectItem><SelectItem value="monitor.published">监控发布</SelectItem><SelectItem value="source.created">来源创建</SelectItem><SelectItem value="subscription.created">订阅创建</SelectItem></SelectContent></Select>
+          <Select value={resourceFilter} onValueChange={setResourceFilter}><SelectTrigger aria-label="筛选资源类型"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全部资源</SelectItem><SelectItem value="retention_run">保留运行</SelectItem><SelectItem value="monitor">监控</SelectItem><SelectItem value="source_connection">来源连接</SelectItem><SelectItem value="report_subscription">报告订阅</SelectItem></SelectContent></Select>
           <Select value={resultFilter} onValueChange={setResultFilter}><SelectTrigger aria-label="筛选审计结果"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全部结果</SelectItem><SelectItem value="success">成功</SelectItem><SelectItem value="failure">失败</SelectItem><SelectItem value="denied">拒绝</SelectItem></SelectContent></Select>
           <Button variant="outline" onClick={applyAuditFilters}>应用筛选</Button>
         </div></CardHeader>
@@ -177,7 +194,7 @@ export default function GovernancePage() {
       </Card>
     </section>
 
-    <AlertDialog open={Boolean(preview)} onOpenChange={(open) => !open && setPreview(undefined)}><AlertDialogContent onCloseAutoFocus={(event) => { event.preventDefault(); previewTriggerRef.current?.focus(); }}><AlertDialogHeader><AlertDialogTitle>确认执行保留批次？</AlertDialogTitle><AlertDialogDescription>{dataClassLabels[preview?.policy.data_class ?? ""] ?? preview?.policy.data_class} 的 dry-run 找到 {preview?.result.affected ?? 0} 条候选，截止 {preview?.result.cutoff ? new Date(preview.result.cutoff).toLocaleString("zh-CN") : "—"}。{preview?.result.has_more ? "本批完成后仍有后续候选。" : "本批可处理全部候选。"}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><AlertDialogAction disabled={!preview?.result.affected || busyPolicy != null} onClick={(event) => { event.preventDefault(); void runRetention(); }}>{busyPolicy != null ? <Loader2 className="animate-spin" /> : null}确认处理 {preview?.result.affected ?? 0} 条</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={Boolean(preview)} onOpenChange={(open) => !open && setPreview(undefined)}><AlertDialogContent onCloseAutoFocus={(event) => { event.preventDefault(); previewTriggerRef.current?.focus(); }}><AlertDialogHeader><AlertDialogTitle>{preview?.result.status === "approved" ? "执行已批准保留批次？" : "批准固定保留清单？"}</AlertDialogTitle><AlertDialogDescription asChild><div className="space-y-2 text-sm text-muted-foreground"><p>{dataClassLabels[preview?.policy.data_class ?? ""] ?? preview?.policy.data_class} 的 dry-run 找到 {preview?.result.affected ?? 0} 条候选，截止 {preview?.result.cutoff ? new Date(preview.result.cutoff).toLocaleString("zh-CN") : "—"}。{preview?.result.has_more ? "本批完成后仍有后续候选。" : "本批可处理全部候选。"}</p><p>运行 #{preview?.result.run_id ?? "—"}；{preview?.result.status === "approved" ? "候选 Hash 已冻结，执行前将再次校验策略与清单。" : "批准后只能按该 Hash 执行。"}</p><code className="block break-all rounded bg-muted px-2 py-1 text-xs text-foreground">{preview?.result.candidate_hash ?? "—"}</code></div></AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel>{preview?.result.status === "approved" ? <AlertDialogAction disabled={!preview?.result.affected || busyPolicy != null} onClick={(event) => { event.preventDefault(); void executeRetention(); }}>{busyPolicy != null ? <Loader2 className="animate-spin" /> : null}执行 {preview?.result.affected ?? 0} 条</AlertDialogAction> : <AlertDialogAction disabled={!preview?.result.affected || preview?.result.run_id == null || !preview?.result.candidate_hash || busyPolicy != null} onClick={(event) => { event.preventDefault(); void approveRetention(); }}>{busyPolicy != null ? <Loader2 className="animate-spin" /> : null}批准固定清单</AlertDialogAction>}</AlertDialogFooter></AlertDialogContent></AlertDialog>
   </PageShell>;
 }
 

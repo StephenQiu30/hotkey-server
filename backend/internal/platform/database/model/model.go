@@ -725,6 +725,8 @@ var specs = []Spec{
 	{"report_subscriptions", LifecycleBusiness, []string{"id", "user_id", "channel", "deleted_at"}},
 	{"ai_model_profiles", LifecycleBusiness, []string{"id", "version", "name", "task_type", "provider", "model_name", "model_version", "credential_ref", "embedding_dimensions", "timeout_seconds", "max_attempts", "max_cost", "daily_budget", "fallback_priority", "enabled", "deleted_at"}},
 	{"retention_policies", LifecycleBusiness, []string{"id", "data_class", "retention_days", "action"}},
+	{"retention_runs", LifecycleOperational, []string{"id", "version", "retention_policy_id", "retention_policy_version", "data_class", "cutoff", "batch_size", "candidate_count", "has_more", "candidate_hash", "status", "requested_by_user_id", "approved_by_user_id", "approved_at", "executed_by_user_id", "executed_at", "affected", "failure_code", "created_at", "updated_at"}},
+	{"retention_run_items", LifecycleOperational, []string{"id", "retention_run_id", "ordinal", "candidate_id", "created_at"}},
 	{"quota_usage_ledgers", LifecycleOperational, []string{"id", "dimension", "subject_type", "subject_id", "window_start", "window_end", "used", "updated_at"}},
 	{"source_request_usage_ledgers", LifecycleOperational, []string{"id", "source_connection_id", "resource_profile_version", "budget_day", "used", "updated_at"}},
 	{"auth_sessions", LifecycleOperational, []string{"id", "user_id", "family_id", "absolute_expires_at", "revoked_at"}},

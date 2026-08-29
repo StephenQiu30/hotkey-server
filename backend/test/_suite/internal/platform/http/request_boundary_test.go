@@ -71,7 +71,8 @@ func TestP0RequestBoundaryMatrixIsVersionedFiniteAndComplete(t *testing.T) {
 		{Method: stdhttp.MethodPost, Path: "/api/v1/operations/jobs/:id/cancel"}:                RequestBoundaryOperations,
 		{Method: stdhttp.MethodPost, Path: "/api/v1/operations/jobs/:id/retry"}:                 RequestBoundaryOperations,
 		{Method: stdhttp.MethodPost, Path: "/api/v1/operations/retention-policies/:id/preview"}: RequestBoundaryOperations,
-		{Method: stdhttp.MethodPost, Path: "/api/v1/operations/retention-policies/:id/run"}:     RequestBoundaryOperations,
+		{Method: stdhttp.MethodPost, Path: "/api/v1/operations/retention-runs/:id/approve"}:     RequestBoundaryOperations,
+		{Method: stdhttp.MethodPost, Path: "/api/v1/operations/retention-runs/:id/execute"}:     RequestBoundaryOperations,
 	}
 	for route, wantClass := range wantRoutes {
 		if got := seenRoutes[route]; got != wantClass {

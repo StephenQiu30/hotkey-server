@@ -10,6 +10,7 @@ import (
 
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -35,7 +36,7 @@ func TestRetentionPolicySchemaRejectsAnEighthDataClass(t *testing.T) {
 	}
 }
 
-func TestRetentionRepositoryDeletesOnlyWhitelistedBoundedOperationalRows(t *testing.T) {
+func TestRetentionRepositoryRejectsProtectedDeliveryAttemptsBeforeCreatingRun(t *testing.T) {
 	ctx := context.Background()
 	runtime, err := database.Open(ctx, postgresfixture.New(t))
 	if err != nil {
@@ -46,28 +47,7 @@ func TestRetentionRepositoryDeletesOnlyWhitelistedBoundedOperationalRows(t *test
 		t.Fatal(err)
 	}
 	old := time.Now().UTC().Add(-48 * time.Hour)
-	var sourceID, contentID int64
-	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO source_connections (source_type, name, endpoint) VALUES ('rss', 'retention-' || md5(random()::text), 'https://retention.example') RETURNING id`).Scan(&sourceID); err != nil {
-		t.Fatal(err)
-	}
-	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO contents (source_connection_id, external_id, content_type, title, canonical_url, published_at, fetched_at, dedupe_key, created_at) VALUES ($1, 'retention-content', 'article', 'old', 'https://retention.example/content', $2, $2, repeat('r', 64), $2) RETURNING id`, sourceID, old).Scan(&contentID); err != nil {
-		t.Fatal(err)
-	}
 	repository := NewRetentionRepository(runtime)
-	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO content_metric_snapshots (content_id,captured_at) VALUES ($1,$2)`, contentID, old); err != nil {
-		t.Fatal(err)
-	}
-	affected, err := repository.ApplyRetention(ctx, operationsdomain.RetentionPolicy{ID: 1, Version: 1, DataClass: "content_metric_snapshots", RetentionDays: 1, Action: "delete", Enabled: true}, time.Now().UTC().Add(-24*time.Hour))
-	if err != nil || affected != 1 {
-		t.Fatalf("delete content metrics = %d/%v, want 1", affected, err)
-	}
-	var deletedAt *time.Time
-	if err := runtime.SQL.QueryRowContext(ctx, `SELECT deleted_at FROM contents WHERE id = $1`, contentID).Scan(&deletedAt); err != nil {
-		t.Fatal(err)
-	}
-	if deletedAt != nil {
-		t.Fatal("core content was modified by metric retention")
-	}
 	var userID int64
 	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO users (email, password_hash, display_name, role) VALUES ('retention-' || md5(random()::text) || '@example.test', 'hash', 'retention', 'viewer') RETURNING id`).Scan(&userID); err != nil {
 		t.Fatal(err)
@@ -85,8 +65,12 @@ func TestRetentionRepositoryDeletesOnlyWhitelistedBoundedOperationalRows(t *test
 	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO delivery_attempts (delivery_id, attempt_no, started_at, status, created_at) VALUES ($1, 1, $2, 'failed', $2)`, deliveryID, old); err != nil {
 		t.Fatal(err)
 	}
-	deleted, err := repository.ApplyRetention(ctx, operationsdomain.RetentionPolicy{ID: 2, Version: 1, DataClass: "delivery_attempts", RetentionDays: 1, Action: "delete", Enabled: true}, time.Now().UTC().Add(-24*time.Hour))
-	if err != nil || deleted != 1 {
-		t.Fatalf("delete attempts = %d/%v, want 1", deleted, err)
+	_, err = repository.CreateRun(ctx, operationsdomain.RetentionPolicy{ID: 1, Version: 1, DataClass: "delivery_attempts", RetentionDays: 1, Action: "delete", Enabled: true, Protected: true}, time.Now().UTC().Add(-24*time.Hour), 100, userID, time.Now().UTC())
+	if !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("create protected delivery retention run error = %v, want invalid input", err)
+	}
+	var preserved int
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM delivery_attempts WHERE delivery_id=$1`, deliveryID).Scan(&preserved); err != nil || preserved != 1 {
+		t.Fatalf("protected delivery attempts = %d/%v, want 1", preserved, err)
 	}
 }

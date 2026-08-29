@@ -98,7 +98,7 @@ export async function getOperationsRetentionPolicies(options?: RequestOptions) {
 export async function postOperationsRetentionPoliciesIdPreview(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.postOperationsRetentionPoliciesIdPreviewParams,
-  body: HotKeyAPI.RetentionRunRequest,
+  body: HotKeyAPI.RetentionPreviewRequest,
   options?: RequestOptions
 ) {
   const { id: param0, ...queryParams } = params;
@@ -116,16 +116,38 @@ export async function postOperationsRetentionPoliciesIdPreview(
   );
 }
 
-/** Run a retention batch POST /api/v1/operations/retention-policies/${param0}/run */
-export async function postOperationsRetentionPoliciesIdRun(
+/** Approve a frozen retention run POST /api/v1/operations/retention-runs/${param0}/approve */
+export async function postOperationsRetentionRunsIdApprove(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
-  params: HotKeyAPI.postOperationsRetentionPoliciesIdRunParams,
-  body: HotKeyAPI.RetentionRunRequest,
+  params: HotKeyAPI.postOperationsRetentionRunsIdApproveParams,
+  body: HotKeyAPI.RetentionConfirmationRequest,
   options?: RequestOptions
 ) {
   const { id: param0, ...queryParams } = params;
   return request<HotKeyAPI.GovernanceResultDomainCleanupResult>(
-    `/api/v1/operations/retention-policies/${param0}/run`,
+    `/api/v1/operations/retention-runs/${param0}/approve`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
+/** Execute an approved retention run POST /api/v1/operations/retention-runs/${param0}/execute */
+export async function postOperationsRetentionRunsIdExecute(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.postOperationsRetentionRunsIdExecuteParams,
+  body: HotKeyAPI.RetentionConfirmationRequest,
+  options?: RequestOptions
+) {
+  const { id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.GovernanceResultDomainCleanupResult>(
+    `/api/v1/operations/retention-runs/${param0}/execute`,
     {
       method: "POST",
       headers: {

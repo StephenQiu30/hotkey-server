@@ -254,7 +254,8 @@ func TestAuditActionWhitelistIsClosed(t *testing.T) {
 		operationsdomain.ActionRightsPolicyCreated, operationsdomain.ActionRightsDecisionBatchRecorded,
 		operationsdomain.ActionMetricCapabilityDrafted, operationsdomain.ActionMetricCapabilityPublished, operationsdomain.ActionMetricCapabilityArchived,
 		operationsdomain.ActionSubscriptionCreated, operationsdomain.ActionSubscriptionUpdated, operationsdomain.ActionSubscriptionTokenRotated, operationsdomain.ActionSubscriptionDeleted,
-		operationsdomain.ActionJobCancelled, operationsdomain.ActionJobRetried, operationsdomain.ActionRetentionExecuted,
+		operationsdomain.ActionJobCancelled, operationsdomain.ActionJobRetried, operationsdomain.ActionRetentionPreviewed, operationsdomain.ActionRetentionApproved,
+		operationsdomain.ActionRetentionBlocked, operationsdomain.ActionRetentionExecuted,
 		operationsdomain.ActionKnowledgeProjectionRejected, operationsdomain.ActionReportContentRejected, operationsdomain.ActionRequestBoundaryRejected,
 	} {
 		if !action.Valid() {

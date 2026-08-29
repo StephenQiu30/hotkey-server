@@ -19,6 +19,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestGovernanceRepositoryRecordsManualSearchesWithoutProductLimit(t *testing.T) {
@@ -201,7 +202,7 @@ VALUES ('user',$1,$2,'monitor',$3,$4,'{"status":"draft"}','{"status":"active"}',
 	return id
 }
 
-func TestRetentionPreviewRunIsBoundedProtectedAndAudited(t *testing.T) {
+func TestRetentionRunRequiresFrozenPreviewApprovalAndStopsOnCandidateDrift(t *testing.T) {
 	ctx := context.Background()
 	runtime := governanceRuntime(t)
 	defer runtime.Close()
@@ -221,8 +222,12 @@ func TestRetentionPreviewRunIsBoundedProtectedAndAudited(t *testing.T) {
 	}
 	metricPolicy := retentionPolicy(t, policies, "content_metric_snapshots")
 	auditPolicy := retentionPolicy(t, policies, "audit_logs")
+	deliveryPolicy := retentionPolicy(t, policies, "delivery_attempts")
 	if !auditPolicy.Protected || auditPolicy.Enabled {
 		t.Fatalf("audit policy = %#v", auditPolicy)
+	}
+	if !deliveryPolicy.Protected || deliveryPolicy.Enabled {
+		t.Fatalf("delivery attempt policy = %#v, want protected and disabled", deliveryPolicy)
 	}
 	sourceID := governanceSource(t, runtime)
 	old := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -236,29 +241,113 @@ func TestRetentionPreviewRunIsBoundedProtectedAndAudited(t *testing.T) {
 		}
 	}
 	input := operationsapplication.RetentionInput{Subject: identitydomain.Subject{UserID: userID, Role: identitydomain.RoleAdmin}, PolicyID: metricPolicy.ID, ExpectedVersion: metricPolicy.Version, BatchSize: 2}
+	if _, err := service.ApproveRetention(ctx, operationsapplication.RetentionRunInput{Subject: input.Subject, RunID: 999999, CandidateHash: strings.Repeat("a", 64)}); !errors.Is(err, sharedrepository.ErrNotFound) {
+		t.Fatalf("approve missing run error = %v, want not found", err)
+	}
 	preview, err := service.PreviewRetention(ctx, input)
-	if err != nil || preview.Affected != 2 || !preview.HasMore || !preview.DryRun {
+	if err != nil || preview.RunID <= 0 || preview.PolicyVersion != metricPolicy.Version || len(preview.CandidateHash) != 64 || preview.Status != "pending_approval" || preview.Affected != 2 || !preview.HasMore || !preview.DryRun {
 		t.Fatalf("preview = %#v/%v", preview, err)
+	}
+	repeatedPreview, err := service.PreviewRetention(ctx, input)
+	if err != nil || repeatedPreview.RunID == preview.RunID || repeatedPreview.CandidateHash != preview.CandidateHash || repeatedPreview.Affected != preview.Affected || repeatedPreview.HasMore != preview.HasMore {
+		t.Fatalf("repeated preview = %#v/%v, want a new run with the same frozen candidate hash", repeatedPreview, err)
+	}
+	if _, err := service.ExecuteRetention(ctx, operationsapplication.RetentionRunInput{Subject: input.Subject, RunID: preview.RunID, CandidateHash: preview.CandidateHash}); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("execute before approval error = %v, want conflict", err)
+	}
+	if _, err := service.ApproveRetention(ctx, operationsapplication.RetentionRunInput{Subject: input.Subject, RunID: preview.RunID, CandidateHash: strings.Repeat("f", 64)}); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("approve wrong hash error = %v, want conflict", err)
+	}
+	approved, err := service.ApproveRetention(ctx, operationsapplication.RetentionRunInput{Subject: input.Subject, RunID: preview.RunID, CandidateHash: preview.CandidateHash})
+	if err != nil || approved.Status != "approved" || approved.RunID != preview.RunID {
+		t.Fatalf("approved = %#v/%v", approved, err)
 	}
 	var before int
 	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM content_metric_snapshots`).Scan(&before); err != nil || before != 3 {
 		t.Fatalf("before = %d/%v", before, err)
 	}
-	run, err := service.RunRetention(ctx, input)
-	if err != nil || run.Affected != 2 || !run.HasMore || run.DryRun {
+	var driftedCandidateID int64
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT candidate_id FROM retention_run_items WHERE retention_run_id=$1 ORDER BY ordinal LIMIT 1`, preview.RunID).Scan(&driftedCandidateID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `DELETE FROM content_metric_snapshots WHERE id=$1`, driftedCandidateID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ExecuteRetention(ctx, operationsapplication.RetentionRunInput{Subject: input.Subject, RunID: preview.RunID, CandidateHash: preview.CandidateHash}); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("execute drifted run error = %v, want conflict", err)
+	}
+	var blockedStatus, failureCode string
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT status,failure_code FROM retention_runs WHERE id=$1`, preview.RunID).Scan(&blockedStatus, &failureCode); err != nil || blockedStatus != "blocked" || failureCode != "candidate_drift" {
+		t.Fatalf("blocked run = %q/%q/%v", blockedStatus, failureCode, err)
+	}
+	var remainingAfterDrift int
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM content_metric_snapshots`).Scan(&remainingAfterDrift); err != nil || remainingAfterDrift != 2 {
+		t.Fatalf("remaining after drift stop = %d/%v, want 2", remainingAfterDrift, err)
+	}
+
+	preview, err = service.PreviewRetention(ctx, input)
+	if err != nil || preview.Affected != 2 || preview.HasMore {
+		t.Fatalf("second preview = %#v/%v", preview, err)
+	}
+	if _, err := service.ApproveRetention(ctx, operationsapplication.RetentionRunInput{Subject: input.Subject, RunID: preview.RunID, CandidateHash: preview.CandidateHash}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := service.ExecuteRetention(ctx, operationsapplication.RetentionRunInput{Subject: input.Subject, RunID: preview.RunID, CandidateHash: preview.CandidateHash})
+	if err != nil || run.Affected != 2 || run.HasMore || run.DryRun || run.Status != "completed" {
 		t.Fatalf("run = %#v/%v", run, err)
 	}
-	var remaining, audits int
-	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM content_metric_snapshots`).Scan(&remaining); err != nil || remaining != 1 {
+	if _, err := service.ExecuteRetention(ctx, operationsapplication.RetentionRunInput{Subject: input.Subject, RunID: preview.RunID, CandidateHash: preview.CandidateHash}); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("repeat completed run error = %v, want idempotent conflict", err)
+	}
+	var remaining int
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM content_metric_snapshots`).Scan(&remaining); err != nil || remaining != 0 {
 		t.Fatalf("remaining = %d/%v", remaining, err)
 	}
-	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM audit_logs WHERE action='retention.executed' AND resource_id=$1`, metricPolicy.ID).Scan(&audits); err != nil || audits != 1 {
-		t.Fatalf("audits = %d/%v", audits, err)
+	var retainedContentID int64
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT id FROM contents ORDER BY id LIMIT 1`).Scan(&retainedContentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO content_metric_snapshots (content_id,captured_at) VALUES ($1,$2)`, retainedContentID, old); err != nil {
+		t.Fatal(err)
+	}
+	policyDriftPreview, err := service.PreviewRetention(ctx, operationsapplication.RetentionInput{Subject: input.Subject, PolicyID: metricPolicy.ID, ExpectedVersion: metricPolicy.Version, BatchSize: 2})
+	if err != nil || policyDriftPreview.Affected != 1 {
+		t.Fatalf("policy drift preview = %#v/%v", policyDriftPreview, err)
+	}
+	if _, err := service.ApproveRetention(ctx, operationsapplication.RetentionRunInput{Subject: input.Subject, RunID: policyDriftPreview.RunID, CandidateHash: policyDriftPreview.CandidateHash}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE retention_policies SET version=version+1 WHERE id=$1`, metricPolicy.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ExecuteRetention(ctx, operationsapplication.RetentionRunInput{Subject: input.Subject, RunID: policyDriftPreview.RunID, CandidateHash: policyDriftPreview.CandidateHash}); !errors.Is(err, sharedrepository.ErrConflict) {
+		t.Fatalf("execute policy-drifted run error = %v, want conflict", err)
+	}
+	var policyDriftStatus, policyDriftCode string
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT status,failure_code FROM retention_runs WHERE id=$1`, policyDriftPreview.RunID).Scan(&policyDriftStatus, &policyDriftCode); err != nil || policyDriftStatus != "blocked" || policyDriftCode != "policy_drift" {
+		t.Fatalf("policy drift run = %q/%q/%v", policyDriftStatus, policyDriftCode, err)
+	}
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM content_metric_snapshots`).Scan(&remaining); err != nil || remaining != 1 {
+		t.Fatalf("remaining after policy drift stop = %d/%v, want 1", remaining, err)
+	}
+	var audits int
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM audit_logs WHERE action IN ('retention.previewed','retention.approved','retention.blocked','retention.executed') AND resource_type='retention_run'`).Scan(&audits); err != nil || audits != 10 {
+		t.Fatalf("retention run audits = %d/%v, want 10", audits, err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `UPDATE retention_run_items SET candidate_id=candidate_id+1000 WHERE retention_run_id=$1`, preview.RunID); !postgresConstraint(err, "retention_run_items_append_only") {
+		t.Fatalf("mutate frozen retention item error = %#v, want append-only rejection", err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `DELETE FROM retention_runs WHERE id=$1`, preview.RunID); !postgresConstraint(err, "retention_runs_retained") {
+		t.Fatalf("delete retention run error = %#v, want retained rejection", err)
 	}
 	protectedInput := input
 	protectedInput.PolicyID, protectedInput.ExpectedVersion = auditPolicy.ID, auditPolicy.Version
 	if _, err := service.PreviewRetention(ctx, protectedInput); !errors.Is(err, sharedrepository.ErrInvalidInput) {
 		t.Fatalf("protected preview error = %v", err)
+	}
+	protectedInput.PolicyID, protectedInput.ExpectedVersion = deliveryPolicy.ID, deliveryPolicy.Version
+	if _, err := service.PreviewRetention(ctx, protectedInput); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("delivery attempt preview error = %v", err)
 	}
 	editor := identitydomain.Subject{UserID: userID, Role: identitydomain.RoleEditor}
 	if _, err := service.RetentionPolicies(ctx, editor); err == nil {
@@ -320,3 +409,8 @@ func usageByDimension(t *testing.T, overview operationsdomain.UsageOverview, dim
 }
 
 func hashCharacter(index int) string { return strings.Repeat(string(rune('a'+index)), 64) }
+
+func postgresConstraint(err error, name string) bool {
+	var postgresError *pgconn.PgError
+	return errors.As(err, &postgresError) && postgresError.Code == "23514" && postgresError.ConstraintName == name
+}

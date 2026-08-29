@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	RequestBoundaryProfileVersion = "p0-request-boundaries-v1"
+	RequestBoundaryProfileVersion = "p0-request-boundaries-v2"
 	defaultBoundaryStateEntries   = 4096
 )
 
@@ -131,7 +131,8 @@ func DefaultRequestBoundaryProfiles() []RequestBoundaryProfile {
 			RequestBoundaryRoute{Method: stdhttp.MethodPost, Path: "/api/v1/operations/jobs/:id/cancel"},
 			RequestBoundaryRoute{Method: stdhttp.MethodPost, Path: "/api/v1/operations/jobs/:id/retry"},
 			RequestBoundaryRoute{Method: stdhttp.MethodPost, Path: "/api/v1/operations/retention-policies/:id/preview"},
-			RequestBoundaryRoute{Method: stdhttp.MethodPost, Path: "/api/v1/operations/retention-policies/:id/run"}),
+			RequestBoundaryRoute{Method: stdhttp.MethodPost, Path: "/api/v1/operations/retention-runs/:id/approve"},
+			RequestBoundaryRoute{Method: stdhttp.MethodPost, Path: "/api/v1/operations/retention-runs/:id/execute"}),
 	}
 }
 
