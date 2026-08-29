@@ -14,7 +14,7 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 	if status := frontmatterStatus(t, filepath.Join(repository, acceptancePath)); status != "failed" {
 		t.Fatalf("002 partial Acceptance must remain failed, got %q", status)
 	}
-	if !regexp.MustCompile(`(?m)^verified_revision: "6ff813bc8e90bd673d24d8d50b1ef076d5a70a04"$`).MatchString(acceptance) {
+	if !regexp.MustCompile(`(?m)^verified_revision: "d28642092ce6148e59272f5054d752a7aebc15c0"$`).MatchString(acceptance) {
 		t.Errorf("002 Acceptance must pin the exact verified implementation revision")
 	}
 
@@ -41,8 +41,8 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 	}
 
 	open := map[string]string{
-		"CHK-002-G3-002": "EV-002-011",
-		"CHK-002-G5-001": "EV-002-008",
+		"CHK-002-G3-002": "EV-002-012",
+		"CHK-002-G5-001": "EV-002-012",
 	}
 	for checkID, evidenceID := range open {
 		row := markdownChecklistRow(t, plan, checkID)
@@ -66,9 +66,17 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 		"TestCollectionHealthAdmissionDenialStopsBeforeConnectorResolutionAndPersistsSafeAudit",
 		"TestExternalRequestBudgetEnforcesPerMinuteRateLimitAtomicallyWithoutConsumingDailyBudget",
 		"make source-admission-matrix-acceptance",
+		"`EV-002-012`",
+		"TestExecuteUsesRealAPIBoundariesAndWritesOnlySanitizedEvidence",
+		"TestLoadConfigFailsClosedBeforeNetworkOrOutput",
+		"TestExecuteStopsBeforeExternalProbeWhenSourceIdentityIsWrong",
+		"make source-live-smoke",
+		"I_CONFIRM_AUTHORIZED_P0_SOURCES",
+		"真实授权冒烟未执行",
 		"只剩三来源真实授权冒烟",
 		"不得用 Fixture、模拟响应或本机候选容量替代真实授权证据",
 		"33253811195",
+		"33256271696",
 	} {
 		if !strings.Contains(acceptance, fragment) {
 			t.Errorf("002 Acceptance is missing %q", fragment)
