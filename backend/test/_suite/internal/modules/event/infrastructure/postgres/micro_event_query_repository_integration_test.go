@@ -100,6 +100,14 @@ VALUES ('evidence-state-query-fixture-v1','active',$1,$2) RETURNING id`, actorID
 		firstPage.Items[0].RelevanceScore == nil || *firstPage.Items[0].RelevanceScore != .95 || firstPage.NextCursor == "" {
 		t.Fatalf("first relevance page = %#v", firstPage)
 	}
+	concurrentFixture := seedMicroEventAssignmentFixture(t, runtime, "query-concurrent", "accepted")
+	concurrentFixture.occurredAt = now.Add(-3 * time.Hour)
+	setMicroEventQueryFixtureDimensions(t, runtime, concurrentFixture, "rss", .70)
+	concurrentResult, err := writeRepository.CommitMicroEventMembership(ctx, microEventCommitFixture(
+		concurrentFixture, "create", 0, 0, strings.Repeat("c", 64), "micro-event-query-new"))
+	if err != nil {
+		t.Fatalf("create concurrent event: %v", err)
+	}
 	secondPage, err := service.List(ctx, eventapplication.MicroEventListQuery{
 		Sort: "relevance", Limit: 1, Cursor: firstPage.NextCursor,
 	})
@@ -109,6 +117,13 @@ VALUES ('evidence-state-query-fixture-v1','active',$1,$2) RETURNING id`, actorID
 	if len(secondPage.Items) != 1 || secondPage.Items[0].ID != rssResult.Event.ID ||
 		secondPage.Items[0].RelevanceScore == nil || *secondPage.Items[0].RelevanceScore != .80 || secondPage.NextCursor != "" {
 		t.Fatalf("second relevance page = %#v", secondPage)
+	}
+	freshPage, err := service.List(ctx, eventapplication.MicroEventListQuery{Sort: "relevance", Limit: 10})
+	if err != nil {
+		t.Fatalf("list fresh relevance page: %v", err)
+	}
+	if len(freshPage.Items) != 3 || freshPage.Items[2].ID != concurrentResult.Event.ID {
+		t.Fatalf("fresh relevance page omitted concurrent event = %#v", freshPage)
 	}
 	if _, err := service.List(ctx, eventapplication.MicroEventListQuery{
 		Sort: "relevance", Limit: 1, Cursor: firstPage.NextCursor, SourceTypes: []string{"x"},

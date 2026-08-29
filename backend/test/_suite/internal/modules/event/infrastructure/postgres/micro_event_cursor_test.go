@@ -21,8 +21,9 @@ func TestMicroEventListCursorFreezesRankingAndRejectsChangedQuery(t *testing.T) 
 	filter := microEventFilterFingerprint(query)
 	cursor := microEventListCursor{
 		Sort: "heat", Filter: filter,
-		AsOf:    time.Date(2026, time.August, 12, 8, 0, 0, 0, time.UTC),
-		HasHeat: true, HeatScore: 73.4,
+		AsOf:       time.Date(2026, time.August, 12, 8, 0, 0, 0, time.UTC),
+		SnapshotID: 29,
+		HasHeat:    true, HeatScore: 73.4,
 		HeatWindowEnd:  time.Date(2026, time.August, 12, 7, 59, 0, 0, time.UTC),
 		EventStartedAt: time.Date(2026, time.August, 12, 7, 0, 0, 0, time.UTC), ID: 17,
 	}
@@ -32,7 +33,8 @@ func TestMicroEventListCursorFreezesRankingAndRejectsChangedQuery(t *testing.T) 
 		t.Fatal(err)
 	}
 	decoded, err := decodeMicroEventListCursor(codec, encoded, "heat", filter)
-	if err != nil || decoded.ID != cursor.ID || decoded.HeatScore != cursor.HeatScore || !decoded.AsOf.Equal(cursor.AsOf) {
+	if err != nil || decoded.ID != cursor.ID || decoded.SnapshotID != cursor.SnapshotID ||
+		decoded.HeatScore != cursor.HeatScore || !decoded.AsOf.Equal(cursor.AsOf) {
 		t.Fatalf("decoded cursor = %#v / %v", decoded, err)
 	}
 	tampered := "A" + encoded[1:]
@@ -55,7 +57,8 @@ func TestMicroEventListCursorRejectsMalformedHeatTuple(t *testing.T) {
 	filter := microEventFilterFingerprint(eventapplication.MicroEventListQuery{Statuses: []string{"active"}})
 	codec := microEventTestCursorCodec()
 	encoded, err := encodeMicroEventListCursor(codec, microEventListCursor{
-		Sort: "heat", Filter: filter, AsOf: time.Now().UTC(), HasHeat: false,
+		Sort: "heat", Filter: filter, AsOf: time.Now().UTC(), SnapshotID: 3,
+		HasHeat:   false,
 		HeatScore: 42, EventStartedAt: time.Now().UTC(), ID: 3,
 	})
 	if err != nil {
@@ -70,6 +73,7 @@ func TestMicroEventListCursorSupportsRelevanceTuple(t *testing.T) {
 	filter := microEventFilterFingerprint(eventapplication.MicroEventListQuery{MonitorID: 9, SourceTypes: []string{"x"}})
 	cursor := microEventListCursor{
 		Sort: "relevance", Filter: filter, AsOf: time.Date(2026, 8, 12, 8, 0, 0, 0, time.UTC),
+		SnapshotID:   41,
 		HasRelevance: true, RelevanceScore: .83,
 		EventStartedAt: time.Date(2026, 8, 12, 7, 0, 0, 0, time.UTC), ID: 23,
 	}

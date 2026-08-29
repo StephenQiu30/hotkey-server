@@ -178,6 +178,7 @@ type microEventListCursor struct {
 	Sort           string    `json:"s"`
 	Filter         string    `json:"f"`
 	AsOf           time.Time `json:"a"`
+	SnapshotID     int64     `json:"snapshot_id"`
 	HasHeat        bool      `json:"hh"`
 	HeatScore      float64   `json:"h,omitempty"`
 	HeatWindowEnd  time.Time `json:"hw,omitempty"`
@@ -221,7 +222,7 @@ func microEventFilterFingerprint(query eventapplication.MicroEventListQuery) str
 }
 
 func encodeMicroEventListCursor(codec *pagination.Codec, cursor microEventListCursor) (string, error) {
-	cursor.Version = 3
+	cursor.Version = 4
 	return codec.Seal("micro_event_list", cursor)
 }
 
@@ -236,8 +237,9 @@ func decodeMicroEventListCursor(codec *pagination.Codec, value, expectedSort, ex
 	validRelevance := cursor.Sort == "relevance" && (cursor.HasRelevance && cursor.RelevanceScore >= 0 && cursor.RelevanceScore <= 1 ||
 		!cursor.HasRelevance && cursor.RelevanceScore == 0) ||
 		cursor.Sort != "relevance" && !cursor.HasRelevance && cursor.RelevanceScore == 0
-	if cursor.Version != 3 || cursor.Sort != expectedSort ||
-		cursor.Filter != expectedFilter || cursor.AsOf.IsZero() || cursor.EventStartedAt.IsZero() || cursor.ID <= 0 ||
+	if cursor.Version != 4 || cursor.Sort != expectedSort ||
+		cursor.Filter != expectedFilter || cursor.AsOf.IsZero() || cursor.SnapshotID <= 0 ||
+		cursor.EventStartedAt.IsZero() || cursor.ID <= 0 || cursor.ID > cursor.SnapshotID ||
 		!validHeat || !validRelevance {
 		return microEventListCursor{}, eventapplication.ErrInvalidMicroEventQuery
 	}
@@ -289,8 +291,13 @@ func (repository *MicroEventQueryPostgresRepository) ListMicroEvents(ctx context
 			return eventapplication.MicroEventPageDTO{}, err
 		}
 		cursor = decoded
+	} else if err := repository.queryExecutor(ctx).QueryRowContext(ctx, `SELECT COALESCE(max(id),0) FROM micro_events`).Scan(&cursor.SnapshotID); err != nil {
+		return eventapplication.MicroEventPageDTO{}, databaserepository.MapError(err)
 	}
-	arguments := []any{statuses, cursor.AsOf, query.Limit + 1}
+	if cursor.SnapshotID == 0 {
+		return eventapplication.MicroEventPageDTO{Items: []eventapplication.MicroEventProjectionDTO{}}, nil
+	}
+	arguments := []any{statuses, cursor.AsOf, query.Limit + 1, cursor.SnapshotID}
 	addArgument := func(value any) string {
 		arguments = append(arguments, value)
 		return fmt.Sprintf("$%d", len(arguments))
@@ -301,7 +308,7 @@ func (repository *MicroEventQueryPostgresRepository) ListMicroEvents(ctx context
 	}
 	statement := microEventProjectionSelect("snapshot.calculated_at<=$2", "decision_override.created_at<=$2",
 		"decision.decided_at<=$2", relevanceMonitorPredicate, "snapshot.created_at<=$2") + `
-WHERE event.status=ANY($1) AND event.created_at<=$2`
+WHERE event.status=ANY($1) AND event.created_at<=$2 AND event.id<=$4`
 	if query.MonitorID > 0 {
 		statement += ` AND relevance.score IS NOT NULL`
 	}
@@ -397,7 +404,7 @@ ORDER BY relevance.score DESC NULLS LAST,event.event_started_at DESC,event.id DE
 	if len(page.Items) > query.Limit {
 		page.Items = page.Items[:query.Limit]
 		last := page.Items[len(page.Items)-1]
-		next := microEventListCursor{Sort: query.Sort, Filter: fingerprint, AsOf: cursor.AsOf,
+		next := microEventListCursor{Sort: query.Sort, Filter: fingerprint, AsOf: cursor.AsOf, SnapshotID: cursor.SnapshotID,
 			EventStartedAt: last.EventStartedAt, ID: last.ID}
 		if query.Sort == "heat" && last.LatestHeat != nil {
 			next.HasHeat, next.HeatScore, next.HeatWindowEnd = true, last.LatestHeat.HeatScore, last.LatestHeat.WindowEndedAt
