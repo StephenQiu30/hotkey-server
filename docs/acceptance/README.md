@@ -26,7 +26,7 @@ canonical_path: docs/acceptance/README.md
 | 编号 | 交付域 | 计划状态 | Acceptance |
 |---:|---|---|---|
 | 001 | 产品需求分析与总体架构 | in_progress | [部分验收](001-HotKey产品需求分析与总体架构验收.md)（`failed`） |
-| 002 | 监控来源采集与证据链 | in_progress | 未创建 |
+| 002 | 监控来源采集与证据链 | in_progress | [部分验收](002-监控来源采集与证据链验收.md)（`failed`） |
 | 003 | 智能研判事件热度与人工治理 | in_progress | 未创建 |
 | 004 | 通知报告知识投影与检索 | in_progress | 未创建 |
 | 005 | 安全运维质量与交付 | in_progress | 未创建 |
