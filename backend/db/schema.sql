@@ -1174,6 +1174,8 @@ CREATE TABLE IF NOT EXISTS retention_runs (
     failure_code varchar(32) CHECK (failure_code IN ('candidate_drift','policy_drift')),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT retention_runs_independent_approval
+        CHECK (approved_by_user_id IS NULL OR approved_by_user_id <> requested_by_user_id),
     CHECK (
         status='pending_approval' AND approved_by_user_id IS NULL AND approved_at IS NULL AND executed_by_user_id IS NULL AND executed_at IS NULL AND affected=0 AND failure_code IS NULL
         OR status='approved' AND approved_by_user_id IS NOT NULL AND approved_at IS NOT NULL AND executed_by_user_id IS NULL AND executed_at IS NULL AND affected=0 AND failure_code IS NULL
