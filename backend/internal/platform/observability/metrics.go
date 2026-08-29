@@ -11,13 +11,14 @@ import (
 )
 
 type Metrics struct {
-	Registry         *prometheus.Registry
-	httpRequests     *prometheus.CounterVec
-	httpDuration     *prometheus.HistogramVec
-	httpPanics       *prometheus.CounterVec
-	dependencyHealth *prometheus.GaugeVec
-	collectionOps    *prometheus.CounterVec
-	contentQueries   *prometheus.CounterVec
+	Registry          *prometheus.Registry
+	httpRequests      *prometheus.CounterVec
+	httpDuration      *prometheus.HistogramVec
+	httpPanics        *prometheus.CounterVec
+	dependencyHealth  *prometheus.GaugeVec
+	operationalAlerts *prometheus.GaugeVec
+	collectionOps     *prometheus.CounterVec
+	contentQueries    *prometheus.CounterVec
 }
 
 func NewMetrics() (*Metrics, error) {
@@ -39,6 +40,10 @@ func NewMetrics() (*Metrics, error) {
 			Name: "hotkey_dependency_health",
 			Help: "Health of a HotKey dependency, where 1 is healthy and 0 is unhealthy.",
 		}, []string{"dependency"}),
+		operationalAlerts: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "hotkey_operational_alert",
+			Help: "Active bounded HotKey operational alerts, where 1 is active and 0 is clear.",
+		}, []string{"alert_id", "policy_version", "severity", "owner", "silence_key"}),
 		collectionOps: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "hotkey_collection_operations_total",
 			Help: "Total collection administration operations by stable operation and outcome.",
@@ -58,6 +63,9 @@ func NewMetrics() (*Metrics, error) {
 		return nil, err
 	}
 	if err := metrics.Registry.Register(metrics.dependencyHealth); err != nil {
+		return nil, err
+	}
+	if err := metrics.Registry.Register(metrics.operationalAlerts); err != nil {
 		return nil, err
 	}
 	if err := metrics.Registry.Register(metrics.collectionOps); err != nil {
@@ -100,6 +108,20 @@ func (metrics *Metrics) SetDependencyHealth(dependency string, healthy float64) 
 	metrics.dependencyHealth.WithLabelValues(dependency).Set(healthy)
 }
 
+// SetOperationalAlert accepts only finite policy-owned labels. Correlation IDs,
+// dependency errors and user-controlled values must remain outside Metric labels.
+func (metrics *Metrics) SetOperationalAlert(alertID, policyVersion, severity, owner string, active bool) {
+	alertID = boundedLabel(alertID, allowedOperationalAlertIDs)
+	policyVersion = boundedLabel(policyVersion, allowedOperationalAlertPolicyVersions)
+	severity = boundedLabel(severity, allowedOperationalAlertSeverities)
+	owner = boundedLabel(owner, allowedOperationalAlertOwners)
+	value := float64(0)
+	if active {
+		value = 1
+	}
+	metrics.operationalAlerts.WithLabelValues(alertID, policyVersion, severity, owner, alertID).Set(value)
+}
+
 // RecordCollectionOperation intentionally accepts only application-owned,
 // low-cardinality labels. Callers must never supply source IDs, query text,
 // endpoint values or arbitrary upstream diagnostics.
@@ -132,6 +154,15 @@ var allowedDependencyLabels = map[string]bool{
 	"runtime": true, "database": true, "redis": true, "minio": true, "vault": true,
 	"worker": true, "agent": true, "codex": true, "smtp": true,
 }
+
+var allowedOperationalAlertIDs = map[string]bool{
+	"ALERT-DB-UNAVAILABLE": true, "ALERT-RIVER-JOB-FAILED": true, "ALERT-RIVER-NO-WORKER": true,
+	"ALERT-SOURCE-AUTH": true, "ALERT-MINIO-WRITE": true, "ALERT-CODEX-FAILURE": true,
+	"ALERT-VAULT-CONFLICT": true, "ALERT-SEARCH-BACKLOG": true, "ALERT-DELIVERY-UNKNOWN": true,
+}
+var allowedOperationalAlertPolicyVersions = map[string]bool{"p0-operational-alerts-v1": true}
+var allowedOperationalAlertSeverities = map[string]bool{"p0": true, "p1": true, "p2": true, "p3": true}
+var allowedOperationalAlertOwners = map[string]bool{"hotkey-oncall": true}
 
 var allowedCollectionOperations = map[string]bool{"list": true, "manual": true, "retry": true, "health": true}
 var allowedCollectionOutcomes = map[string]bool{"success": true, "error": true, "healthy": true, "unhealthy": true}

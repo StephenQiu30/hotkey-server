@@ -14,6 +14,11 @@ type runtimeAlertRule struct {
 }
 
 var runtimeAlertRules = map[string]runtimeAlertRule{
+	"ALERT-DB-UNAVAILABLE": {
+		severity: "p0", reasonCode: "database_readiness_unavailable",
+		runbookURL:     "https://github.com/StephenQiu30/hotkey-server/blob/main/docs/operations/004-%E5%8F%AF%E8%A7%82%E6%B5%8B%E6%80%A7SLO%E4%B8%8E%E4%BA%8B%E4%BB%B6%E5%93%8D%E5%BA%94.md#database-readiness-alert-response",
+		thresholdCount: 3,
+	},
 	"ALERT-RIVER-JOB-FAILED": {
 		severity: "p1", reasonCode: "river_job_discarded",
 		runbookURL:     "https://github.com/StephenQiu30/hotkey-server/blob/main/docs/operations/004-%E5%8F%AF%E8%A7%82%E6%B5%8B%E6%80%A7SLO%E4%B8%8E%E4%BA%8B%E4%BB%B6%E5%93%8D%E5%BA%94.md#river-alert-response",

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	deliverysmtp "github.com/StephenQiu30/hotkey-server/backend/internal/modules/delivery/infrastructure/smtp"
@@ -49,6 +50,7 @@ import (
 	notificationpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/infrastructure/postgres"
 	notificationtransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/notification/transport/http"
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
+	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 	operationstransport "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/transport/http"
 	reportapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/report/application"
@@ -81,6 +83,61 @@ import (
 
 func NewApp(cfg config.Config, logger *zap.Logger) (*fx.App, error) {
 	return NewAppWithReadiness(cfg, logger, httptransport.ReadinessFunc(func(context.Context) error { return nil }))
+}
+
+type readinessPinger interface {
+	Ping(context.Context) error
+}
+
+type databaseReadiness struct {
+	readiness           httptransport.Readiness
+	pinger              readinessPinger
+	metrics             *observability.Metrics
+	alert               operationsdomain.RuntimeAlert
+	mu                  sync.Mutex
+	consecutiveFailures int64
+}
+
+func newDatabaseReadiness(readiness httptransport.Readiness, pinger readinessPinger, metrics *observability.Metrics) httptransport.Readiness {
+	alert, found := operationsdomain.ApplyRuntimeAlertPolicy(operationsdomain.RuntimeAlert{AlertID: "ALERT-DB-UNAVAILABLE"})
+	if !found {
+		return httptransport.ReadinessFunc(func(context.Context) error {
+			return errors.New("database alert policy is not registered")
+		})
+	}
+	return &databaseReadiness{readiness: readiness, pinger: pinger, metrics: metrics, alert: alert}
+}
+
+func (readiness *databaseReadiness) Check(ctx context.Context) error {
+	if err := readiness.readiness.Check(ctx); err != nil {
+		return err
+	}
+	if err := readiness.pinger.Ping(ctx); err != nil {
+		readiness.recordDatabaseResult(false)
+		return err
+	}
+	readiness.recordDatabaseResult(true)
+	return nil
+}
+
+func (readiness *databaseReadiness) recordDatabaseResult(healthy bool) {
+	readiness.mu.Lock()
+	defer readiness.mu.Unlock()
+	if healthy {
+		readiness.consecutiveFailures = 0
+		readiness.metrics.SetDependencyHealth("database", 1)
+		readiness.setAlertMetric(false)
+		return
+	}
+	readiness.consecutiveFailures++
+	readiness.metrics.SetDependencyHealth("database", 0)
+	readiness.setAlertMetric(readiness.consecutiveFailures >= readiness.alert.ThresholdCount)
+}
+
+func (readiness *databaseReadiness) setAlertMetric(active bool) {
+	readiness.metrics.SetOperationalAlert(
+		readiness.alert.AlertID, readiness.alert.PolicyVersion, readiness.alert.Severity, readiness.alert.Owner, active,
+	)
 }
 
 // NewAppWithReadiness makes the aggregate lifecycle check injectable. Runtime
@@ -239,13 +296,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		}
 		readinessProvider := fx.Provide(func() httptransport.Readiness { return readiness })
 		if usesDatabase {
-			readinessProvider = fx.Provide(func(runtime *database.Runtime) httptransport.Readiness {
-				return httptransport.ReadinessFunc(func(ctx context.Context) error {
-					if err := readiness.Check(ctx); err != nil {
-						return err
-					}
-					return runtime.Ping(ctx)
-				})
+			readinessProvider = fx.Provide(func(runtime *database.Runtime, metrics *observability.Metrics) httptransport.Readiness {
+				return newDatabaseReadiness(readiness, runtime, metrics)
 			})
 		}
 		routerProvider := any(httptransport.NewRouter)

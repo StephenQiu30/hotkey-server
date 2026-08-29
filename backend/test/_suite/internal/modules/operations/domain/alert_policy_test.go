@@ -14,6 +14,7 @@ func TestRuntimeAlertPolicyRegistersOnlyTheApprovedBoundedRules(t *testing.T) {
 		thresholdCount   int64
 		thresholdSeconds int64
 	}{
+		{"ALERT-DB-UNAVAILABLE", "p0", "database_readiness_unavailable", 3, 0},
 		{"ALERT-RIVER-JOB-FAILED", "p1", "river_job_discarded", 1, 0},
 		{"ALERT-RIVER-NO-WORKER", "p1", "river_queue_lag_exceeded", 1, 300},
 		{"ALERT-SOURCE-AUTH", "p1", "source_authentication_failure_streak", 3, 0},

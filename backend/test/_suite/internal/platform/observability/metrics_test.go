@@ -27,6 +27,7 @@ func TestMetricsUseDedicatedRegistry(t *testing.T) {
 	metrics.RecordHTTPRequest("GET", "/api/v1/capabilities", 200, 25*time.Millisecond)
 	metrics.RecordPanic("/panic")
 	metrics.SetDependencyHealth("database", 1)
+	metrics.SetOperationalAlert("ALERT-DB-UNAVAILABLE", "p0-operational-alerts-v1", "p0", "hotkey-oncall", true)
 	metrics.RecordCollectionOperation("retry", "success")
 	metrics.RecordContentQuery("list_active", "success")
 	request := httptest.NewRequest("GET", "/metrics", nil)
@@ -49,6 +50,7 @@ func TestMetricsUseDedicatedRegistry(t *testing.T) {
 		"hotkey_http_request_duration_seconds",
 		"hotkey_http_panics_total",
 		"hotkey_dependency_health",
+		"hotkey_operational_alert",
 		"hotkey_collection_operations_total",
 		"hotkey_content_query_operations_total",
 	} {
@@ -102,12 +104,14 @@ func TestMetricsCollapseUntrustedValuesToBoundedLabels(t *testing.T) {
 		metrics.RecordHTTPRequest("METHOD-"+canary, "https://sensitive.example/"+untrusted, 600+index, time.Millisecond)
 		metrics.RecordPanic("/" + untrusted)
 		metrics.SetDependencyHealth(untrusted, 1)
+		metrics.SetOperationalAlert(untrusted, canary, untrusted, canary, true)
 		metrics.RecordCollectionOperation(untrusted, canary)
 		metrics.RecordContentQuery(untrusted, canary)
 	}
 	metrics.RecordHTTPRequest("GET", "/api/v1/users/:id", 200, time.Millisecond)
 	metrics.RecordPanic("/api/v1/users/:id")
 	metrics.SetDependencyHealth("database", 1)
+	metrics.SetOperationalAlert("ALERT-DB-UNAVAILABLE", "p0-operational-alerts-v1", "p0", "hotkey-oncall", true)
 	metrics.RecordCollectionOperation("retry", "success")
 	metrics.RecordContentQuery("get_active", "not_found")
 
@@ -133,6 +137,7 @@ func TestMetricsCollapseUntrustedValuesToBoundedLabels(t *testing.T) {
 	for _, want := range []string{
 		`method="OTHER"`, `route="unmatched"`, `status="other"`,
 		`dependency="unknown"`, `operation="unknown"`, `outcome="unknown"`,
+		`alert_id="unknown"`, `policy_version="unknown"`, `owner="unknown"`,
 		`route="/api/v1/users"`,
 	} {
 		if !strings.Contains(body, want) {

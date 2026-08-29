@@ -208,11 +208,12 @@ observability-cardinality-acceptance:
 
 observability-alert-acceptance: test-env
 	$(GO) run ./test/runner test -tags=integration -p=1 \
+		./internal/bootstrap \
 		./internal/modules/operations/domain \
 		./internal/modules/operations/application \
 		./internal/modules/operations/infrastructure/postgres \
 		./internal/modules/notification/infrastructure/postgres \
-		-run '^(TestRuntimeAlertPolicy.*|TestJobRepositoryRuntimeOverview.*|TestOverviewService.*|TestRepository.*UnknownDelivery.*)$$' \
+		-run '^(TestDatabaseReadinessProjectsExternalAlertSignalAndClearsAfterRecovery|TestRuntimeAlertPolicy.*|TestJobRepositoryRuntimeOverview.*|TestOverviewService.*|TestRepository.*UnknownDelivery.*)$$' \
 		-count=1 -v
 
 build:
