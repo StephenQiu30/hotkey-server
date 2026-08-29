@@ -16,6 +16,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { getMicroEvents } from "@/services/hotkey/hotkey-server/microEvents";
+import { PageShell } from "@/layouts/PageShell";
 
 const statusLabels: Record<string, string> = {
   active: "活跃",
@@ -147,7 +148,7 @@ export default function EventsPage() {
   }, [load]);
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <PageShell>
       <PageHeader
         action={
           <Button disabled={loading} onClick={() => void load()} variant="outline">
@@ -178,7 +179,7 @@ export default function EventsPage() {
       ) : null}
 
       {!loading && !error && items.length === 0 ? (
-        <Card className="border-dashed">
+        <Card variant="subtle">
           <Empty className="min-h-72 border-0">
             <EmptyHeader>
               <EmptyMedia variant="icon"><Activity /></EmptyMedia>
@@ -196,6 +197,6 @@ export default function EventsPage() {
           ))}
         </section>
       ) : null}
-    </main>
+    </PageShell>
   );
 }

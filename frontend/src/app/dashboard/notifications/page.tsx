@@ -1,9 +1,10 @@
 import { NotificationInbox } from "@/components/notifications/NotificationInbox";
+import { PageShell } from "@/layouts/PageShell";
 
 export default function NotificationsPage() {
   return (
-    <div className="app-page">
+    <PageShell>
       <NotificationInbox />
-    </div>
+    </PageShell>
   );
 }

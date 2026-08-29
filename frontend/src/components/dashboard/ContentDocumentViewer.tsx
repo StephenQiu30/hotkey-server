@@ -4,6 +4,7 @@ import { ExternalLink, FileDown, FileText, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Surface } from "@/components/ui/surface";
 import {
   SafeExternalLink,
   toSafeExternalURL,
@@ -121,9 +122,9 @@ export function ContentDocumentViewer({ document, canManage = false, deleting = 
           </div>
         </div>
 
-        <div className="document-scope mt-6 rounded-md border border-border bg-muted/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
+        <Surface className="document-scope mt-6 px-4 py-3 text-xs leading-5 text-muted-foreground" variant="subtle">
           仅包含来源 Feed 实际提供并获准归档的正文或摘要；系统不会抓取原网页，也不代表完整论文或付费内容。
-        </div>
+        </Surface>
         {canonicalURL ? (
           <p className="document-canonical mono mt-3 break-all text-[11px] text-muted-foreground">
             原始地址：{canonicalURL}

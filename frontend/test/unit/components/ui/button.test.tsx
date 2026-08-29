@@ -12,13 +12,16 @@ describe("Button", () => {
     );
   });
 
-  it("gives secondary outline actions a visible one-pixel boundary", () => {
+  it("gives secondary actions a borderless shadow ring", () => {
     render(<Button variant="outline">刷新热点</Button>);
 
     expect(screen.getByRole("button", { name: "刷新热点" })).toHaveClass(
+      "bg-background",
+      "[box-shadow:var(--shadow-border)]",
+    );
+    expect(screen.getByRole("button", { name: "刷新热点" })).not.toHaveClass(
       "border",
       "border-border",
-      "bg-background",
     );
   });
 

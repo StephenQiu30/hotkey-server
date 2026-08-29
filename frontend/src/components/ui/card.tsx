@@ -1,16 +1,24 @@
 import * as React from "react"
+import type { VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
+import { surfaceVariants } from "@/components/ui/surface"
+
+interface CardProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    VariantProps<typeof surfaceVariants> {}
 
 const Card = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
+  CardProps
+>(({ className, variant, ...props }, ref) => (
   <div
     ref={ref}
     data-slot="card"
+    data-variant={variant ?? "elevated"}
     className={cn(
-      "flex flex-col rounded-xl border border-border bg-card text-card-foreground shadow-none",
+      "flex flex-col",
+      surfaceVariants({ variant }),
       className
     )}
     {...props}

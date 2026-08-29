@@ -11,6 +11,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Surface } from "@/components/ui/surface";
 import {
   Select,
   SelectContent,
@@ -20,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { HotKeyAPIError } from "@/lib/request";
 import { getSearch } from "@/services/hotkey/hotkey-server/search";
+import { PageShell } from "@/layouts/PageShell";
 
 const resourceTypes = [
   { value: "content", label: "内容" },
@@ -164,14 +167,14 @@ export default function SearchPage() {
   const items = response?.items ?? [];
 
   return (
-    <div className="app-page">
+    <PageShell>
       <PageHeader
         eyebrow="POSTGRES SEARCH"
         title="全文检索"
         description="检索当前权限内的内容、事件与知识。结果来自 PostgreSQL 词法索引，不生成回答，也不调用向量或外部搜索。"
       />
 
-      <Card className="border border-border bg-card">
+      <Card>
         <CardContent className="p-5 sm:p-6">
           <form className="space-y-4" onSubmit={search}>
             <div className="flex flex-col gap-3 sm:flex-row">
@@ -218,8 +221,9 @@ export default function SearchPage() {
             </fieldset>
 
             {showFilters ? (
-              <fieldset className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-4">
-                <legend className="px-1 text-sm font-medium">高级筛选</legend>
+              <Surface asChild variant="subtle">
+                <fieldset className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <legend className="px-1 text-sm font-medium">高级筛选</legend>
                 <div className="space-y-2">
                   <Label htmlFor="search-source-id">来源 ID</Label>
                   <Input id="search-source-id" type="number" min={1} value={sourceID} onChange={(event) => setSourceID(event.target.value)} />
@@ -263,7 +267,8 @@ export default function SearchPage() {
                     </SelectContent>
                   </Select>
                 </div>
-              </fieldset>
+                </fieldset>
+              </Surface>
             ) : null}
           </form>
         </CardContent>
@@ -283,7 +288,7 @@ export default function SearchPage() {
 
       {loading ? (
         <section aria-label="正在加载搜索结果" className="mt-6 space-y-3">
-          {[0, 1, 2].map((item) => <div key={item} className="h-28 animate-pulse rounded-xl border border-border bg-muted/40" />)}
+          {[0, 1, 2].map((item) => <Skeleton key={item} className="h-28" />)}
         </section>
       ) : null}
 
@@ -294,7 +299,7 @@ export default function SearchPage() {
             const path = resultPath(item);
             const title = <SafeHighlight value={item.title_highlight} fallback={item.title} />;
             return (
-              <Card key={`${item.type}-${item.id}`} className="border border-border bg-card">
+              <Card key={`${item.type}-${item.id}`}>
                 <CardContent className="space-y-3 p-5">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="secondary">{resourceLabels[item.type ?? ""] ?? item.type}</Badge>
@@ -320,12 +325,12 @@ export default function SearchPage() {
       ) : null}
 
       {searched && !loading && !error && items.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-border px-6 py-14 text-center">
+        <Surface variant="subtle" className="mt-6 px-6 py-14 text-center">
           <Search className="mx-auto h-6 w-6 text-muted-foreground" />
           <h2 className="mt-4 font-medium">没有符合条件的结果</h2>
           <p className="mt-2 text-sm text-muted-foreground">调整关键词、资源类型或高级筛选后重试。</p>
-        </div>
+        </Surface>
       ) : null}
-    </div>
+    </PageShell>
   );
 }

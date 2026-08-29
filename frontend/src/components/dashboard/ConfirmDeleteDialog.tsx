@@ -11,6 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Surface } from "@/components/ui/surface";
 
 type ConfirmDeleteDialogProps = {
   open: boolean;
@@ -40,10 +41,10 @@ export function ConfirmDeleteDialog({
             {description}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+        <Surface className="px-4 py-3 text-sm" variant="danger">
           <span className="text-muted-foreground">即将删除：</span>
           <p className="mt-1 break-words font-medium">{resourceName}</p>
-        </div>
+        </Surface>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={loading}>取消</AlertDialogCancel>
           <AlertDialogAction

@@ -100,12 +100,12 @@ export default function TopNav({
     <header
       data-top-nav
       data-layout-header
-      className="shrink-0 border-b border-border/70 bg-background/90 backdrop-blur-xl"
+      className="shrink-0 bg-background/90 backdrop-blur-xl [box-shadow:0_1px_0_0_var(--border)]"
     >
       <div className="app-shell-container flex h-16 min-w-0 items-center gap-3 lg:gap-7">
         <Link
           href="/dashboard"
-          className="flex shrink-0 items-center text-base font-bold tracking-tight text-foreground no-underline"
+          className="flex shrink-0 items-center text-base font-semibold tracking-[-0.025em] text-foreground no-underline"
         >
           <BrandLogo title={title} markClassName="h-5 w-5" />
         </Link>
@@ -152,7 +152,7 @@ export default function TopNav({
             placeholder="搜索事件"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="h-9 bg-muted/70 pl-9 shadow-none"
+            className="h-9 bg-muted/70 pl-9"
           />
         </form>
 
@@ -170,7 +170,7 @@ export default function TopNav({
           >
             <Bell />
             {unreadCount > 0 ? (
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full border-2 border-background bg-destructive" />
+              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background" />
             ) : null}
           </Link>
         </Button>

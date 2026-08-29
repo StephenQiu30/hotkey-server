@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 
 describe("PageHeader", () => {
-  it("stacks the action below the title on compact screens", () => {
+  it("shows the technical eyebrow and stacks the action on compact screens", () => {
     render(
       <PageHeader
         eyebrow="Sources"
@@ -19,6 +19,6 @@ describe("PageHeader", () => {
       "w-full",
       "sm:w-auto",
     );
-    expect(screen.queryByText("Sources")).not.toBeInTheDocument();
+    expect(screen.getByText("Sources")).toHaveClass("mono", "uppercase");
   });
 });

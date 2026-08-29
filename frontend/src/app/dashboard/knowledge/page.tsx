@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Surface } from "@/components/ui/surface";
 import { HotKeyAPIError } from "@/lib/request";
 import { UserRole } from "@/lib/domainEnums";
 import {
@@ -19,6 +21,7 @@ import {
   postKnowledgeReconcile,
 } from "@/services/hotkey/hotkey-server/knowledge";
 import { useAuthStore } from "@/stores/authStore";
+import { PageShell } from "@/layouts/PageShell";
 
 const documentStatus: Readonly<Record<string, string>> = {
   planned: "待投影",
@@ -116,19 +119,19 @@ export default function KnowledgePage() {
 
   if (!publisher && permissionDenied) {
     return (
-      <div className="app-page">
+      <PageShell>
         <PageHeader eyebrow="KNOWLEDGE VAULT" title="知识投影" description="受控发布界面仅对 Editor 与 Admin 开放。" />
         <Alert aria-label="知识投影权限不足" className="mt-6">
           <ShieldAlert />
           <AlertTitle>权限不足</AlertTitle>
           <AlertDescription>当前角色可以通过全文检索读取已发布知识，但不能查看或修改 Vault 投影治理状态。</AlertDescription>
         </Alert>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="app-page">
+    <PageShell>
       <PageHeader
         eyebrow="KNOWLEDGE VAULT"
         title="知识投影"
@@ -166,12 +169,12 @@ export default function KnowledgePage() {
 
       {loading ? (
         <section aria-label="正在加载知识投影" className="mt-6 grid gap-4 md:grid-cols-2">
-          <div className="h-72 animate-pulse rounded-xl border border-border bg-muted/40" />
-          <div className="h-72 animate-pulse rounded-xl border border-border bg-muted/40" />
+          <Skeleton className="h-72" />
+          <Skeleton className="h-72" />
         </section>
       ) : (
         <div className="mt-6 grid min-w-0 gap-5 xl:grid-cols-2">
-          <Card className="min-w-0 border border-border bg-card">
+          <Card className="min-w-0">
             <CardHeader><CardTitle role="heading" aria-level={2}>当前知识文档</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {documents.length === 0 ? (
@@ -183,20 +186,22 @@ export default function KnowledgePage() {
                   </EmptyHeader>
                 </Empty>
               ) : documents.map((document) => (
-                <article key={document.id} className="rounded-lg border border-border p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <strong>知识文档 #{document.id}</strong>
-                    <Badge variant={document.status === "conflict" ? "destructive" : "outline"}>{documentStatus[document.status ?? ""] ?? document.status}</Badge>
-                    <span className="ml-auto text-xs text-muted-foreground">Revision {document.revisionNo ?? 0}</span>
-                  </div>
-                  <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{document.vaultPath}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">稳定来源：{document.type} {document.reportID ?? document.eventID ?? document.topicID}</p>
-                </article>
+                <Surface key={document.id} asChild variant="ring">
+                  <article className="p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong>知识文档 #{document.id}</strong>
+                      <Badge variant={document.status === "conflict" ? "destructive" : "outline"}>{documentStatus[document.status ?? ""] ?? document.status}</Badge>
+                      <span className="ml-auto text-xs text-muted-foreground">Revision {document.revisionNo ?? 0}</span>
+                    </div>
+                    <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{document.vaultPath}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">稳定来源：{document.type} {document.reportID ?? document.eventID ?? document.topicID}</p>
+                  </article>
+                </Surface>
               ))}
             </CardContent>
           </Card>
 
-          <Card className="min-w-0 border border-border bg-card">
+          <Card className="min-w-0">
             <CardHeader><CardTitle role="heading" aria-level={2}>发布提案与冲突</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {proposals.length === 0 ? (
@@ -208,34 +213,36 @@ export default function KnowledgePage() {
                   </EmptyHeader>
                 </Empty>
               ) : proposals.map((proposal) => (
-                <article key={proposal.id} className="rounded-lg border border-border p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <strong>提案 #{proposal.id}</strong>
-                    <Badge variant={proposal.status === "conflict" ? "destructive" : "outline"}>{proposalStatus[proposal.status ?? ""] ?? proposal.status}</Badge>
-                    <span className="ml-auto text-xs text-muted-foreground">文档 #{proposal.documentID}</span>
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">{proposal.reason || proposal.diffSummary || "自动区域更新"}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {proposal.status === "pending" ? (
-                      <>
-                        <Button size="sm" disabled={Boolean(busy)} onClick={() => void mutateProposal(`approve-${proposal.id}`, proposal, () => postKnowledgeProposalsIdApprove({ id: proposal.id!, version: proposal.version! }))}>
-                          {busy === `approve-${proposal.id}` ? <Loader2 className="animate-spin" /> : null}批准提案
+                <Surface key={proposal.id} asChild variant="ring">
+                  <article className="p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong>提案 #{proposal.id}</strong>
+                      <Badge variant={proposal.status === "conflict" ? "destructive" : "outline"}>{proposalStatus[proposal.status ?? ""] ?? proposal.status}</Badge>
+                      <span className="ml-auto text-xs text-muted-foreground">文档 #{proposal.documentID}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{proposal.reason || proposal.diffSummary || "自动区域更新"}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {proposal.status === "pending" ? (
+                        <>
+                          <Button size="sm" disabled={Boolean(busy)} onClick={() => void mutateProposal(`approve-${proposal.id}`, proposal, () => postKnowledgeProposalsIdApprove({ id: proposal.id!, version: proposal.version! }))}>
+                            {busy === `approve-${proposal.id}` ? <Loader2 className="animate-spin" /> : null}批准提案
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void mutateProposal(`reject-${proposal.id}`, proposal, () => postKnowledgeProposalsIdReject({ id: proposal.id!, version: proposal.version! }))}>驳回提案</Button>
+                        </>
+                      ) : null}
+                      {proposal.status === "approved" ? (
+                        <Button size="sm" disabled={Boolean(busy)} onClick={() => void mutateProposal(`apply-${proposal.id}`, proposal, () => postKnowledgeProposalsIdApply({ id: proposal.id!, version: proposal.version! }))}>
+                          {busy === `apply-${proposal.id}` ? <Loader2 className="animate-spin" /> : null}原子发布到 Vault
                         </Button>
-                        <Button size="sm" variant="outline" disabled={Boolean(busy)} onClick={() => void mutateProposal(`reject-${proposal.id}`, proposal, () => postKnowledgeProposalsIdReject({ id: proposal.id!, version: proposal.version! }))}>驳回提案</Button>
-                      </>
-                    ) : null}
-                    {proposal.status === "approved" ? (
-                      <Button size="sm" disabled={Boolean(busy)} onClick={() => void mutateProposal(`apply-${proposal.id}`, proposal, () => postKnowledgeProposalsIdApply({ id: proposal.id!, version: proposal.version! }))}>
-                        {busy === `apply-${proposal.id}` ? <Loader2 className="animate-spin" /> : null}原子发布到 Vault
-                      </Button>
-                    ) : null}
-                  </div>
-                </article>
+                      ) : null}
+                    </div>
+                  </article>
+                </Surface>
               ))}
             </CardContent>
           </Card>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

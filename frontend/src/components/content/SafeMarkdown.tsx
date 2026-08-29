@@ -6,6 +6,7 @@ import {
   SafeExternalLink,
   toSafeExternalURL,
 } from "@/components/content/SafeExternalLink";
+import { Surface } from "@/components/ui/surface";
 
 export const MAX_SAFE_MARKDOWN_LENGTH = 500_000;
 
@@ -61,9 +62,10 @@ function RemoteImagePlaceholder({
   );
 
   return (
+    <Surface asChild variant="subtle">
     <span
       aria-label={`远程图片已阻止：${description}`}
-      className="my-5 flex flex-col gap-2 rounded-lg border border-border bg-muted/35 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
+      className="my-5 flex flex-col gap-2 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
       role="group"
     >
       <span>
@@ -80,6 +82,7 @@ function RemoteImagePlaceholder({
         </SafeExternalLink>
       ) : null}
     </span>
+    </Surface>
   );
 }
 

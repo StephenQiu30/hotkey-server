@@ -23,6 +23,7 @@ export default function BasicLayout({
   return (
     <div
       className="flex h-dvh min-h-screen flex-col overflow-hidden bg-background text-foreground"
+      data-slot="basic-layout"
       data-testid="basic-layout"
     >
       <SkipLink />
@@ -42,10 +43,10 @@ export default function BasicLayout({
       </main>
       <footer
         aria-label="工作台页脚"
-        className="shrink-0 border-t border-border/70 bg-background/95"
+        className="shrink-0 bg-background/95 [box-shadow:0_-1px_0_0_var(--border)]"
         data-layout-footer
       >
-        <div className="app-shell-container flex h-10 items-center justify-between gap-4 text-xs text-muted-foreground">
+        <div className="app-shell-container flex h-11 items-center justify-between gap-4 text-xs text-muted-foreground">
           <BrandLogo
             className="shrink-0 font-medium text-foreground"
             markClassName="h-3.5 w-3.5"

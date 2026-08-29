@@ -10,6 +10,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { PageShell } from "@/layouts/PageShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Surface } from "@/components/ui/surface";
 import {
   Select,
   SelectContent,
@@ -291,7 +293,7 @@ function HotspotRadar() {
 
   if (forbidden) {
     return (
-      <div className="app-page">
+      <PageShell>
         {pageHeader}
         <Alert aria-label="热点访问权限不足" className="mt-6">
           <ShieldAlert />
@@ -300,12 +302,12 @@ function HotspotRadar() {
             当前账号无法读取热点内容。请联系管理员核对工作区角色。
           </AlertDescription>
         </Alert>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="app-page">
+    <PageShell>
       {pageHeader}
 
       <section
@@ -498,7 +500,7 @@ function HotspotRadar() {
       ) : null}
 
       {!loading && !error && items.length === 0 ? (
-        <Card className="mt-6 border-dashed">
+        <Card className="mt-6" variant="subtle">
           <Empty className="min-h-72 border-0">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -533,7 +535,7 @@ function HotspotRadar() {
               }
             />
           ))}
-          <div className="overflow-hidden rounded-xl border border-border">
+          <Surface className="overflow-hidden" variant="ring">
             <CursorPagination
               hasNext={Boolean(nextCursor)}
               loading={loading}
@@ -549,10 +551,10 @@ function HotspotRadar() {
               page={page}
               pageSize={pageSize}
             />
-          </div>
+          </Surface>
         </section>
       ) : null}
-    </div>
+    </PageShell>
   );
 }
 

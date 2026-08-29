@@ -14,6 +14,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PageShell } from "@/layouts/PageShell";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -259,35 +260,35 @@ export default function EventGovernancePage() {
   };
 
   if (loading) {
-    return <div className="app-page" aria-label="正在加载事件治理" role="status">
+    return <PageShell aria-label="正在加载事件治理" role="status">
       <Skeleton className="h-28" />
       <div className="mt-6 grid gap-4 lg:grid-cols-2"><Skeleton className="h-72" /><Skeleton className="h-72" /></div>
-    </div>;
+    </PageShell>;
   }
 
   if (forbidden) {
-    return <div className="app-page">
+    return <PageShell>
       <Alert aria-label="权限不足"><ShieldAlert /><AlertTitle>权限不足</AlertTitle>
         <AlertDescription>服务端拒绝了当前账号的事件治理访问或操作；页面不会通过隐藏按钮绕过权限。</AlertDescription>
       </Alert>
       <Button asChild className="mt-4" variant="outline"><Link href="/dashboard/events"><ArrowLeft />返回语义事件</Link></Button>
-    </div>;
+    </PageShell>;
   }
 
   if (error || !event) {
-    return <div className="app-page">
+    return <PageShell>
       <Alert variant="destructive"><FileWarning /><AlertTitle>事件治理加载失败</AlertTitle>
         <AlertDescription className="flex flex-wrap items-center justify-between gap-3"><span>{error || "事件不存在"}</span>
           <Button onClick={() => void load()} size="sm" variant="outline">重试</Button></AlertDescription>
       </Alert>
       <Button asChild className="mt-4" variant="outline"><Link href="/dashboard/events"><ArrowLeft />返回语义事件</Link></Button>
-    </div>;
+    </PageShell>;
   }
 
   const members = event.members ?? [];
   const noGovernanceFacts = members.length === 0 && evidence.length === 0 && event.status !== "closed";
 
-  return <div className="app-page">
+  return <PageShell>
     <PageHeader
       eyebrow="Event Governance"
       title={eventName(event)}
@@ -316,7 +317,7 @@ export default function EventGovernancePage() {
 
     {mutationError ? <Alert className="mt-6" variant="destructive"><FileWarning /><AlertTitle>治理操作未提交</AlertTitle><AlertDescription>{mutationError}</AlertDescription></Alert> : null}
 
-    {noGovernanceFacts ? <Card className="mt-6 border-dashed"><Empty className="min-h-64 border-0"><EmptyHeader><EmptyMedia variant="icon"><Scale /></EmptyMedia>
+    {noGovernanceFacts ? <Card className="mt-6" variant="subtle"><Empty className="min-h-64 border-0"><EmptyHeader><EmptyMedia variant="icon"><Scale /></EmptyMedia>
       <EmptyTitle>暂无可治理成员或证据</EmptyTitle><EmptyDescription>事件事实已建立，但当前没有有效成员句柄或 ClaimEvidence；页面不会伪造可执行操作。</EmptyDescription>
     </EmptyHeader></Empty></Card> : null}
 
@@ -372,5 +373,5 @@ export default function EventGovernancePage() {
         <DialogFooter><Button onClick={() => setCorrection(undefined)} variant="outline">取消</Button><Button disabled={Boolean(busy)} onClick={() => void correctEvidence()}>{busy ? <Loader2 className="animate-spin" /> : null}追加纠正</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-  </div>;
+  </PageShell>;
 }

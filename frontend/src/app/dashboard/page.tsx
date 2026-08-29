@@ -14,6 +14,8 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { OverviewMetric } from "@/components/dashboard/OverviewMetric";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import {
   Empty,
   EmptyContent,
@@ -27,6 +29,7 @@ import { getHotspots } from "@/services/hotkey/hotkey-server/hotspots";
 import { getMonitors } from "@/services/hotkey/hotkey-server/monitors";
 import { UserRole } from "@/lib/domainEnums";
 import { useAuthStore } from "@/stores/authStore";
+import { PageShell } from "@/layouts/PageShell";
 
 function currentTimeContext() {
   const hour = new Date().getHours();
@@ -97,14 +100,14 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div
+      <PageShell
+        align="center"
         aria-live="polite"
-        className="app-page flex min-h-full items-center justify-center"
         role="status"
       >
         <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin text-primary" />
         <span className="sr-only">正在加载工作台</span>
-      </div>
+      </PageShell>
     );
   }
 
@@ -113,26 +116,25 @@ export default function DashboardPage() {
   ).length;
 
   return (
-    <div className="app-page" data-testid="dashboard-overview">
-      <header className="flex flex-col gap-6 border-b pb-8 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
-            {timeContext.greeting}，这是今日值得关注的热点
-          </h1>
-          <p className="mt-3 inline-flex items-center gap-2 text-sm text-muted-foreground">
+    <PageShell data-testid="dashboard-overview">
+      <PageHeader
+        eyebrow="Daily intelligence"
+        title={`${timeContext.greeting}，这是今日值得关注的热点`}
+        description={
+          <span className="inline-flex items-center gap-2">
             <CalendarDays className="h-4 w-4" />
             {timeContext.today || "今日"}
-          </p>
-        </div>
-        {canManage && hotspots.length > 0 ? (
+          </span>
+        }
+        action={canManage && hotspots.length > 0 ? (
           <Button asChild className="self-start gap-2 px-5">
             <Link href="/dashboard/settings">
               <Plus className="h-4 w-4" />
               创建监控
             </Link>
           </Button>
-        ) : null}
-      </header>
+        ) : undefined}
+      />
 
       {error ? (
         <Alert className="mt-8" variant="destructive">
@@ -162,19 +164,14 @@ export default function DashboardPage() {
             ["紧急热点", summary.urgent ?? 0],
             ["启用监控", activeMonitors],
           ].map(([label, value]) => (
-            <Card key={label}>
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="mono mt-3 text-2xl font-medium">{value}</p>
-              </CardContent>
-            </Card>
+            <OverviewMetric key={label} label={String(label)} value={value} />
           ))}
         </section>
       ) : null}
 
       {!error && hotspots.length === 0 ? (
-        <Card className="mt-8 border-dashed">
-          <Empty className="min-h-80 border-0">
+        <Card className="mt-8" variant="subtle">
+          <Empty className="min-h-80">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <BellRing />
@@ -234,7 +231,7 @@ export default function DashboardPage() {
                 </Link>
               </CardHeader>
               <CardContent>
-                <div className="divide-y border-y">
+                <div className="divide-y divide-border">
                   {monitors.length ? (
                     monitors.map((monitor) => (
                       <Link
@@ -290,6 +287,6 @@ export default function DashboardPage() {
           </aside>
         </div>
       ) : null}
-    </div>
+    </PageShell>
   );
 }

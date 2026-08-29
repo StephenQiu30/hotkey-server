@@ -13,6 +13,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert";
+import { PageShell } from "@/layouts/PageShell";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const status = useAuthStore((s) => s.status);
@@ -45,18 +46,20 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (accessDenied) {
     return (
-      <main className="app-page" tabIndex={-1}>
-        <Alert aria-label="权限不足" className="mx-auto max-w-2xl">
-          <ShieldAlert />
-          <AlertTitle>权限不足</AlertTitle>
-          <AlertDescription>
-            当前账号没有访问此页面的权限。
-            <Link className="ml-2 font-medium underline underline-offset-4" href="/dashboard">
-              返回工作台
-            </Link>
-          </AlertDescription>
-        </Alert>
-      </main>
+      <PageShell asChild>
+        <main tabIndex={-1}>
+          <Alert aria-label="权限不足" className="mx-auto max-w-2xl">
+            <ShieldAlert />
+            <AlertTitle>权限不足</AlertTitle>
+            <AlertDescription>
+              当前账号没有访问此页面的权限。
+              <Link className="ml-2 font-medium underline underline-offset-4" href="/dashboard">
+                返回工作台
+              </Link>
+            </AlertDescription>
+          </Alert>
+        </main>
+      </PageShell>
     );
   }
 

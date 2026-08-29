@@ -4,6 +4,7 @@ import { memo } from "react";
 import { Check, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 
 type ExpansionCandidateReviewProps = {
   busyCandidateID?: string;
@@ -26,9 +27,11 @@ export const ExpansionCandidateReview = memo(function ExpansionCandidateReview({
 }: ExpansionCandidateReviewProps) {
   if (candidates.length === 0) {
     return (
-      <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-        暂无扩展候选。模型生成的内容必须保留出处并经管理员审批后才参与匹配。
-      </p>
+      <Surface asChild variant="subtle">
+        <p className="p-4 text-sm text-muted-foreground">
+          暂无扩展候选。模型生成的内容必须保留出处并经管理员审批后才参与匹配。
+        </p>
+      </Surface>
     );
   }
 
@@ -38,7 +41,8 @@ export const ExpansionCandidateReview = memo(function ExpansionCandidateReview({
         const pending = candidate.approval_status === "pending";
         const value = candidate.value ?? "未命名候选";
         return (
-          <article className="rounded-md border border-border p-4" key={candidate.id ?? value}>
+          <Surface asChild key={candidate.id ?? value} variant="ring">
+          <article className="p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="break-words text-sm font-semibold">{value}</p>
@@ -104,6 +108,7 @@ export const ExpansionCandidateReview = memo(function ExpansionCandidateReview({
               </div>
             ) : null}
           </article>
+          </Surface>
         );
       })}
     </div>

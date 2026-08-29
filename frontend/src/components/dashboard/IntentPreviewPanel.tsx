@@ -3,6 +3,7 @@
 import { memo } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Surface } from "@/components/ui/surface";
 
 type IntentPreviewPanelProps = {
   preview?: HotKeyAPI.IntentPreviewResponseDTO;
@@ -15,23 +16,25 @@ export const IntentPreviewPanel = memo(function IntentPreviewPanel({
 }: IntentPreviewPanelProps) {
   if (!preview) {
     return (
-      <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-        {status === "queued" || status === "running"
-          ? "正在用历史样本执行多通道召回…"
-          : "尚未运行预览。预览结果只解释相关性召回，不表示内容真实或来源可靠。"}
-      </p>
+      <Surface asChild variant="subtle">
+        <p className="p-4 text-sm text-muted-foreground">
+          {status === "queued" || status === "running"
+            ? "正在用历史样本执行多通道召回…"
+            : "尚未运行预览。预览结果只解释相关性召回，不表示内容真实或来源可靠。"}
+        </p>
+      </Surface>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-4">
-        <div>
-          <p className="text-sm font-medium">预计告警量</p>
-          <p className="mt-1 text-xs text-muted-foreground">基于当前时间隔离样本，不是线上承诺值。</p>
-        </div>
-        <Badge variant="secondary">{preview.estimated_alert_count ?? 0}</Badge>
-      </div>
+      <Surface className="flex flex-wrap items-center justify-between gap-3 p-4" variant="ring">
+          <div>
+            <p className="text-sm font-medium">预计告警量</p>
+            <p className="mt-1 text-xs text-muted-foreground">基于当前时间隔离样本，不是线上承诺值。</p>
+          </div>
+          <Badge variant="secondary">{preview.estimated_alert_count ?? 0}</Badge>
+      </Surface>
       {(preview.warnings ?? []).length > 0 ? (
         <div className="flex flex-wrap gap-2" role="status">
           {(preview.warnings ?? []).map((warning) => (
@@ -43,10 +46,12 @@ export const IntentPreviewPanel = memo(function IntentPreviewPanel({
       ) : null}
       <div className="space-y-3">
         {(preview.samples ?? []).map((sample) => (
-          <article
-            className="rounded-md border border-border p-4"
+          <Surface
+            asChild
             key={sample.document_version_id ?? sample.title}
+            variant="ring"
           >
+          <article className="p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 {sample.document_version_id ? (
@@ -82,6 +87,7 @@ export const IntentPreviewPanel = memo(function IntentPreviewPanel({
               </p>
             ) : null}
           </article>
+          </Surface>
         ))}
       </div>
     </div>

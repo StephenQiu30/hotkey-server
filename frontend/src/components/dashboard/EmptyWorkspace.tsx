@@ -26,6 +26,7 @@ import {
 import { MonitorStatus } from "@/lib/domainEnums";
 import { monitorStatusLabel } from "@/lib/domainPresentation";
 import { PageHeader } from "@/components/dashboard/PageHeader";
+import { PageShell } from "@/layouts/PageShell";
 
 type EmptyWorkspaceProps = {
   monitors: HotKeyAPI.MonitorResponse[];
@@ -82,7 +83,7 @@ export function EmptyWorkspace({
   ];
 
   return (
-    <div className="app-page">
+    <PageShell>
       <PageHeader
         eyebrow="Workspace"
         title="工作台运行概览"
@@ -236,7 +237,7 @@ export function EmptyWorkspace({
           ))}
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 import Link from "next/link";

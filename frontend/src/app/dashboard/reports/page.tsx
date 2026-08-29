@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Surface } from "@/components/ui/surface";
 import { HotKeyAPIError } from "@/lib/request";
 import { UserRole } from "@/lib/domainEnums";
 import {
@@ -19,6 +21,7 @@ import {
   postReportsIdSubmit,
 } from "@/services/hotkey/hotkey-server/reports";
 import { useAuthStore } from "@/stores/authStore";
+import { PageShell } from "@/layouts/PageShell";
 
 const statusPresentation: Readonly<Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }>> = {
   draft: { label: "草稿", variant: "secondary" },
@@ -106,7 +109,7 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="app-page">
+    <PageShell>
       <PageHeader
         eyebrow="REPORT REVISION"
         title="日报工作台"
@@ -143,8 +146,8 @@ export default function ReportsPage() {
 
       {loading ? (
         <section aria-label="正在加载日报" className="mt-6 grid gap-4 lg:grid-cols-[20rem_1fr]">
-          <div className="h-72 animate-pulse rounded-xl border border-border bg-muted/40" />
-          <div className="h-96 animate-pulse rounded-xl border border-border bg-muted/40" />
+          <Skeleton className="h-72" />
+          <Skeleton className="h-96" />
         </section>
       ) : items.length === 0 ? (
         <Card className="mt-6">
@@ -162,26 +165,27 @@ export default function ReportsPage() {
             {items.map((report) => {
               const presentation = statusPresentation[report.status ?? ""] ?? { label: report.status ?? "未知", variant: "outline" as const };
               return (
-                <button
-                  key={report.id}
-                  type="button"
-                  aria-current={selected?.id === report.id ? "true" : undefined}
-                  onClick={() => setSelectedID(report.id)}
-                  className="w-full rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[current=true]:border-foreground"
-                >
-                  <div className="flex items-center gap-2">
-                    <Badge variant={presentation.variant}>{presentation.label}</Badge>
-                    <span className="ml-auto text-xs text-muted-foreground">Revision {report.version_no ?? 1}</span>
-                  </div>
-                  <strong className="mt-3 block text-sm">{report.title || `日报 #${report.id}`}</strong>
-                  <span className="mt-1 block text-xs text-muted-foreground">{formatTime(report.period_start)}</span>
-                </button>
+                <Surface key={report.id} asChild variant="interactive">
+                  <button
+                    type="button"
+                    aria-current={selected?.id === report.id ? "true" : undefined}
+                    onClick={() => setSelectedID(report.id)}
+                    className="w-full p-4 text-left aria-[current=true]:bg-muted/50 aria-[current=true]:[box-shadow:var(--shadow-control)]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Badge variant={presentation.variant}>{presentation.label}</Badge>
+                      <span className="ml-auto text-xs text-muted-foreground">Revision {report.version_no ?? 1}</span>
+                    </div>
+                    <strong className="mt-3 block text-sm">{report.title || `日报 #${report.id}`}</strong>
+                    <span className="mt-1 block text-xs text-muted-foreground">{formatTime(report.period_start)}</span>
+                  </button>
+                </Surface>
               );
             })}
           </nav>
 
           {selected ? (
-            <Card aria-label={`日报 ${selected.id}`} className="min-w-0 border border-border bg-card">
+            <Card aria-label={`日报 ${selected.id}`} className="min-w-0">
               <CardHeader className="gap-3 border-b border-border">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={(statusPresentation[selected.status ?? ""] ?? { variant: "outline" }).variant}>
@@ -220,25 +224,27 @@ export default function ReportsPage() {
                 {(selected.items ?? []).length === 0 ? (
                   <p className="text-sm text-muted-foreground">该时间窗没有入选事件。</p>
                 ) : (selected.items ?? []).map((item, index) => (
-                  <article key={`${item.micro_event_id ?? item.event_id ?? index}-${item.rank ?? index}`} className="rounded-lg border border-border p-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="font-medium">{item.title || `入选事件 ${index + 1}`}</h2>
-                      <Badge variant="outline">热度 {(item.heat_score ?? 0).toFixed(1)}</Badge>
-                    </div>
-                    {item.summary ? <p className="mt-2 text-sm text-muted-foreground">{item.summary}</p> : null}
-                    {(item.sentences ?? []).map((sentence) => (
-                      <div key={`${sentence.source_summary_sentence_id}-${sentence.ordinal}`} className="mt-3 border-l-2 border-border pl-3 text-sm">
-                        <p>{sentence.text}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">Evidence IDs：{(sentence.claim_evidence_version_ids ?? []).join(", ") || "无"}</p>
+                  <Surface key={`${item.micro_event_id ?? item.event_id ?? index}-${item.rank ?? index}`} asChild variant="ring">
+                    <article className="p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="font-medium">{item.title || `入选事件 ${index + 1}`}</h2>
+                        <Badge variant="outline">热度 {(item.heat_score ?? 0).toFixed(1)}</Badge>
                       </div>
-                    ))}
-                  </article>
+                      {item.summary ? <p className="mt-2 text-sm text-muted-foreground">{item.summary}</p> : null}
+                      {(item.sentences ?? []).map((sentence) => (
+                        <div key={`${sentence.source_summary_sentence_id}-${sentence.ordinal}`} className="mt-3 border-l-2 border-border pl-3 text-sm">
+                          <p>{sentence.text}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">Evidence IDs：{(sentence.claim_evidence_version_ids ?? []).join(", ") || "无"}</p>
+                        </div>
+                      ))}
+                    </article>
+                  </Surface>
                 ))}
               </CardContent>
             </Card>
           ) : null}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

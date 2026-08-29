@@ -1,12 +1,13 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageShell } from "@/layouts/PageShell";
 
 export default function DashboardLoading() {
   return (
-    <div
+    <PageShell
       role="status"
       aria-label="正在加载工作台"
-      className="app-page space-y-6"
+      className="space-y-6"
     >
       <div className="space-y-3">
         <Skeleton className="h-4 w-24" />
@@ -24,6 +25,6 @@ export default function DashboardLoading() {
         ))}
       </div>
       <span className="sr-only">正在加载工作台</span>
-    </div>
+    </PageShell>
   );
 }

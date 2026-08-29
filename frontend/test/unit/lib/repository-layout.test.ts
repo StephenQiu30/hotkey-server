@@ -24,6 +24,14 @@ const findSourceFiles = (directory: string): string[] => {
 };
 
 describe("repository test layout", () => {
+  it("persists the Vercel design contract at the project root", () => {
+    const designContract = path.join(repositoryRoot, "..", "design.md");
+    expect(fs.existsSync(designContract)).toBe(true);
+    expect(fs.readFileSync(designContract, "utf8")).toContain(
+      "# Design System: Vercel",
+    );
+  });
+
   it("keeps all test files under the repository test directory", () => {
     expect(findTestFiles(path.join(repositoryRoot, "src"))).toEqual([]);
     expect(fs.existsSync(path.join(repositoryRoot, "test", "setup.ts"))).toBe(true);
@@ -52,5 +60,18 @@ describe("repository test layout", () => {
           .map(() => path.relative(repositoryRoot, file));
       });
     expect(missingLabels).toEqual([]);
+  });
+
+  it("keeps dashboard page shells and perimeter surfaces on shared primitives", () => {
+    const dashboardSource = [
+      path.join(repositoryRoot, "src/app/dashboard"),
+      path.join(repositoryRoot, "src/components/dashboard"),
+    ]
+      .flatMap(findSourceFiles)
+      .map((file) => fs.readFileSync(file, "utf8"))
+      .join("\n");
+
+    expect(dashboardSource).not.toMatch(/className="[^"]*\bapp-page\b/);
+    expect(dashboardSource).not.toContain("border border-border");
   });
 });

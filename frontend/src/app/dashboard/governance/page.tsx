@@ -20,6 +20,7 @@ import { PageHeader } from "@/components/dashboard/PageHeader";
 import { RuntimeOperationsPanel } from "@/components/operations/RuntimeOperationsPanel";
 import { UserRole } from "@/lib/domainEnums";
 import { useAuthStore } from "@/stores/authStore";
+import { PageShell } from "@/layouts/PageShell";
 import {
   getOperationsAuditLogs, getOperationsRetentionPolicies, getOperationsUsage,
   postOperationsRetentionPoliciesIdPreview, postOperationsRetentionPoliciesIdRun,
@@ -140,7 +141,7 @@ export default function GovernancePage() {
     return null;
   }
 
-  return <div className="app-page">
+  return <PageShell>
     <PageHeader eyebrow="Governance" title="配额与审计" description="统一查看成本与调用量，预览后分批清理可删除数据，并追踪关键操作。" action={<Button variant="outline" onClick={() => void load()} disabled={loading}>{loading ? <Loader2 className="animate-spin" /> : null}刷新</Button>} />
     {error ? <Alert variant="destructive" className="mt-6"><AlertCircle /><AlertTitle>无法加载治理数据</AlertTitle><AlertDescription className="flex flex-wrap items-center justify-between gap-3"><span>{error}</span><Button size="sm" variant="outline" onClick={() => void load()}>重试</Button></AlertDescription></Alert> : null}
 
@@ -177,7 +178,7 @@ export default function GovernancePage() {
     </section>
 
     <AlertDialog open={Boolean(preview)} onOpenChange={(open) => !open && setPreview(undefined)}><AlertDialogContent onCloseAutoFocus={(event) => { event.preventDefault(); previewTriggerRef.current?.focus(); }}><AlertDialogHeader><AlertDialogTitle>确认执行保留批次？</AlertDialogTitle><AlertDialogDescription>{dataClassLabels[preview?.policy.data_class ?? ""] ?? preview?.policy.data_class} 的 dry-run 找到 {preview?.result.affected ?? 0} 条候选，截止 {preview?.result.cutoff ? new Date(preview.result.cutoff).toLocaleString("zh-CN") : "—"}。{preview?.result.has_more ? "本批完成后仍有后续候选。" : "本批可处理全部候选。"}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><AlertDialogAction disabled={!preview?.result.affected || busyPolicy != null} onClick={(event) => { event.preventDefault(); void runRetention(); }}>{busyPolicy != null ? <Loader2 className="animate-spin" /> : null}确认处理 {preview?.result.affected ?? 0} 条</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
-  </div>;
+  </PageShell>;
 }
 
 function UsageCard({ item }: { item: HotKeyAPI.UsageItem }) {

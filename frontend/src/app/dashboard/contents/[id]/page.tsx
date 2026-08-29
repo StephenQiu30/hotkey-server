@@ -23,6 +23,7 @@ import {
 } from "@/services/hotkey/hotkey-server/contents";
 import { useAuthStore } from "@/stores/authStore";
 import { UserRole } from "@/lib/domainEnums";
+import { PageShell } from "@/layouts/PageShell";
 
 type DetailError = 403 | 404 | 503;
 
@@ -108,19 +109,19 @@ export default function ContentDetailPage() {
 
   if (loading) {
     return (
-      <div className="app-page flex min-h-full items-center justify-center">
+      <PageShell align="center">
         <Loader2
           aria-label="加载归档内容"
           className="h-5 w-5 animate-spin text-muted-foreground"
         />
-      </div>
+      </PageShell>
     );
   }
 
   if (error || !document) {
     const copy = errorCopy[error ?? 503];
     return (
-      <div className="app-page">
+      <PageShell>
         <Card className="mx-auto max-w-2xl">
           <Empty className="min-h-80 border-0">
             <EmptyHeader>
@@ -146,12 +147,12 @@ export default function ContentDetailPage() {
             </EmptyContent>
           </Empty>
         </Card>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="app-page document-page">
+    <PageShell className="document-page">
       <ContentDocumentViewer
         canManage={canManage}
         deleting={deleting}
@@ -167,6 +168,6 @@ export default function ContentDetailPage() {
         resourceName={document.title || `内容 #${document.content_id ?? ""}`}
         title="删除采集内容"
       />
-    </div>
+    </PageShell>
   );
 }

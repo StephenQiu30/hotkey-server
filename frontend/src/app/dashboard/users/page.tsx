@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PageShell } from "@/layouts/PageShell";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -170,7 +171,7 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="app-page">
+    <PageShell>
       <PageHeader
         eyebrow="Administration"
         title="用户与权限"
@@ -401,6 +402,6 @@ export default function UsersPage() {
         onConfirm={deleteUser}
         loading={deleteTarget?.id === actionId}
       />
-    </div>
+    </PageShell>
   );
 }

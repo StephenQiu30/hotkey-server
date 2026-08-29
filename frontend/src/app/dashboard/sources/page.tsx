@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PageShell } from "@/layouts/PageShell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -256,7 +257,7 @@ export default function SourcesPage() {
   };
 
   return (
-    <div className="app-page">
+    <PageShell>
       <PageHeader
         eyebrow="Sources"
         title={canManage ? "来源管理" : "来源目录"}
@@ -509,6 +510,6 @@ export default function SourcesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageShell>
   );
 }

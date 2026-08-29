@@ -7,6 +7,7 @@ import { DocumentVersionWorkspace } from "@/components/dashboard/DocumentVersion
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PageShell } from "@/layouts/PageShell";
 
 export default function DocumentVersionPage() {
   const params = useParams<{ id: string }>();
@@ -14,7 +15,7 @@ export default function DocumentVersionPage() {
   const validID = Number.isSafeInteger(documentVersionID) && documentVersionID > 0;
 
   return (
-    <div className="app-page">
+    <PageShell>
       <PageHeader
         action={
           <Button asChild variant="outline">
@@ -39,6 +40,6 @@ export default function DocumentVersionPage() {
           </Card>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

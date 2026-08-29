@@ -20,6 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PageShell } from "@/layouts/PageShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Surface } from "@/components/ui/surface";
 import {
   Select,
   SelectContent,
@@ -363,7 +365,7 @@ export default function MonitorsPage() {
   }
 
   return (
-    <div className="app-page">
+    <PageShell>
       <PageHeader
         eyebrow="MONITORING"
         title="热点监控"
@@ -379,7 +381,7 @@ export default function MonitorsPage() {
       />
 
       {canContribute && enabledSources.length === 0 && !loading ? (
-        <Card className="mb-6 border border-border bg-card p-5 text-sm">
+        <Card className="mb-6 p-5 text-sm">
           尚无可用来源，请管理员先在“来源”中接入 Hacker News、RSS 或授权平台。
         </Card>
       ) : null}
@@ -396,7 +398,7 @@ export default function MonitorsPage() {
         <Card
           role="alert"
           aria-label="权限不足"
-          className="border border-border bg-card p-8 text-center"
+          className="p-8 text-center"
         >
           <p className="font-medium">权限不足</p>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -406,7 +408,7 @@ export default function MonitorsPage() {
       ) : loadError ? (
         <Card
           role="alert"
-          className="border border-border bg-card p-8 text-center"
+          className="p-8 text-center"
         >
           <p className="font-medium">监控加载失败</p>
           <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>
@@ -419,7 +421,7 @@ export default function MonitorsPage() {
           </Button>
         </Card>
       ) : monitors.length === 0 ? (
-        <Card className="border border-border bg-card">
+        <Card>
           <Empty className="h-72">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -444,7 +446,7 @@ export default function MonitorsPage() {
             const busy = busyID === monitorID;
             const canManageMonitor = canContributeTo(monitor);
             return (
-              <Card key={monitorID} className="border border-border bg-card">
+              <Card key={monitorID}>
                 <CardHeader className="gap-4 p-5 pb-3 sm:p-6 sm:pb-3">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -555,10 +557,10 @@ export default function MonitorsPage() {
                 <CardContent className="p-5 pt-2 sm:p-6 sm:pt-2">
                   <h3 className="mb-3 text-sm font-medium">最近扫描</h3>
                   {scan?.queued ? (
-                    <div className="mb-3 flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                    <Surface className="mb-3 flex items-center gap-2 px-3 py-2 text-sm" variant="subtle">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       已排队，等待来源返回
-                    </div>
+                    </Surface>
                   ) : null}
                   {latest ? (
                     <div className="space-y-3">
@@ -589,9 +591,10 @@ export default function MonitorsPage() {
                       </div>
                       <div className="grid gap-2 md:grid-cols-2">
                         {(latest.sources ?? []).map((item) => (
-                          <div
+                          <Surface
                             key={`${item.run_id}-${item.source_connection_id}`}
-                            className="rounded-lg border border-border p-3"
+                            className="p-3"
+                            variant="ring"
                           >
                             <div className="flex items-center justify-between gap-3">
                               <p className="text-sm font-medium">
@@ -623,7 +626,7 @@ export default function MonitorsPage() {
                                   item.scheduled_at
                               )}
                             </p>
-                          </div>
+                          </Surface>
                         ))}
                       </div>
                     </div>
@@ -742,26 +745,28 @@ export default function MonitorsPage() {
                 )}
               </div>
             </fieldset>
-            <label className="flex items-start gap-3 rounded-lg border border-border p-3">
-              <Checkbox
-                aria-label="高优先级邮件提醒"
-                checked={form.alertEmailEnabled}
-                onCheckedChange={(checked) =>
-                  setForm((current) => ({
-                    ...current,
-                    alertEmailEnabled: checked === true,
-                  }))
-                }
-              />
-              <span>
-                <span className="block text-sm font-medium">
-                  高优先级邮件提醒
+            <Surface asChild variant="ring">
+              <label className="flex items-start gap-3 p-3">
+                <Checkbox
+                  aria-label="高优先级邮件提醒"
+                  checked={form.alertEmailEnabled}
+                  onCheckedChange={(checked) =>
+                    setForm((current) => ({
+                      ...current,
+                      alertEmailEnabled: checked === true,
+                    }))
+                  }
+                />
+                <span>
+                  <span className="block text-sm font-medium">
+                    高优先级邮件提醒
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    仅在热点达到高或紧急等级时发送到当前账号邮箱。
+                  </span>
                 </span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  仅在热点达到高或紧急等级时发送到当前账号邮箱。
-                </span>
-              </span>
-            </label>
+              </label>
+            </Surface>
             <DialogFooter>
               <Button
                 type="button"
@@ -791,6 +796,6 @@ export default function MonitorsPage() {
         resourceName={deleteTarget?.name ?? "未命名监控"}
         title="删除监控？"
       />
-    </div>
+    </PageShell>
   );
 }

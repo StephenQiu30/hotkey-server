@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { UserRole } from "@/lib/domainEnums";
+import { PageShell } from "@/layouts/PageShell";
 
 const emptyStats = { monitors: 0, sources: 0, running: 0 };
 
@@ -88,7 +89,7 @@ export default function ProfilePage() {
   }, [load]);
 
   return (
-    <div className="app-page">
+    <PageShell>
       <PageHeader
         eyebrow="Account"
         title="账户信息"
@@ -178,6 +179,6 @@ export default function ProfilePage() {
           )}
         </section>
       </div>
-    </div>
+    </PageShell>
   );
 }

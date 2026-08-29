@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Surface } from "@/components/ui/surface";
 import {
   Table,
   TableBody,
@@ -208,10 +209,10 @@ export function RuntimeOperationsPanel() {
                     <Skeleton key={index} className="h-20" />
                   ))
                 : summary.map((item) => (
-                    <div key={item.label} className="rounded-md border bg-muted/20 p-4">
+                    <Surface key={item.label} className="p-4" variant="subtle">
                       <p className="text-xs text-muted-foreground">{item.label}</p>
                       <p className="mt-2 text-xl font-semibold tabular-nums">{item.value}</p>
-                    </div>
+                    </Surface>
                   ))}
             </CardContent>
 
@@ -223,7 +224,8 @@ export function RuntimeOperationsPanel() {
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
                   {overview?.alerts?.map((alert) => (
-                    <article key={alert.alert_id} className="rounded-md border border-destructive/30 bg-background p-4">
+                    <Surface asChild key={alert.alert_id} variant="danger">
+                    <article className="bg-background p-4">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="destructive">{alert.severity?.toUpperCase() ?? "P1"}</Badge>
                         <code className="text-xs font-semibold">{alert.alert_id}</code>
@@ -267,6 +269,7 @@ export function RuntimeOperationsPanel() {
                         </a>
                       ) : null}
                     </article>
+                    </Surface>
                   ))}
                 </div>
               </CardContent>

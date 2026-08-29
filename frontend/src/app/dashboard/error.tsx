@@ -3,6 +3,7 @@
 import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/layouts/PageShell";
 
 export default function DashboardError({
   reset,
@@ -11,7 +12,7 @@ export default function DashboardError({
   reset: () => void;
 }) {
   return (
-    <div className="app-page">
+    <PageShell>
       <Alert variant="destructive" className="mx-auto max-w-2xl">
         <AlertCircle />
         <AlertTitle>工作台暂时不可用</AlertTitle>
@@ -22,6 +23,6 @@ export default function DashboardError({
           </Button>
         </AlertDescription>
       </Alert>
-    </div>
+    </PageShell>
   );
 }

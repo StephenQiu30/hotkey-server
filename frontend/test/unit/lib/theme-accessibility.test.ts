@@ -33,6 +33,12 @@ describe("dashboard theme accessibility", () => {
     expect(css).toContain("var(--font-geist-mono)");
   });
 
+  it("defines the shared shadow-as-border depth system", () => {
+    expect(css).toContain("--shadow-border:");
+    expect(css).toContain("--shadow-card:");
+    expect(css).toContain("--shadow-popover:");
+  });
+
   it.each([
     ["light", css.match(/:root\s*{([\s\S]*?)}/)?.[1]],
     ["dark", css.match(/\.dark\s*{([\s\S]*?)}/)?.[1]],

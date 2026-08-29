@@ -7,6 +7,7 @@ import { SafeMarkdown } from "@/components/content/SafeMarkdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Surface } from "@/components/ui/surface";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -292,7 +293,7 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
           </div>
         </div>
 
-        <div className="document-scope mt-6 space-y-2 rounded-md border border-border bg-muted/30 px-4 py-3 text-xs leading-5 text-muted-foreground">
+        <Surface className="document-scope mt-6 space-y-2 px-4 py-3 text-xs leading-5 text-muted-foreground" variant="subtle">
           <p>
             正文来自已归档的精确来源观察，并绑定不可变 DocumentVersion。出处和完整性记录不等于对报道真实性作出判断。
           </p>
@@ -311,9 +312,10 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
           ))}
           {citation.raw_evidence?.deletion_audited ? <p>删除审计已记录</p> : null}
           {citation.raw_evidence?.exception_approved ? <p>长期保留例外已有批准依据</p> : null}
-        </div>
+        </Surface>
 
-        <section aria-labelledby="document-parties-title" className="mt-4 rounded-md border border-border p-4">
+        <Surface asChild variant="ring">
+        <section aria-labelledby="document-parties-title" className="mt-4 p-4">
           <h2 className="text-sm font-semibold" id="document-parties-title">出处主体</h2>
           <p className="mt-1 text-xs text-muted-foreground">
             仅展示来源显式提供并绑定到本次归档证据的主体；缺失信息不会通过域名、作者或模型推断。
@@ -356,6 +358,7 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
             </div>
           </dl>
         </section>
+        </Surface>
 
         <nav aria-label="正文出处链接" className="mt-4 flex flex-wrap gap-2">
           {citation.canonical_url ? (
@@ -403,7 +406,8 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
       )}
 
       {canQuote && document?.markdown && citation.content_sha256 ? (
-        <section aria-labelledby="quote-selector-title" className="document-actions mb-8 rounded-lg border border-border bg-muted/20 p-5">
+        <Surface asChild variant="subtle">
+        <section aria-labelledby="quote-selector-title" className="document-actions mb-8 p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="font-semibold" id="quote-selector-title">创建精确正文引用</h2>
@@ -415,10 +419,11 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
             <Label htmlFor="document-exact-quote">精确摘录</Label>
             <Textarea className="min-h-28 leading-6" id="document-exact-quote" maxLength={4096} onChange={(event) => { setExactQuote(event.target.value); setQuoteSelector(undefined); }} required value={exactQuote} />
             {quoteFailure ? <p className="text-sm text-destructive" role="alert">{quoteFailure}</p> : null}
-            {quoteSelector ? <p className="rounded-md border border-border bg-background px-3 py-2 text-sm">引用选择器 #{quoteSelector.id} 已创建 · UTF-8 {quoteSelector.utf8_byte_start}–{quoteSelector.utf8_byte_end}{quoteSelector.markdown_anchor ? ` · #${quoteSelector.markdown_anchor}` : ""}</p> : null}
+            {quoteSelector ? <Surface asChild variant="ring"><p className="bg-background px-3 py-2 text-sm">引用选择器 #{quoteSelector.id} 已创建 · UTF-8 {quoteSelector.utf8_byte_start}–{quoteSelector.utf8_byte_end}{quoteSelector.markdown_anchor ? ` · #${quoteSelector.markdown_anchor}` : ""}</p></Surface> : null}
             <Button disabled={quoteBusy || !exactQuote.trim()} type="submit">{quoteBusy ? <Loader2 className="animate-spin" /> : null}生成引用选择器</Button>
           </form>
         </section>
+        </Surface>
       ) : null}
 
       <footer className="document-footer space-y-2 border-t border-border py-5 text-xs text-muted-foreground">

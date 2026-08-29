@@ -38,28 +38,39 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #1d1d1f;
+  --foreground: #171717;
   --card: #ffffff;
-  --card-foreground: #1d1d1f;
+  --card-foreground: #171717;
   --popover: #ffffff;
-  --popover-foreground: #1d1d1f;
-  --primary: #1d1d1f;
+  --popover-foreground: #171717;
+  --primary: #171717;
   --primary-foreground: #ffffff;
-  --secondary: #f4f4f4;
-  --secondary-foreground: #1d1d1f;
-  --muted: #f5f5f5;
-  --muted-foreground: #6b6b6b;
+  --secondary: #fafafa;
+  --secondary-foreground: #171717;
+  --muted: #fafafa;
+  --muted-foreground: #666666;
   --accent: #f5f5f5;
-  --accent-foreground: #1d1d1f;
-  --border: #eaeaea;
+  --accent-foreground: #171717;
+  --border: #ebebeb;
   --border-strong: #d4d4d4;
-  --ring: #0070f3;
-  --signal: #1d1d1f;
+  --ring: #0068d6;
+  --signal: #171717;
   --success: #0a7f49;
   --warning: #a15c00;
   --destructive: #d1242f;
   --destructive-foreground: #ffffff;
-  --radius: 0.625rem;
+  --radius: 0.5rem;
+  --shadow-border: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-control: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  --shadow-card:
+    0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 2px rgba(0, 0, 0, 0.04),
+    0 8px 8px -8px rgba(0, 0, 0, 0.04), inset 0 0 0 1px #fafafa;
+  --shadow-card-hover:
+    0 0 0 1px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.05),
+    0 12px 16px -12px rgba(0, 0, 0, 0.08), inset 0 0 0 1px #fafafa;
+  --shadow-popover:
+    0 0 0 1px rgba(0, 0, 0, 0.1), 0 12px 32px rgba(0, 0, 0, 0.08),
+    0 2px 6px rgba(0, 0, 0, 0.04);
   color-scheme: light;
 }
 
@@ -86,6 +97,19 @@
   --warning: #f5a623;
   --destructive: #ff5a5f;
   --destructive-foreground: #0a0a0a;
+  --shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --shadow-control: 0 0 0 1px rgba(255, 255, 255, 0.18);
+  --shadow-card:
+    0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 2px rgba(0, 0, 0, 0.24),
+    0 8px 12px -8px rgba(0, 0, 0, 0.36),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --shadow-card-hover:
+    0 0 0 1px rgba(255, 255, 255, 0.16), 0 4px 10px rgba(0, 0, 0, 0.32),
+    0 14px 20px -14px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-popover:
+    0 0 0 1px rgba(255, 255, 255, 0.14), 0 16px 36px rgba(0, 0, 0, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.3);
   color-scheme: dark;
 }
 
@@ -105,6 +129,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  font-feature-settings: "liga" 1, "calt" 1;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -122,7 +147,7 @@ h1,
 h2,
 h3,
 h4 {
-  letter-spacing: -0.035em;
+  letter-spacing: -0.04em;
 }
 ::selection {
   background: rgba(0, 112, 243, 0.16);
@@ -140,9 +165,9 @@ a:not([data-slot="button"]):focus-visible {
   top: 12px;
   z-index: 100;
   transform: translateY(calc(-100% - 20px));
-  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--background);
+  box-shadow: var(--shadow-popover);
   color: var(--foreground);
   padding: 8px 12px;
   font-size: 14px;
@@ -157,7 +182,7 @@ a:not([data-slot="button"]):focus-visible {
 
 .app-shell-container {
   width: 100%;
-  max-width: 1440px;
+  max-width: 1280px;
   margin-inline: auto;
   padding-inline: 16px;
 }
@@ -166,8 +191,8 @@ a:not([data-slot="button"]):focus-visible {
   margin: 0 auto;
   min-width: 0;
   width: 100%;
-  max-width: 1440px;
-  padding: 56px 16px 96px;
+  max-width: 1280px;
+  padding: 64px 16px 96px;
 }
 
 .app-main {
