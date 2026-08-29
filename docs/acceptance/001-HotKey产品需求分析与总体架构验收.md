@@ -10,7 +10,7 @@ canonical_path: docs/acceptance/001-HotKey产品需求分析与总体架构验�
 design: docs/design/001-HotKey产品需求分析与总体架构设计.md
 prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 plan: docs/plans/001-HotKey产品需求分析与总体架构计划.md
-verified_revision: "5f06061d1bd6f2d571f7710b0ab35ff53bbab566"
+verified_revision: "7b12cf0a539e918945d714ae41b42cd4a222bf7a"
 verification_date: "2026-08-29"
 ---
 
@@ -18,7 +18,7 @@ verification_date: "2026-08-29"
 
 ## 结论
 
-本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护，以及全部 P0 公开列表/固定参考集边界二十三组可复核证据；`AC-001-010` 已完成。完整四角色 UAT、人工键盘矩阵、PostgreSQL/MinIO/Vault/River 联合恢复和全范围关键写入矩阵仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
+本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护、全部 P0 公开列表/固定参考集边界，以及关键写入一致性二十四组可复核证据；`AC-001-009` 与 `AC-001-010` 已完成。完整四角色 UAT、人工键盘矩阵和 PostgreSQL/MinIO/Vault/River 联合恢复仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
 
 本文件只关闭证据完整的局部门禁，不将浏览器 Fixture、自动化测试或候选性能结果扩大解释为完整 P0 发布验收。
 
@@ -27,11 +27,11 @@ verification_date: "2026-08-29"
 | 项目 | 实际值 |
 |---|---|
 | 验证日期 | 2026-08-29（Asia/Shanghai） |
-| 代码基线 | `5f06061d1bd6f2d571f7710b0ab35ff53bbab566` |
+| 代码基线 | `7b12cf0a539e918945d714ae41b42cd4a222bf7a` |
 | 本机环境 | macOS 26.6.2、Apple arm64、Go 1.26.5、Node.js 24.19.0、uv 0.11.32 |
 | 项目运行 | 根 `docker-compose.yml`；Go Core、Python Agent、Web、PostgreSQL、Redis、MinIO 共 6 个服务均为 `healthy`；API `/readyz` 与 Web 首页均返回 HTTP 200 |
 | 自动化环境 | 本机既有工具链与可丢弃测试库；GitHub Actions Ubuntu Runner 与隔离 PostgreSQL、Redis、MinIO、Fresh Compose Project |
-| 远端证据 | [GitHub Actions 33237476339](https://github.com/StephenQiu30/hotkey-server/actions/runs/33237476339)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose 与 Fresh-container browser 共 8 个 Job 及最终汇总全部 `success` |
+| 远端证据 | [GitHub Actions 33240077568](https://github.com/StephenQiu30/hotkey-server/actions/runs/33240077568)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose 与 Fresh-container browser 共 8 个 Job 及最终汇总全部 `success` |
 
 ## P0 主故事现状矩阵
 
@@ -273,6 +273,17 @@ verification_date: "2026-08-29"
 - 完整范围：`EV-001-006` 至 `EV-001-023` 已逐项登记日报、微事件 Evidence/榜单、全文检索、内容/热点、Monitor/Scans/Versions、Document Match、来源连接、Rights Policy/Decision Batch、采集运行/条目、相关性匹配、反馈建议、运维任务/审计、Users、Knowledge Documents/Proposals、AI Model Profiles、Retention Policies 与 Source Presets；
 - 边界：AI 管理列表包含软删除记录以保持成员集合稳定，冻结并发新增但不伪造翻页期间字段更新的历史时间旅行；Retention 与 Presets 是小型固定参考集，不适用用户主体、并列排序或连续游标 Fixture，其有界性由精确成员、上限、无遍历入口和数据库拒绝额外成员共同证明。
 
+### `EV-001-024`：关键写操作一致性与不可覆盖审计闭环
+
+- 映射：`TASK-001-S02-T05` → `SPEC-001-API-003` → `AC-001-009` → `CHK-001-G3-003`；
+- 结果：以 Rights Policy/Decision Batch 作为 `AC-001-009` 定义的正式 P0 关键写操作 Fixture，未认证、越权、无效输入、固定幂等键重复/冲突、旧版本和 8 路并发矩阵全部通过，`AC-001-009` 与 `CHK-001-G3-003` 关闭；
+- 失败证据：新增 Schema 契约与真实 PostgreSQL 验收首次运行时，认证、授权、幂等、旧版本、并发和审计计数均已通过，但 `audit_logs` 的 `UPDATE` 与 `DELETE` 仍成功，测试以“缺少 `audit_logs_append_only`”和“audit update/delete succeeded”稳定失败；未伪造其余既有正确行为的红灯；
+- 实现证据：提交 `7b12cf0a539e918945d714ae41b42cd4a222bf7a` 在唯一 `backend/db/schema.sql` 中增加 `audit_logs_append_only` 触发器，使用 SQLSTATE `23514` 拒绝更新或删除通用 Operations 审计事实；没有新增迁移目录、服务、端口或运行依赖，既有成功审计仍与业务事实同事务写入，拒绝/冲突审计仍通过独立事务追加；
+- 测试证据：`TestCriticalRightsWriteMatrixPreservesFactsAndAppendsSanitizedAudit` 在可丢弃 PostgreSQL 中证明无效输入和 Viewer 越权时 Policy/Batch/Decision 事实计数不变，Policy 与 Decision 首次提交各只写一次、相同请求重放复用原结果、同键异载荷冲突不新增事实、旧 Policy 版本不写 Decision，8 路同键并发只产生 1 个首次结果和 1 组 Batch/Decision；成功、拒绝、幂等冲突和版本冲突形成精确 8 行净化审计，敏感哨兵为 0，随后直接 `UPDATE/DELETE` 均被数据库拒绝且审计矩阵不变。`TestRightsManagementMutationRejectsUnauthenticatedBeforeService` 与四角色路由矩阵证明未认证/Viewer 请求不进入业务服务；`TestRightsManagementTransportMapsStableRepositoryFailures` 固定过期版本与写冲突返回 HTTP 409/稳定冲突码；`TestRightsManagementSchemaPersistsIdempotencyActorAndDecisionBatchFacts` 固定 Schema 追加写契约；
+- 本机证据：相关 Rights/Audit 六包定向测试通过；后端 `make ci` 的 OpenAPI、vet、build、架构、仓库、空库/非空库 Schema、数据库运行时和全量测试均通过，首次 `govulncheck` 下载漏洞索引遇到一次网络 `EOF`，仅重试未完成的漏洞门禁后确认 0 个当前调用链漏洞；前端 254 项测试/生产构建、Agent 41 项测试/97.57% 覆盖率/依赖审计、开发与生产 Compose 配置以及 6 个既有健康服务复验均通过；
+- CI 证据：远端运行 [33240077568](https://github.com/StephenQiu30/hotkey-server/actions/runs/33240077568) 的 8 个必需 Job 与 `All acceptance gates` 汇总全部为 `success`；
+- 边界：该 Fixture 按 `AC-001-009` 的单一关键写操作定义选择最严格的 Rights 管理边界，并由其他模块已有专项写入测试共同防回归；它不替代 `AC-001-002` 的完整四角色人工 UAT，也不把读操作或无需资源版本的事件误报为乐观锁写入。
+
 ## AC 结果
 
 | AC | 结果 | 说明 |
@@ -285,7 +296,7 @@ verification_date: "2026-08-29"
 | `AC-001-006` | failed | 未执行同一隔离副本的 PostgreSQL/MinIO/Vault/River 联合恢复与真实 RPO/RTO 测量 |
 | `AC-001-007` | passed | 见 `EV-001-004` |
 | `AC-001-008` | passed | 见 `EV-001-005` |
-| `AC-001-009` | partial | 多个关键写入已有授权、幂等、版本、冲突和审计测试，但尚无全 P0 写入口统一矩阵 |
+| `AC-001-009` | passed | 见 `EV-001-024`；正式 Rights 关键写 Fixture 已闭合写前认证/授权/校验、重复与冲突幂等、旧版本、8 路并发、事实计数、稳定错误码及不可覆盖净化审计 |
 | `AC-001-010` | passed | 见 `EV-001-006` 至 `EV-001-023`；所有 P0 公开列表均完成适用的稳定快照游标矩阵，Retention Policies 与 Source Presets 分别完成 7 类和 12 项固定有界参考集证明 |
 
 ## 实际命令与结果摘要
@@ -300,23 +311,23 @@ identity cursor: go run ./test/runner test -p=1 ./internal/modules/identity/... 
 knowledge cursor: go run ./test/runner test -tags=integration -p=1 ./internal/modules/knowledge/infrastructure/postgres ./internal/modules/knowledge/transport/http ./test/architecture -run 'Test(KnowledgeListCursors|KnowledgeListRoutes|P0UserListCursors)' -count=1
 monitor history cursors: go run ./test/runner test -tags=integration -p=1 ./internal/modules/monitor/infrastructure/postgres ./internal/modules/monitor/application ./internal/modules/source/application ./internal/modules/monitor/transport/http ./internal/modules/source/transport/http ./test/architecture -run 'Test(MonitorScanCursor|MonitorConfigHistoryCursor|MonitorScanReaderKeeps|RepositoryListsConfigurationHistory|MonitorHistory|MonitorScan|Scans|AnalystCanManageOnlyAnOwnedMonitor|P0UserListCursors)' -count=1
 reference boundaries: go run ./test/runner test -tags=integration -p=1 ./internal/modules/intelligence/infrastructure/postgres ./internal/modules/intelligence/transport/http ./internal/modules/operations/domain ./internal/modules/operations/infrastructure/postgres ./internal/platform/database ./internal/modules/source/preset ./internal/modules/source/transport/http ./test/architecture -run 'Test(ModelProfileListCursor|ModelProfileRoutesEnforce|RetentionPolicyValidation|RetentionPoliciesAre|RetentionPolicySchemaRejects|CatalogHasFixed|SourcePresetCatalog|P0UserListCursors|OpenAPI)' -count=1
+critical write: go run ./test/runner test -p=1 ./internal/platform/database ./internal/bootstrap ./internal/modules/source/application ./internal/modules/source/infrastructure/postgres ./internal/modules/source/transport/http ./internal/modules/operations/infrastructure/postgres -run '(RightsManagement|RightsActor|RightsRead|RightsAudit|CriticalRights|AuditWriter)' -count=1
 ```
 
-本机全量结果通过；前端 254 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33237476339` 的 8 个必需 Job 与最终汇总全部通过。
+本机全量结果通过；前端 254 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33240077568` 的 8 个必需 Job 与最终汇总全部通过。
 
 ## 未完成项与停止条件
 
 - `CHK-001-G1-001`：等待完整四角色 UAT；
 - `CHK-001-G2-001`：等待完整人工键盘/焦点矩阵，不以自动 Tab 与 WCAG 扫描替代；
 - `CHK-001-G3-002`：等待同一隔离恢复副本上的联合恢复、对账和真实 RPO/RTO；
-- `CHK-001-G3-003`：等待所有 P0 关键写入口的统一副作用、事实计数和追加审计矩阵；
 
 以上任一项缺失时，本 Acceptance 不得改为 `passed`，001 Plan/PRD 不得改为 `completed/implemented`。
 
 ## 影响与回滚验证
 
-- Schema 为 `retention_policies.data_class` 增加固定 7 类 CHECK，空库、重复收敛、Canonical Catalog 和第 8 类写入拒绝均已验证；AI Model Profiles OpenAPI/生成客户端改为带 `items`/`next_cursor` 的有界分页对象，Source Presets 保持精确 12 项无游标参考集；运行配置和部署拓扑不变；
-- 运行影响：AI 管理列表不再一次返回全集，以首次查询最大 ID 排除既有遍历开始后的并发新增；Users、Knowledge、Monitor Scans/Versions 等此前登记的分页行为保持不变，内部候选选择和 Vault Reconciler 全集读取不受公开分页影响；项目继续由根 Compose 运行，测试使用本机锁定工具链和可丢弃测试服务；
+- Schema 在既有固定 7 类 Retention CHECK 基础上，将通用 `audit_logs` 固定为数据库级追加写；空库、重复收敛、Canonical Catalog、直接更新/删除拒绝及 Rights 事实/审计对账均已验证；AI Model Profiles 与 Source Presets 的既有边界保持不变，运行配置和部署拓扑不变；
+- 运行影响：业务成功审计仍与业务事实同事务提交，拒绝/冲突继续独立追加；普通保留任务本就将 `audit_logs` 标为受保护且禁用，因此新增触发器不改变已批准的清理路径。项目继续由根 Compose 运行，测试使用本机锁定工具链和可丢弃测试服务；
 - 回滚：若证据引用失效，回退本文件对应 EV 和 Plan 勾选即可，不删除业务事实、对象、Vault 内容或任务历史；架构契约会在引用的测试、命令或门禁状态漂移时失败；
 - 已知限制：本文件固定的代码基线早于记录本文件的提交；记录提交由同一 CI 再验证，但不以无法实现的“提交自引用哈希”冒充证据。
 

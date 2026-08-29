@@ -41,6 +41,14 @@ func Test001PartialAcceptanceRecordsVerifiedBaselineAndHonestGaps(t *testing.T) 
 		"EV-001-021",
 		"EV-001-022",
 		"EV-001-023",
+		"EV-001-024",
+		"https://github.com/StephenQiu30/hotkey-server/actions/runs/33240077568",
+		"7b12cf0a539e918945d714ae41b42cd4a222bf7a",
+		"TestCriticalRightsWriteMatrixPreservesFactsAndAppendsSanitizedAudit",
+		"TestRightsManagementMutationRejectsUnauthenticatedBeforeService",
+		"TestRightsManagementTransportMapsStableRepositoryFailures",
+		"TestRightsManagementSchemaPersistsIdempotencyActorAndDecisionBatchFacts",
+		"audit_logs_append_only",
 		"https://github.com/StephenQiu30/hotkey-server/actions/runs/33237476339",
 		"5f06061d1bd6f2d571f7710b0ab35ff53bbab566",
 		"TestModelProfileListCursorIsSignedExpiringAndSnapshotStable",
@@ -120,6 +128,7 @@ func Test001PartialAcceptanceRecordsVerifiedBaselineAndHonestGaps(t *testing.T) 
 		"CHK-001-G0-001": "EV-001-001",
 		"CHK-001-G1-002": "EV-001-002",
 		"CHK-001-G3-001": "EV-001-003",
+		"CHK-001-G3-003": "EV-001-024",
 		"CHK-001-G3-004": "EV-001-023",
 		"CHK-001-G4-001": "EV-001-004",
 		"CHK-001-G4-002": "EV-001-005",
@@ -137,7 +146,6 @@ func Test001PartialAcceptanceRecordsVerifiedBaselineAndHonestGaps(t *testing.T) 
 		"CHK-001-G1-001",
 		"CHK-001-G2-001",
 		"CHK-001-G3-002",
-		"CHK-001-G3-003",
 	} {
 		if row := markdownChecklistRow(t, plan, checkID); !strings.HasPrefix(row, "- [ ]") {
 			t.Errorf("%s must remain open until its full-scope evidence exists: %s", checkID, row)
