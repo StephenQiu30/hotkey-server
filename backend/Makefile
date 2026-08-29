@@ -29,11 +29,13 @@ test: test-env
 	$(GO) run ./test/runner test -p=1 ./... -count=1
 
 # database-runtime already executes these exact packages against the disposable
-# database. Keep the public test target exhaustive while avoiding duplicate CI work.
+# database. PostgreSQL integration tests create a disposable database per test,
+# so CI can safely run two packages at a time without sharing mutable facts.
+# Keep the public test target exhaustive while avoiding duplicate CI work.
 ci-test: test-env
 	@packages="$$( $(GO) list ./... | grep -v -e '/internal/platform/database$$' -e '/internal/shared/repository$$' )"; \
 		test -n "$$packages"; \
-		$(GO) run ./test/runner test -p=1 $$packages -count=1
+		$(GO) run ./test/runner test -p=2 $$packages -count=1
 
 worker-recovery-acceptance: test-env minio-test-env
 	$(GO) run ./test/runner test -tags=integration -p=1 \

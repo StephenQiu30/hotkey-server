@@ -16,6 +16,7 @@ func TestBackendCIPreservesCanonicalCoverageAcrossParallelGates(t *testing.T) {
 		"ci-static: openapi-check vet build architecture repository",
 		"ci-test: test-env",
 		"grep -v -e '/internal/platform/database$$' -e '/internal/shared/repository$$'",
+		"test -p=2 $$packages -count=1",
 		"ci-runtime: database-runtime schema ci-test",
 		"ci-vulnerability: vulnerability",
 		"ci: ci-static ci-runtime ci-vulnerability",
