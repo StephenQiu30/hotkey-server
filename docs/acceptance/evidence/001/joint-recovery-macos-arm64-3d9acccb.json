@@ -1,0 +1,69 @@
+{
+  "version": "hotkey-joint-recovery-v1",
+  "status": "reconciled",
+  "git_revision": "3d9acccbc136195ee1c26fa7d9cec69cef2d1740",
+  "environment": "macos-26.6.2-local-postgresql-18.4-minio-isolated",
+  "hardware": "Apple M5; 10 CPU; 24 GiB RAM; internal APFS SSD; PostgreSQL 18.4 and MinIO loopback",
+  "runtime": {
+    "goos": "darwin",
+    "goarch": "arm64",
+    "cpus": 10
+  },
+  "isolated": true,
+  "production_egress_disabled": true,
+  "recovery_point_at": "2026-08-29T10:46:02.209675Z",
+  "incident_cutoff_at": "2026-08-29T10:46:02.375485Z",
+  "drill_started_at": "2026-08-29T10:46:02.375485Z",
+  "services_readable_at": "2026-08-29T10:46:03.138161Z",
+  "reconciliation_completed_at": "2026-08-29T10:46:03.152877Z",
+  "rpo_millis": 165,
+  "rto_millis": 762,
+  "candidate_rpo_met": true,
+  "candidate_rto_met": true,
+  "assets": [
+    {
+      "name": "postgres_facts",
+      "expected_count": 2,
+      "actual_count": 2,
+      "expected_sha256": "d37dc240b1265413fc6863c6e7f24a57e2335f4dab489a0dd196666319dbda30",
+      "actual_sha256": "d37dc240b1265413fc6863c6e7f24a57e2335f4dab489a0dd196666319dbda30"
+    },
+    {
+      "name": "minio_evidence",
+      "expected_count": 2,
+      "actual_count": 2,
+      "expected_sha256": "d2cb4d7a9cff83dbf97e294ac905e60117ff11a29e7945fd266d75963c04b12d",
+      "actual_sha256": "d2cb4d7a9cff83dbf97e294ac905e60117ff11a29e7945fd266d75963c04b12d",
+      "expected_versioned_count": 2,
+      "actual_versioned_count": 2
+    },
+    {
+      "name": "vault_all_files",
+      "expected_count": 2,
+      "actual_count": 2,
+      "expected_sha256": "24bfb4fb24ee8c0af5a7c5c6b61fd88e70876000a6e58bf867ce249b7ccca587",
+      "actual_sha256": "24bfb4fb24ee8c0af5a7c5c6b61fd88e70876000a6e58bf867ce249b7ccca587"
+    },
+    {
+      "name": "vault_manual_regions",
+      "expected_count": 2,
+      "actual_count": 2,
+      "expected_sha256": "48164354f77dd4c5d67edb5b326e029011166ae6ea2183ca9502297e862efaca",
+      "actual_sha256": "48164354f77dd4c5d67edb5b326e029011166ae6ea2183ca9502297e862efaca"
+    },
+    {
+      "name": "river_jobs_attempts",
+      "expected_count": 2,
+      "actual_count": 2,
+      "expected_sha256": "3b57910d174cb062e637fe1a67aaa89ec55bd78a228177a90ee9ba0195bbb1d8",
+      "actual_sha256": "3b57910d174cb062e637fe1a67aaa89ec55bd78a228177a90ee9ba0195bbb1d8"
+    }
+  ],
+  "differences": [],
+  "exclusions": [
+    "production_traffic",
+    "external_connectors",
+    "notification_delivery",
+    "redis_ephemeral_state"
+  ]
+}

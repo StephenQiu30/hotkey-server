@@ -10,7 +10,7 @@ canonical_path: docs/acceptance/001-HotKey产品需求分析与总体架构验�
 design: docs/design/001-HotKey产品需求分析与总体架构设计.md
 prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 plan: docs/plans/001-HotKey产品需求分析与总体架构计划.md
-verified_revision: "7b12cf0a539e918945d714ae41b42cd4a222bf7a"
+verified_revision: "3d9acccbc136195ee1c26fa7d9cec69cef2d1740"
 verification_date: "2026-08-29"
 ---
 
@@ -18,7 +18,7 @@ verification_date: "2026-08-29"
 
 ## 结论
 
-本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护、全部 P0 公开列表/固定参考集边界，以及关键写入一致性二十四组可复核证据；`AC-001-009` 与 `AC-001-010` 已完成。完整四角色 UAT、人工键盘矩阵和 PostgreSQL/MinIO/Vault/River 联合恢复仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
+本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护、全部 P0 公开列表/固定参考集边界、关键写入一致性，以及容量与联合恢复二十五组可复核证据；`AC-001-006`、`AC-001-009` 与 `AC-001-010` 已完成。完整四角色 UAT 和人工键盘矩阵仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
 
 本文件只关闭证据完整的局部门禁，不将浏览器 Fixture、自动化测试或候选性能结果扩大解释为完整 P0 发布验收。
 
@@ -27,11 +27,11 @@ verification_date: "2026-08-29"
 | 项目 | 实际值 |
 |---|---|
 | 验证日期 | 2026-08-29（Asia/Shanghai） |
-| 代码基线 | `7b12cf0a539e918945d714ae41b42cd4a222bf7a` |
+| 代码基线 | `3d9acccbc136195ee1c26fa7d9cec69cef2d1740` |
 | 本机环境 | macOS 26.6.2、Apple arm64、Go 1.26.5、Node.js 24.19.0、uv 0.11.32 |
 | 项目运行 | 根 `docker-compose.yml`；Go Core、Python Agent、Web、PostgreSQL、Redis、MinIO 共 6 个服务均为 `healthy`；API `/readyz` 与 Web 首页均返回 HTTP 200 |
 | 自动化环境 | 本机既有工具链与可丢弃测试库；GitHub Actions Ubuntu Runner 与隔离 PostgreSQL、Redis、MinIO、Fresh Compose Project |
-| 远端证据 | [GitHub Actions 33240077568](https://github.com/StephenQiu30/hotkey-server/actions/runs/33240077568)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose 与 Fresh-container browser 共 8 个 Job 及最终汇总全部 `success` |
+| 远端证据 | [GitHub Actions 33248525810](https://github.com/StephenQiu30/hotkey-server/actions/runs/33248525810)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose 与 Fresh-container browser 共 8 个 Job 及最终汇总全部 `success`；Worker Job 实际执行联合恢复 |
 
 ## P0 主故事现状矩阵
 
@@ -284,6 +284,17 @@ verification_date: "2026-08-29"
 - CI 证据：远端运行 [33240077568](https://github.com/StephenQiu30/hotkey-server/actions/runs/33240077568) 的 8 个必需 Job 与 `All acceptance gates` 汇总全部为 `success`；
 - 边界：该 Fixture 按 `AC-001-009` 的单一关键写操作定义选择最严格的 Rights 管理边界，并由其他模块已有专项写入测试共同防回归；它不替代 `AC-001-002` 的完整四角色人工 UAT，也不把读操作或无需资源版本的事件误报为乐观锁写入。
 
+### `EV-001-025`：固定容量基线与联合恢复零差异闭环
+
+- 映射：`TASK-001-S03-T01` → `SPEC-001-OBS-001` → `AC-001-006` → `CHK-001-G3-002`；
+- 结果：隔离环境中的固定容量基线和 PostgreSQL/MinIO/Vault/River 联合恢复均已实际执行并保存机器可读报告，`AC-001-006` 与 `CHK-001-G3-002` 关闭；这里通过的是候选测试与恢复演练，不把本机数字扩大为生产 SLA；
+- 失败证据：收紧 `TestS03CapacityAndRecoveryEvidenceStayMeasuredAndReproducible` 后，仓库先因缺少真实联合恢复工具、Make 入口、CI 步骤、报告文件和 Plan/Acceptance 映射而稳定失败；既有恢复 verifier 只能检查人工编写的 manifest，不能证明三类存储真的恢复或 River 事实真的对账；
+- 实现证据：提交 `2d56bec451246b6a04a8cb9991b384b3059bf88b` 增加 `backend/test/tools/joint-recovery-drill`、`make joint-recovery-acceptance` 及 Worker CI 步骤；提交 `3d9acccbc136195ee1c26fa7d9cec69cef2d1740` 修正 CI 证据输出上下文。演练以随机源/恢复数据库、版本化源/恢复 Bucket 和临时 Vault 目录构造同一隔离恢复副本，使用真实 `pg_dump`/`pg_restore`，实际复制 MinIO 对象正文/元数据和 Vault 文件，并在完成后清理临时数据库、Bucket 和目录；生产出口被禁用；
+- 容量证据：[`contents-keyset-capacity-macos-arm64-3d9acccb.json`](evidence/001/contents-keyset-capacity-macos-arm64-3d9acccb.json) 固定 macOS 26.6.2、Apple M5 10 CPU/24 GiB、PostgreSQL 18.4 loopback、100,000 行 Fixture、并发 20、预热 20、样本 1,000、warm cache 和 nearest-rank-ceiling 算法；实测 P50 453 µs、P95 1597 µs、P99 61923 µs、错误 0。该报告只覆盖 `contents` keyset page 查询，不代表 API、全文检索、网络或生产负载 SLA；
+- 恢复证据：[`joint-recovery-macos-arm64-3d9acccb.json`](evidence/001/joint-recovery-macos-arm64-3d9acccb.json) 记录真实 RPO 165 ms、RTO 762 ms；`postgres_facts` 2/2、`minio_evidence` 2/2（版本 2/2）、`vault_all_files` 2/2、`vault_manual_regions` 2/2、`river_jobs_attempts` 2/2 均为期望/实际数量相等且 SHA-256 相等，`differences=[]`。RPO 取备份围栏至事故截点，RTO 取演练开始至 PostgreSQL、MinIO 和 Vault 全部可读；
+- 测试与 CI 证据：本机联合恢复、容量基线、架构契约和后端 `make ci` 全部通过；远端运行 [33248525810](https://github.com/StephenQiu30/hotkey-server/actions/runs/33248525810) 的 `Joint PostgreSQL MinIO Vault and River recovery acceptance` 步骤、8 个必需 Job 与 `All acceptance gates` 汇总全部为 `success`；
+- 边界：报告排除生产流量、外部连接器、通知投递和 Redis 短期状态；它证明可重复的隔离候选基线和同一恢复副本零未解释差异，生产同构环境、正式备份介质和现场恢复演习仍属于发布运维责任，RPO 165 ms 与 RTO 762 ms 不构成 SLA 承诺。
+
 ## AC 结果
 
 | AC | 结果 | 说明 |
@@ -293,7 +304,7 @@ verification_date: "2026-08-29"
 | `AC-001-003` | passed | 见 `EV-001-002` |
 | `AC-001-004` | partial | 五态、移动端、自动 WCAG 与 Tab 焦点证据存在；完整人工键盘矩阵未完成 |
 | `AC-001-005` | passed | 见 `EV-001-003` |
-| `AC-001-006` | failed | 未执行同一隔离副本的 PostgreSQL/MinIO/Vault/River 联合恢复与真实 RPO/RTO 测量 |
+| `AC-001-006` | passed | 见 `EV-001-025`；固定容量样本及同一隔离副本的 PostgreSQL/MinIO/Vault/River 联合恢复、五类资产对账和真实 RPO/RTO 测量已完成，结果仍是候选基线而非 SLA |
 | `AC-001-007` | passed | 见 `EV-001-004` |
 | `AC-001-008` | passed | 见 `EV-001-005` |
 | `AC-001-009` | passed | 见 `EV-001-024`；正式 Rights 关键写 Fixture 已闭合写前认证/授权/校验、重复与冲突幂等、旧版本、8 路并发、事实计数、稳定错误码及不可覆盖净化审计 |
@@ -312,23 +323,24 @@ knowledge cursor: go run ./test/runner test -tags=integration -p=1 ./internal/mo
 monitor history cursors: go run ./test/runner test -tags=integration -p=1 ./internal/modules/monitor/infrastructure/postgres ./internal/modules/monitor/application ./internal/modules/source/application ./internal/modules/monitor/transport/http ./internal/modules/source/transport/http ./test/architecture -run 'Test(MonitorScanCursor|MonitorConfigHistoryCursor|MonitorScanReaderKeeps|RepositoryListsConfigurationHistory|MonitorHistory|MonitorScan|Scans|AnalystCanManageOnlyAnOwnedMonitor|P0UserListCursors)' -count=1
 reference boundaries: go run ./test/runner test -tags=integration -p=1 ./internal/modules/intelligence/infrastructure/postgres ./internal/modules/intelligence/transport/http ./internal/modules/operations/domain ./internal/modules/operations/infrastructure/postgres ./internal/platform/database ./internal/modules/source/preset ./internal/modules/source/transport/http ./test/architecture -run 'Test(ModelProfileListCursor|ModelProfileRoutesEnforce|RetentionPolicyValidation|RetentionPoliciesAre|RetentionPolicySchemaRejects|CatalogHasFixed|SourcePresetCatalog|P0UserListCursors|OpenAPI)' -count=1
 critical write: go run ./test/runner test -p=1 ./internal/platform/database ./internal/bootstrap ./internal/modules/source/application ./internal/modules/source/infrastructure/postgres ./internal/modules/source/transport/http ./internal/modules/operations/infrastructure/postgres -run '(RightsManagement|RightsActor|RightsRead|RightsAudit|CriticalRights|AuditWriter)' -count=1
+capacity: HOTKEY_CAPACITY_DATASET_SIZE=100000 HOTKEY_CAPACITY_CONCURRENCY=20 HOTKEY_CAPACITY_WARMUPS=20 HOTKEY_CAPACITY_SAMPLES=1000 HOTKEY_CAPACITY_CACHE_STATE=warm HOTKEY_CAPACITY_PERCENTILE_ALGORITHM=nearest-rank-ceiling HOTKEY_CAPACITY_ENVIRONMENT=macos-26.6.2-local-postgresql-18.4-isolated HOTKEY_CAPACITY_HARDWARE='Apple M5; 10 CPU; 24 GiB RAM; internal APFS SSD; PostgreSQL 18.4 loopback' HOTKEY_CAPACITY_GIT_REVISION=3d9acccbc136195ee1c26fa7d9cec69cef2d1740 HOTKEY_CAPACITY_OUTPUT=../docs/acceptance/evidence/001/contents-keyset-capacity-macos-arm64-3d9acccb.json make capacity-fixture capacity-baseline
+joint recovery: HOTKEY_RECOVERY_TEST_DSN='postgresql test DSN' HOTKEY_RECOVERY_MINIO_ENDPOINT='isolated MinIO endpoint' HOTKEY_RECOVERY_MINIO_ACCESS_KEY='test-only key' HOTKEY_RECOVERY_MINIO_SECRET_KEY='test-only secret' HOTKEY_RECOVERY_GIT_REVISION=3d9acccbc136195ee1c26fa7d9cec69cef2d1740 HOTKEY_RECOVERY_ENVIRONMENT=macos-26.6.2-local-postgresql-18.4-minio-isolated HOTKEY_RECOVERY_HARDWARE='Apple M5; 10 CPU; 24 GiB RAM; internal APFS SSD; PostgreSQL 18.4 and MinIO loopback' HOTKEY_RECOVERY_PRODUCTION_EGRESS_DISABLED=true HOTKEY_RECOVERY_OUTPUT=../docs/acceptance/evidence/001/joint-recovery-macos-arm64-3d9acccb.json make joint-recovery-acceptance
 ```
 
-本机全量结果通过；前端 254 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33240077568` 的 8 个必需 Job 与最终汇总全部通过。
+本机全量结果通过；前端 254 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33248525810` 的 8 个必需 Job 与最终汇总全部通过，其中 Worker 实际完成联合恢复。
 
 ## 未完成项与停止条件
 
 - `CHK-001-G1-001`：等待完整四角色 UAT；
 - `CHK-001-G2-001`：等待完整人工键盘/焦点矩阵，不以自动 Tab 与 WCAG 扫描替代；
-- `CHK-001-G3-002`：等待同一隔离恢复副本上的联合恢复、对账和真实 RPO/RTO；
 
 以上任一项缺失时，本 Acceptance 不得改为 `passed`，001 Plan/PRD 不得改为 `completed/implemented`。
 
 ## 影响与回滚验证
 
-- Schema 在既有固定 7 类 Retention CHECK 基础上，将通用 `audit_logs` 固定为数据库级追加写；空库、重复收敛、Canonical Catalog、直接更新/删除拒绝及 Rights 事实/审计对账均已验证；AI Model Profiles 与 Source Presets 的既有边界保持不变，运行配置和部署拓扑不变；
-- 运行影响：业务成功审计仍与业务事实同事务提交，拒绝/冲突继续独立追加；普通保留任务本就将 `audit_logs` 标为受保护且禁用，因此新增触发器不改变已批准的清理路径。项目继续由根 Compose 运行，测试使用本机锁定工具链和可丢弃测试服务；
-- 回滚：若证据引用失效，回退本文件对应 EV 和 Plan 勾选即可，不删除业务事实、对象、Vault 内容或任务历史；架构契约会在引用的测试、命令或门禁状态漂移时失败；
+- Schema、OpenAPI、生产 API 和启动拓扑均未变化；新增影响仅限后端测试工具、Make/CI 恢复门禁和两份净化后的验收报告。项目继续由根 Compose 运行，测试使用本机锁定工具链和可丢弃隔离恢复资产；
+- 运行影响：联合恢复门禁只创建随机测试数据库、版本化测试 Bucket 和临时 Vault 目录，禁止生产出口并在成功/失败后清理；容量报告只读取固定测试库；不会停止或重启本机既有 6 个 Compose 服务；
+- 回滚：若工具或证据失效，可回退联合恢复工具、Make/CI 步骤、本文件对应 EV 和 Plan 勾选；不得用回滚删除业务事实、对象、Vault 内容或任务历史，架构契约会在引用的测试、命令或门禁状态漂移时失败；
 - 已知限制：本文件固定的代码基线早于记录本文件的提交；记录提交由同一 CI 再验证，但不以无法实现的“提交自引用哈希”冒充证据。
 
 ## 验收人

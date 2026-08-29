@@ -32,7 +32,7 @@ prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 - 现有实现仍包含多 Provider、Go Codex CLI Adapter、Embedding 与向量路径，而新目标要求根目录 Python Agent 和无向量全文检索；该差距是受控替换项目，不是文档清理时可直接删除的遗留物；
 - 四角色服务端契约、Analyst 资源所有权与兼容迁移已落地，并由真实 PostgreSQL/JWT 会话矩阵证明每次请求重读当前角色、禁用即时撤销且重新启用不复活旧会话；仍需完整四角色 UAT，不能用自动化证据冒充人工验收；
 - 当前 Schema、OpenAPI、River、Compose 和测试入口必须成为后续四个计划的硬门禁；
-- 候选性能指标尚需固定测试数据集、环境、采样方法和证据格式，不能提前宣称为已满足 SLO。
+- 候选性能指标已用固定测试数据集、环境、采样方法和机器可读证据完成一次隔离基线；结果只作为候选参考，不能宣称为已满足生产 SLO。
 
 ## 启动条件与阶段门禁
 
@@ -146,7 +146,7 @@ docker-compose-prod.yml
 - [x] `CHK-001-G1-002`（`AC-001-003`）：Design 明确拒绝禁用基础设施，反例架构测试可捕获 Kafka、Temporal、第二 Python 后端和迁移目录误引入；代码/契约现状、Design/PRD/Plan 目标状态与 failed/partial Acceptance 未相互冒充；证据：001 Acceptance `EV-001-002`。
 - [ ] `CHK-001-G2-001`（`AC-001-004`）：PRD 覆盖工作台五态、移动端、权限不足、键盘、可见焦点、语义标签、对比度和 `prefers-reduced-motion`；预期证据：页面状态、自动可访问性和人工键盘测试矩阵。
 - [x] `CHK-001-G3-001`（`AC-001-005`）：Result、OpenAPI、唯一 Schema 和生成客户端的单一事实源无冲突；证据：本机 `make ci`、前端 `openapi:check`、远端全绿门禁及 001 Acceptance `EV-001-003`。
-- [ ] `CHK-001-G3-002`（`AC-001-006`）：容量/性能测试和 PostgreSQL/MinIO/Vault/持久任务联合恢复的环境、数据、命令、统计法、对账与 RPO/RTO 测量均已冻结；预期证据：基准报告、恢复时间线和零未解释差异报告模板。
+- [x] `CHK-001-G3-002`（`AC-001-006`）：固定 100,000 行、并发 20、预热 20、样本 1,000、warm cache 和 nearest-rank-ceiling 的 keyset 容量报告已保存；同一隔离恢复副本使用真实 `pg_dump`/`pg_restore` 并实际复制 MinIO/Vault，PostgreSQL 事实、MinIO 对象/版本、Vault 全文件/人工区域和 River Job/Attempt 五类资产数量及 SHA-256 零差异，实测 RPO 165 ms、RTO 762 ms。证据：001 Acceptance `EV-001-025`、`docs/acceptance/evidence/001/contents-keyset-capacity-macos-arm64-3d9acccb.json` 与 `docs/acceptance/evidence/001/joint-recovery-macos-arm64-3d9acccb.json`；候选数值不构成生产 SLA。
 - [x] `CHK-001-G3-003`（`AC-001-009`）：Rights Policy/Decision Batch 作为正式 P0 关键写 Fixture，未认证/Viewer 请求写前阻断，固定幂等键首次/重放/异载荷冲突、旧 Policy 版本和 8 路并发在 Policy/Batch/Decision 事实计数上闭合；成功、拒绝与冲突追加净化审计，`audit_logs_append_only` 在数据库层拒绝更新/删除；证据：001 Acceptance `EV-001-024`。
 - [x] `CHK-001-G3-004`（`AC-001-010`）：全部 P0 公开列表已完成适用的稳定排序、签名快照、并发变化、连续遍历、页大小及无效/过期/越权游标矩阵；AI Model Profiles 使用 `ai_model_profile_list` 签名 ID 快照游标，Retention Policies 与 Source Presets 分别由精确 7 类数据库约束和 12 项服务端目录证明固定有界且无遍历入口；证据：001 Acceptance `EV-001-006` 至 `EV-001-023`。
 - [x] `CHK-001-G4-001`（`AC-001-007`）：来源、Agent、Redis、MinIO 和 Vault 降级均已记录“事实继续/暂停/重试/人工介入”结论；Python Agent 只提交建议，越权 Evidence/状态在 Go Application/Domain 写入前拒绝，5 类 Agent 故障为零 Claim 写入；证据：001 Acceptance `EV-001-004`。

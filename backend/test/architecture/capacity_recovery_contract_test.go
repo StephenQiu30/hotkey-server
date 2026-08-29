@@ -39,6 +39,25 @@ func TestS03CapacityAndRecoveryEvidenceStayMeasuredAndReproducible(t *testing.T)
 			`ProductionEgressDisabled`,
 			`os.O_WRONLY|os.O_CREATE|os.O_EXCL`,
 		},
+		"docs/acceptance/evidence/001/contents-keyset-capacity-macos-arm64-3d9acccb.json": {
+			`"version": "hotkey-capacity-baseline-v1"`,
+			`"status": "measured"`,
+			`"git_revision": "3d9acccbc136195ee1c26fa7d9cec69cef2d1740"`,
+			`"fixture_rows": 100000`,
+			`"concurrency": 20`,
+			`"samples": 1000`,
+			`"errors": 0`,
+		},
+		"docs/acceptance/evidence/001/joint-recovery-macos-arm64-3d9acccb.json": {
+			`"version": "hotkey-joint-recovery-v1"`,
+			`"status": "reconciled"`,
+			`"git_revision": "3d9acccbc136195ee1c26fa7d9cec69cef2d1740"`,
+			`"rpo_millis": 165`,
+			`"rto_millis": 762`,
+			`"expected_versioned_count": 2`,
+			`"actual_versioned_count": 2`,
+			`"differences": []`,
+		},
 		"backend/Makefile": {
 			"joint-recovery-acceptance:",
 		},
@@ -70,8 +89,10 @@ func TestS03CapacityAndRecoveryEvidenceStayMeasuredAndReproducible(t *testing.T)
 	}
 
 	plan := readRepositoryFile(t, repository, "docs/plans/001-HotKey产品需求分析与总体架构计划.md")
-	if !strings.Contains(plan, "- [ ] `CHK-001-G3-002`") {
-		t.Error("capacity/recovery checklist was completed without a real isolated measurement and joint restore")
+	if !strings.Contains(plan, "- [x] `CHK-001-G3-002`") ||
+		!strings.Contains(plan, "contents-keyset-capacity-macos-arm64-3d9acccb.json") ||
+		!strings.Contains(plan, "joint-recovery-macos-arm64-3d9acccb.json") {
+		t.Error("capacity/recovery checklist must cite the measured baseline and zero-difference joint restore")
 	}
 }
 
