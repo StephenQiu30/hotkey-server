@@ -14,7 +14,7 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 	if status := frontmatterStatus(t, filepath.Join(repository, acceptancePath)); status != "failed" {
 		t.Fatalf("002 partial Acceptance must remain failed, got %q", status)
 	}
-	if !regexp.MustCompile(`(?m)^verified_revision: "113fd8bf523f2bb150346320c75fd4ca890f721a"$`).MatchString(acceptance) {
+	if !regexp.MustCompile(`(?m)^verified_revision: "9ea2b30b08d6cf50bb8cc4d072bd0bb069f91288"$`).MatchString(acceptance) {
 		t.Errorf("002 Acceptance must pin the exact verified implementation revision")
 	}
 
@@ -57,9 +57,13 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 		"TestCollectionFetchRightsDenialStopsBeforeConnectorResolutionAndPersistsSanitizedAudit",
 		"TestConnectorRegistryDefersManagedCredentialDecryptionUntilTheRequestBoundary",
 		"TestXEndpointPolicyRejectsUnsafeResolutionBeforeCredentialBudgetOrDial",
+		"`EV-002-010`",
+		"TestGovernanceAuditQueryCoversFiveSourceManagementCategoriesWithoutSyntheticSecrets",
+		"TestSourceServiceAuditsBudgetConfigurationChangeWithoutPersistingConfiguration",
+		"make source-management-audit-acceptance",
 		"RSS/HN/X 的完整 Capability/Rights/Credential/Budget/Rate Limit/Endpoint 准入矩阵",
 		"不得用 Fixture、模拟响应或本机候选容量替代真实授权证据",
-		"33250215548",
+		"33251371397",
 	} {
 		if !strings.Contains(acceptance, fragment) {
 			t.Errorf("002 Acceptance is missing %q", fragment)
