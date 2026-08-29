@@ -5540,6 +5540,12 @@
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
                         "maximum": 100,
                         "minimum": 1,
                         "type": "integer",
@@ -5598,6 +5604,18 @@
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -12653,6 +12671,9 @@
                     "items": {
                         "$ref": "#/definitions/http.MonitorScanResponse"
                     }
+                },
+                "next_cursor": {
+                    "type": "string"
                 }
             }
         },
@@ -12821,6 +12842,9 @@
                     "items": {
                         "$ref": "#/definitions/http.MonitorConfigResponse"
                     }
+                },
+                "next_cursor": {
+                    "type": "string"
                 }
             }
         },

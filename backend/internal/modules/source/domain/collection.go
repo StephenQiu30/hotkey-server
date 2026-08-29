@@ -667,8 +667,24 @@ type MonitorScan struct {
 	Sources        []MonitorScanSource
 }
 
+type MonitorScanListQuery struct {
+	MonitorID int64
+	Cursor    string
+	Limit     int
+}
+
+type MonitorScanSourcePage struct {
+	Items      []MonitorScanSource
+	NextCursor string
+}
+
+type MonitorScanPage struct {
+	Items      []MonitorScan
+	NextCursor string
+}
+
 type MonitorScanReader interface {
-	ListMonitorScans(context.Context, int64, int) ([]MonitorScanSource, error)
+	ListMonitorScans(context.Context, MonitorScanListQuery) (MonitorScanSourcePage, error)
 }
 
 // CapturedItemQuery is the fixed-shape Source-owned reader input used by

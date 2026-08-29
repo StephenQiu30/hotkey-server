@@ -86,6 +86,12 @@ func TestAnalystCanManageOnlyAnOwnedMonitor(t *testing.T) {
 	if err := monitors.AuthorizeContribution(ctx, other, created.ID); appCode(err) != sharederrors.CodeForbidden {
 		t.Fatalf("other analyst AuthorizeContribution() code = %d", appCode(err))
 	}
+	if err := monitors.AuthorizeRead(ctx, owner, created.ID); err != nil {
+		t.Fatalf("owner AuthorizeRead(draft): %v", err)
+	}
+	if err := monitors.AuthorizeRead(ctx, other, created.ID); appCode(err) != sharederrors.CodeMonitorDraftUnavailable {
+		t.Fatalf("other analyst AuthorizeRead(draft) code = %d", appCode(err))
+	}
 	expected := monitordomain.ExpectedVersions{MonitorVersion: created.Version, DraftVersion: int64Value(draft.Version)}
 	if _, _, err := monitors.Publish(ctx, monitorapplication.PublishInput{Subject: other, MonitorID: created.ID, Expected: expected}); appCode(err) != sharederrors.CodeForbidden {
 		t.Fatalf("other analyst Publish() code = %d", appCode(err))
@@ -93,6 +99,9 @@ func TestAnalystCanManageOnlyAnOwnedMonitor(t *testing.T) {
 	published, _, err := monitors.Publish(ctx, monitorapplication.PublishInput{Subject: owner, MonitorID: created.ID, Expected: expected})
 	if err != nil {
 		t.Fatalf("owner Publish(): %v", err)
+	}
+	if err := monitors.AuthorizeRead(ctx, other, created.ID); err != nil {
+		t.Fatalf("other analyst AuthorizeRead(published): %v", err)
 	}
 	if _, err := monitors.Pause(ctx, monitorapplication.LifecycleInput{Subject: other, MonitorID: created.ID, ExpectedMonitorVersion: published.Version}); appCode(err) != sharederrors.CodeForbidden {
 		t.Fatalf("other analyst Pause() code = %d", appCode(err))

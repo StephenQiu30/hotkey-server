@@ -262,7 +262,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					newIdentityAuthenticator,
 					monitorpostgres.NewSourceUsageReader,
 					monitorpostgres.NewPublishedReferenceReader,
-					monitorpostgres.NewMonitorScanReader,
+					newMonitorScanReader,
 					newSourceService,
 					newCollectionControlService,
 					newInstantSearchService,

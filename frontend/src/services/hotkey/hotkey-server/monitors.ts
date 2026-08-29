@@ -303,7 +303,9 @@ export async function getMonitorsIdVersions(
     `/api/v1/monitors/${param0}/versions`,
     {
       method: "GET",
-      params: { ...queryParams },
+      params: {
+        ...queryParams,
+      },
       ...(options || {}),
     }
   );

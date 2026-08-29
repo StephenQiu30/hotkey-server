@@ -10,7 +10,7 @@ type MonitorRepository interface {
 	FindByID(context.Context, int64) (*Monitor, error)
 	LockByID(context.Context, int64) (*Monitor, error)
 	FindConfig(context.Context, int64) (*MonitorConfigVersion, []MonitorRule, []MonitorSource, error)
-	ListConfigs(context.Context, int64) ([]MonitorConfigVersion, error)
+	ListConfigPage(context.Context, MonitorConfigListQuery) (MonitorConfigPage, error)
 	LockConfig(context.Context, int64) (*MonitorConfigVersion, []MonitorRule, []MonitorSource, error)
 	CreateDraft(context.Context, *MonitorConfigVersion, []MonitorRule, []MonitorSource) error
 	SaveDraft(context.Context, *MonitorConfigVersion, []MonitorRule, []MonitorSource) error
@@ -19,6 +19,18 @@ type MonitorRepository interface {
 	Publish(context.Context, *Monitor, *MonitorConfigVersion, *MonitorConfigVersion, []MonitorSource) error
 	List(context.Context, MonitorListQuery) ([]Monitor, string, error)
 	ListActivePublished(context.Context) ([]PublishedMonitor, error)
+}
+
+type MonitorConfigListQuery struct {
+	MonitorID     int64
+	Cursor        string
+	Limit         int
+	IncludeDrafts bool
+}
+
+type MonitorConfigPage struct {
+	Items      []MonitorConfigVersion
+	NextCursor string
 }
 
 // MonitorListQuery is the only Monitor list shape exposed to infrastructure.

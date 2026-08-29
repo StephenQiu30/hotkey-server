@@ -68,13 +68,107 @@ func TestRepositoryListsConfigurationHistoryNewestRevisionFirst(t *testing.T) {
 		t.Fatalf("CreateDraft(): %v", err)
 	}
 
-	history, err := repository.ListConfigs(context.Background(), monitor.ID)
+	history, err := repository.ListConfigPage(context.Background(), domain.MonitorConfigListQuery{MonitorID: monitor.ID, Limit: 10, IncludeDrafts: true})
 	if err != nil {
-		t.Fatalf("ListConfigs(): %v", err)
+		t.Fatalf("ListConfigPage(): %v", err)
 	}
-	if len(history) != 2 || history[0].ID != second.ID || history[0].Revision != 2 || history[1].ID != first.ID || history[1].Revision != 1 {
+	if len(history.Items) != 2 || history.Items[0].ID != second.ID || history.Items[0].Revision != 2 || history.Items[1].ID != first.ID || history.Items[1].Revision != 1 {
 		t.Fatalf("history = %#v", history)
 	}
+}
+
+func TestMonitorConfigHistoryCursorIsSignedViewBoundExpiringAndSnapshotStable(t *testing.T) {
+	runtime := monitorRepositoryRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	codec, err := pagination.NewCodec(strings.Repeat("monitor-config-history-secret-", 2), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := monitorpostgres.NewRepositoryWithCursorCodec(runtime, codec)
+	monitor := domain.Monitor{Name: "config cursor", Status: domain.MonitorStatusDraft}
+	first := domain.MonitorConfigVersion{Revision: 1, State: domain.ConfigVersionDraft, Config: repositoryConfig()}
+	if err := repository.Create(context.Background(), &monitor, &first, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	firstPublishedAt := time.Now().UTC().Truncate(time.Microsecond)
+	monitor.Status, monitor.Version, monitor.DraftConfigVersionID, monitor.PublishedConfigVersionID = domain.MonitorStatusActive, monitor.Version+1, nil, &first.ID
+	first.State, first.ConfigHash, first.PublishedAt, first.Version = domain.ConfigVersionPublished, strings.Repeat("a", 64), &firstPublishedAt, first.Version+1
+	if err := repository.Publish(context.Background(), &monitor, &first, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	second := domain.MonitorConfigVersion{MonitorID: monitor.ID, Revision: 2, State: domain.ConfigVersionDraft, Config: repositoryConfig()}
+	if err := repository.CreateDraft(context.Background(), &second, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	secondPublishedAt := firstPublishedAt.Add(time.Microsecond)
+	monitor.Version, monitor.DraftConfigVersionID, monitor.PublishedConfigVersionID = monitor.Version+1, nil, &second.ID
+	first.State, first.Version = domain.ConfigVersionSuperseded, first.Version+1
+	second.State, second.ConfigHash, second.PublishedAt, second.Version = domain.ConfigVersionPublished, strings.Repeat("b", 64), &secondPublishedAt, second.Version+1
+	if err := repository.Publish(context.Background(), &monitor, &second, &first, nil); err != nil {
+		t.Fatal(err)
+	}
+	third := domain.MonitorConfigVersion{MonitorID: monitor.ID, Revision: 3, State: domain.ConfigVersionDraft, Config: repositoryConfig()}
+	if err := repository.CreateDraft(context.Background(), &third, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	firstPage, err := repository.ListConfigPage(context.Background(), domain.MonitorConfigListQuery{MonitorID: monitor.ID, Limit: 2, IncludeDrafts: true})
+	if err != nil || len(firstPage.Items) != 2 || firstPage.Items[0].ID != third.ID || firstPage.Items[1].ID != second.ID || firstPage.NextCursor == "" {
+		t.Fatalf("first config page = %#v/%v", firstPage, err)
+	}
+	thirdPublishedAt := secondPublishedAt.Add(time.Microsecond)
+	monitor.Version, monitor.DraftConfigVersionID, monitor.PublishedConfigVersionID = monitor.Version+1, nil, &third.ID
+	second.State, second.Version = domain.ConfigVersionSuperseded, second.Version+1
+	third.State, third.ConfigHash, third.PublishedAt, third.Version = domain.ConfigVersionPublished, strings.Repeat("c", 64), &thirdPublishedAt, third.Version+1
+	if err := repository.Publish(context.Background(), &monitor, &third, &second, nil); err != nil {
+		t.Fatal(err)
+	}
+	fourth := domain.MonitorConfigVersion{MonitorID: monitor.ID, Revision: 4, State: domain.ConfigVersionDraft, Config: repositoryConfig()}
+	if err := repository.CreateDraft(context.Background(), &fourth, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	secondPage, err := repository.ListConfigPage(context.Background(), domain.MonitorConfigListQuery{MonitorID: monitor.ID, Limit: 2, IncludeDrafts: true, Cursor: firstPage.NextCursor})
+	if err != nil || len(secondPage.Items) != 1 || secondPage.Items[0].ID != first.ID || secondPage.NextCursor != "" {
+		t.Fatalf("second config page = %#v/%v", secondPage, err)
+	}
+
+	otherMonitor := domain.Monitor{Name: "other config cursor", Status: domain.MonitorStatusDraft}
+	otherConfig := domain.MonitorConfigVersion{Revision: 1, State: domain.ConfigVersionDraft, Config: repositoryConfig()}
+	if err := repository.Create(context.Background(), &otherMonitor, &otherConfig, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	for name, query := range map[string]domain.MonitorConfigListQuery{
+		"tampered":         {MonitorID: monitor.ID, Limit: 2, IncludeDrafts: true, Cursor: tamperMonitorConfigCursor(firstPage.NextCursor)},
+		"cross-monitor":    {MonitorID: otherMonitor.ID, Limit: 2, IncludeDrafts: true, Cursor: firstPage.NextCursor},
+		"cross-visibility": {MonitorID: monitor.ID, Limit: 2, IncludeDrafts: false, Cursor: firstPage.NextCursor},
+		"oversized":        {MonitorID: monitor.ID, Limit: 201, IncludeDrafts: true},
+	} {
+		if _, err := repository.ListConfigPage(context.Background(), query); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+			t.Errorf("%s error = %v", name, err)
+		}
+	}
+
+	shortCodec, err := pagination.NewCodec(strings.Repeat("short-monitor-config-secret-", 2), time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiringRepository := monitorpostgres.NewRepositoryWithCursorCodec(runtime, shortCodec)
+	expiring, err := expiringRepository.ListConfigPage(context.Background(), domain.MonitorConfigListQuery{MonitorID: monitor.ID, Limit: 1, IncludeDrafts: true})
+	if err != nil || expiring.NextCursor == "" {
+		t.Fatalf("expiring config page = %#v/%v", expiring, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := expiringRepository.ListConfigPage(context.Background(), domain.MonitorConfigListQuery{MonitorID: monitor.ID, Limit: 1, IncludeDrafts: true, Cursor: expiring.NextCursor}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired config cursor error = %v", err)
+	}
+}
+
+func tamperMonitorConfigCursor(value string) string {
+	replacement := byte('x')
+	if value[len(value)-1] == replacement {
+		replacement = 'y'
+	}
+	return value[:len(value)-1] + string(replacement)
 }
 
 func TestMonitorListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert(t *testing.T) {

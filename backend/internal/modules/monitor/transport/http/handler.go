@@ -28,7 +28,7 @@ type monitorService interface {
 	Restore(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)
 	Delete(context.Context, monitorapplication.LifecycleInput) (*domain.Monitor, error)
 	Get(context.Context, identitydomain.Subject, int64) (monitorapplication.MonitorView, error)
-	History(context.Context, identitydomain.Subject, int64) ([]monitorapplication.ConfigurationView, error)
+	History(context.Context, monitorapplication.HistoryInput) (monitorapplication.ConfigurationPage, error)
 	List(context.Context, monitorapplication.ListInput) (monitorapplication.MonitorPage, error)
 }
 
@@ -107,6 +107,8 @@ func (handler *Handler) Get(c *gin.Context) error {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "monitor ID"
+// @Param cursor query string false "cursor"
+// @Param limit query int false "page size"
 // @Success 200 {object} MonitorResult[MonitorVersionHistoryResponse]
 // @Failure 400 {object} MonitorResult[EmptyResponse]
 // @Failure 401 {object} MonitorResult[EmptyResponse]
@@ -123,12 +125,16 @@ func (handler *Handler) History(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	history, err := handler.service.History(c.Request.Context(), subject, id)
+	limit, err := monitorPageLimit(c)
 	if err != nil {
 		return err
 	}
-	response := MonitorVersionHistoryResponse{Items: make([]MonitorConfigResponse, 0, len(history))}
-	for _, item := range history {
+	history, err := handler.service.History(c.Request.Context(), monitorapplication.HistoryInput{Subject: subject, MonitorID: id, Cursor: c.Query("cursor"), Limit: limit})
+	if err != nil {
+		return err
+	}
+	response := MonitorVersionHistoryResponse{Items: make([]MonitorConfigResponse, 0, len(history.Items)), NextCursor: history.NextCursor}
+	for _, item := range history.Items {
 		response.Items = append(response.Items, monitorConfigResponse(item))
 	}
 	httptransport.OK(c, response)

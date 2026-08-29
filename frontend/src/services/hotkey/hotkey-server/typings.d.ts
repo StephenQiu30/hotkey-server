@@ -937,6 +937,8 @@ required property without making explicit null impossible to bind. */
   type getMonitorsIdScansParams = {
     /** monitor ID */
     id: number;
+    /** cursor */
+    cursor?: string;
     /** scan count */
     limit?: number;
   };
@@ -944,6 +946,10 @@ required property without making explicit null impossible to bind. */
   type getMonitorsIdVersionsParams = {
     /** monitor ID */
     id: number;
+    /** cursor */
+    cursor?: string;
+    /** page size */
+    limit?: number;
   };
 
   type getMonitorsParams = {
@@ -1755,6 +1761,7 @@ probability or a cross-channel relevance percentage. */
 
   type MonitorScanPageResponse = {
     items?: MonitorScanResponse[];
+    next_cursor?: string;
   };
 
   type MonitorScanResponse = {
@@ -1804,6 +1811,7 @@ probability or a cross-channel relevance percentage. */
 
   type MonitorVersionHistoryResponse = {
     items?: MonitorConfigResponse[];
+    next_cursor?: string;
   };
 
   type NotificationReadReceiptResponseDTO = {

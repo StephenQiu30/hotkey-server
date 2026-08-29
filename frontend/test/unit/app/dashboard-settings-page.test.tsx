@@ -138,6 +138,9 @@ describe("MonitorsPage", () => {
     expect(screen.getByText("监控词：Claude")).toBeInTheDocument();
     expect(screen.getByText("成功 · 接受 3 / 候选 8")).toBeInTheDocument();
     expect(screen.getByText("Hacker News")).toBeInTheDocument();
+	await waitFor(() =>
+		expect(mocks.getMonitorsIdScans).toHaveBeenCalledWith({ id: 9, limit: 1 })
+	);
     expect(
       screen.queryByText(/草稿|语义意图|AI 候选|配置哈希/)
     ).not.toBeInTheDocument();

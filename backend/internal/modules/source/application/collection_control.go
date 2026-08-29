@@ -34,6 +34,7 @@ type CollectionControlDependencies struct {
 
 type MonitorContributionAuthorizer interface {
 	AuthorizeContribution(context.Context, identitydomain.Subject, int64) error
+	AuthorizeRead(context.Context, identitydomain.Subject, int64) error
 }
 
 type CollectionRetryActivator interface {
@@ -95,6 +96,7 @@ type ManualCollectionInput struct {
 type MonitorScanListInput struct {
 	Subject   identitydomain.Subject
 	MonitorID int64
+	Cursor    string
 	Limit     int
 }
 
@@ -206,21 +208,24 @@ func (service *CollectionControlService) Manual(ctx context.Context, input Manua
 
 // Scans returns Monitor-scoped runs with source progress. It is safe for
 // viewers and contains no connector request or credential material.
-func (service *CollectionControlService) Scans(ctx context.Context, input MonitorScanListInput) ([]domain.MonitorScan, error) {
+func (service *CollectionControlService) Scans(ctx context.Context, input MonitorScanListInput) (domain.MonitorScanPage, error) {
 	if err := requireAuthenticated(input.Subject); err != nil {
-		return nil, err
+		return domain.MonitorScanPage{}, err
 	}
 	if input.MonitorID <= 0 || input.Limit < 1 || input.Limit > 100 {
-		return nil, domain.InvalidCollectionRequest()
+		return domain.MonitorScanPage{}, domain.InvalidCollectionRequest()
 	}
-	if service.scans == nil {
-		return nil, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
+	if service.scans == nil || service.monitors == nil {
+		return domain.MonitorScanPage{}, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
 	}
-	items, err := service.scans.ListMonitorScans(ctx, input.MonitorID, input.Limit)
+	if err := service.monitors.AuthorizeRead(ctx, input.Subject, input.MonitorID); err != nil {
+		return domain.MonitorScanPage{}, err
+	}
+	page, err := service.scans.ListMonitorScans(ctx, domain.MonitorScanListQuery{MonitorID: input.MonitorID, Cursor: input.Cursor, Limit: input.Limit})
 	if err != nil {
-		return nil, collectionControlError(err)
+		return domain.MonitorScanPage{}, collectionControlError(err)
 	}
-	return groupMonitorScans(items), nil
+	return domain.MonitorScanPage{Items: groupMonitorScans(page.Items), NextCursor: page.NextCursor}, nil
 }
 
 func groupMonitorScans(sources []domain.MonitorScanSource) []domain.MonitorScan {

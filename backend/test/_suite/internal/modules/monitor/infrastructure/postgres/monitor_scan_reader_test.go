@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,8 @@ import (
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
 func TestMonitorScanReaderKeepsIndependentThreeSourceFacts(t *testing.T) {
@@ -24,10 +27,11 @@ func TestMonitorScanReaderKeepsIndependentThreeSourceFacts(t *testing.T) {
 	insertScanFact(t, runtime, hnSourceID, hnMonitorSourceID, fixture.configID, scheduledAt, "succeeded", 0, 0, 0, "")
 	insertScanFact(t, runtime, xSourceID, xMonitorSourceID, fixture.configID, scheduledAt, "failed", 0, 0, 0, "rate_limited")
 
-	facts, err := monitorpostgres.NewMonitorScanReader(runtime).ListMonitorScans(context.Background(), fixture.monitorID, 10)
+	page, err := monitorpostgres.NewMonitorScanReader(runtime).ListMonitorScans(context.Background(), sourcedomain.MonitorScanListQuery{MonitorID: fixture.monitorID, Limit: 10})
 	if err != nil {
 		t.Fatalf("ListMonitorScans(): %v", err)
 	}
+	facts := page.Items
 	if len(facts) != 3 {
 		t.Fatalf("scan facts = %#v, want three independent sources", facts)
 	}
@@ -40,6 +44,67 @@ func TestMonitorScanReaderKeepsIndependentThreeSourceFacts(t *testing.T) {
 	if facts[2].SourceType != "x" || facts[2].Status != sourcedomain.CollectionRunFailed || facts[2].ErrorCode != "rate_limited" {
 		t.Fatalf("X rate-limit fact = %#v", facts[2])
 	}
+}
+
+func TestMonitorScanCursorIsSignedResourceBoundExpiringAndSnapshotStable(t *testing.T) {
+	runtime := monitorRepositoryRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	codec, err := pagination.NewCodec(strings.Repeat("monitor-scan-secret-", 2), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := monitorpostgres.NewMonitorScanReaderWithCursorCodec(runtime, codec)
+	base := time.Date(2026, time.August, 28, 6, 0, 0, 0, time.UTC)
+	fixture := seedCollectionTargetForSource(t, runtime, "scan-cursor", sourcedomain.SourceTypeRSS, "draft", false, true, true, false, base)
+	for index := range 3 {
+		insertScanFact(t, runtime, fixture.sourceID, fixture.monitorSourceID, fixture.configID, base.Add(time.Duration(index)*time.Hour), "succeeded", int64(index+1), int64(index+1), 0, "")
+	}
+
+	first, err := reader.ListMonitorScans(context.Background(), sourcedomain.MonitorScanListQuery{MonitorID: fixture.monitorID, Limit: 2})
+	if err != nil || len(first.Items) != 2 || first.NextCursor == "" || !first.Items[0].ScheduledAt.Equal(base.Add(2*time.Hour)) || !first.Items[1].ScheduledAt.Equal(base.Add(time.Hour)) {
+		t.Fatalf("first page = %#v/%v", first, err)
+	}
+	insertScanFact(t, runtime, fixture.sourceID, fixture.monitorSourceID, fixture.configID, base.Add(3*time.Hour), "succeeded", 4, 4, 0, "")
+	second, err := reader.ListMonitorScans(context.Background(), sourcedomain.MonitorScanListQuery{MonitorID: fixture.monitorID, Limit: 2, Cursor: first.NextCursor})
+	if err != nil || len(second.Items) != 1 || second.NextCursor != "" || !second.Items[0].ScheduledAt.Equal(base) {
+		t.Fatalf("second page = %#v/%v", second, err)
+	}
+	fresh, err := reader.ListMonitorScans(context.Background(), sourcedomain.MonitorScanListQuery{MonitorID: fixture.monitorID, Limit: 1})
+	if err != nil || len(fresh.Items) != 1 || !fresh.Items[0].ScheduledAt.Equal(base.Add(3*time.Hour)) {
+		t.Fatalf("fresh page = %#v/%v", fresh, err)
+	}
+
+	other := seedCollectionTargetForSource(t, runtime, "scan-cursor-other", sourcedomain.SourceTypeRSS, "draft", false, true, true, false, base)
+	for name, query := range map[string]sourcedomain.MonitorScanListQuery{
+		"tampered":      {MonitorID: fixture.monitorID, Limit: 2, Cursor: tamperMonitorScanCursor(first.NextCursor)},
+		"cross-monitor": {MonitorID: other.monitorID, Limit: 2, Cursor: first.NextCursor},
+		"oversized":     {MonitorID: fixture.monitorID, Limit: 101},
+	} {
+		if _, err := reader.ListMonitorScans(context.Background(), query); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+			t.Errorf("%s error = %v", name, err)
+		}
+	}
+
+	shortCodec, err := pagination.NewCodec(strings.Repeat("short-monitor-scan-secret-", 2), time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiring, err := monitorpostgres.NewMonitorScanReaderWithCursorCodec(runtime, shortCodec).ListMonitorScans(context.Background(), sourcedomain.MonitorScanListQuery{MonitorID: fixture.monitorID, Limit: 1})
+	if err != nil || expiring.NextCursor == "" {
+		t.Fatalf("expiring page = %#v/%v", expiring, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := monitorpostgres.NewMonitorScanReaderWithCursorCodec(runtime, shortCodec).ListMonitorScans(context.Background(), sourcedomain.MonitorScanListQuery{MonitorID: fixture.monitorID, Limit: 1, Cursor: expiring.NextCursor}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired cursor error = %v", err)
+	}
+}
+
+func tamperMonitorScanCursor(value string) string {
+	replacement := byte('x')
+	if value[len(value)-1] == replacement {
+		replacement = 'y'
+	}
+	return value[:len(value)-1] + string(replacement)
 }
 
 func seedAdditionalScanSource(t *testing.T, runtime *database.Runtime, configID int64, sourceType sourcedomain.SourceType, name, endpoint, authType string) (int64, int64) {

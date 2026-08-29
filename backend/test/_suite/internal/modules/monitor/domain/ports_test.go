@@ -20,8 +20,8 @@ func (*monitorRepositoryFake) LockByID(context.Context, int64) (*Monitor, error)
 func (*monitorRepositoryFake) FindConfig(context.Context, int64) (*MonitorConfigVersion, []MonitorRule, []MonitorSource, error) {
 	return nil, nil, nil, nil
 }
-func (*monitorRepositoryFake) ListConfigs(context.Context, int64) ([]MonitorConfigVersion, error) {
-	return nil, nil
+func (*monitorRepositoryFake) ListConfigPage(context.Context, MonitorConfigListQuery) (MonitorConfigPage, error) {
+	return MonitorConfigPage{}, nil
 }
 func (*monitorRepositoryFake) LockConfig(context.Context, int64) (*MonitorConfigVersion, []MonitorRule, []MonitorSource, error) {
 	return nil, nil, nil, nil

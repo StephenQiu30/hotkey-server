@@ -88,22 +88,25 @@ func TestMonitorHistoryReturnsAllVersionsToCollaboratorsAndPublishedOnlyToViewer
 		t.Fatalf("NewService(): %v", err)
 	}
 
-	editorHistory, err := service.History(context.Background(), identitydomain.Subject{UserID: 2, Role: identitydomain.RoleEditor}, 1)
+	editorHistory, err := service.History(context.Background(), HistoryInput{Subject: identitydomain.Subject{UserID: 2, Role: identitydomain.RoleEditor}, MonitorID: 1, Cursor: "editor-cursor", Limit: 2})
 	if err != nil {
 		t.Fatalf("editor History(): %v", err)
 	}
-	if len(editorHistory) != 3 || editorHistory[0].Config.Revision != 3 || editorHistory[2].Config.State != domain.ConfigVersionSuperseded {
+	if len(editorHistory.Items) != 3 || editorHistory.Items[0].Config.Revision != 3 || editorHistory.Items[2].Config.State != domain.ConfigVersionSuperseded || editorHistory.NextCursor != "next-config" {
 		t.Fatalf("editor history = %#v", editorHistory)
 	}
-	viewerHistory, err := service.History(context.Background(), identitydomain.Subject{UserID: 1, Role: identitydomain.RoleViewer}, 1)
+	if !repository.lastConfigQuery.IncludeDrafts || repository.lastConfigQuery.Cursor != "editor-cursor" || repository.lastConfigQuery.Limit != 2 {
+		t.Fatalf("editor config query = %#v", repository.lastConfigQuery)
+	}
+	viewerHistory, err := service.History(context.Background(), HistoryInput{Subject: identitydomain.Subject{UserID: 1, Role: identitydomain.RoleViewer}, MonitorID: 1})
 	if err != nil {
 		t.Fatalf("viewer History(): %v", err)
 	}
-	if len(viewerHistory) != 2 || viewerHistory[0].Config.State != domain.ConfigVersionPublished || viewerHistory[1].Config.State != domain.ConfigVersionSuperseded {
+	if len(viewerHistory.Items) != 2 || viewerHistory.Items[0].Config.State != domain.ConfigVersionPublished || viewerHistory.Items[1].Config.State != domain.ConfigVersionSuperseded || repository.lastConfigQuery.IncludeDrafts {
 		t.Fatalf("viewer history = %#v", viewerHistory)
 	}
-	analystHistory, err := service.History(context.Background(), identitydomain.Subject{UserID: 7, Role: identitydomain.RoleAnalyst}, 1)
-	if err != nil || len(analystHistory) != 3 {
+	analystHistory, err := service.History(context.Background(), HistoryInput{Subject: identitydomain.Subject{UserID: 7, Role: identitydomain.RoleAnalyst}, MonitorID: 1})
+	if err != nil || len(analystHistory.Items) != 3 || !repository.lastConfigQuery.IncludeDrafts {
 		t.Fatalf("analyst own history = %#v/%v", analystHistory, err)
 	}
 }
@@ -115,11 +118,12 @@ type readConfiguration struct {
 }
 type readRepository struct {
 	*previewRepository
-	monitors  map[int64]domain.Monitor
-	all       []domain.Monitor
-	configs   map[int64]readConfiguration
-	history   map[int64][]domain.MonitorConfigVersion
-	lastQuery domain.MonitorListQuery
+	monitors        map[int64]domain.Monitor
+	all             []domain.Monitor
+	configs         map[int64]readConfiguration
+	history         map[int64][]domain.MonitorConfigVersion
+	lastQuery       domain.MonitorListQuery
+	lastConfigQuery domain.MonitorConfigListQuery
 }
 
 func (repository *readRepository) FindByID(_ context.Context, id int64) (*domain.Monitor, error) {
@@ -146,8 +150,19 @@ func (repository *readRepository) List(_ context.Context, query domain.MonitorLi
 	}
 	return result, "", nil
 }
-func (repository *readRepository) ListConfigs(_ context.Context, monitorID int64) ([]domain.MonitorConfigVersion, error) {
-	return append([]domain.MonitorConfigVersion(nil), repository.history[monitorID]...), nil
+func (repository *readRepository) ListConfigPage(_ context.Context, query domain.MonitorConfigListQuery) (domain.MonitorConfigPage, error) {
+	repository.lastConfigQuery = query
+	items := append([]domain.MonitorConfigVersion(nil), repository.history[query.MonitorID]...)
+	if !query.IncludeDrafts {
+		filtered := items[:0]
+		for _, item := range items {
+			if item.State != domain.ConfigVersionDraft {
+				filtered = append(filtered, item)
+			}
+		}
+		items = filtered
+	}
+	return domain.MonitorConfigPage{Items: items, NextCursor: "next-config"}, nil
 }
 
 type readSourceReader struct{}

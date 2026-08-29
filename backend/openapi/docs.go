@@ -5543,6 +5543,12 @@ const docTemplate = `{
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
                         "maximum": 100,
                         "minimum": 1,
                         "type": "integer",
@@ -5601,6 +5607,18 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -12656,6 +12674,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/http.MonitorScanResponse"
                     }
+                },
+                "next_cursor": {
+                    "type": "string"
                 }
             }
         },
@@ -12824,6 +12845,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/http.MonitorConfigResponse"
                     }
+                },
+                "next_cursor": {
+                    "type": "string"
                 }
             }
         },

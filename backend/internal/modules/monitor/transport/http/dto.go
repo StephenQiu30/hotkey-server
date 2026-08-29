@@ -190,7 +190,8 @@ type MonitorConfigResponse struct {
 }
 
 type MonitorVersionHistoryResponse struct {
-	Items []MonitorConfigResponse `json:"items"`
+	Items      []MonitorConfigResponse `json:"items"`
+	NextCursor string                  `json:"next_cursor,omitempty"`
 }
 
 type MonitorResponse struct {

@@ -134,9 +134,11 @@ func TestCollectionServiceProjectsThreeSourcePartialSuccessWithoutPersistingAggr
 		}
 	}
 
+	monitorAuthorizer := &collectionMonitorAuthorizerFake{allowedUserID: 7, allowedMonitorID: monitorID}
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Connectors: registry,
 		Retries: collectionRetryActivatorFake{}, Scans: monitorpostgres.NewMonitorScanReader(runtime),
+		Monitors: monitorAuthorizer,
 	})
 	if err != nil {
 		t.Fatalf("NewCollectionControlService(): %v", err)
@@ -144,10 +146,13 @@ func TestCollectionServiceProjectsThreeSourcePartialSuccessWithoutPersistingAggr
 	scans, err := control.Scans(context.Background(), sourceapplication.MonitorScanListInput{
 		Subject: identitydomain.Subject{UserID: 7, SessionID: 9, Role: identitydomain.RoleViewer}, MonitorID: monitorID, Limit: 10,
 	})
-	if err != nil || len(scans) != 1 {
+	if err != nil || len(scans.Items) != 1 {
 		t.Fatalf("Scans() scans/error = %#v / %v, want one aggregate scan", scans, err)
 	}
-	scan := scans[0]
+	if monitorAuthorizer.readCalls != 1 {
+		t.Fatalf("monitor read authorization calls = %d, want one per scan request", monitorAuthorizer.readCalls)
+	}
+	scan := scans.Items[0]
 	if scan.Status != domain.MonitorScanPartial || scan.RunOutcome != domain.MonitorScanOutcomePartialSuccess || len(scan.Sources) != 3 {
 		t.Fatalf("aggregate scan = %#v, want three-source partial_success projection", scan)
 	}
@@ -1254,12 +1259,21 @@ type collectionMonitorAuthorizerFake struct {
 	allowedUserID    int64
 	allowedMonitorID int64
 	calls            int
+	readCalls        int
 }
 
 func (fake *collectionMonitorAuthorizerFake) AuthorizeContribution(_ context.Context, subject identitydomain.Subject, monitorID int64) error {
 	fake.calls++
 	if subject.UserID != fake.allowedUserID || monitorID != fake.allowedMonitorID {
 		return errors.New("monitor contribution forbidden")
+	}
+	return nil
+}
+
+func (fake *collectionMonitorAuthorizerFake) AuthorizeRead(_ context.Context, subject identitydomain.Subject, monitorID int64) error {
+	fake.readCalls++
+	if subject.UserID != fake.allowedUserID || monitorID != fake.allowedMonitorID {
+		return errors.New("monitor read forbidden")
 	}
 	return nil
 }

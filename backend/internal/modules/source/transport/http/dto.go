@@ -111,7 +111,8 @@ type MonitorScanSourceResponse struct {
 }
 
 type MonitorScanPageResponse struct {
-	Items []MonitorScanResponse `json:"items"`
+	Items      []MonitorScanResponse `json:"items"`
+	NextCursor string                `json:"next_cursor,omitempty"`
 }
 
 type MonitorScanResponse struct {
@@ -464,9 +465,9 @@ func manualCollectionResponse(summary domain.ManualCollectionSummary) ManualColl
 	}
 }
 
-func monitorScanPageResponse(items []domain.MonitorScan) MonitorScanPageResponse {
-	response := MonitorScanPageResponse{Items: make([]MonitorScanResponse, 0, len(items))}
-	for _, item := range items {
+func monitorScanPageResponse(page domain.MonitorScanPage) MonitorScanPageResponse {
+	response := MonitorScanPageResponse{Items: make([]MonitorScanResponse, 0, len(page.Items)), NextCursor: page.NextCursor}
+	for _, item := range page.Items {
 		scan := MonitorScanResponse{
 			ID: item.ID, MonitorID: item.MonitorID, TriggerType: string(item.TriggerType), Status: string(item.Status),
 			RunOutcome:     string(item.RunOutcome),

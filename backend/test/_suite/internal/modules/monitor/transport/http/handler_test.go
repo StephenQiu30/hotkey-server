@@ -388,31 +388,35 @@ func TestAgentMonitorRoutePreservesAgentCredentialSubject(t *testing.T) {
 func TestMonitorHistoryRouteReturnsLifecycleMetadata(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	publishedAt := time.Date(2026, time.August, 7, 8, 30, 0, 0, time.UTC)
-	service := &readMonitorService{history: []monitorapplication.ConfigurationView{
+	service := &readMonitorService{history: monitorapplication.ConfigurationPage{NextCursor: "next-version", Items: []monitorapplication.ConfigurationView{
 		{Config: domain.MonitorConfigVersion{
 			ID: 10, Version: 2, Revision: 2, State: domain.ConfigVersionPublished, ConfigHash: "sha256:history", PublishedAt: &publishedAt,
 			Config: domain.MonitorConfig{Timezone: "UTC", Languages: []string{"en"}, CollectionIntervalSeconds: 300, RelevanceThreshold: 60, EventThreshold: 10, RetentionDays: 30},
 		}},
-	}}
+	}}}
 	router := gin.New()
 	RegisterRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 2, SessionID: 2, Role: httptransport.RoleEditor}})
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/monitors/1/versions", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/monitors/1/versions?cursor=version-cursor&limit=25", nil)
 	request.Header.Set("Authorization", "Bearer editor")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	for _, expected := range []string{`"revision":2`, `"state":"published"`, `"config_hash":"sha256:history"`, `"published_at":"2026-08-07T08:30:00Z"`} {
+	for _, expected := range []string{`"revision":2`, `"state":"published"`, `"config_hash":"sha256:history"`, `"published_at":"2026-08-07T08:30:00Z"`, `"next_cursor":"next-version"`} {
 		if !strings.Contains(response.Body.String(), expected) {
 			t.Fatalf("history response missing %s: %s", expected, response.Body.String())
 		}
+	}
+	if service.lastHistory.MonitorID != 1 || service.lastHistory.Cursor != "version-cursor" || service.lastHistory.Limit != 25 || service.lastHistory.Subject.Role != identitydomain.RoleEditor {
+		t.Fatalf("history input = %#v", service.lastHistory)
 	}
 }
 
 type readMonitorService struct {
 	view        monitorapplication.MonitorView
-	history     []monitorapplication.ConfigurationView
+	history     monitorapplication.ConfigurationPage
+	lastHistory monitorapplication.HistoryInput
 	lastSubject identitydomain.Subject
 }
 
@@ -471,7 +475,8 @@ func (service *readMonitorService) Get(_ context.Context, input identitydomain.S
 	}
 	return view, nil
 }
-func (service *readMonitorService) History(context.Context, identitydomain.Subject, int64) ([]monitorapplication.ConfigurationView, error) {
+func (service *readMonitorService) History(_ context.Context, input monitorapplication.HistoryInput) (monitorapplication.ConfigurationPage, error) {
+	service.lastHistory = input
 	return service.history, nil
 }
 func (*readMonitorService) CreateActive(context.Context, monitorapplication.CreateInput) (*domain.Monitor, *domain.MonitorConfigVersion, error) {

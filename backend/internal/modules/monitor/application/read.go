@@ -39,6 +39,18 @@ type MonitorPage struct {
 	NextCursor string
 }
 
+type HistoryInput struct {
+	Subject   identitydomain.Subject
+	MonitorID int64
+	Cursor    string
+	Limit     int
+}
+
+type ConfigurationPage struct {
+	Items      []ConfigurationView
+	NextCursor string
+}
+
 // AuthorizeContribution is the narrow cross-module authorization port used by
 // workflows such as manual collection. Analyst access is owner-scoped while
 // Editor and Admin retain access to every Monitor.
@@ -54,6 +66,26 @@ func (service *Service) AuthorizeContribution(ctx context.Context, subject ident
 		return monitorReadError(err)
 	}
 	return authorizeMonitorContributor(subject, *monitor)
+}
+
+// AuthorizeRead is the narrow cross-module authorization port used by
+// Monitor-owned read projections such as collection scan history.
+func (service *Service) AuthorizeRead(ctx context.Context, subject identitydomain.Subject, id int64) error {
+	if err := requireAuthenticated(subject); err != nil {
+		return err
+	}
+	if id <= 0 {
+		return domain.MonitorDraftUnavailable()
+	}
+	monitor, err := service.monitors.FindByID(ctx, id)
+	if err != nil {
+		return monitorReadError(err)
+	}
+	if !canReadMonitorDraft(subject, *monitor) &&
+		(monitor.Status != domain.MonitorStatusActive && monitor.Status != domain.MonitorStatusPaused || monitor.PublishedConfigVersionID == nil) {
+		return domain.MonitorDraftUnavailable()
+	}
+	return nil
 }
 
 // Get returns a published-safe view to viewers for both active and paused
@@ -76,37 +108,36 @@ func (service *Service) Get(ctx context.Context, subject identitydomain.Subject,
 // History returns newest-first immutable configuration history. Viewers may
 // inspect only published/superseded versions of an operational Monitor; draft
 // facts remain restricted to editors and administrators.
-func (service *Service) History(ctx context.Context, subject identitydomain.Subject, id int64) ([]ConfigurationView, error) {
-	if err := requireAuthenticated(subject); err != nil {
-		return nil, err
+func (service *Service) History(ctx context.Context, input HistoryInput) (ConfigurationPage, error) {
+	if err := requireAuthenticated(input.Subject); err != nil {
+		return ConfigurationPage{}, err
 	}
-	if id <= 0 {
-		return nil, domain.MonitorDraftUnavailable()
+	if input.MonitorID <= 0 {
+		return ConfigurationPage{}, domain.MonitorDraftUnavailable()
 	}
-	monitor, err := service.monitors.FindByID(ctx, id)
+	monitor, err := service.monitors.FindByID(ctx, input.MonitorID)
 	if err != nil {
-		return nil, monitorReadError(err)
+		return ConfigurationPage{}, monitorReadError(err)
 	}
-	readOnly := !canReadMonitorDraft(subject, *monitor)
+	readOnly := !canReadMonitorDraft(input.Subject, *monitor)
 	if readOnly && (monitor.Status != domain.MonitorStatusActive && monitor.Status != domain.MonitorStatusPaused || monitor.PublishedConfigVersionID == nil) {
-		return nil, domain.MonitorDraftUnavailable()
+		return ConfigurationPage{}, domain.MonitorDraftUnavailable()
 	}
-	configs, err := service.monitors.ListConfigs(ctx, id)
+	page, err := service.monitors.ListConfigPage(ctx, domain.MonitorConfigListQuery{
+		MonitorID: input.MonitorID, Cursor: input.Cursor, Limit: input.Limit, IncludeDrafts: !readOnly,
+	})
 	if err != nil {
-		return nil, monitorReadError(err)
+		return ConfigurationPage{}, monitorReadError(err)
 	}
-	result := make([]ConfigurationView, 0, len(configs))
-	for _, config := range configs {
-		if readOnly && config.State == domain.ConfigVersionDraft {
-			continue
-		}
+	result := make([]ConfigurationView, 0, len(page.Items))
+	for _, config := range page.Items {
 		view, err := service.configurationView(ctx, config.ID)
 		if err != nil {
-			return nil, err
+			return ConfigurationPage{}, err
 		}
 		result = append(result, *view)
 	}
-	return result, nil
+	return ConfigurationPage{Items: result, NextCursor: page.NextCursor}, nil
 }
 
 // List preserves a fixed repository-owned cursor/id ascending order. Viewer

@@ -55,6 +55,10 @@ func newMonitorRepository(runtime *database.Runtime, codec *pagination.Codec) *m
 	return monitorpostgres.NewRepositoryWithCursorCodec(runtime, codec)
 }
 
+func newMonitorScanReader(runtime *database.Runtime, codec *pagination.Codec) *monitorpostgres.MonitorScanReader {
+	return monitorpostgres.NewMonitorScanReaderWithCursorCodec(runtime, codec)
+}
+
 func newReportRepository(runtime *database.Runtime, codec *pagination.Codec) *reportpostgres.Repository {
 	return reportpostgres.NewRepositoryWithCursorCodec(runtime, codec)
 }

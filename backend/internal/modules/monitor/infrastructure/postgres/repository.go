@@ -22,10 +22,11 @@ const ruleColumns = `id, version, config_version_id, rule_type, operator, value,
 const monitorSourceColumns = `id, version, config_version_id, source_connection_id, query_override, query_signature, priority, enabled`
 
 const (
-	monitorListDefaultLimit  = 50
-	monitorListMaximumLimit  = 200
-	monitorListFingerprint   = "monitors"
-	monitorListCursorVersion = 1
+	monitorListDefaultLimit    = 50
+	monitorListMaximumLimit    = 200
+	monitorListFingerprint     = "monitors"
+	monitorListCursorVersion   = 1
+	monitorConfigCursorPurpose = "monitor_config_history"
 )
 
 type monitorListCursor struct {
@@ -33,6 +34,16 @@ type monitorListCursor struct {
 	FilterFingerprint string `json:"filter"`
 	SnapshotID        int64  `json:"snapshot_id"`
 	AfterID           int64  `json:"after_id"`
+}
+
+type monitorConfigCursor struct {
+	Version       int       `json:"v"`
+	MonitorID     int64     `json:"monitor_id"`
+	IncludeDrafts bool      `json:"include_drafts"`
+	SnapshotID    int64     `json:"snapshot_id"`
+	SnapshotAt    time.Time `json:"snapshot_at"`
+	AfterRevision int64     `json:"after_revision"`
+	AfterID       int64     `json:"after_id"`
 }
 
 type Repository struct {
@@ -157,27 +168,76 @@ func (repository *Repository) FindConfig(ctx context.Context, id int64) (*domain
 	return repository.config(ctx, id, false)
 }
 
-func (repository *Repository) ListConfigs(ctx context.Context, monitorID int64) ([]domain.MonitorConfigVersion, error) {
-	if monitorID <= 0 {
-		return nil, fmt.Errorf("%w: monitor id is required", sharedrepository.ErrInvalidInput)
+func (repository *Repository) ListConfigPage(ctx context.Context, query domain.MonitorConfigListQuery) (domain.MonitorConfigPage, error) {
+	if repository == nil || repository.runtime == nil || repository.cursorCodec == nil {
+		return domain.MonitorConfigPage{}, sharedrepository.ErrUnavailable
 	}
-	rows, err := repository.queryRows(ctx, `SELECT `+configColumns+` FROM monitor_config_versions WHERE monitor_id = $1 ORDER BY revision DESC, id DESC`, monitorID)
+	limit, cursor, err := repository.monitorConfigParameters(ctx, query)
 	if err != nil {
-		return nil, databaserepository.MapError(err)
+		return domain.MonitorConfigPage{}, err
+	}
+	if cursor.SnapshotID == 0 {
+		return domain.MonitorConfigPage{Items: []domain.MonitorConfigVersion{}}, nil
+	}
+	rows, err := repository.queryRows(ctx, `SELECT `+configColumns+`
+FROM monitor_config_versions
+WHERE monitor_id = $1
+  AND id <= $2
+  AND ($3::boolean OR (state <> 'draft' AND published_at IS NOT NULL AND published_at <= $4))
+  AND ($5::bigint = 0 OR (revision, id) < ($5, $6))
+ORDER BY revision DESC, id DESC
+LIMIT $7`, query.MonitorID, cursor.SnapshotID, query.IncludeDrafts, cursor.SnapshotAt, cursor.AfterRevision, cursor.AfterID, limit+1)
+	if err != nil {
+		return domain.MonitorConfigPage{}, databaserepository.MapError(err)
 	}
 	defer rows.Close()
-	result := []domain.MonitorConfigVersion{}
+	result := make([]domain.MonitorConfigVersion, 0, limit+1)
 	for rows.Next() {
 		var config domain.MonitorConfigVersion
 		if err := rows.Scan(configScanTargets(&config)...); err != nil {
-			return nil, databaserepository.MapError(err)
+			return domain.MonitorConfigPage{}, databaserepository.MapError(err)
 		}
 		result = append(result, config)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, databaserepository.MapError(err)
+		return domain.MonitorConfigPage{}, databaserepository.MapError(err)
 	}
-	return result, nil
+	if len(result) <= limit {
+		return domain.MonitorConfigPage{Items: result}, nil
+	}
+	result = result[:limit]
+	last := result[len(result)-1]
+	cursor.AfterRevision = last.Revision
+	cursor.AfterID = last.ID
+	nextCursor, err := repository.cursorCodec.Seal(monitorConfigCursorPurpose, cursor)
+	if err != nil {
+		return domain.MonitorConfigPage{}, fmt.Errorf("%w: encode monitor config cursor", sharedrepository.ErrInvalidInput)
+	}
+	return domain.MonitorConfigPage{Items: result, NextCursor: nextCursor}, nil
+}
+
+func (repository *Repository) monitorConfigParameters(ctx context.Context, query domain.MonitorConfigListQuery) (int, monitorConfigCursor, error) {
+	limit := query.Limit
+	if limit == 0 {
+		limit = monitorListDefaultLimit
+	}
+	if query.MonitorID <= 0 || limit < 1 || limit > monitorListMaximumLimit {
+		return 0, monitorConfigCursor{}, fmt.Errorf("%w: invalid monitor config query", sharedrepository.ErrInvalidInput)
+	}
+	cursor := monitorConfigCursor{Version: 1, MonitorID: query.MonitorID, IncludeDrafts: query.IncludeDrafts}
+	if query.Cursor != "" {
+		if err := repository.cursorCodec.Open(query.Cursor, monitorConfigCursorPurpose, &cursor); err != nil ||
+			cursor.Version != 1 || cursor.MonitorID != query.MonitorID || cursor.IncludeDrafts != query.IncludeDrafts ||
+			cursor.SnapshotID <= 0 || cursor.SnapshotAt.IsZero() || cursor.AfterRevision <= 0 ||
+			cursor.AfterID <= 0 || cursor.AfterID > cursor.SnapshotID {
+			return 0, monitorConfigCursor{}, fmt.Errorf("%w: invalid monitor config cursor", sharedrepository.ErrInvalidInput)
+		}
+		return limit, cursor, nil
+	}
+	if err := repository.queryRow(ctx, `SELECT COALESCE(MAX(id), 0), CURRENT_TIMESTAMP FROM monitor_config_versions WHERE monitor_id = $1`, query.MonitorID).Scan(&cursor.SnapshotID, &cursor.SnapshotAt); err != nil {
+		return 0, monitorConfigCursor{}, databaserepository.MapError(err)
+	}
+	return limit, cursor, nil
 }
 
 func (repository *Repository) LockConfig(ctx context.Context, id int64) (*domain.MonitorConfigVersion, []domain.MonitorRule, []domain.MonitorSource, error) {

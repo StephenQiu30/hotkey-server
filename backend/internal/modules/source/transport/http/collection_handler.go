@@ -13,7 +13,7 @@ import (
 type collectionControlService interface {
 	List(context.Context, sourceapplication.CollectionRunListInput) (domain.CollectionRunPage, error)
 	Manual(context.Context, sourceapplication.ManualCollectionInput) (domain.ManualCollectionSummary, error)
-	Scans(context.Context, sourceapplication.MonitorScanListInput) ([]domain.MonitorScan, error)
+	Scans(context.Context, sourceapplication.MonitorScanListInput) (domain.MonitorScanPage, error)
 	Retry(context.Context, sourceapplication.CollectionRunRetryInput) (domain.CollectionRunSummary, error)
 	Health(context.Context, sourceapplication.SourceHealthInput) (domain.SourceHealth, error)
 }
@@ -25,6 +25,7 @@ type collectionControlService interface {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "monitor ID"
+// @Param cursor query string false "cursor"
 // @Param limit query int false "scan count" default(20) minimum(1) maximum(100)
 // @Success 200 {object} CollectionResult[MonitorScanPageResponse]
 // @Failure 400 {object} CollectionResult[EmptyResponse]
@@ -48,11 +49,11 @@ func (handler *CollectionHandler) Scans(c *gin.Context) error {
 			return domain.InvalidCollectionRequest()
 		}
 	}
-	items, err := handler.service.Scans(c.Request.Context(), sourceapplication.MonitorScanListInput{Subject: subject, MonitorID: id, Limit: limit})
+	page, err := handler.service.Scans(c.Request.Context(), sourceapplication.MonitorScanListInput{Subject: subject, MonitorID: id, Cursor: c.Query("cursor"), Limit: limit})
 	if err != nil {
 		return err
 	}
-	httptransport.OK(c, monitorScanPageResponse(items))
+	httptransport.OK(c, monitorScanPageResponse(page))
 	return nil
 }
 

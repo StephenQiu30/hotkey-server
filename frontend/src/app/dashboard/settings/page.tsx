@@ -162,7 +162,7 @@ export default function MonitorsPage() {
 
   const loadScan = useCallback(async (monitorID: number) => {
     try {
-      const result = await getMonitorsIdScans({ id: monitorID, limit: 20 });
+      const result = await getMonitorsIdScans({ id: monitorID, limit: 1 });
       setScans((current) => ({
         ...current,
         [monitorID]: { items: result.data?.items ?? [] },
