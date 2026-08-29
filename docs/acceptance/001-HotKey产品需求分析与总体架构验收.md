@@ -10,7 +10,7 @@ canonical_path: docs/acceptance/001-HotKey产品需求分析与总体架构验�
 design: docs/design/001-HotKey产品需求分析与总体架构设计.md
 prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 plan: docs/plans/001-HotKey产品需求分析与总体架构计划.md
-verified_revision: "021b90500a945e4d9babf0750caecd9ed81aec14"
+verified_revision: "5f06061d1bd6f2d571f7710b0ab35ff53bbab566"
 verification_date: "2026-08-29"
 ---
 
@@ -18,7 +18,7 @@ verification_date: "2026-08-29"
 
 ## 结论
 
-本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护、日报列表游标、微事件 Evidence 列表游标、全文检索结果游标、运维任务列表游标、审计日志列表游标、内容/热点列表游标、Monitor 列表游标、来源连接列表游标、采集运行列表游标、采集条目工作列表游标、相关性匹配列表游标、微事件榜单游标、反馈建议列表游标、Document Match/Rights 历史列表游标、用户管理列表游标、Knowledge Documents/Proposals 列表游标，以及 Monitor Scans/Versions 列表游标二十二组可复核证据；完整四角色 UAT、人工键盘矩阵、PostgreSQL/MinIO/Vault/River 联合恢复、全范围关键写入矩阵和全范围游标矩阵仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
+本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护，以及全部 P0 公开列表/固定参考集边界二十三组可复核证据；`AC-001-010` 已完成。完整四角色 UAT、人工键盘矩阵、PostgreSQL/MinIO/Vault/River 联合恢复和全范围关键写入矩阵仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
 
 本文件只关闭证据完整的局部门禁，不将浏览器 Fixture、自动化测试或候选性能结果扩大解释为完整 P0 发布验收。
 
@@ -27,11 +27,11 @@ verification_date: "2026-08-29"
 | 项目 | 实际值 |
 |---|---|
 | 验证日期 | 2026-08-29（Asia/Shanghai） |
-| 代码基线 | `021b90500a945e4d9babf0750caecd9ed81aec14` |
+| 代码基线 | `5f06061d1bd6f2d571f7710b0ab35ff53bbab566` |
 | 本机环境 | macOS 26.6.2、Apple arm64、Go 1.26.5、Node.js 24.19.0、uv 0.11.32 |
 | 项目运行 | 根 `docker-compose.yml`；Go Core、Python Agent、Web、PostgreSQL、Redis、MinIO 共 6 个服务均为 `healthy`；API `/readyz` 与 Web 首页均返回 HTTP 200 |
 | 自动化环境 | 本机既有工具链与可丢弃测试库；GitHub Actions Ubuntu Runner 与隔离 PostgreSQL、Redis、MinIO、Fresh Compose Project |
-| 远端证据 | [GitHub Actions 33235504594](https://github.com/StephenQiu30/hotkey-server/actions/runs/33235504594)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose 与 Fresh-container browser 共 8 个 Job 及最终汇总全部 `success` |
+| 远端证据 | [GitHub Actions 33237476339](https://github.com/StephenQiu30/hotkey-server/actions/runs/33237476339)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose 与 Fresh-container browser 共 8 个 Job 及最终汇总全部 `success` |
 
 ## P0 主故事现状矩阵
 
@@ -56,6 +56,8 @@ verification_date: "2026-08-29"
 | 微事件榜单 | `micro_events`、版本化 Heat/Relevance/Evidence 快照与 Event Query Repository | `/api/v1/micro-events`、`/dashboard/events` | `TestMicroEventQueryRepositoryAppliesMultiDimensionalFiltersAndStableRelevanceCursor`、`TestMicroEventListCursorFreezesRankingAndRejectsChangedQuery` | `latest/heat/relevance` 榜单使用筛选、排序、时间和首屏最大事件 ID 绑定的短期签名游标；首屏后的低排名新增事件不进入既有遍历 |
 | 运维任务 | `river_job` 安全元数据投影与 Operations Owner Repository | `/api/v1/operations/jobs`、`/dashboard/governance` | `TestJobRepositoryCursorIsSignedBoundExpiringAndSnapshotStable`、`TestJobListForwardsOpaqueSubjectBoundCursorAndReturnsNextCursor` | 管理员任务列表使用主体/筛选绑定的签名快照游标，连续遍历不跳过 `limit+1` 边界项 |
 | 运维审计日志 | 追加写 `audit_logs` 与 Operations Governance Repository | `/api/v1/operations/audit-logs`、`/dashboard/governance` | `TestGovernanceAuditCursorIsSignedBoundExpiringAndStableAcrossConcurrentInsert`、`TestGovernanceAuditForwardsOpaqueSubjectBoundCursor` | 管理员审计列表使用主体/筛选绑定的短期签名游标；篡改、过期和跨上下文复用均受控拒绝 |
+| AI Model Profiles | `ai_model_profiles` 与 Intelligence Owner Repository | `/api/v1/ai/model-profiles` | `TestModelProfileListCursorIsSignedExpiringAndSnapshotStable`、`TestModelProfileRoutesEnforceAdminControlPlaneAndRedactCredentials` | 管理员列表使用短期签名 ID 快照游标；并发新增只进入新查询，凭据不进入 DTO，篡改、过期和超限页受控拒绝 |
+| 固定参考集 | Operations Retention Domain/Schema 与 Source Preset Catalog | `/api/v1/operations/retention-policies`、`/api/v1/source-presets` | `TestRetentionPolicySchemaRejectsAnEighthDataClass`、`TestCatalogHasFixedTwelveItemMaximumAndKeepsConnectionDetailsServerSide`、HTTP 契约测试 | Retention Policies 由领域与数据库共同固定为 7 类并拒绝第 8 类；Source Presets 由服务端代码固定为 12 项、返回防御性副本且无游标遍历入口 |
 
 ## 证据登记
 
@@ -260,6 +262,17 @@ verification_date: "2026-08-29"
 - CI 证据：远端运行 [33235504594](https://github.com/StephenQiu30/hotkey-server/actions/runs/33235504594) 的 8 个必需 Job 与 `All acceptance gates` 汇总全部为 `success`；本机后端 `make ci`、前端 254 项测试/生产构建、开发与生产 Compose 配置以及 6 个现有健康服务复验均通过；
 - 边界：Scans 冻结一次遍历开始后的新增 Run，不承诺对已存在 Run 的运行状态变化提供历史时间旅行；Versions 的协作者视图包含草稿、只读视图仅含首次查询时已发布的版本，配置状态只能沿既有状态机演进。剩余 AI Model Profiles、Retention Policies、Source Presets 必须分别补分页或证明固定有界参考集。
 
+### `EV-001-023`：AI Model Profiles 与固定参考集边界闭环
+
+- 映射：`TASK-001-S02-T06` → `SPEC-001-API-004` → `AC-001-010` → `CHK-001-G3-004`；
+- 结果：AI Model Profiles、Retention Policies 与 Source Presets 三个剩余边界通过，`AC-001-010` 和 `CHK-001-G3-004` 关闭；
+- 失败证据：修复前 AI Model Profiles 管理接口一次返回全部记录，缺少页大小、快照与共享生产 Codec；Retention Domain/Schema 接受任意第 8 个 `data_class`；新增测试先分别因缺少分页领域对象/构造器、任意数据类仍通过校验、数据库未拒绝第 8 类和 Canonical Catalog 未记录第三个 CHECK 而失败。Source Presets 的既有 12 项实现已通过初始固定目录测试，因此没有伪造红灯；本轮只把精确 ID、12 项上限、防御性副本和 HTTP 无遍历契约固化为回归门禁；
+- 实现证据：提交 `5f06061d1bd6f2d571f7710b0ab35ff53bbab566` 为 `/api/v1/ai/model-profiles` 增加 `limit`、`cursor` 与 `next_cursor`，以不可变 `id ASC` 和首次查询最大 ID 冻结遍历范围；`ai_model_profile_list` 使用统一短期签名 Codec，生产 Bootstrap 注入正式密钥，过期、篡改和超限页映射为脱敏校验错误，OpenAPI 与生成客户端同步。Retention Policies 在领域白名单与 Canonical PostgreSQL Schema 中固定为 7 类，既有数据库通过命名 CHECK 收敛且第 8 类写入失败；Source Presets 继续由 Go 服务端固定为 12 项，不提供游标或客户端连接细节；
+- 测试证据：`TestModelProfileListCursorIsSignedExpiringAndSnapshotStable` 验证两页连续遍历、并发新增只进入新查询、签名、篡改、过期和页大小上限；`TestModelProfileRoutesEnforceAdminControlPlaneAndRedactCredentials` 固定 Admin 授权、参数透传、脱敏 DTO 与非法参数写前拒绝；`TestRetentionPolicyValidationAllowsOnlyFixedSevenDataClasses`、`TestRetentionPolicySchemaRejectsAnEighthDataClass` 和 `TestRetentionPoliciesAreAFixedSevenItemReferenceCatalog` 固定领域、真实 PostgreSQL 与 Canonical Catalog 三层契约；`TestCatalogHasFixedTwelveItemMaximumAndKeepsConnectionDetailsServerSide` 与 `TestSourcePresetCatalogIsServedByTheBackend` 固定精确 12 项、防御性副本、服务端解析及无 `next_cursor` 的有界响应；`TestP0UserListCursorsUseSignedExpiringCodec` 固定 AI 生产 Codec 接线；
+- CI 证据：远端运行 [33237476339](https://github.com/StephenQiu30/hotkey-server/actions/runs/33237476339) 的 8 个必需 Job 与 `All acceptance gates` 汇总全部为 `success`；本机后端 `make ci`、前端 254 项测试/生产构建、Agent 41 项测试与审计、开发/生产 Compose 配置以及 6 个既有健康服务的 API/Web 运行态复验均通过；
+- 完整范围：`EV-001-006` 至 `EV-001-023` 已逐项登记日报、微事件 Evidence/榜单、全文检索、内容/热点、Monitor/Scans/Versions、Document Match、来源连接、Rights Policy/Decision Batch、采集运行/条目、相关性匹配、反馈建议、运维任务/审计、Users、Knowledge Documents/Proposals、AI Model Profiles、Retention Policies 与 Source Presets；
+- 边界：AI 管理列表包含软删除记录以保持成员集合稳定，冻结并发新增但不伪造翻页期间字段更新的历史时间旅行；Retention 与 Presets 是小型固定参考集，不适用用户主体、并列排序或连续游标 Fixture，其有界性由精确成员、上限、无遍历入口和数据库拒绝额外成员共同证明。
+
 ## AC 结果
 
 | AC | 结果 | 说明 |
@@ -273,7 +286,7 @@ verification_date: "2026-08-29"
 | `AC-001-007` | passed | 见 `EV-001-004` |
 | `AC-001-008` | passed | 见 `EV-001-005` |
 | `AC-001-009` | partial | 多个关键写入已有授权、幂等、版本、冲突和审计测试，但尚无全 P0 写入口统一矩阵 |
-| `AC-001-010` | partial | 日报、微事件 Evidence、微事件榜单、全文检索结果、内容/热点、Monitor、Monitor Scans/Versions、Document Match、来源连接、Rights Policy/Decision Batch、采集运行、采集条目工作、相关性匹配、反馈建议、运维任务、审计日志、Users 与 Knowledge Documents/Proposals 列表已覆盖适用的稳定排序、签名、过期、主体/筛选/资源绑定、篡改拒绝及并发变化期间连续遍历；AI Model Profiles、Retention Policies、Source Presets 尚未完成分页或固定有界参考集证明 |
+| `AC-001-010` | passed | 见 `EV-001-006` 至 `EV-001-023`；所有 P0 公开列表均完成适用的稳定快照游标矩阵，Retention Policies 与 Source Presets 分别完成 7 类和 12 项固定有界参考集证明 |
 
 ## 实际命令与结果摘要
 
@@ -286,9 +299,10 @@ specialized: make agent-degradation-acceptance; make agent-skill-contract-accept
 identity cursor: go run ./test/runner test -p=1 ./internal/modules/identity/... ./internal/bootstrap ./test/architecture -count=1
 knowledge cursor: go run ./test/runner test -tags=integration -p=1 ./internal/modules/knowledge/infrastructure/postgres ./internal/modules/knowledge/transport/http ./test/architecture -run 'Test(KnowledgeListCursors|KnowledgeListRoutes|P0UserListCursors)' -count=1
 monitor history cursors: go run ./test/runner test -tags=integration -p=1 ./internal/modules/monitor/infrastructure/postgres ./internal/modules/monitor/application ./internal/modules/source/application ./internal/modules/monitor/transport/http ./internal/modules/source/transport/http ./test/architecture -run 'Test(MonitorScanCursor|MonitorConfigHistoryCursor|MonitorScanReaderKeeps|RepositoryListsConfigurationHistory|MonitorHistory|MonitorScan|Scans|AnalystCanManageOnlyAnOwnedMonitor|P0UserListCursors)' -count=1
+reference boundaries: go run ./test/runner test -tags=integration -p=1 ./internal/modules/intelligence/infrastructure/postgres ./internal/modules/intelligence/transport/http ./internal/modules/operations/domain ./internal/modules/operations/infrastructure/postgres ./internal/platform/database ./internal/modules/source/preset ./internal/modules/source/transport/http ./test/architecture -run 'Test(ModelProfileListCursor|ModelProfileRoutesEnforce|RetentionPolicyValidation|RetentionPoliciesAre|RetentionPolicySchemaRejects|CatalogHasFixed|SourcePresetCatalog|P0UserListCursors|OpenAPI)' -count=1
 ```
 
-本机全量结果通过；前端 254 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33235504594` 的 8 个必需 Job 与最终汇总全部通过。
+本机全量结果通过；前端 254 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33237476339` 的 8 个必需 Job 与最终汇总全部通过。
 
 ## 未完成项与停止条件
 
@@ -296,14 +310,13 @@ monitor history cursors: go run ./test/runner test -tags=integration -p=1 ./inte
 - `CHK-001-G2-001`：等待完整人工键盘/焦点矩阵，不以自动 Tab 与 WCAG 扫描替代；
 - `CHK-001-G3-002`：等待同一隔离恢复副本上的联合恢复、对账和真实 RPO/RTO；
 - `CHK-001-G3-003`：等待所有 P0 关键写入口的统一副作用、事实计数和追加审计矩阵；
-- `CHK-001-G3-004`：日报、微事件 Evidence、微事件榜单、全文检索结果、内容/热点、Monitor、Monitor Scans/Versions、Document Match、来源连接、Rights Policy/Decision Batch、采集运行、采集条目工作、相关性匹配、反馈建议、运维任务、审计日志、Users 与 Knowledge Documents/Proposals 列表子项已完成；等待 AI Model Profiles 补稳定分页，并逐项证明 Retention Policies、Source Presets 是固定有界参考集或同样补齐矩阵。
 
 以上任一项缺失时，本 Acceptance 不得改为 `passed`，001 Plan/PRD 不得改为 `completed/implemented`。
 
 ## 影响与回滚验证
 
-- Schema、运行配置和部署拓扑无变更；Users、Knowledge Documents/Proposals 及 Monitor Scans/Versions OpenAPI 均使用带 `items`/`next_cursor` 的分页对象和有界查询参数；其他已登记列表继续使用不透明字符串游标，采集条目工作列表只存在于 Go 模块内部；
-- 运行影响：用户管理页与知识页不再全量加载、截断或前端伪分页，连续翻页和操作后的当前页刷新均通过正式 API 完成；Users、Knowledge、Monitor Scans/Versions 分别以首次查询高水位排除既有遍历开始后的并发新增，Scans 每页重新执行 Monitor 可见性授权，设置页只请求实际展示的一条最新扫描。内部 Vault Reconciler 的完整文档读取保持不变；项目继续由根 Compose 运行，测试使用本机锁定工具链和可丢弃测试服务；
+- Schema 为 `retention_policies.data_class` 增加固定 7 类 CHECK，空库、重复收敛、Canonical Catalog 和第 8 类写入拒绝均已验证；AI Model Profiles OpenAPI/生成客户端改为带 `items`/`next_cursor` 的有界分页对象，Source Presets 保持精确 12 项无游标参考集；运行配置和部署拓扑不变；
+- 运行影响：AI 管理列表不再一次返回全集，以首次查询最大 ID 排除既有遍历开始后的并发新增；Users、Knowledge、Monitor Scans/Versions 等此前登记的分页行为保持不变，内部候选选择和 Vault Reconciler 全集读取不受公开分页影响；项目继续由根 Compose 运行，测试使用本机锁定工具链和可丢弃测试服务；
 - 回滚：若证据引用失效，回退本文件对应 EV 和 Plan 勾选即可，不删除业务事实、对象、Vault 内容或任务历史；架构契约会在引用的测试、命令或门禁状态漂移时失败；
 - 已知限制：本文件固定的代码基线早于记录本文件的提交；记录提交由同一 CI 再验证，但不以无法实现的“提交自引用哈希”冒充证据。
 

@@ -148,7 +148,7 @@ docker-compose-prod.yml
 - [x] `CHK-001-G3-001`（`AC-001-005`）：Result、OpenAPI、唯一 Schema 和生成客户端的单一事实源无冲突；证据：本机 `make ci`、前端 `openapi:check`、远端全绿门禁及 001 Acceptance `EV-001-003`。
 - [ ] `CHK-001-G3-002`（`AC-001-006`）：容量/性能测试和 PostgreSQL/MinIO/Vault/持久任务联合恢复的环境、数据、命令、统计法、对账与 RPO/RTO 测量均已冻结；预期证据：基准报告、恢复时间线和零未解释差异报告模板。
 - [ ] `CHK-001-G3-003`（`AC-001-009`）：关键写操作的未认证/越权、幂等重放、旧版本和并发冲突矩阵在副作用、事实计数与审计上闭合；预期证据：并发集成测试、稳定错误码、写前后事实计数和追加审计查询。
-- [ ] `CHK-001-G3-004`（`AC-001-010`）：并列排序和并发变化下连续游标遍历无回流、重复或漏项，页大小及无效/过期/越权游标均受控；日报、微事件 Evidence、微事件榜单、全文检索结果、运维任务、审计日志、内容/热点、Monitor、Monitor Scans/Versions、Document Match、来源连接、Rights Policy/Decision Batch、采集运行、采集条目工作、相关性匹配、反馈建议、Users 与 Knowledge Documents/Proposals 列表子项已由 `EV-001-006` 至 `EV-001-022` 证明；等待 AI Model Profiles 补稳定分页，并判定 Retention Policies、Source Presets 的固定有界参考集契约或补齐同类矩阵。
+- [x] `CHK-001-G3-004`（`AC-001-010`）：全部 P0 公开列表已完成适用的稳定排序、签名快照、并发变化、连续遍历、页大小及无效/过期/越权游标矩阵；AI Model Profiles 使用 `ai_model_profile_list` 签名 ID 快照游标，Retention Policies 与 Source Presets 分别由精确 7 类数据库约束和 12 项服务端目录证明固定有界且无遍历入口；证据：001 Acceptance `EV-001-006` 至 `EV-001-023`。
 - [x] `CHK-001-G4-001`（`AC-001-007`）：来源、Agent、Redis、MinIO 和 Vault 降级均已记录“事实继续/暂停/重试/人工介入”结论；Python Agent 只提交建议，越权 Evidence/状态在 Go Application/Domain 写入前拒绝，5 类 Agent 故障为零 Claim 写入；证据：001 Acceptance `EV-001-004`。
 - [x] `CHK-001-G4-002`（`AC-001-008`）：P0 全文检索只使用 PostgreSQL FTS/`pg_trgm`/权限重检，旧向量能力仍在受控迁移清单；自动知识区域可重建，人工区域只能从当前 Vault、受保护 Revision 或批准备份逐字恢复；证据：001 Acceptance `EV-001-005`。
 
