@@ -239,6 +239,15 @@ func TestM4ProjectionRecoveryKeepsFactsHumanRegionsAndAgentBoundary(t *testing.T
 			"Upload sanitized M4 projection recovery evidence",
 			"HOTKEY_M4_PROJECTION_RECOVERY_PRODUCTION_EGRESS_DISABLED",
 		},
+		"docs/acceptance/evidence/004/m4-projection-recovery-github-ubuntu-62af91fd.json": {
+			`"version": "hotkey-m4-projection-recovery-drill-v1"`,
+			`"git_revision": "62af91fd34cce491cdd2306cb7f60ba1bd6b83e6"`,
+			`"postgresql": true`,
+			`"provider_calls": 0`,
+			`"blind_replays": 0`,
+			`"revocation_visible_micros": 8832`,
+			`"differences": []`,
+		},
 		"backend/internal/bootstrap/projection_recovery_command.go": {
 			"--dry-run",
 			"confirm-isolated",
@@ -263,8 +272,9 @@ func TestM4ProjectionRecoveryKeepsFactsHumanRegionsAndAgentBoundary(t *testing.T
 		}
 	}
 	plan := readRepositoryFile(t, repository, "docs/plans/004-通知报告知识投影与检索计划.md")
-	if !strings.Contains(plan, "- [ ] `CHK-004-G5-001`") {
-		t.Error("M4 recovery checklist was completed before an isolated end-to-end recovery run")
+	if !strings.Contains(plan, "- [x] `CHK-004-G5-001`") ||
+		!strings.Contains(plan, "m4-projection-recovery-github-ubuntu-62af91fd.json") {
+		t.Error("M4 recovery checklist must cite the verified independent zero-difference recovery run")
 	}
 }
 

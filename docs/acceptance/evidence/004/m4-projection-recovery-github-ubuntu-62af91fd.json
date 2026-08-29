@@ -1,0 +1,100 @@
+{
+  "version": "hotkey-m4-projection-recovery-drill-v1",
+  "status": "verified",
+  "approval": "automated_isolated_fixture",
+  "git_revision": "62af91fd34cce491cdd2306cb7f60ba1bd6b83e6",
+  "environment": "github-actions-independent-recovery-copy",
+  "hardware": "ubuntu-latest-hosted-runner",
+  "goos": "linux",
+  "goarch": "amd64",
+  "logical_cpus": 4,
+  "isolated": true,
+  "production_egress_disabled": true,
+  "independent_copies": {
+    "postgresql": true,
+    "minio": true,
+    "vault": true
+  },
+  "backup_sha256": "ee1c1b397b34c12351ccc49144192915e4de5c17bc8e18055ae4fe5b5f0e92a2",
+  "protected_snapshot_sha256": "063f66ee791ec4518a5c5f17b8f89785d31781f22687805a261dd6146bd0c0a0",
+  "before_facts": {
+    "notification_outbox_count": 2,
+    "user_notification_count": 2,
+    "read_receipt_count": 1,
+    "delivery_attempt_count": 1,
+    "max_user_notification_id": 2,
+    "max_read_receipt_id": 1,
+    "max_delivery_attempt_id": 1,
+    "fingerprint_sha256": "f3abdea654749f764e11d04ce82d64fa7ddda2355e87ea731075bef200dc7704"
+  },
+  "after_facts": {
+    "notification_outbox_count": 2,
+    "user_notification_count": 2,
+    "read_receipt_count": 1,
+    "delivery_attempt_count": 1,
+    "max_user_notification_id": 2,
+    "max_read_receipt_id": 1,
+    "max_delivery_attempt_id": 1,
+    "fingerprint_sha256": "f3abdea654749f764e11d04ce82d64fa7ddda2355e87ea731075bef200dc7704"
+  },
+  "before_fact_ids": {
+    "notification_outbox_ids": [
+      1,
+      2
+    ],
+    "user_notification_ids": [
+      1,
+      2
+    ],
+    "read_receipt_ids": [
+      1
+    ],
+    "delivery_attempt_ids": [
+      1
+    ]
+  },
+  "after_fact_ids": {
+    "notification_outbox_ids": [
+      1,
+      2
+    ],
+    "user_notification_ids": [
+      1,
+      2
+    ],
+    "read_receipt_ids": [
+      1
+    ],
+    "delivery_attempt_ids": [
+      1
+    ]
+  },
+  "before_manual_region_sha256": "f7ec734b88561d33f8a1ab5d323e523c2cff79deebe111f2fdb8309913d27105",
+  "after_manual_region_sha256": "f7ec734b88561d33f8a1ab5d323e523c2cff79deebe111f2fdb8309913d27105",
+  "disposable_claims_before": 1,
+  "disposable_claims_after": 0,
+  "unknown_attempts_before": 1,
+  "unknown_attempts_after": 1,
+  "missing_vault_before": 1,
+  "missing_vault_after": 0,
+  "missing_search_before": 1,
+  "missing_search_after": 0,
+  "redis_ephemeral_keys_removed": 2,
+  "scheduled_jobs": 2,
+  "completed_jobs": 2,
+  "failed_job_attempts": 0,
+  "rebuild_duration_micros": 50355,
+  "revocation_visible_micros": 8832,
+  "search_rows_after_revocation": 1,
+  "visible_after_revocation": 0,
+  "projection_recovery_run_id": 1,
+  "provider_disposition": {
+    "provider_calls": 0,
+    "blind_replays": 0,
+    "unknown_attempt_ids": [
+      1
+    ],
+    "disposition": "manual_provider_reconciliation_required_before_any_replay"
+  },
+  "differences": []
+}
