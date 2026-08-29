@@ -88,6 +88,8 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 		"web_push_subscriptions":                {"id", "version", "user_id", "endpoint_sha256", "endpoint_ciphertext", "p256dh_ciphertext", "auth_ciphertext", "encryption_key_version", "device_label", "timezone", "quiet_start", "quiet_end", "ttl_seconds", "status", "expiration_reason", "last_success_at", "last_failure_at", "idempotency_key", "command_fingerprint", "created_at", "updated_at"},
 		"web_push_subscription_monitors":        {"id", "subscription_id", "monitor_id", "created_at"},
 		"source_credentials":                    {"id", "source_connection_id", "key_version", "nonce", "ciphertext", "updated_at"},
+		"retention_runs":                       {"id", "version", "retention_policy_id", "retention_policy_version", "data_class", "cutoff", "batch_size", "candidate_count", "has_more", "candidate_hash", "status", "requested_by_user_id", "approved_by_user_id", "approved_at", "executed_by_user_id", "executed_at", "affected", "failure_code", "created_at", "updated_at"},
+		"retention_run_items":                  {"id", "retention_run_id", "ordinal", "candidate_id", "created_at"},
 	}
 	for _, spec := range All() {
 		if spec.Table == "" || seen[spec.Table] {
@@ -106,7 +108,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 			t.Errorf("missing mapped table %s", table)
 		}
 	}
-	if got, want := len(seen), 155; got != want {
+	if got, want := len(seen), 157; got != want {
 		t.Errorf("mapped table count = %d, want %d", got, want)
 	}
 }
