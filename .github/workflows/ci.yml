@@ -191,7 +191,22 @@ jobs:
         run: make worker-recovery-acceptance
 
       - name: M4 fault and projection recovery acceptance
+        env:
+          HOTKEY_M4_PROJECTION_RECOVERY_OUTPUT: ${{ runner.temp }}/m4-projection-recovery-${{ github.run_id }}-${{ github.run_attempt }}.json
+          HOTKEY_M4_PROJECTION_RECOVERY_ENVIRONMENT: github-actions-independent-recovery-copy
+          HOTKEY_M4_PROJECTION_RECOVERY_HARDWARE: ubuntu-latest-hosted-runner
+          HOTKEY_M4_PROJECTION_RECOVERY_GIT_REVISION: ${{ github.sha }}
+          HOTKEY_M4_PROJECTION_RECOVERY_PRODUCTION_EGRESS_DISABLED: "true"
         run: make m4-fault-recovery-acceptance
+
+      - name: Upload sanitized M4 projection recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: m4-projection-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: ${{ runner.temp }}/m4-projection-recovery-${{ github.run_id }}-${{ github.run_attempt }}.json
 
       - name: Joint PostgreSQL MinIO Vault and River recovery acceptance
         env:

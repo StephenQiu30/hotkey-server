@@ -221,6 +221,24 @@ func TestM4ProjectionRecoveryKeepsFactsHumanRegionsAndAgentBoundary(t *testing.T
 			"func (service *VaultRecoveryService) Inspect",
 			"Inspect verifies the same protected source chain as Recover but never",
 		},
+		"backend/test/_suite/internal/modules/ingestion/infrastructure/postgres/m4_projection_recovery_drill_integration_test.go": {
+			`hotkey-m4-projection-recovery-drill-v1`,
+			`--exclude-table-data=public.document_version_search_indexes`,
+			`TestM4ProjectionRecoveryDrillRestoresIndependentCopyToZeroDifference`,
+			`queue.KindProjectKnowledge`,
+			`queue.KindGenerateSourceDocument`,
+			`manual_provider_reconciliation_required_before_any_replay`,
+			`os.O_WRONLY|os.O_CREATE|os.O_EXCL`,
+			`0o600`,
+		},
+		"backend/Makefile": {
+			"m4-fault-recovery-acceptance: test-env minio-test-env",
+			"TestM4ProjectionRecoveryDrillRestoresIndependentCopyToZeroDifference",
+		},
+		".github/workflows/ci.yml": {
+			"Upload sanitized M4 projection recovery evidence",
+			"HOTKEY_M4_PROJECTION_RECOVERY_PRODUCTION_EGRESS_DISABLED",
+		},
 		"backend/internal/bootstrap/projection_recovery_command.go": {
 			"--dry-run",
 			"confirm-isolated",
@@ -232,6 +250,8 @@ func TestM4ProjectionRecoveryKeepsFactsHumanRegionsAndAgentBoundary(t *testing.T
 			"不可变恢复运行记录",
 			"started_delivery_claim_requires_provider_reconciliation",
 			"Python Agent 不参与恢复编排",
+			"HOTKEY_M4_PROJECTION_RECOVERY_OUTPUT",
+			"不把 `document_version_search_indexes` 的可丢弃数据写入恢复包",
 		},
 	}
 	for relative, required := range contracts {
