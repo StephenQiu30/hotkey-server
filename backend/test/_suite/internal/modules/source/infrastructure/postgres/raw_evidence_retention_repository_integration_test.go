@@ -97,6 +97,64 @@ func TestRawEvidenceRetentionRepositoryRetriesFailedDeletionWithNextAttempt(t *t
 	}
 }
 
+func TestRawEvidenceRetentionRepositoryRevocationOverridesLiveRetentionAndApprovedException(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	ctx := context.Background()
+	snapshots := newEvidenceSnapshotRepository(t, runtime)
+	retention := sourcepostgres.NewRawEvidenceRetentionRepository(runtime)
+	fixture := newEvidenceRepositoryFixture(t, runtime.SQL, "retention-rights-revoked")
+	snapshot := commitRetentionSnapshot(t, ctx, snapshots, fixture)
+	var approverID int64
+	if err := runtime.SQL.QueryRow(`SELECT recorded_by_user_id FROM source_rights_policies WHERE id=(SELECT policy_id FROM source_rights_decisions WHERE id=$1)`, fixture.RetainDecisionID).Scan(&approverID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`INSERT INTO evidence_retention_exceptions
+(evidence_snapshot_id,approved_by_user_id,approval_basis,approved_at)
+VALUES ($1,$2,'approved retention cannot override current rights denial',CURRENT_TIMESTAMP)`, snapshot.ID, approverID); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Truncate(time.Microsecond)
+	denyPolicy := insertEvidencePolicy(t, runtime.SQL, fixture.SourceID, fixture.PolicySubject, 4, 300, "rights revocation fixture")
+	if _, err := insertEvidenceDecision(runtime.SQL, evidenceDecisionFixture{
+		SourceID: fixture.SourceID, PolicyID: denyPolicy.ID, PolicyRevision: 4, PolicySubject: fixture.PolicySubject,
+		Priority: 300, Basis: denyPolicy.Basis, SubjectKey: fixture.Reservation.EvidenceKey,
+		InputDigest: fixture.Reservation.PayloadSHA256, Action: "store_raw", Decision: "deny",
+		EffectiveFrom: at.Add(-time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err := retention.ClaimExpired(ctx, at, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || candidates[0].SnapshotID != snapshot.ID ||
+		candidates[0].ReasonCode != sourceapplication.RawEvidenceDeleteRightsRevoked ||
+		!snapshot.RetentionUntil.After(at) {
+		t.Fatalf("revoked candidate = %#v, retention_until=%s at=%s", candidates, snapshot.RetentionUntil, at)
+	}
+	if err := retention.CompleteDeletion(ctx, sourceapplication.CompleteRawEvidenceDeletionCommand{
+		SnapshotID: snapshot.ID, AttemptNo: candidates[0].AttemptNo, ObjectKey: snapshot.ObjectKey,
+		PayloadSHA256: snapshot.PayloadSHA256, DeletedAt: at,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var lifecycle string
+	var claimedReason, succeededReason string
+	if err := runtime.SQL.QueryRow(`SELECT lifecycle_state FROM evidence_snapshots WHERE id=$1`, snapshot.ID).Scan(&lifecycle); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT
+max(reason_code) FILTER (WHERE event_type='delete_claimed'),
+max(reason_code) FILTER (WHERE event_type='delete_succeeded')
+FROM evidence_deletion_audits WHERE evidence_snapshot_id=$1`, snapshot.ID).Scan(&claimedReason, &succeededReason); err != nil {
+		t.Fatal(err)
+	}
+	if lifecycle != "tombstoned" || claimedReason != sourceapplication.RawEvidenceDeleteRightsRevoked || succeededReason != claimedReason {
+		t.Fatalf("revoked deletion facts = lifecycle:%s claimed:%s succeeded:%s", lifecycle, claimedReason, succeededReason)
+	}
+}
+
 func commitRetentionSnapshot(t *testing.T, ctx context.Context, repository *sourcepostgres.EvidenceSnapshotRepository, fixture evidenceRepositoryFixture) sourceapplication.PersistedEvidenceSnapshotDTO {
 	t.Helper()
 	reserved, err := repository.Reserve(ctx, fixture.Reservation)

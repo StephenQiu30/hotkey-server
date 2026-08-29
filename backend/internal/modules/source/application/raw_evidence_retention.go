@@ -8,9 +8,11 @@ import (
 )
 
 const (
-	RawEvidenceDeleteObjectFailed    = "OBJECT_DELETE_FAILED"
-	RawEvidenceDeleteIntegrityFailed = "OBJECT_DELETE_INTEGRITY_FAILED"
-	MaximumRawEvidenceRetentionBatch = 100
+	RawEvidenceDeleteObjectFailed     = "OBJECT_DELETE_FAILED"
+	RawEvidenceDeleteIntegrityFailed  = "OBJECT_DELETE_INTEGRITY_FAILED"
+	RawEvidenceDeleteRetentionExpired = "RETENTION_EXPIRED"
+	RawEvidenceDeleteRightsRevoked    = "RIGHTS_REVOKED"
+	MaximumRawEvidenceRetentionBatch  = 100
 )
 
 // RawEvidenceRetentionCandidateDTO is a durable deletion lease. Object bytes
@@ -26,14 +28,17 @@ type RawEvidenceRetentionCandidateDTO struct {
 	RetentionUntil         time.Time
 	RetentionPolicyID      int64
 	RetentionPolicyVersion int64
+	ReasonCode             string
 }
 
 func (candidate RawEvidenceRetentionCandidateDTO) Validate(at time.Time) error {
 	if candidate.SnapshotID <= 0 || candidate.SourceConnectionID <= 0 || candidate.AttemptNo <= 0 ||
 		!validSHA256Hex(candidate.EvidenceKey) || !validSHA256Hex(candidate.PayloadSHA256) ||
 		candidate.ObjectKey != RawEvidenceObjectKey(candidate.SourceConnectionID, candidate.EvidenceKey) ||
-		candidate.RetentionUntil.IsZero() || candidate.RetentionUntil.After(at) ||
-		candidate.RetentionPolicyID <= 0 || candidate.RetentionPolicyVersion <= 0 {
+		candidate.RetentionUntil.IsZero() ||
+		candidate.RetentionPolicyID <= 0 || candidate.RetentionPolicyVersion <= 0 ||
+		(candidate.ReasonCode != RawEvidenceDeleteRetentionExpired && candidate.ReasonCode != RawEvidenceDeleteRightsRevoked) ||
+		(candidate.ReasonCode == RawEvidenceDeleteRetentionExpired && candidate.RetentionUntil.After(at)) {
 		return errors.New("raw evidence retention candidate is invalid")
 	}
 	return nil

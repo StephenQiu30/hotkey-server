@@ -1915,8 +1915,12 @@ CREATE TABLE IF NOT EXISTS evidence_deletion_audits (
     UNIQUE (evidence_snapshot_id,attempt_no,event_type),
     CHECK (event_type = 'delete_succeeded' OR NOT already_missing),
     CHECK (event_type <> 'delete_failed' OR reason_code IN ('OBJECT_DELETE_FAILED','OBJECT_DELETE_INTEGRITY_FAILED')),
-    CHECK (event_type = 'delete_failed' OR reason_code = 'RETENTION_EXPIRED')
+    CHECK (event_type = 'delete_failed' OR reason_code IN ('RETENTION_EXPIRED','RIGHTS_REVOKED'))
 );
+ALTER TABLE evidence_deletion_audits DROP CONSTRAINT IF EXISTS evidence_deletion_audits_check2;
+ALTER TABLE evidence_deletion_audits DROP CONSTRAINT IF EXISTS evidence_deletion_audits_success_reason_check;
+ALTER TABLE evidence_deletion_audits ADD CONSTRAINT evidence_deletion_audits_success_reason_check
+    CHECK (event_type = 'delete_failed' OR reason_code IN ('RETENTION_EXPIRED','RIGHTS_REVOKED'));
 ALTER TABLE evidence_deletion_audits DROP CONSTRAINT IF EXISTS evidence_deletion_audits_evidence_snapshot_id_fkey;
 ALTER TABLE evidence_deletion_audits ADD CONSTRAINT evidence_deletion_audits_evidence_snapshot_id_fkey
     FOREIGN KEY (evidence_snapshot_id) REFERENCES evidence_snapshots(id) ON DELETE RESTRICT;

@@ -35,18 +35,31 @@ func (repository *RawEvidenceRetentionRepository) ClaimExpired(ctx context.Conte
 	err := repository.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
 		rows, err := transaction.SQL.QueryContext(transactionCtx, `
 SELECT snapshot.id,snapshot.source_connection_id,btrim(snapshot.snapshot_key),snapshot.object_key,
-       btrim(snapshot.payload_sha256),snapshot.retention_until,policy.id,decision.policy_revision
+       btrim(snapshot.payload_sha256),snapshot.retention_until,policy.id,decision.policy_revision,
+       CASE WHEN NOT current_rights_action_is_allowed(
+              snapshot.source_connection_id,'raw_response',btrim(snapshot.snapshot_key),snapshot.payload_sha256,'store_raw',$1
+            ) OR current_rights_retention_days(
+              snapshot.source_connection_id,'raw_response',btrim(snapshot.snapshot_key),snapshot.payload_sha256,$1
+            ) IS NULL
+            THEN 'RIGHTS_REVOKED' ELSE 'RETENTION_EXPIRED' END
 FROM evidence_snapshots AS snapshot
 JOIN source_rights_decisions AS decision ON decision.id=snapshot.retain_rights_decision_id
 JOIN source_rights_policies AS policy ON policy.id=decision.policy_id
-WHERE snapshot.retention_until <= $1
-  AND snapshot.lifecycle_state IN ('raw_available','retention_blocked')
-  AND NOT EXISTS (
-      SELECT 1 FROM evidence_retention_exceptions AS exception
-      WHERE exception.evidence_snapshot_id=snapshot.id
-        AND exception.revoked_at IS NULL
-        AND exception.approved_at <= $1
-        AND (exception.expires_at IS NULL OR exception.expires_at > $1)
+WHERE snapshot.lifecycle_state IN ('raw_available','retention_blocked')
+  AND (
+      NOT current_rights_action_is_allowed(
+        snapshot.source_connection_id,'raw_response',btrim(snapshot.snapshot_key),snapshot.payload_sha256,'store_raw',$1
+      )
+      OR current_rights_retention_days(
+        snapshot.source_connection_id,'raw_response',btrim(snapshot.snapshot_key),snapshot.payload_sha256,$1
+      ) IS NULL
+      OR snapshot.retention_until <= $1 AND NOT EXISTS (
+          SELECT 1 FROM evidence_retention_exceptions AS exception
+          WHERE exception.evidence_snapshot_id=snapshot.id
+            AND exception.revoked_at IS NULL
+            AND exception.approved_at <= $1
+            AND (exception.expires_at IS NULL OR exception.expires_at > $1)
+      )
   )
   AND NOT EXISTS (
       SELECT 1 FROM evidence_deletion_audits AS audit
@@ -72,7 +85,7 @@ FOR UPDATE OF snapshot SKIP LOCKED`, at, at.Add(-rawEvidenceDeletionLeaseTimeout
 			var candidate sourceapplication.RawEvidenceRetentionCandidateDTO
 			if err := rows.Scan(&candidate.SnapshotID, &candidate.SourceConnectionID, &candidate.EvidenceKey,
 				&candidate.ObjectKey, &candidate.PayloadSHA256, &candidate.RetentionUntil,
-				&candidate.RetentionPolicyID, &candidate.RetentionPolicyVersion); err != nil {
+				&candidate.RetentionPolicyID, &candidate.RetentionPolicyVersion, &candidate.ReasonCode); err != nil {
 				_ = rows.Close()
 				return databaserepository.MapError(err)
 			}
@@ -103,9 +116,9 @@ SELECT COALESCE(max(attempt_no),0)+1 FROM evidence_deletion_audits WHERE evidenc
 INSERT INTO evidence_deletion_audits (
   evidence_snapshot_id,source_connection_id,retention_policy_id,retention_policy_version,
   attempt_no,event_type,object_key,payload_sha256,reason_code,occurred_at
-) VALUES ($1,$2,$3,$4,$5,'delete_claimed',$6,$7,'RETENTION_EXPIRED',$8)`,
+) VALUES ($1,$2,$3,$4,$5,'delete_claimed',$6,$7,$8,$9)`,
 				candidate.SnapshotID, candidate.SourceConnectionID, candidate.RetentionPolicyID, candidate.RetentionPolicyVersion,
-				candidate.AttemptNo, candidate.ObjectKey, candidate.PayloadSHA256, at); err != nil {
+				candidate.AttemptNo, candidate.ObjectKey, candidate.PayloadSHA256, candidate.ReasonCode, at); err != nil {
 				return databaserepository.MapError(err)
 			}
 			claimed = append(claimed, candidate)
@@ -137,9 +150,9 @@ func (repository *RawEvidenceRetentionRepository) CompleteDeletion(ctx context.C
 INSERT INTO evidence_deletion_audits (
   evidence_snapshot_id,source_connection_id,retention_policy_id,retention_policy_version,
   attempt_no,event_type,object_key,payload_sha256,reason_code,already_missing,occurred_at
-) VALUES ($1,$2,$3,$4,$5,'delete_succeeded',$6,$7,'RETENTION_EXPIRED',$8,$9)`,
+) VALUES ($1,$2,$3,$4,$5,'delete_succeeded',$6,$7,$8,$9,$10)`,
 			command.SnapshotID, identity.SourceConnectionID, identity.PolicyID, identity.PolicyVersion,
-			command.AttemptNo, command.ObjectKey, command.PayloadSHA256, command.AlreadyMissing, command.DeletedAt.UTC()); err != nil {
+			command.AttemptNo, command.ObjectKey, command.PayloadSHA256, identity.ReasonCode, command.AlreadyMissing, command.DeletedAt.UTC()); err != nil {
 			return databaserepository.MapError(err)
 		}
 		result, err := transaction.SQL.ExecContext(transactionCtx, `
@@ -187,20 +200,21 @@ type rawEvidenceDeletionIdentity struct {
 	ObjectKey          string
 	PayloadSHA256      string
 	LifecycleState     string
+	ReasonCode         string
 }
 
 func lockRawEvidenceDeletionAttempt(ctx context.Context, executor *sql.Tx, snapshotID int64, attemptNo int) (rawEvidenceDeletionIdentity, error) {
 	var identity rawEvidenceDeletionIdentity
 	err := executor.QueryRowContext(ctx, `
 SELECT snapshot.source_connection_id,audit.retention_policy_id,audit.retention_policy_version,
-       snapshot.object_key,btrim(snapshot.payload_sha256),snapshot.lifecycle_state
+       snapshot.object_key,btrim(snapshot.payload_sha256),snapshot.lifecycle_state,audit.reason_code
 FROM evidence_snapshots AS snapshot
 JOIN evidence_deletion_audits AS audit
   ON audit.evidence_snapshot_id=snapshot.id AND audit.attempt_no=$2 AND audit.event_type='delete_claimed'
 WHERE snapshot.id=$1
 FOR UPDATE OF snapshot`, snapshotID, attemptNo).Scan(
 		&identity.SourceConnectionID, &identity.PolicyID, &identity.PolicyVersion,
-		&identity.ObjectKey, &identity.PayloadSHA256, &identity.LifecycleState,
+		&identity.ObjectKey, &identity.PayloadSHA256, &identity.LifecycleState, &identity.ReasonCode,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rawEvidenceDeletionIdentity{}, fmt.Errorf("%w: raw evidence deletion attempt", sharedrepository.ErrNotFound)

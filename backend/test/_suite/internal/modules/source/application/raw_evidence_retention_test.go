@@ -47,6 +47,7 @@ func TestRawEvidenceRetentionDeletesExpiredCandidatesAndTombstonesMetadata(t *te
 		SnapshotID: 41, SourceConnectionID: 7, AttemptNo: 2,
 		PayloadSHA256: repeatRetentionHex("b"), EvidenceKey: repeatRetentionHex("c"),
 		RetentionUntil: at.Add(-time.Minute), RetentionPolicyID: 3, RetentionPolicyVersion: 4,
+		ReasonCode: RawEvidenceDeleteRetentionExpired,
 	}
 	candidate.ObjectKey = RawEvidenceObjectKey(candidate.SourceConnectionID, candidate.EvidenceKey)
 	repository := &rawEvidenceRetentionRepositoryFake{candidates: []RawEvidenceRetentionCandidateDTO{candidate}}
@@ -75,6 +76,7 @@ func TestRawEvidenceRetentionRecordsDeleteFailureWithoutTombstoning(t *testing.T
 		SnapshotID: 42, SourceConnectionID: 8, AttemptNo: 1,
 		PayloadSHA256: repeatRetentionHex("e"), EvidenceKey: repeatRetentionHex("f"),
 		RetentionUntil: at.Add(-time.Hour), RetentionPolicyID: 5, RetentionPolicyVersion: 6,
+		ReasonCode: RawEvidenceDeleteRetentionExpired,
 	}
 	candidate.ObjectKey = RawEvidenceObjectKey(candidate.SourceConnectionID, candidate.EvidenceKey)
 	repository := &rawEvidenceRetentionRepositoryFake{candidates: []RawEvidenceRetentionCandidateDTO{candidate}}
@@ -101,6 +103,7 @@ func TestRawEvidenceRetentionRejectsMismatchedDeleteReceipt(t *testing.T) {
 		SnapshotID: 43, SourceConnectionID: 9, AttemptNo: 1,
 		PayloadSHA256: repeatRetentionHex("2"), EvidenceKey: repeatRetentionHex("3"),
 		RetentionUntil: at.Add(-time.Hour), RetentionPolicyID: 7, RetentionPolicyVersion: 8,
+		ReasonCode: RawEvidenceDeleteRetentionExpired,
 	}
 	candidate.ObjectKey = RawEvidenceObjectKey(candidate.SourceConnectionID, candidate.EvidenceKey)
 	repository := &rawEvidenceRetentionRepositoryFake{candidates: []RawEvidenceRetentionCandidateDTO{candidate}}
