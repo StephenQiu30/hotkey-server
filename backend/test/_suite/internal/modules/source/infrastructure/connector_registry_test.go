@@ -131,7 +131,7 @@ type credentialStoreFake struct {
 type allowingExternalRequestBudget struct{}
 
 func (allowingExternalRequestBudget) ReserveExternalRequest(_ context.Context, reservation domain.ExternalRequestBudgetReservation) (domain.ExternalRequestBudgetDecision, error) {
-	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
+	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, RateUsed: 1, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
 }
 
 func (*credentialStoreFake) Store(context.Context, int64, string, int64) error { return nil }

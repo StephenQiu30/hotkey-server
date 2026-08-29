@@ -30,12 +30,14 @@ type InstantSearchSourceReader interface {
 
 type InstantSearchDependencies struct {
 	Sources    InstantSearchSourceReader
+	Admission  CollectionAdmissionAuthorizer
 	Connectors domain.CollectionConnectorRegistry
 	Now        func() time.Time
 }
 
 type InstantSearchService struct {
 	sources    InstantSearchSourceReader
+	admission  CollectionAdmissionAuthorizer
 	connectors domain.CollectionConnectorRegistry
 	now        func() time.Time
 }
@@ -55,13 +57,13 @@ type InstantSearchResult struct {
 }
 
 func NewInstantSearchService(dependencies InstantSearchDependencies) (*InstantSearchService, error) {
-	if dependencies.Sources == nil || dependencies.Connectors == nil {
+	if dependencies.Sources == nil || dependencies.Admission == nil || dependencies.Connectors == nil {
 		return nil, errors.New("instant search dependencies are required")
 	}
 	if dependencies.Now == nil {
 		dependencies.Now = func() time.Time { return time.Now().UTC() }
 	}
-	return &InstantSearchService{sources: dependencies.Sources, connectors: dependencies.Connectors, now: dependencies.Now}, nil
+	return &InstantSearchService{sources: dependencies.Sources, admission: dependencies.Admission, connectors: dependencies.Connectors, now: dependencies.Now}, nil
 }
 
 func (service *InstantSearchService) Search(ctx context.Context, input InstantSearchInput) (InstantSearchResult, error) {
@@ -158,6 +160,9 @@ func (service *InstantSearchService) searchConnections(ctx context.Context, conn
 }
 
 func (service *InstantSearchService) searchConnection(ctx context.Context, connection domain.SourceConnection, query string, limit int, now time.Time) ([]sharedhotspot.Card, error) {
+	if err := service.admission.AuthorizeCollection(ctx, connection); err != nil {
+		return nil, err
+	}
 	connector, err := service.connectors.Resolve(ctx, connection)
 	if err != nil {
 		return nil, err

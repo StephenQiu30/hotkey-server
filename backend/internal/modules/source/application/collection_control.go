@@ -24,6 +24,7 @@ type CollectionControlDependencies struct {
 	Sources    domain.SourceConnectionRepository
 	Runs       domain.CollectionRepository
 	Connectors domain.CollectionConnectorRegistry
+	Admission  CollectionProbeAuthorizer
 	Metrics    CollectionMetrics
 	Retries    CollectionRetryActivator
 	Manuals    ManualCollectionActivator
@@ -53,6 +54,7 @@ type CollectionControlService struct {
 	sources    domain.SourceConnectionRepository
 	runs       domain.CollectionRepository
 	connectors domain.CollectionConnectorRegistry
+	admission  CollectionProbeAuthorizer
 	metrics    CollectionMetrics
 	retries    CollectionRetryActivator
 	manuals    ManualCollectionActivator
@@ -71,12 +73,15 @@ func NewCollectionControlService(dependencies CollectionControlDependencies) (*C
 	if dependencies.Metrics == nil {
 		dependencies.Metrics = noopCollectionMetrics{}
 	}
+	if dependencies.Admission == nil {
+		dependencies.Admission = unavailableCollectionProbeAuthorizer{}
+	}
 	if dependencies.Now == nil {
 		dependencies.Now = func() time.Time { return time.Now().UTC() }
 	}
 	return &CollectionControlService{
 		runtime: dependencies.Runtime, sources: dependencies.Sources, runs: dependencies.Runs,
-		connectors: dependencies.Connectors, metrics: dependencies.Metrics, retries: dependencies.Retries,
+		connectors: dependencies.Connectors, admission: dependencies.Admission, metrics: dependencies.Metrics, retries: dependencies.Retries,
 		manuals: dependencies.Manuals, targets: dependencies.Targets, now: dependencies.Now, quota: dependencies.Quota,
 		scans: dependencies.Scans, monitors: dependencies.Monitors, audit: dependencies.Audit,
 	}, nil
@@ -373,9 +378,14 @@ func (service *CollectionControlService) Health(ctx context.Context, input Sourc
 	}
 
 	probe := domain.HealthResult{CheckedAt: service.now().UTC(), ErrorKind: domain.CollectionErrorPermanent, DiagnosticCode: "connector_unavailable"}
-	connector, resolveErr := service.connectors.Resolve(ctx, *connection)
-	if resolveErr == nil {
-		probe = connector.Health(ctx, *connection)
+	if admissionErr := service.admission.AuthorizeProbe(ctx, *connection); admissionErr != nil {
+		probe.ErrorKind = domain.ClassifyCollectionError(admissionErr)
+		probe.DiagnosticCode = healthAdmissionCode(probe.ErrorKind)
+	} else {
+		connector, resolveErr := service.connectors.Resolve(ctx, *connection)
+		if resolveErr == nil {
+			probe = connector.Health(ctx, *connection)
+		}
 	}
 	if probe.CheckedAt.IsZero() {
 		probe.CheckedAt = service.now().UTC()
@@ -394,6 +404,25 @@ func (service *CollectionControlService) Health(ctx context.Context, input Sourc
 		service.metrics.RecordCollectionOperation("health", "unhealthy")
 	}
 	return result, nil
+}
+
+type unavailableCollectionProbeAuthorizer struct{}
+
+func (unavailableCollectionProbeAuthorizer) AuthorizeProbe(context.Context, domain.SourceConnection) error {
+	return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("collection probe admission is unavailable"))
+}
+
+func healthAdmissionCode(kind domain.CollectionErrorKind) string {
+	switch kind {
+	case domain.CollectionErrorAuthentication:
+		return "credential_unavailable"
+	case domain.CollectionErrorRateLimited:
+		return "rate_limited"
+	case domain.CollectionErrorTemporary:
+		return "admission_unavailable"
+	default:
+		return "policy_not_permitted"
+	}
 }
 
 func (service *CollectionControlService) persistHealth(ctx context.Context, subject identitydomain.Subject, observed domain.SourceConnection, probe domain.HealthResult) error {
@@ -440,7 +469,7 @@ func healthStatus(probe domain.HealthResult) domain.HealthStatus {
 
 func safeHealthCode(value string) string {
 	switch value {
-	case "invalid_source_connection", "request_failed", "upstream_status", "connector_unavailable", "destination_not_permitted", "credential_unavailable":
+	case "invalid_source_connection", "request_failed", "upstream_status", "connector_unavailable", "destination_not_permitted", "credential_unavailable", "rate_limited", "admission_unavailable", "policy_not_permitted":
 		return value
 	default:
 		return "probe_failed"

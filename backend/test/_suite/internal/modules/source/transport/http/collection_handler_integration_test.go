@@ -28,6 +28,7 @@ func TestCollectionAdminHTTPIntegrationUsesSafeDTOsAndDurableStateCommands(t *te
 	service, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionHTTPRegistry{connector: collectionHTTPConnector{health: domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.CollectionErrorTemporary, DiagnosticCode: "request_failed"}}},
+		Admission:  collectionHTTPProbeAdmission{},
 		Retries:    collectionHTTPRetryActivator{},
 		Now:        func() time.Time { return checkedAt },
 		Audit:      operationspostgres.NewAuditWriter(runtime),
@@ -75,6 +76,12 @@ func TestCollectionAdminHTTPIntegrationUsesSafeDTOsAndDurableStateCommands(t *te
 type collectionHTTPRetryActivator struct{}
 
 func (collectionHTTPRetryActivator) Reactivate(context.Context, domain.CollectionRunRetry) error {
+	return nil
+}
+
+type collectionHTTPProbeAdmission struct{}
+
+func (collectionHTTPProbeAdmission) AuthorizeProbe(context.Context, domain.SourceConnection) error {
 	return nil
 }
 

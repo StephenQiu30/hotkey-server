@@ -99,6 +99,28 @@ func (store *Store) Delete(ctx context.Context, sourceID int64) error {
 	return databaserepository.MapError(err)
 }
 
+// ManagedCredentialAvailable checks only durable credential metadata and key
+// readiness. Plaintext is never selected or decrypted during collection
+// admission; Resolve remains the request-boundary operation.
+func (store *Store) ManagedCredentialAvailable(ctx context.Context, sourceID int64) (bool, error) {
+	if store == nil || store.runtime == nil || store.runtime.SQL == nil || sourceID <= 0 {
+		return false, sharedrepository.ErrInvalidInput
+	}
+	if store.cipher == nil {
+		return false, nil
+	}
+	var keyVersion int
+	if err := store.runtime.SQL.QueryRowContext(ctx, `
+SELECT key_version
+FROM source_credentials
+WHERE source_connection_id = $1`, sourceID).Scan(&keyVersion); errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	} else if err != nil {
+		return false, databaserepository.MapError(err)
+	}
+	return store.cipher.supportsKeyVersion(keyVersion), nil
+}
+
 func (store *Store) Resolve(ctx context.Context, sourceID int64) (string, error) {
 	if store == nil || store.runtime == nil || store.runtime.SQL == nil || store.cipher == nil || sourceID <= 0 {
 		return "", sharedrepository.ErrUnavailable

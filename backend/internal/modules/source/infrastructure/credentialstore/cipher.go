@@ -27,6 +27,10 @@ type SealedCredential struct {
 	Ciphertext []byte
 }
 
+func (value *Cipher) supportsKeyVersion(version int) bool {
+	return value != nil && value.keys[version] != nil
+}
+
 func NewCipher(encodedKey string) (*Cipher, error) {
 	return NewCipherKeyring(currentKeyVersion, encodedKey, nil)
 }

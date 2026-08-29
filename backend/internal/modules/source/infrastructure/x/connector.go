@@ -68,6 +68,7 @@ type Connector struct {
 	resolver       lookupIPAddrFunc
 	resourceLimits ResourceLimitProfile
 	requestBudget  domain.ExternalRequestBudget
+	perMinuteLimit int64
 	retryWait      func(context.Context, int) error
 }
 
@@ -242,7 +243,7 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	}
 	configuredReadTimeout := time.Duration(normalized.Config.RequestTimeoutSeconds) * time.Second
 	reserveRedirect := func(ctx context.Context) error {
-		return reserveXRequest(ctx, options.requestBudget, normalized.ID, options.resourceLimits, options.now)
+		return reserveXRequest(ctx, options.requestBudget, normalized.ID, options.resourceLimits, int64(normalized.Config.RateLimitPerMinute), options.now)
 	}
 	transport := &http.Transport{
 		Proxy: nil, ForceAttemptHTTP2: true, TLSClientConfig: tlsConfig,
@@ -270,7 +271,7 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 		enabled: normalized.Enabled, deleted: normalized.Deleted, http: client,
 		now: options.now, resourceLimits: options.resourceLimits,
 		lookupManaged: options.lookupManaged, resolver: options.resolver,
-		requestBudget: options.requestBudget, retryWait: options.retryWait,
+		requestBudget: options.requestBudget, perMinuteLimit: int64(normalized.Config.RateLimitPerMinute), retryWait: options.retryWait,
 	}, nil
 }
 
@@ -546,7 +547,7 @@ func (connector *Connector) get(ctx context.Context, parameters url.Values, toke
 
 func (connector *Connector) getAt(ctx context.Context, endpoint *url.URL, parameters url.Values, token string, byteBudget *responseByteBudget) (fetchedJSONResponse, domain.RateLimit, error) {
 	for attempt := 0; ; attempt++ {
-		if err := reserveXRequest(ctx, connector.requestBudget, connector.sourceID, connector.resourceLimits, connector.now); err != nil {
+		if err := reserveXRequest(ctx, connector.requestBudget, connector.sourceID, connector.resourceLimits, connector.perMinuteLimit, connector.now); err != nil {
 			var quota requestQuotaError
 			if errors.As(err, &quota) {
 				resetAt := quota.resetAt.UTC()
@@ -613,14 +614,14 @@ type requestQuotaError struct{ resetAt time.Time }
 
 func (err requestQuotaError) Error() string { return "X daily request quota exceeded" }
 
-func reserveXRequest(ctx context.Context, budget domain.ExternalRequestBudget, sourceID int64, profile ResourceLimitProfile, now func() time.Time) error {
+func reserveXRequest(ctx context.Context, budget domain.ExternalRequestBudget, sourceID int64, profile ResourceLimitProfile, perMinuteLimit int64, now func() time.Time) error {
 	decision, err := budget.ReserveExternalRequest(ctx, domain.ExternalRequestBudgetReservation{
-		SourceConnectionID: sourceID, ResourceProfileVersion: profile.Version, DailyLimit: profile.DailyRequestQuota, At: now().UTC(),
+		SourceConnectionID: sourceID, ResourceProfileVersion: profile.Version, DailyLimit: profile.DailyRequestQuota, PerMinuteLimit: perMinuteLimit, At: now().UTC(),
 	})
 	if err != nil {
 		return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("reserve X request budget"))
 	}
-	if err := decision.Validate(profile.DailyRequestQuota); err != nil {
+	if err := decision.Validate(profile.DailyRequestQuota, perMinuteLimit); err != nil {
 		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid X request budget decision"))
 	}
 	if !decision.Allowed {

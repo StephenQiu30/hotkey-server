@@ -117,6 +117,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newRightsManagementAuditWriter,
 				newRightsManagementService,
 				newSourceCredentialStore,
+				sourcepostgres.NewExternalRequestBudget,
+				newCollectionRequestBudgetStatus,
 				sourcepostgres.NewRightsDecisionReader,
 				sourcepostgres.NewMetricCapabilityRepository,
 				newMetricCapabilityService,
@@ -196,6 +198,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newMonitorIntentAnalysisProcessor,
 				exposeMonitorIntentAnalysisAvailability,
 				newSourceConnectorRegistry,
+				newCollectionAdmissionGate,
 				newKnowledgeVaultWriter,
 				newKnowledgeProjectionService,
 				newKnowledgeRepository,
@@ -362,12 +365,12 @@ func newSourceCredentialStore(runtime *database.Runtime, cfg config.Config) (*so
 	return sourcecredentialstore.NewStoreWithKeyring(runtime, cfg.SourceCredentialMasterKeyVersion, cfg.SourceCredentialMasterKey, previous)
 }
 
-func newSourceConnectorRegistry(cfg config.Config, runtime *database.Runtime, credentials *sourcecredentialstore.Store) (*sourceinfrastructure.ConnectorRegistry, error) {
+func newSourceConnectorRegistry(cfg config.Config, credentials *sourcecredentialstore.Store, requestBudget *sourcepostgres.ExternalRequestBudget) (*sourceinfrastructure.ConnectorRegistry, error) {
 	resolver, err := sourcenet.NewResolver(cfg.SourceDNSOverHTTPSURL)
 	if err != nil {
 		return nil, fmt.Errorf("configure source DNS resolver: %w", err)
 	}
-	return sourceinfrastructure.NewConnectorRegistry(resolver, credentials, sourcepostgres.NewExternalRequestBudget(runtime)), nil
+	return sourceinfrastructure.NewConnectorRegistry(resolver, credentials, requestBudget), nil
 }
 
 func newAIProviderRegistry(cfg config.Config, logger *zap.Logger) *intelligenceapplication.ProviderRegistry {
@@ -579,15 +582,15 @@ func newMetricCapabilityService(runtime *database.Runtime, profiles *sourcepostg
 	return sourceapplication.NewMetricCapabilityService(sourceapplication.MetricCapabilityDependencies{Runtime: runtime, Profiles: profiles, SourceContexts: sources, Audit: audit})
 }
 
-func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, retries *sourcejobs.CollectionRetryActivator, manuals *sourcejobs.ManualCollectionActivator, targets *monitorpostgres.PublishedCollectionTargetReader, scans *monitorpostgres.MonitorScanReader, quota *operationspostgres.GovernanceRepository, metrics *observability.Metrics, monitors *monitorapplication.Service, audit *operationspostgres.AuditWriter) (*sourceapplication.CollectionControlService, error) {
+func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, admission *sourceapplication.CollectionAdmissionGate, retries *sourcejobs.CollectionRetryActivator, manuals *sourcejobs.ManualCollectionActivator, targets *monitorpostgres.PublishedCollectionTargetReader, scans *monitorpostgres.MonitorScanReader, quota *operationspostgres.GovernanceRepository, metrics *observability.Metrics, monitors *monitorapplication.Service, audit *operationspostgres.AuditWriter) (*sourceapplication.CollectionControlService, error) {
 	return sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
-		Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Retries: retries,
+		Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Admission: admission, Retries: retries,
 		Manuals: manuals, Targets: targets, Scans: scans, Metrics: metrics, Quota: quota, Monitors: monitors, Audit: audit,
 	})
 }
 
-func newInstantSearchService(sources *sourcepostgres.Repository, connectors *sourceinfrastructure.ConnectorRegistry) (*sourceapplication.InstantSearchService, error) {
-	return sourceapplication.NewInstantSearchService(sourceapplication.InstantSearchDependencies{Sources: sources, Connectors: connectors})
+func newInstantSearchService(sources *sourcepostgres.Repository, admission *sourceapplication.CollectionAdmissionGate, connectors *sourceinfrastructure.ConnectorRegistry) (*sourceapplication.InstantSearchService, error) {
+	return sourceapplication.NewInstantSearchService(sourceapplication.InstantSearchDependencies{Sources: sources, Admission: admission, Connectors: connectors})
 }
 
 func newSearchService(contents *ingestionpostgres.ContentRepository, events *eventpostgres.MicroEventQueryPostgresRepository, knowledge *knowledgepostgres.Repository, authorization *searchAuthorizationReader, cursorCodec *pagination.Codec) (*searchapplication.Service, error) {
@@ -670,21 +673,25 @@ type collectionServiceParams struct {
 	Sources    *sourcepostgres.Repository
 	Runs       *sourcepostgres.CollectionRepository
 	Connectors *sourceinfrastructure.ConnectorRegistry
-	Rights     *sourcepostgres.RightsDecisionReader
+	Admission  *sourceapplication.CollectionAdmissionGate
 	Evidence   *sourceapplication.RawEvidenceCollectionService `optional:"true"`
 	Audit      *operationspostgres.AuditWriter
 	Logger     *zap.Logger
 }
 
 func newCollectionService(params collectionServiceParams) (*sourceapplication.CollectionService, error) {
-	admission, err := sourceapplication.NewCollectionAdmissionGate(sourceapplication.CollectionAdmissionDependencies{Rights: params.Rights})
-	if err != nil {
-		return nil, err
-	}
 	return sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
 		Runtime: params.Runtime, Sources: params.Sources, Runs: params.Runs, Connectors: params.Connectors,
-		Admission: admission, Evidence: params.Evidence, SecurityAudit: params.Audit, Logger: params.Logger,
+		Admission: params.Admission, Evidence: params.Evidence, SecurityAudit: params.Audit, Logger: params.Logger,
 	})
+}
+
+func newCollectionAdmissionGate(rights *sourcepostgres.RightsDecisionReader, credentials *sourcecredentialstore.Store, budget *sourceinfrastructure.CollectionRequestBudgetStatus) (*sourceapplication.CollectionAdmissionGate, error) {
+	return sourceapplication.NewCollectionAdmissionGate(sourceapplication.CollectionAdmissionDependencies{Rights: rights, Credentials: credentials, Budget: budget})
+}
+
+func newCollectionRequestBudgetStatus(budget *sourcepostgres.ExternalRequestBudget) (*sourceinfrastructure.CollectionRequestBudgetStatus, error) {
+	return sourceinfrastructure.NewCollectionRequestBudgetStatus(budget)
 }
 
 func exposeCollectionTargetReader(reader *monitorpostgres.PublishedCollectionTargetReader) sourcejobs.CollectionTargetReader {
@@ -766,13 +773,14 @@ func newIngestionService(runtime *database.Runtime, captures *sourceapplication.
 
 func newXMetricRefreshService(
 	sources *sourcepostgres.Repository,
+	admission *sourceapplication.CollectionAdmissionGate,
 	connectors *sourceinfrastructure.ConnectorRegistry,
 	candidates *ingestionpostgres.ContentRepository,
 	metrics *ingestionapplication.Service,
 	evidence *sourceapplication.RawEvidenceCollectionService,
 ) (*sourceapplication.XMetricRefreshService, error) {
 	return sourceapplication.NewXMetricRefreshService(sourceapplication.XMetricRefreshDependencies{
-		Sources: sources, Connectors: connectors, Candidates: candidates, Metrics: metrics, Evidence: evidence,
+		Sources: sources, Admission: admission, Connectors: connectors, Candidates: candidates, Metrics: metrics, Evidence: evidence,
 	})
 }
 

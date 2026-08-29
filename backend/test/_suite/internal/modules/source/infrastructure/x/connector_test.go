@@ -465,7 +465,7 @@ func tokenLookup(name string) (string, bool) { return "fixture-secret", name == 
 type allowingRequestBudget struct{}
 
 func (allowingRequestBudget) ReserveExternalRequest(_ context.Context, reservation domain.ExternalRequestBudgetReservation) (domain.ExternalRequestBudgetDecision, error) {
-	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
+	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, RateUsed: 1, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
 }
 
 func metric(value *int64) int64 {

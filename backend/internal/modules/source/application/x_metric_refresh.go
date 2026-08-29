@@ -20,6 +20,7 @@ type XMetricObservationWriter interface {
 
 type XMetricRefreshDependencies struct {
 	Sources    XMetricSourceReader
+	Admission  CollectionAdmissionAuthorizer
 	Connectors domain.CollectionConnectorRegistry
 	Candidates domain.XMetricRefreshCandidateReader
 	Metrics    XMetricObservationWriter
@@ -29,6 +30,7 @@ type XMetricRefreshDependencies struct {
 
 type XMetricRefreshService struct {
 	sources    XMetricSourceReader
+	admission  CollectionAdmissionAuthorizer
 	connectors domain.CollectionConnectorRegistry
 	candidates domain.XMetricRefreshCandidateReader
 	metrics    XMetricObservationWriter
@@ -37,14 +39,14 @@ type XMetricRefreshService struct {
 }
 
 func NewXMetricRefreshService(dependencies XMetricRefreshDependencies) (*XMetricRefreshService, error) {
-	if dependencies.Sources == nil || dependencies.Connectors == nil || dependencies.Candidates == nil || dependencies.Metrics == nil || dependencies.Evidence == nil {
+	if dependencies.Sources == nil || dependencies.Admission == nil || dependencies.Connectors == nil || dependencies.Candidates == nil || dependencies.Metrics == nil || dependencies.Evidence == nil {
 		return nil, errors.New("X metric refresh dependencies are required")
 	}
 	if dependencies.Now == nil {
 		dependencies.Now = func() time.Time { return time.Now().UTC() }
 	}
 	return &XMetricRefreshService{
-		sources: dependencies.Sources, connectors: dependencies.Connectors, candidates: dependencies.Candidates,
+		sources: dependencies.Sources, admission: dependencies.Admission, connectors: dependencies.Connectors, candidates: dependencies.Candidates,
 		metrics: dependencies.Metrics, evidence: dependencies.Evidence, now: dependencies.Now,
 	}, nil
 }
@@ -62,7 +64,7 @@ type XMetricRefreshResult struct {
 }
 
 func (service *XMetricRefreshService) Refresh(ctx context.Context, command XMetricRefreshCommand) (XMetricRefreshResult, error) {
-	if service == nil || service.sources == nil || service.connectors == nil || service.candidates == nil || service.metrics == nil || service.evidence == nil || service.now == nil {
+	if service == nil || service.sources == nil || service.admission == nil || service.connectors == nil || service.candidates == nil || service.metrics == nil || service.evidence == nil || service.now == nil {
 		return XMetricRefreshResult{}, errors.New("X metric refresh service is not initialized")
 	}
 	if command.SourceConnectionID <= 0 || command.ExpectedSourceVersion <= 0 {
@@ -115,6 +117,9 @@ func (service *XMetricRefreshService) Refresh(ctx context.Context, command XMetr
 	})
 	if len(postIDs) == 0 {
 		return XMetricRefreshResult{}, nil
+	}
+	if err := service.admission.AuthorizeCollection(ctx, *connection); err != nil {
+		return XMetricRefreshResult{}, err
 	}
 	connector, err := service.connectors.Resolve(ctx, *connection)
 	if err != nil {

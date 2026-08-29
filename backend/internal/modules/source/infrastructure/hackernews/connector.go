@@ -31,6 +31,7 @@ type Connector struct {
 	mode           domain.HackerNewsMode
 	resourceLimits ResourceLimitProfile
 	requestBudget  domain.ExternalRequestBudget
+	perMinuteLimit int64
 	retryWait      func(context.Context, int) error
 }
 
@@ -100,11 +101,11 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	}
 	readTimeout := time.Duration(normalized.Config.RequestTimeoutSeconds) * time.Second
 	reserveRequest := func(ctx context.Context) error {
-		return reserveHackerNewsRequest(ctx, options.requestBudget, normalized.ID, options.resourceLimits, options.clientOptions.now)
+		return reserveHackerNewsRequest(ctx, options.requestBudget, normalized.ID, options.resourceLimits, int64(normalized.Config.RateLimitPerMinute), options.clientOptions.now)
 	}
 	return &Connector{
 		sourceID: normalized.ID, client: newClient(endpoint, options.resourceLimits, readTimeout, reserveRequest, options.clientOptions), mode: normalized.Config.HackerNewsMode,
-		resourceLimits: options.resourceLimits, requestBudget: options.requestBudget, retryWait: options.retryWait,
+		resourceLimits: options.resourceLimits, requestBudget: options.requestBudget, perMinuteLimit: int64(normalized.Config.RateLimitPerMinute), retryWait: options.retryWait,
 	}, nil
 }
 
@@ -118,7 +119,7 @@ func (connector *Connector) Validate(_ context.Context, connection domain.Source
 
 func (connector *Connector) get(ctx context.Context, path string, byteBudget *responseByteBudget) (fetchedJSONResponse, *time.Time, error) {
 	for attempt := 0; ; attempt++ {
-		if err := reserveHackerNewsRequest(ctx, connector.requestBudget, connector.sourceID, connector.resourceLimits, connector.client.now); err != nil {
+		if err := reserveHackerNewsRequest(ctx, connector.requestBudget, connector.sourceID, connector.resourceLimits, connector.perMinuteLimit, connector.client.now); err != nil {
 			var quota requestQuotaError
 			if !errors.As(err, &quota) {
 				return fetchedJSONResponse{}, nil, err
@@ -140,18 +141,18 @@ type requestQuotaError struct{ resetAt time.Time }
 
 func (err requestQuotaError) Error() string { return "Hacker News daily request quota exceeded" }
 
-func reserveHackerNewsRequest(ctx context.Context, budget domain.ExternalRequestBudget, sourceID int64, profile ResourceLimitProfile, now func() time.Time) error {
+func reserveHackerNewsRequest(ctx context.Context, budget domain.ExternalRequestBudget, sourceID int64, profile ResourceLimitProfile, perMinuteLimit int64, now func() time.Time) error {
 	at := time.Now().UTC()
 	if now != nil {
 		at = now().UTC()
 	}
 	decision, err := budget.ReserveExternalRequest(ctx, domain.ExternalRequestBudgetReservation{
-		SourceConnectionID: sourceID, ResourceProfileVersion: profile.Version, DailyLimit: profile.DailyRequestQuota, At: at,
+		SourceConnectionID: sourceID, ResourceProfileVersion: profile.Version, DailyLimit: profile.DailyRequestQuota, PerMinuteLimit: perMinuteLimit, At: at,
 	})
 	if err != nil {
 		return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("reserve Hacker News request budget"))
 	}
-	if err := decision.Validate(profile.DailyRequestQuota); err != nil {
+	if err := decision.Validate(profile.DailyRequestQuota, perMinuteLimit); err != nil {
 		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid Hacker News request budget decision"))
 	}
 	if !decision.Allowed {

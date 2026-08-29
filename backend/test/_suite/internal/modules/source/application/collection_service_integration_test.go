@@ -671,10 +671,11 @@ func TestCollectionControlListsRetriesAndPersistsSafeHealth(t *testing.T) {
 	}
 	checkedAt := time.Date(2026, time.July, 16, 13, 0, 0, 0, time.UTC)
 	metrics := &collectionMetricsFake{}
+	admission := &collectionProbeAdmissionFake{}
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs,
 		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{health: domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.CollectionErrorTemporary, DiagnosticCode: "request_failed"}}},
-		Metrics:    metrics, Retries: collectionRetryActivatorFake{}, Now: func() time.Time { return checkedAt }, Audit: operationspostgres.NewAuditWriter(runtime),
+		Admission:  admission, Metrics: metrics, Retries: collectionRetryActivatorFake{}, Now: func() time.Time { return checkedAt }, Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatalf("NewCollectionControlService(): %v", err)
@@ -691,6 +692,9 @@ func TestCollectionControlListsRetriesAndPersistsSafeHealth(t *testing.T) {
 	health, err := control.Health(context.Background(), sourceapplication.SourceHealthInput{Subject: admin, ID: request.SourceConnectionID})
 	if err != nil || health.Healthy || !health.CheckedAt.Equal(checkedAt) || health.ErrorCode != "request_failed" {
 		t.Fatalf("Health() result/error = %#v / %v, want safe unhealthy temporary result", health, err)
+	}
+	if admission.calls != 1 {
+		t.Fatalf("health admission calls = %d, want one", admission.calls)
 	}
 	var status string
 	if err := runtime.SQL.QueryRow(`SELECT health_status FROM source_connections WHERE id = $1`, request.SourceConnectionID).Scan(&status); err != nil {
@@ -721,6 +725,46 @@ WHERE (resource_type = 'collection_run' AND resource_id = $1)
 	for _, forbidden := range []string{"synthetic upstream detail", request.QuerySignature, request.Query} {
 		if strings.Contains(auditText, forbidden) {
 			t.Fatalf("collection control audit leaked %q: %s", forbidden, auditText)
+		}
+	}
+}
+
+func TestCollectionHealthAdmissionDenialStopsBeforeConnectorResolutionAndPersistsSafeAudit(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "health-admission-denial", 1)
+	checkedAt := time.Date(2026, time.July, 16, 13, 30, 0, 0, time.UTC)
+	registry := &collectionHealthRegistryFake{connector: &collectionConnectorFake{health: domain.HealthResult{Healthy: true, CheckedAt: checkedAt}}}
+	admission := &collectionProbeAdmissionFake{err: domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("synthetic quota detail"))}
+	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
+		Connectors: registry, Admission: admission, Retries: collectionRetryActivatorFake{}, Now: func() time.Time { return checkedAt },
+		Audit: operationspostgres.NewAuditWriter(runtime),
+	})
+	if err != nil {
+		t.Fatalf("NewCollectionControlService(): %v", err)
+	}
+	admin := identitydomain.Subject{UserID: 1, SessionID: 1, Role: identitydomain.RoleAdmin}
+	health, err := control.Health(context.Background(), sourceapplication.SourceHealthInput{Subject: admin, ID: request.SourceConnectionID})
+	if err != nil || health.Healthy || health.ErrorCode != "rate_limited" || !health.CheckedAt.Equal(checkedAt) {
+		t.Fatalf("Health() result/error = %#v / %v, want safe rate-limited denial", health, err)
+	}
+	if admission.calls != 1 || registry.calls != 0 {
+		t.Fatalf("health admission/registry calls = %d/%d, want 1/0", admission.calls, registry.calls)
+	}
+	var status, auditText string
+	if err := runtime.SQL.QueryRow(`SELECT health_status FROM source_connections WHERE id = $1`, request.SourceConnectionID).Scan(&status); err != nil {
+		t.Fatalf("read persisted health: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`SELECT coalesce(string_agg(coalesce(before_data::text, '') || coalesce(after_data::text, ''), ''), '') FROM audit_logs WHERE action = 'source.health_checked' AND resource_id = $1`, request.SourceConnectionID).Scan(&auditText); err != nil {
+		t.Fatalf("read health audit: %v", err)
+	}
+	if status != string(domain.HealthStatusDegraded) || !strings.Contains(auditText, "rate_limited") {
+		t.Fatalf("persisted health/audit = %q / %s, want safe rate-limited evidence", status, auditText)
+	}
+	for _, forbidden := range []string{"synthetic quota detail", request.QuerySignature, request.Query} {
+		if strings.Contains(auditText, forbidden) {
+			t.Fatalf("health admission audit leaked %q: %s", forbidden, auditText)
 		}
 	}
 }
@@ -1591,6 +1635,26 @@ type collectionConnectorRegistryFake struct{ connector domain.Connector }
 
 func (registry collectionConnectorRegistryFake) Resolve(context.Context, domain.SourceConnection) (domain.Connector, error) {
 	return registry.connector, nil
+}
+
+type collectionHealthRegistryFake struct {
+	connector domain.Connector
+	calls     int
+}
+
+func (registry *collectionHealthRegistryFake) Resolve(context.Context, domain.SourceConnection) (domain.Connector, error) {
+	registry.calls++
+	return registry.connector, nil
+}
+
+type collectionProbeAdmissionFake struct {
+	calls int
+	err   error
+}
+
+func (admission *collectionProbeAdmissionFake) AuthorizeProbe(context.Context, domain.SourceConnection) error {
+	admission.calls++
+	return admission.err
 }
 
 type collectionConnectorRegistryByTypeFake struct {

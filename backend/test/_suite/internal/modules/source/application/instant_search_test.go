@@ -27,7 +27,7 @@ func TestInstantSearchReturnsPartialResultsAndExplicitSourceStatuses(t *testing.
 		}}},
 		2: instantSearchConnector{err: domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("provider detail must stay private"))},
 	}}
-	service, err := NewInstantSearchService(InstantSearchDependencies{Sources: repository, Connectors: registry, Now: func() time.Time { return now }})
+	service, err := NewInstantSearchService(InstantSearchDependencies{Sources: repository, Admission: instantSearchAdmission{}, Connectors: registry, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatalf("NewInstantSearchService() error = %v", err)
 	}
@@ -56,7 +56,7 @@ func TestInstantSearchReturnsPartialResultsAndExplicitSourceStatuses(t *testing.
 
 func TestInstantSearchValidatesAuthenticationAndInputBeforeCallingSources(t *testing.T) {
 	service, err := NewInstantSearchService(InstantSearchDependencies{
-		Sources: instantSearchSourceRepository{}, Connectors: instantSearchRegistry{},
+		Sources: instantSearchSourceRepository{}, Admission: instantSearchAdmission{}, Connectors: instantSearchRegistry{},
 	})
 	if err != nil {
 		t.Fatalf("NewInstantSearchService() error = %v", err)
@@ -67,6 +67,30 @@ func TestInstantSearchValidatesAuthenticationAndInputBeforeCallingSources(t *tes
 		Subject: identitydomain.Subject{UserID: 1, Role: identitydomain.RoleViewer}, Query: " ",
 	})
 	assertAppCode(t, err, sharederrors.CodeInvalidCollectionRequest)
+}
+
+func TestInstantSearchAdmissionDenialStopsBeforeConnectorResolution(t *testing.T) {
+	now := time.Date(2026, time.August, 29, 13, 0, 0, 0, time.UTC)
+	connection := domain.SourceConnection{ID: 3, SourceType: domain.SourceTypeX, Name: "X", Enabled: true, Config: domain.DefaultSourceConfig()}
+	resolveCalls := 0
+	service, err := NewInstantSearchService(InstantSearchDependencies{
+		Sources:    instantSearchSourceRepository{connections: []domain.SourceConnection{connection}},
+		Admission:  instantSearchAdmission{err: domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("fixture denial"))},
+		Connectors: instantSearchRegistry{resolveCalls: &resolveCalls}, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Search(context.Background(), InstantSearchInput{
+		Subject: identitydomain.Subject{UserID: 7, Role: identitydomain.RoleViewer}, Query: "Claude", SourceTypes: []string{"x"}, Limit: 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertInstantStatus(t, result.SourceStatuses, "x", sharedhotspot.SourceFailed, 0, "rate_limited")
+	if resolveCalls != 0 {
+		t.Fatalf("connector resolutions after instant-search admission denial = %d", resolveCalls)
+	}
 }
 
 func TestCollectionRelevanceUsesASCIIWordBoundariesAndKeepsCJKSubstrings(t *testing.T) {
@@ -113,14 +137,26 @@ func (repository instantSearchSourceRepository) List(context.Context, domain.Sou
 	return append([]domain.SourceConnection(nil), repository.connections...), "", nil
 }
 
-type instantSearchRegistry struct{ connectors map[int64]domain.Connector }
+type instantSearchRegistry struct {
+	connectors   map[int64]domain.Connector
+	resolveCalls *int
+}
 
 func (registry instantSearchRegistry) Resolve(_ context.Context, connection domain.SourceConnection) (domain.Connector, error) {
+	if registry.resolveCalls != nil {
+		*registry.resolveCalls++
+	}
 	connector := registry.connectors[connection.ID]
 	if connector == nil {
 		return nil, errors.New("connector unavailable")
 	}
 	return connector, nil
+}
+
+type instantSearchAdmission struct{ err error }
+
+func (admission instantSearchAdmission) AuthorizeCollection(context.Context, domain.SourceConnection) error {
+	return admission.err
 }
 
 type instantSearchConnector struct {

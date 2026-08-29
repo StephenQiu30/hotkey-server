@@ -16,25 +16,29 @@ type ExternalRequestBudgetReservation struct {
 	SourceConnectionID     int64
 	ResourceProfileVersion string
 	DailyLimit             int64
+	PerMinuteLimit         int64
 	At                     time.Time
 }
 
 func (reservation ExternalRequestBudgetReservation) Validate() error {
 	if reservation.SourceConnectionID <= 0 || len(reservation.ResourceProfileVersion) > 64 || !resourceProfileVersionPattern.MatchString(reservation.ResourceProfileVersion) ||
-		reservation.DailyLimit < 1 || reservation.DailyLimit > 1_000_000 || reservation.At.IsZero() {
+		reservation.DailyLimit < 1 || reservation.DailyLimit > 1_000_000 || reservation.PerMinuteLimit < 1 || reservation.PerMinuteLimit > 600 || reservation.At.IsZero() {
 		return fmt.Errorf("external request budget reservation is invalid")
 	}
 	return nil
 }
 
 type ExternalRequestBudgetDecision struct {
-	Allowed bool
-	Used    int64
-	ResetAt time.Time
+	Allowed  bool
+	Used     int64
+	RateUsed int64
+	ResetAt  time.Time
 }
 
-func (decision ExternalRequestBudgetDecision) Validate(limit int64) error {
-	if limit < 1 || decision.Used < 0 || decision.Used > limit || decision.ResetAt.IsZero() || (decision.Allowed && decision.Used < 1) {
+func (decision ExternalRequestBudgetDecision) Validate(dailyLimit, perMinuteLimit int64) error {
+	if dailyLimit < 1 || perMinuteLimit < 1 || decision.Used < 0 || decision.RateUsed < 0 || decision.ResetAt.IsZero() ||
+		(decision.Allowed && (decision.Used < 1 || decision.Used > dailyLimit || decision.RateUsed < 1 || decision.RateUsed > perMinuteLimit)) ||
+		(!decision.Allowed && decision.Used < dailyLimit && decision.RateUsed < perMinuteLimit) {
 		return fmt.Errorf("external request budget decision is invalid")
 	}
 	return nil
@@ -45,4 +49,26 @@ func (decision ExternalRequestBudgetDecision) Validate(limit int64) error {
 // redirects and retries, before any network side effect.
 type ExternalRequestBudget interface {
 	ReserveExternalRequest(context.Context, ExternalRequestBudgetReservation) (ExternalRequestBudgetDecision, error)
+}
+
+// ExternalRequestBudgetAvailability is a non-consuming preflight. The
+// physical request boundary still calls ReserveExternalRequest atomically.
+type ExternalRequestBudgetAvailability struct {
+	Allowed  bool
+	Used     int64
+	RateUsed int64
+	ResetAt  time.Time
+}
+
+func (availability ExternalRequestBudgetAvailability) Validate(reservation ExternalRequestBudgetReservation) error {
+	if err := reservation.Validate(); err != nil || availability.Used < 0 || availability.RateUsed < 0 || availability.ResetAt.IsZero() ||
+		(availability.Allowed && (availability.Used >= reservation.DailyLimit || availability.RateUsed >= reservation.PerMinuteLimit)) ||
+		(!availability.Allowed && availability.Used < reservation.DailyLimit && availability.RateUsed < reservation.PerMinuteLimit) {
+		return fmt.Errorf("external request budget availability is invalid")
+	}
+	return nil
+}
+
+type ExternalRequestBudgetStatusReader interface {
+	CheckExternalRequest(context.Context, ExternalRequestBudgetReservation) (ExternalRequestBudgetAvailability, error)
 }

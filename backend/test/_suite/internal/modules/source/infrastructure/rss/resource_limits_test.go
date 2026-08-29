@@ -227,9 +227,13 @@ func (budget *boundedRequestBudget) ReserveExternalRequest(_ context.Context, re
 	used := budget.calls
 	allowed := used <= budget.limit
 	if !allowed {
-		used = budget.limit
+		used = reservation.DailyLimit
 	}
-	return domain.ExternalRequestBudgetDecision{Allowed: allowed, Used: used, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
+	if used < 1 {
+		used = 1
+	}
+	rateUsed := min(used, reservation.PerMinuteLimit)
+	return domain.ExternalRequestBudgetDecision{Allowed: allowed, Used: used, RateUsed: rateUsed, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
 }
 
 func testResourceLimitProfile() ResourceLimitProfile {

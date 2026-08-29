@@ -306,7 +306,15 @@ func (budget *boundedXRequestBudget) ReserveExternalRequest(_ context.Context, r
 	defer budget.mu.Unlock()
 	budget.calls++
 	used := min(budget.calls, budget.limit)
-	return domain.ExternalRequestBudgetDecision{Allowed: budget.calls <= budget.limit, Used: used, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
+	allowed := budget.calls <= budget.limit
+	if !allowed {
+		used = reservation.DailyLimit
+	}
+	if used < 1 {
+		used = 1
+	}
+	rateUsed := min(used, reservation.PerMinuteLimit)
+	return domain.ExternalRequestBudgetDecision{Allowed: allowed, Used: used, RateUsed: rateUsed, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
 }
 
 func (budget *boundedXRequestBudget) callCount() int64 {

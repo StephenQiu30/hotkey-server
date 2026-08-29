@@ -622,7 +622,7 @@ func newTestConnectorWithMode(t *testing.T, mode domain.HackerNewsMode, handler 
 type allowingRequestBudget struct{}
 
 func (allowingRequestBudget) ReserveExternalRequest(_ context.Context, reservation domain.ExternalRequestBudgetReservation) (domain.ExternalRequestBudgetDecision, error) {
-	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
+	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, RateUsed: 1, ResetAt: reservation.At.UTC().Add(24 * time.Hour)}, nil
 }
 
 func testFetchRequest(limit int, cursor string) domain.FetchRequest {

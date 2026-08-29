@@ -36,6 +36,7 @@ type Connector struct {
 	retryWait        func(context.Context, int) error
 	resourceLimits   ResourceLimitProfile
 	requestBudget    domain.ExternalRequestBudget
+	perMinuteLimit   int64
 	collectorProfile domain.CollectorProfileVersion
 }
 
@@ -123,12 +124,12 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	reserveRedirect := func(ctx context.Context) error {
 		decision, err := options.requestBudget.ReserveExternalRequest(ctx, domain.ExternalRequestBudgetReservation{
 			SourceConnectionID: normalized.ID, ResourceProfileVersion: options.resourceLimits.Version,
-			DailyLimit: options.resourceLimits.DailyRequestQuota, At: options.now().UTC(),
+			DailyLimit: options.resourceLimits.DailyRequestQuota, PerMinuteLimit: int64(normalized.Config.RateLimitPerMinute), At: options.now().UTC(),
 		})
 		if err != nil {
 			return err
 		}
-		if err := decision.Validate(options.resourceLimits.DailyRequestQuota); err != nil {
+		if err := decision.Validate(options.resourceLimits.DailyRequestQuota, int64(normalized.Config.RateLimitPerMinute)); err != nil {
 			return err
 		}
 		if !decision.Allowed {
@@ -162,7 +163,7 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	return &Connector{
 		sourceID: normalized.ID, endpoint: endpoint, client: client,
 		maxPages: maxPages, now: options.now, retryWait: options.retryWait,
-		resourceLimits: options.resourceLimits, requestBudget: options.requestBudget, collectorProfile: collectorProfile,
+		resourceLimits: options.resourceLimits, requestBudget: options.requestBudget, perMinuteLimit: int64(normalized.Config.RateLimitPerMinute), collectorProfile: collectorProfile,
 	}, nil
 }
 
@@ -352,12 +353,12 @@ func (connector *Connector) nextURL(current *url.URL, linkHeader, atomNext strin
 func (connector *Connector) get(ctx context.Context, target *url.URL, etag, lastModified string) (*http.Response, []string, error) {
 	decision, err := connector.requestBudget.ReserveExternalRequest(ctx, domain.ExternalRequestBudgetReservation{
 		SourceConnectionID: connector.sourceID, ResourceProfileVersion: connector.resourceLimits.Version,
-		DailyLimit: connector.resourceLimits.DailyRequestQuota, At: connector.now().UTC(),
+		DailyLimit: connector.resourceLimits.DailyRequestQuota, PerMinuteLimit: connector.perMinuteLimit, At: connector.now().UTC(),
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := decision.Validate(connector.resourceLimits.DailyRequestQuota); err != nil {
+	if err := decision.Validate(connector.resourceLimits.DailyRequestQuota, connector.perMinuteLimit); err != nil {
 		return nil, nil, err
 	}
 	if !decision.Allowed {

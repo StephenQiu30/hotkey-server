@@ -496,7 +496,7 @@ type allowingRequestBudget struct{}
 func (allowingRequestBudget) ReserveExternalRequest(_ context.Context, reservation domain.ExternalRequestBudgetReservation) (domain.ExternalRequestBudgetDecision, error) {
 	at := reservation.At.UTC()
 	resetAt := time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
-	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, ResetAt: resetAt}, nil
+	return domain.ExternalRequestBudgetDecision{Allowed: true, Used: 1, RateUsed: 1, ResetAt: resetAt}, nil
 }
 
 func publicResolver() lookupIPAddrFunc {

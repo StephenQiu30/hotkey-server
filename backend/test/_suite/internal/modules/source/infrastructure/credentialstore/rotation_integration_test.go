@@ -49,6 +49,50 @@ func TestRotateBatchReencryptsPreviousCredentialsAndSupportsKeyRevocation(t *tes
 	}
 }
 
+func TestManagedCredentialStatusChecksMetadataAndKeyReadinessWithoutResolvingPlaintext(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	runtime := openCredentialRotationRuntime(t, ctx)
+	defer runtime.Close()
+	actorID := seedCredentialRotationActor(t, runtime)
+	sourceID := seedCredentialRotationSource(t, runtime, actorID, "credential-status-source")
+	store, err := NewStore(runtime, encodedRotationKey(0x27))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if available, statusErr := store.ManagedCredentialAvailable(ctx, sourceID); statusErr != nil || available {
+		t.Fatalf("status before credential = %t/%v", available, statusErr)
+	}
+	const secret = "credential-status-secret-never-returned"
+	if err := store.Store(ctx, sourceID, secret, actorID); err != nil {
+		t.Fatal(err)
+	}
+	if available, statusErr := store.ManagedCredentialAvailable(ctx, sourceID); statusErr != nil || !available {
+		t.Fatalf("status after credential = %t/%v", available, statusErr)
+	}
+	withoutKey, err := NewStore(runtime, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if available, statusErr := withoutKey.ManagedCredentialAvailable(ctx, sourceID); statusErr != nil || available {
+		t.Fatalf("status without configured key = %t/%v", available, statusErr)
+	}
+	currentOnly, err := NewStoreWithKeyring(runtime, 2, encodedRotationKey(0x38), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if available, statusErr := currentOnly.ManagedCredentialAvailable(ctx, sourceID); statusErr != nil || available {
+		t.Fatalf("status without matching key version = %t/%v", available, statusErr)
+	}
+	rolling, err := NewStoreWithKeyring(runtime, 2, encodedRotationKey(0x38), map[int]string{1: encodedRotationKey(0x27)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if available, statusErr := rolling.ManagedCredentialAvailable(ctx, sourceID); statusErr != nil || !available {
+		t.Fatalf("status with previous key version = %t/%v", available, statusErr)
+	}
+}
+
 func TestRotateBatchRollsBackTheWholeBatchWhenOneRecordIsInvalid(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

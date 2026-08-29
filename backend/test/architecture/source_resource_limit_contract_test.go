@@ -35,6 +35,23 @@ func TestSourceResourceLimitGateMatchesAC002009(t *testing.T) {
 	}
 
 	requiredEvidence := map[string][]string{
+		"backend/internal/modules/source/domain/external_request_budget.go": {
+			"PerMinuteLimit",
+			"RateUsed",
+		},
+		"backend/db/schema.sql": {
+			"rate_window_start",
+			"rate_used",
+		},
+		"backend/internal/modules/source/infrastructure/rss/connector.go": {
+			"PerMinuteLimit: connector.perMinuteLimit",
+		},
+		"backend/internal/modules/source/infrastructure/hackernews/connector.go": {
+			"perMinuteLimit: int64(normalized.Config.RateLimitPerMinute)",
+		},
+		"backend/internal/modules/source/infrastructure/x/connector.go": {
+			"perMinuteLimit: int64(normalized.Config.RateLimitPerMinute)",
+		},
 		"backend/test/_suite/internal/modules/source/infrastructure/rss/resource_limits_test.go": {
 			"TestRSSResourceLimitProfileFreezesEightFiniteDimensions",
 			"TestRSSResourceLimitsStopBeforeTheNextExternalOrEvidenceSideEffect",
@@ -58,7 +75,9 @@ func TestSourceResourceLimitGateMatchesAC002009(t *testing.T) {
 		},
 		"backend/test/_suite/internal/modules/source/infrastructure/postgres/external_request_budget_integration_test.go": {
 			"TestExternalRequestBudgetEnforcesUTCSourceProfileQuotaAtomically",
+			"TestExternalRequestBudgetEnforcesPerMinuteRateLimitAtomicallyWithoutConsumingDailyBudget",
 			"next UTC day reservation",
+			"next minute reservation",
 			"concurrent persisted usage",
 		},
 		"backend/test/_suite/internal/modules/source/application/collection_service_integration_test.go": {
@@ -83,6 +102,7 @@ func TestSourceResourceLimitGateMatchesAC002009(t *testing.T) {
 		"TestHackerNewsResourceLimitsStopBeforeNextExternalOrEvidenceSideEffect",
 		"TestXResourceLimitsStopBeforeNextExternalOrEvidenceSideEffect",
 		"TestExternalRequestBudgetEnforcesUTCSourceProfileQuotaAtomically",
+		"TestExternalRequestBudgetEnforcesPerMinuteRateLimitAtomicallyWithoutConsumingDailyBudget",
 		"TestCollectionServiceFailureRetainsCursorAndPersistsRetryState",
 	} {
 		if !strings.Contains(makefile, fragment) {

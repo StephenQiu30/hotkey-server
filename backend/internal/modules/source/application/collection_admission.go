@@ -67,32 +67,67 @@ type CollectionAdmissionAuthorizer interface {
 	AuthorizeCollection(context.Context, domain.SourceConnection) error
 }
 
+type CollectionProbeAuthorizer interface {
+	AuthorizeProbe(context.Context, domain.SourceConnection) error
+}
+
+// ManagedCredentialStatusReader exposes only whether an encrypted credential
+// can be used. It never returns or decrypts the credential value.
+type ManagedCredentialStatusReader interface {
+	ManagedCredentialAvailable(context.Context, int64) (bool, error)
+}
+
+type CollectionRequestBudgetStatusReader interface {
+	CollectionRequestAvailable(context.Context, domain.SourceConnection, time.Time) (bool, error)
+}
+
 type CollectionAdmissionDependencies struct {
-	Rights CurrentCollectionFetchRightsReader
-	Clock  Clock
+	Rights      CurrentCollectionFetchRightsReader
+	Credentials ManagedCredentialStatusReader
+	Budget      CollectionRequestBudgetStatusReader
+	Clock       Clock
 }
 
 type CollectionAdmissionGate struct {
-	rights CurrentCollectionFetchRightsReader
-	clock  Clock
+	rights      CurrentCollectionFetchRightsReader
+	credentials ManagedCredentialStatusReader
+	budget      CollectionRequestBudgetStatusReader
+	clock       Clock
 }
 
 func NewCollectionAdmissionGate(dependencies CollectionAdmissionDependencies) (*CollectionAdmissionGate, error) {
 	if dependencies.Rights == nil {
 		return nil, errors.New("collection fetch rights reader is required")
 	}
+	if dependencies.Credentials == nil {
+		return nil, errors.New("collection managed credential status reader is required")
+	}
+	if dependencies.Budget == nil {
+		return nil, errors.New("collection request budget status reader is required")
+	}
 	if dependencies.Clock == nil {
 		dependencies.Clock = wallClock{}
 	}
-	return &CollectionAdmissionGate{rights: dependencies.Rights, clock: dependencies.Clock}, nil
+	return &CollectionAdmissionGate{rights: dependencies.Rights, credentials: dependencies.Credentials, budget: dependencies.Budget, clock: dependencies.Clock}, nil
 }
 
 func (gate *CollectionAdmissionGate) AuthorizeCollection(ctx context.Context, connection domain.SourceConnection) error {
-	if gate == nil || gate.rights == nil || gate.clock == nil {
+	return gate.authorize(ctx, connection, true)
+}
+
+// AuthorizeProbe applies the same Rights, Credential, Budget, and Rate Limit
+// order while allowing a disabled or currently unavailable source to recover
+// through an explicit administrator health probe.
+func (gate *CollectionAdmissionGate) AuthorizeProbe(ctx context.Context, connection domain.SourceConnection) error {
+	return gate.authorize(ctx, connection, false)
+}
+
+func (gate *CollectionAdmissionGate) authorize(ctx context.Context, connection domain.SourceConnection, requireAvailableCapability bool) error {
+	if gate == nil || gate.rights == nil || gate.credentials == nil || gate.budget == nil || gate.clock == nil {
 		return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("collection admission is unavailable"))
 	}
 	normalized, err := domain.NormalizeSourceConnection(connection)
-	if err != nil || normalized.ID <= 0 || normalized.Deleted || !normalized.Enabled || normalized.HealthStatus == domain.HealthStatusUnavailable {
+	if err != nil || normalized.ID <= 0 || normalized.Deleted || requireAvailableCapability && (!normalized.Enabled || normalized.HealthStatus == domain.HealthStatusUnavailable) {
 		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("collection source capability is unavailable"))
 	}
 	decisionAt := gate.clock.Now().UTC()
@@ -109,6 +144,22 @@ func (gate *CollectionAdmissionGate) AuthorizeCollection(ctx context.Context, co
 	}
 	if result.Decision != domain.RightsAllow {
 		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("source fetch rights are not permitted"))
+	}
+	if normalized.CredentialRef == domain.ManagedCredentialReference {
+		available, err := gate.credentials.ManagedCredentialAvailable(ctx, normalized.ID)
+		if err != nil {
+			return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("collection credential status is unavailable"))
+		}
+		if !available {
+			return domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("source credential is unavailable"))
+		}
+	}
+	available, err := gate.budget.CollectionRequestAvailable(ctx, normalized, decisionAt)
+	if err != nil {
+		return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("collection request budget status is unavailable"))
+	}
+	if !available {
+		return domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("collection request budget or rate limit is exhausted"))
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -35,8 +36,10 @@ func TestXMetricRefreshUsesOneStableLookupAndPersistsOnlyReturnedObservations(t 
 	}}
 	writer := &xMetricObservationWriterFake{}
 	archiver := &xMetricContextEvidenceArchiverFake{}
+	admission := &xMetricAdmissionFake{}
 	service, err := NewXMetricRefreshService(XMetricRefreshDependencies{
 		Sources:    &xMetricSourceReaderFake{connection: &connection},
+		Admission:  admission,
 		Connectors: &xMetricConnectorRegistryFake{lookup: lookup},
 		Candidates: reader, Metrics: writer, Evidence: archiver,
 		Now: func() time.Time { return now },
@@ -65,6 +68,9 @@ func TestXMetricRefreshUsesOneStableLookupAndPersistsOnlyReturnedObservations(t 
 	if result.CandidateCount != 2 || result.ObservedCount != 1 || result.UnavailableCount != 1 || result.DiagnosticCount != 1 {
 		t.Fatalf("result = %#v", result)
 	}
+	if admission.calls != 1 {
+		t.Fatalf("metric lookup admission calls = %d, want 1", admission.calls)
+	}
 }
 
 func TestXMetricRefreshIsDisabledByDefaultAndMakesNoLookup(t *testing.T) {
@@ -75,7 +81,7 @@ func TestXMetricRefreshIsDisabledByDefaultAndMakesNoLookup(t *testing.T) {
 	}
 	lookup := &xMetricLookupFake{}
 	service, err := NewXMetricRefreshService(XMetricRefreshDependencies{
-		Sources: &xMetricSourceReaderFake{connection: &connection}, Connectors: &xMetricConnectorRegistryFake{lookup: lookup},
+		Sources: &xMetricSourceReaderFake{connection: &connection}, Admission: &xMetricAdmissionFake{}, Connectors: &xMetricConnectorRegistryFake{lookup: lookup},
 		Candidates: &xMetricCandidateReaderFake{}, Metrics: &xMetricObservationWriterFake{}, Evidence: &xMetricContextEvidenceArchiverFake{},
 	})
 	if err != nil {
@@ -87,16 +93,56 @@ func TestXMetricRefreshIsDisabledByDefaultAndMakesNoLookup(t *testing.T) {
 	}
 }
 
+func TestXMetricRefreshAdmissionDenialStopsBeforeConnectorResolution(t *testing.T) {
+	now := time.Date(2026, time.August, 29, 13, 0, 0, 0, time.UTC)
+	connection := domain.SourceConnection{
+		ID: 7, Version: 3, SourceType: domain.SourceTypeX, Name: "X", Endpoint: domain.XRecentSearchEndpoint,
+		AuthType: domain.AuthTypeBearer, CredentialRef: domain.ManagedCredentialReference, Enabled: true, HealthStatus: domain.HealthStatusHealthy,
+		Config: domain.DefaultSourceConfig(),
+	}
+	connection.Config.XMetricRefreshEnabled = true
+	registry := &xMetricConnectorRegistryFake{}
+	service, err := NewXMetricRefreshService(XMetricRefreshDependencies{
+		Sources:    &xMetricSourceReaderFake{connection: &connection},
+		Admission:  &xMetricAdmissionFake{err: domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("fixture denial"))},
+		Connectors: registry, Candidates: &xMetricCandidateReaderFake{items: []domain.XMetricRefreshCandidate{{ContentID: 12, PostID: "10"}}},
+		Metrics: &xMetricObservationWriterFake{}, Evidence: &xMetricContextEvidenceArchiverFake{}, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Refresh(context.Background(), XMetricRefreshCommand{SourceConnectionID: 7, ExpectedSourceVersion: 3}); domain.ClassifyCollectionError(err) != domain.CollectionErrorRateLimited {
+		t.Fatalf("metric admission denial error = %v", err)
+	}
+	if registry.calls != 0 {
+		t.Fatalf("connector resolutions after admission denial = %d", registry.calls)
+	}
+}
+
 type xMetricSourceReaderFake struct{ connection *domain.SourceConnection }
 
 func (fake *xMetricSourceReaderFake) FindByID(context.Context, int64) (*domain.SourceConnection, error) {
 	return fake.connection, nil
 }
 
-type xMetricConnectorRegistryFake struct{ lookup domain.XPostMetricLookup }
+type xMetricConnectorRegistryFake struct {
+	lookup domain.XPostMetricLookup
+	calls  int
+}
 
 func (fake *xMetricConnectorRegistryFake) Resolve(context.Context, domain.SourceConnection) (domain.Connector, error) {
+	fake.calls++
 	return xMetricConnectorAdapter{XPostMetricLookup: fake.lookup}, nil
+}
+
+type xMetricAdmissionFake struct {
+	calls int
+	err   error
+}
+
+func (fake *xMetricAdmissionFake) AuthorizeCollection(context.Context, domain.SourceConnection) error {
+	fake.calls++
+	return fake.err
 }
 
 type xMetricConnectorAdapter struct{ domain.XPostMetricLookup }
