@@ -6301,6 +6301,69 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/operations/retention-runs/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "operations"
+                ],
+                "summary": "Get a frozen retention run",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "retention run ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.GovernanceResult-domain_CleanupResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.GovernanceResult-internal_modules_operations_transport_http_EmptyResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http.GovernanceResult-internal_modules_operations_transport_http_EmptyResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http.GovernanceResult-internal_modules_operations_transport_http_EmptyResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http.GovernanceResult-internal_modules_operations_transport_http_EmptyResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/http.GovernanceResult-internal_modules_operations_transport_http_EmptyResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/operations/retention-runs/{id}/approve": {
             "post": {
                 "security": [
@@ -8753,6 +8816,9 @@ const docTemplate = `{
                 "affected": {
                     "type": "integer"
                 },
+                "approved_by_user_id": {
+                    "type": "integer"
+                },
                 "batch_size": {
                     "type": "integer"
                 },
@@ -8775,6 +8841,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "policy_version": {
+                    "type": "integer"
+                },
+                "requested_by_user_id": {
                     "type": "integer"
                 },
                 "run_id": {

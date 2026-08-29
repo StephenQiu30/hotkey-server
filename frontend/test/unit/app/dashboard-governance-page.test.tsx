@@ -7,6 +7,7 @@ import { useAuthStore } from "@/stores/authStore";
 const mocks = vi.hoisted(() => ({
   getOperationsUsage: vi.fn(),
   getOperationsRetentionPolicies: vi.fn(),
+  getOperationsRetentionRunsId: vi.fn(),
   getOperationsAuditLogs: vi.fn(),
   getOperationsOverview: vi.fn(),
   getOperationsJobs: vi.fn(),
@@ -95,9 +96,10 @@ describe("GovernancePage", () => {
     ] } });
     mocks.postOperationsJobsIdCancel.mockResolvedValue({ data: { id: 32, state: "cancelled" } });
     mocks.postOperationsJobsIdRetry.mockResolvedValue({ data: { id: 31, state: "available" } });
-    mocks.postOperationsRetentionPoliciesIdPreview.mockResolvedValue({ data: { run_id: 11, policy_version: 1, candidate_hash: "a".repeat(64), status: "pending_approval", data_class: "content_metric_snapshots", affected: 2, batch_size: 100, cutoff: "2026-02-09T00:00:00Z", dry_run: true, has_more: true } });
-    mocks.postOperationsRetentionRunsIdApprove.mockResolvedValue({ data: { run_id: 11, policy_version: 1, candidate_hash: "a".repeat(64), status: "approved", data_class: "content_metric_snapshots", affected: 2, batch_size: 100, cutoff: "2026-02-09T00:00:00Z", dry_run: true, has_more: true } });
-    mocks.postOperationsRetentionRunsIdExecute.mockResolvedValue({ data: { run_id: 11, policy_version: 1, candidate_hash: "a".repeat(64), status: "completed", data_class: "content_metric_snapshots", affected: 2, batch_size: 100, cutoff: "2026-02-09T00:00:00Z", dry_run: false, has_more: false } });
+    mocks.getOperationsRetentionRunsId.mockResolvedValue({ data: { run_id: 11, policy_version: 1, candidate_hash: "a".repeat(64), status: "pending_approval", data_class: "content_metric_snapshots", affected: 2, batch_size: 100, cutoff: "2026-02-09T00:00:00Z", dry_run: true, has_more: true, requested_by_user_id: 2 } });
+    mocks.postOperationsRetentionPoliciesIdPreview.mockResolvedValue({ data: { run_id: 11, policy_version: 1, candidate_hash: "a".repeat(64), status: "pending_approval", data_class: "content_metric_snapshots", affected: 2, batch_size: 100, cutoff: "2026-02-09T00:00:00Z", dry_run: true, has_more: true, requested_by_user_id: 1 } });
+    mocks.postOperationsRetentionRunsIdApprove.mockResolvedValue({ data: { run_id: 11, policy_version: 1, candidate_hash: "a".repeat(64), status: "approved", data_class: "content_metric_snapshots", affected: 2, batch_size: 100, cutoff: "2026-02-09T00:00:00Z", dry_run: true, has_more: true, requested_by_user_id: 2, approved_by_user_id: 1 } });
+    mocks.postOperationsRetentionRunsIdExecute.mockResolvedValue({ data: { run_id: 11, policy_version: 1, candidate_hash: "a".repeat(64), status: "completed", data_class: "content_metric_snapshots", affected: 2, batch_size: 100, cutoff: "2026-02-09T00:00:00Z", dry_run: false, has_more: false, requested_by_user_id: 2, approved_by_user_id: 1 } });
   });
 
   it("does not render or load governance for non-admins", () => {
@@ -210,16 +212,29 @@ describe("GovernancePage", () => {
     expect(await screen.findByText("45 秒")).toBeInTheDocument();
   });
 
-  it("requires a frozen dry-run hash and explicit approval before retention execution", async () => {
+  it("requires a second administrator to approve an initiator's frozen retention run", async () => {
     render(<GovernancePage />);
     const user = userEvent.setup();
     const previewButtons = await screen.findAllByRole("button", { name: "预览清理" });
     await user.click(previewButtons.find((button) => !button.hasAttribute("disabled"))!);
     await waitFor(() => expect(mocks.postOperationsRetentionPoliciesIdPreview).toHaveBeenCalledWith({ id: 1 }, { expected_version: 1, batch_size: 100 }));
-    const dialog = screen.getByRole("alertdialog", { name: "批准固定保留清单？" });
+    const dialog = screen.getByRole("alertdialog", { name: "等待另一名管理员批准" });
     expect(dialog).toHaveTextContent("运行 #11");
     expect(dialog).toHaveTextContent("a".repeat(64));
+    expect(dialog).toHaveTextContent("发起人与批准人必须不同");
+    expect(screen.queryByRole("button", { name: "批准固定清单" })).not.toBeInTheDocument();
+    expect(mocks.postOperationsRetentionRunsIdApprove).not.toHaveBeenCalled();
     expect(mocks.postOperationsRetentionRunsIdExecute).not.toHaveBeenCalled();
+  });
+
+  it("loads a handed-off retention run for independent approval and execution", async () => {
+    render(<GovernancePage />);
+    const user = userEvent.setup();
+    await screen.findByText("monitor.published");
+    await user.type(screen.getByLabelText("待审批保留运行 ID"), "11");
+    await user.click(screen.getByRole("button", { name: "加载待审批运行" }));
+    await waitFor(() => expect(mocks.getOperationsRetentionRunsId).toHaveBeenCalledWith({ id: 11 }));
+    expect(screen.getByRole("alertdialog", { name: "批准固定保留清单？" })).toHaveTextContent("发起人与批准人必须不同");
     await user.click(screen.getByRole("button", { name: "批准固定清单" }));
     await waitFor(() => expect(mocks.postOperationsRetentionRunsIdApprove).toHaveBeenCalledWith({ id: 11 }, { candidate_hash: "a".repeat(64) }));
     expect(screen.getByRole("alertdialog", { name: "执行已批准保留批次？" })).toHaveTextContent("候选 Hash 已冻结");

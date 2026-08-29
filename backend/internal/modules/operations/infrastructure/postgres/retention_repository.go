@@ -124,13 +124,13 @@ func (repository *RetentionRepository) ApproveRun(ctx context.Context, runID int
 	if err != nil {
 		return operationsdomain.RetentionRun{}, err
 	}
-	if current.Status != operationsdomain.RetentionRunPendingApproval || current.CandidateHash != candidateHash {
+	if current.Status != operationsdomain.RetentionRunPendingApproval || current.CandidateHash != candidateHash || current.RequestedBy == approvedBy {
 		return operationsdomain.RetentionRun{}, sharedrepository.ErrConflict
 	}
 	row := repository.queryer(ctx).QueryRowContext(ctx, retentionRunUpdateProjection(`
 UPDATE retention_runs
 SET status='approved',approved_by_user_id=$3,approved_at=$4,updated_at=$4
-WHERE id=$1 AND status='pending_approval' AND candidate_hash=$2
+WHERE id=$1 AND status='pending_approval' AND candidate_hash=$2 AND requested_by_user_id<>$3
 RETURNING `), runID, candidateHash, approvedBy, approvedAt.UTC())
 	run, err := scanRetentionRun(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -153,7 +153,7 @@ func (repository *RetentionRepository) ExecuteApprovedRun(ctx context.Context, r
 	if err != nil {
 		return operationsdomain.RetentionRun{}, err
 	}
-	if run.Status != operationsdomain.RetentionRunApproved || run.CandidateHash != candidateHash {
+	if run.Status != operationsdomain.RetentionRunApproved || run.CandidateHash != candidateHash || run.ApprovedBy <= 0 || run.ApprovedBy == run.RequestedBy {
 		return operationsdomain.RetentionRun{}, sharedrepository.ErrConflict
 	}
 	policy, err := repository.Find(ctx, run.PolicyID)

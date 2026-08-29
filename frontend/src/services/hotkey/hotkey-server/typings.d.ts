@@ -212,6 +212,7 @@ required property without making explicit null impossible to bind. */
 
   type CleanupResult = {
     affected?: number;
+    approved_by_user_id?: number;
     batch_size?: number;
     candidate_hash?: string;
     cutoff?: string;
@@ -220,6 +221,7 @@ required property without making explicit null impossible to bind. */
     failure_code?: string;
     has_more?: boolean;
     policy_version?: number;
+    requested_by_user_id?: number;
     run_id?: number;
     status?: string;
   };
@@ -1002,6 +1004,11 @@ required property without making explicit null impossible to bind. */
     state?: string;
     /** page size */
     limit?: number;
+  };
+
+  type getOperationsRetentionRunsIdParams = {
+    /** retention run ID */
+    id: number;
   };
 
   type getReportsIdParams = {

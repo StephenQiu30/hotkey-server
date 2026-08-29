@@ -106,6 +106,21 @@ func (service *GovernanceService) PreviewRetention(ctx context.Context, input Re
 	return result, err
 }
 
+func (service *GovernanceService) RetentionRun(ctx context.Context, subject identitydomain.Subject, runID int64) (operationsdomain.CleanupResult, error) {
+	if err := requireGovernanceAdmin(subject); err != nil {
+		return operationsdomain.CleanupResult{}, err
+	}
+	if runID <= 0 {
+		return operationsdomain.CleanupResult{}, fmt.Errorf("%w: invalid retention run id", sharedrepository.ErrInvalidInput)
+	}
+	run, err := service.retention.FindRun(ctx, runID)
+	if err != nil {
+		return operationsdomain.CleanupResult{}, err
+	}
+	dryRun := run.Status == operationsdomain.RetentionRunPendingApproval || run.Status == operationsdomain.RetentionRunApproved
+	return cleanupResult(run, dryRun), nil
+}
+
 type RetentionRunInput struct {
 	Subject       identitydomain.Subject
 	RunID         int64
@@ -189,7 +204,8 @@ func cleanupResult(run operationsdomain.RetentionRun, dryRun bool) operationsdom
 	return operationsdomain.CleanupResult{
 		RunID: run.ID, PolicyVersion: run.PolicyVersion, DataClass: run.DataClass, Cutoff: run.Cutoff,
 		Affected: affected, BatchSize: run.BatchSize, HasMore: run.HasMore, CandidateHash: run.CandidateHash,
-		Status: run.Status, FailureCode: run.FailureCode, DryRun: dryRun,
+		Status: run.Status, RequestedByUserID: run.RequestedBy, ApprovedByUserID: run.ApprovedBy,
+		FailureCode: run.FailureCode, DryRun: dryRun,
 	}
 }
 

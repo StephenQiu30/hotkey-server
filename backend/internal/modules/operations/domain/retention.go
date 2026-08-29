@@ -93,15 +93,17 @@ func writeRetentionHashPart(digest hash.Hash, value any) {
 }
 
 type CleanupResult struct {
-	RunID         int64     `json:"run_id"`
-	PolicyVersion int64     `json:"policy_version"`
-	DataClass     string    `json:"data_class"`
-	Cutoff        time.Time `json:"cutoff"`
-	Affected      int64     `json:"affected"`
-	BatchSize     int       `json:"batch_size"`
-	HasMore       bool      `json:"has_more"`
-	CandidateHash string    `json:"candidate_hash"`
-	Status        string    `json:"status"`
-	FailureCode   string    `json:"failure_code,omitempty"`
-	DryRun        bool      `json:"dry_run"`
+	RunID             int64     `json:"run_id"`
+	PolicyVersion     int64     `json:"policy_version"`
+	DataClass         string    `json:"data_class"`
+	Cutoff            time.Time `json:"cutoff"`
+	Affected          int64     `json:"affected"`
+	BatchSize         int       `json:"batch_size"`
+	HasMore           bool      `json:"has_more"`
+	CandidateHash     string    `json:"candidate_hash"`
+	Status            string    `json:"status"`
+	RequestedByUserID int64     `json:"requested_by_user_id"`
+	ApprovedByUserID  int64     `json:"approved_by_user_id,omitempty"`
+	FailureCode       string    `json:"failure_code,omitempty"`
+	DryRun            bool      `json:"dry_run"`
 }

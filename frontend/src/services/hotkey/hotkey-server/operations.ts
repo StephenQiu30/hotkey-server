@@ -116,6 +116,23 @@ export async function postOperationsRetentionPoliciesIdPreview(
   );
 }
 
+/** Get a frozen retention run GET /api/v1/operations/retention-runs/${param0} */
+export async function getOperationsRetentionRunsId(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.getOperationsRetentionRunsIdParams,
+  options?: RequestOptions
+) {
+  const { id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.GovernanceResultDomainCleanupResult>(
+    `/api/v1/operations/retention-runs/${param0}`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
 /** Approve a frozen retention run POST /api/v1/operations/retention-runs/${param0}/approve */
 export async function postOperationsRetentionRunsIdApprove(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)

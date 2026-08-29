@@ -16,6 +16,7 @@ import (
 type governanceService interface {
 	Usage(context.Context, identitydomain.Subject) (domain.UsageOverview, error)
 	RetentionPolicies(context.Context, identitydomain.Subject) ([]domain.RetentionPolicy, error)
+	RetentionRun(context.Context, identitydomain.Subject, int64) (domain.CleanupResult, error)
 	PreviewRetention(context.Context, operationsapplication.RetentionInput) (domain.CleanupResult, error)
 	ApproveRetention(context.Context, operationsapplication.RetentionRunInput) (domain.CleanupResult, error)
 	ExecuteRetention(context.Context, operationsapplication.RetentionRunInput) (domain.CleanupResult, error)
@@ -38,6 +39,7 @@ func RegisterGovernanceRoutes(router *gin.Engine, service *operationsapplication
 	admin := router.Group("/api/v1/operations", httptransport.RequireAuthentication(authenticator), httptransport.RequireRoles(httptransport.RoleAdmin))
 	admin.GET("/retention-policies", httptransport.Wrap(handler.RetentionPolicies))
 	admin.POST("/retention-policies/:id/preview", httptransport.Wrap(handler.PreviewRetention))
+	admin.GET("/retention-runs/:id", httptransport.Wrap(handler.RetentionRun))
 	admin.POST("/retention-runs/:id/approve", httptransport.Wrap(handler.ApproveRetention))
 	admin.POST("/retention-runs/:id/execute", httptransport.Wrap(handler.ExecuteRetention))
 	admin.GET("/audit-logs", httptransport.Wrap(handler.Audit))
@@ -154,6 +156,37 @@ func (handler *GovernanceHandler) PreviewRetention(c *gin.Context) error {
 	result, err := handler.service.PreviewRetention(c.Request.Context(), operationsapplication.RetentionInput{
 		Subject: subject, PolicyID: id, ExpectedVersion: request.ExpectedVersion, BatchSize: request.BatchSize,
 	})
+	if err != nil {
+		return operationsapplication.GovernanceHTTPError(err)
+	}
+	httptransport.OK(c, result)
+	return nil
+}
+
+// RetentionRun returns one frozen run for independent Admin handoff.
+// @Summary Get a frozen retention run
+// @Tags operations
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "retention run ID"
+// @Success 200 {object} GovernanceResult[domain.CleanupResult]
+// @Failure 400 {object} GovernanceResult[EmptyResponse]
+// @Failure 401 {object} GovernanceResult[EmptyResponse]
+// @Failure 403 {object} GovernanceResult[EmptyResponse]
+// @Failure 404 {object} GovernanceResult[EmptyResponse]
+// @Failure 503 {object} GovernanceResult[EmptyResponse]
+// @Router /api/v1/operations/retention-runs/{id} [get]
+func (handler *GovernanceHandler) RetentionRun(c *gin.Context) error {
+	httptransport.SetModule(c, "operations")
+	subject, err := governanceSubject(c)
+	if err != nil {
+		return err
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		return operationsapplication.GovernanceHTTPError(fmt.Errorf("%w: invalid retention run id", sharedrepository.ErrInvalidInput))
+	}
+	result, err := handler.service.RetentionRun(c.Request.Context(), subject, id)
 	if err != nil {
 		return operationsapplication.GovernanceHTTPError(err)
 	}
