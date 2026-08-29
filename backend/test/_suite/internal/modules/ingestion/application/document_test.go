@@ -113,15 +113,19 @@ func TestContentDocumentStoreRecovery(t *testing.T) {
 
 func TestContentDocumentDeleted(t *testing.T) {
 	t.Parallel()
+	store := &documentEvidenceStoreStub{}
 	service, err := NewContentQueryService(ContentQueryDependencies{
 		Contents: &contentQueryRepositoryStub{getError: sharedrepository.ErrNotFound},
-		Sources:  &contentSourceReaderStub{}, Evidence: &documentEvidenceStoreStub{},
+		Sources:  &contentSourceReaderStub{}, Evidence: store,
 	})
 	if err != nil {
 		t.Fatalf("NewContentQueryService() error = %v", err)
 	}
 	if _, err := service.GetDocument(context.Background(), 7); !isAppCode(err, sharederrors.CodeNotFound) {
 		t.Fatalf("GetDocument(deleted) error = %v, want not found", err)
+	}
+	if store.lastKey != "" || store.lastMaxBytes != 0 {
+		t.Fatalf("GetDocument(denied) object-store read = %q/%d, want none", store.lastKey, store.lastMaxBytes)
 	}
 }
 

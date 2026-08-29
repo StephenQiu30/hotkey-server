@@ -406,10 +406,13 @@ func (repository *ContentRepository) ListActive(ctx context.Context, query inges
 		var summary ingestiondomain.HotspotSummary
 		if err := repository.queryRow(ctx, `
 	SELECT COUNT(*)::bigint,
-	       COUNT(*) FILTER (WHERE fetched_at >= date_trunc('day', CURRENT_TIMESTAMP))::bigint,
-	       COUNT(*) FILTER (WHERE hotspot_heat_score(view_count,like_count,comment_count,share_count) >= 75)::bigint
-	FROM contents
-	WHERE content_status = 'active' AND deleted_at IS NULL`).Scan(&summary.Total, &summary.Today, &summary.Urgent); err != nil {
+	       COUNT(*) FILTER (WHERE c.fetched_at >= date_trunc('day', CURRENT_TIMESTAMP))::bigint,
+	       COUNT(*) FILTER (WHERE hotspot_heat_score(c.view_count,c.like_count,c.comment_count,c.share_count) >= 75)::bigint
+	FROM contents AS c
+	`+activeContentDocumentVersionJoin+`
+	WHERE c.content_status = 'active'
+	  AND c.deleted_at IS NULL
+	  AND `+activeContentRightsVisibilityCondition).Scan(&summary.Total, &summary.Today, &summary.Urgent); err != nil {
 			return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 		}
 		page.Summary = &summary
@@ -434,7 +437,8 @@ LEFT JOIN source_authors AS author ON author.id = c.author_id
 `+activeContentDocumentVersionJoin+`
 WHERE c.id = $1
   AND c.content_status = 'active'
-  AND c.deleted_at IS NULL`, contentID))
+  AND c.deleted_at IS NULL
+  AND `+activeContentRightsVisibilityCondition, contentID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return ingestiondomain.Content{}, fmt.Errorf("%w: active content %d", sharedrepository.ErrNotFound, contentID)
 	}
@@ -665,7 +669,7 @@ func contentListStatement(query ingestiondomain.ContentListQuery, cursor content
 	}
 	monitor := builder.bind(monitorID)
 	asOf := builder.bind(cursor.AsOf.UTC())
-	conditions := []string{"c.content_status = 'active'", "c.deleted_at IS NULL", "c.created_at <= " + asOf}
+	conditions := []string{"c.content_status = 'active'", "c.deleted_at IS NULL", activeContentRightsVisibilityCondition, "c.created_at <= " + asOf}
 	if query.Keyword != "" {
 		conditions = append(conditions, "lower(c.title || ' ' || c.excerpt) LIKE "+builder.bind(contentSearchPattern(query.Keyword))+" ESCAPE '\\'")
 	}
@@ -829,6 +833,17 @@ const activeContentDocumentVersionJoin = `LEFT JOIN LATERAL (
     ORDER BY document.updated_at DESC, document.id DESC
     LIMIT 1
 ) AS archived_version ON true`
+
+// Once Content has a canonical Document fact, every public Content read must
+// fail closed unless that exact current Document version remains readable
+// under the current display_private decision. Rows that predate the Document
+// pipeline remain visible until a Document fact exists for their source key.
+const activeContentRightsVisibilityCondition = `(archived_version.document_version_id IS NOT NULL OR NOT EXISTS (
+    SELECT 1
+    FROM documents AS rights_document
+    WHERE rights_document.source_connection_id = c.source_connection_id
+      AND rights_document.external_work_id = c.external_id
+))`
 
 func contentSearchPattern(keyword string) string {
 	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)

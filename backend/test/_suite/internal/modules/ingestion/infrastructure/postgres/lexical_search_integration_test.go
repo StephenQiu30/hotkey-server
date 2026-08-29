@@ -3,13 +3,16 @@ package postgres_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
+	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/postgres"
 	searchdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/search/domain"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
 func TestContentRepositorySearchUsesCurrentPostgresLexicalProjection(t *testing.T) {
@@ -71,6 +74,14 @@ VALUES ($1,$2,'article',$3,$4,'https://example.test/lexical','zh',$5,$5,$6) RETU
 		t.Fatal(err)
 	}
 	repository := ingestionpostgres.NewContentRepository(runtime)
+	active, err := repository.GetActive(context.Background(), contentID)
+	if err != nil || active.DocumentVersionID == nil || *active.DocumentVersionID != fixture.persisted.DocumentVersion.ID {
+		t.Fatalf("GetActive(authorized) = %#v/%v", active, err)
+	}
+	page, err := repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 10, IncludeSummary: true})
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != contentID || page.Summary == nil || page.Summary.Total != 1 {
+		t.Fatalf("ListActive(authorized) = %#v/%v", page, err)
+	}
 	plan, err := repository.ExplainSearch(context.Background(), searchdomain.Query{
 		Keyword: "release", Types: []searchdomain.ResourceType{searchdomain.ResourceContent}, Limit: 10,
 	})
@@ -110,9 +121,19 @@ VALUES ($1,$2,'article',$3,$4,'https://example.test/lexical','zh',$5,$5,$6) RETU
 	}
 	revocationPolicy := createDocumentRightsPolicy(t, runtime, fixture.sourceID, 3, time.Now().UTC().Add(-time.Hour))
 	insertDocumentRightsDecisionWithOutcome(t, runtime, revocationPolicy, fixture.persisted.DocumentVersion.ID,
-		fixture.persisted.DocumentVersion.ContentSHA256, "store_derived", "deny", nil, nil, fixture.persisted.DocumentVersion.ID)
+		fixture.persisted.DocumentVersion.ContentSHA256, "display_private", "deny", nil, nil, fixture.persisted.DocumentVersion.ID)
 	if visible, err := repository.CanDisplay(context.Background(), visibilityQuery, visibleItems[0]); err != nil || visible {
 		t.Fatalf("CanDisplay(rights revoked) = %v/%v", visible, err)
+	}
+	if items, err := repository.Search(context.Background(), visibilityQuery); err != nil || len(items) != 0 {
+		t.Fatalf("Search(rights revoked) = %#v/%v, want no readable result", items, err)
+	}
+	if _, err := repository.GetActive(context.Background(), contentID); !errors.Is(err, sharedrepository.ErrNotFound) {
+		t.Fatalf("GetActive(rights revoked) error = %v, want not found", err)
+	}
+	page, err = repository.ListActive(context.Background(), ingestiondomain.ContentListQuery{Limit: 10, IncludeSummary: true})
+	if err != nil || len(page.Items) != 0 || page.Summary == nil || page.Summary.Total != 0 {
+		t.Fatalf("ListActive(rights revoked) = %#v/%v, want no readable item or leaked summary", page, err)
 	}
 }
 

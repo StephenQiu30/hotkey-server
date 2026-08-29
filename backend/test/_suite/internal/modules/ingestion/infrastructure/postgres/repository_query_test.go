@@ -35,5 +35,8 @@ func TestContentListStatementUsesDatabaseOrderingForEveryHotspotSort(t *testing.
 		if !strings.Contains(statement, "c.created_at <=") || !strings.Contains(statement, "metric.created_at <=") {
 			t.Fatalf("sort %q statement does not pin the traversal snapshot:\n%s", query.Sort, statement)
 		}
+		if !strings.Contains(statement, activeContentRightsVisibilityCondition) {
+			t.Fatalf("sort %q statement does not fail closed on current Content rights:\n%s", query.Sort, statement)
+		}
 	}
 }
