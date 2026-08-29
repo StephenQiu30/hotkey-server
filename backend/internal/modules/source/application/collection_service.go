@@ -26,6 +26,7 @@ type CollectionDependencies struct {
 	Sources       domain.SourceConnectionRepository
 	Runs          domain.CollectionRepository
 	Connectors    domain.CollectionConnectorRegistry
+	Admission     CollectionAdmissionAuthorizer
 	Evidence      CollectionEvidenceArchiver
 	SecurityAudit CollectionSecurityAuditWriter
 	Now           func() time.Time
@@ -40,6 +41,7 @@ type CollectionService struct {
 	sources       domain.SourceConnectionRepository
 	runs          domain.CollectionRepository
 	connectors    domain.CollectionConnectorRegistry
+	admission     CollectionAdmissionAuthorizer
 	evidence      CollectionEvidenceArchiver
 	securityAudit CollectionSecurityAuditWriter
 	now           func() time.Time
@@ -47,7 +49,7 @@ type CollectionService struct {
 }
 
 func NewCollectionService(dependencies CollectionDependencies) (*CollectionService, error) {
-	if dependencies.Runtime == nil || dependencies.Sources == nil || dependencies.Runs == nil || dependencies.Connectors == nil {
+	if dependencies.Runtime == nil || dependencies.Sources == nil || dependencies.Runs == nil || dependencies.Connectors == nil || dependencies.Admission == nil {
 		return nil, errors.New("collection application dependencies are required")
 	}
 	if dependencies.Now == nil {
@@ -55,7 +57,7 @@ func NewCollectionService(dependencies CollectionDependencies) (*CollectionServi
 	}
 	return &CollectionService{
 		runtime: dependencies.Runtime, sources: dependencies.Sources, runs: dependencies.Runs,
-		connectors: dependencies.Connectors, evidence: dependencies.Evidence, securityAudit: dependencies.SecurityAudit,
+		connectors: dependencies.Connectors, admission: dependencies.Admission, evidence: dependencies.Evidence, securityAudit: dependencies.SecurityAudit,
 		now: dependencies.Now, logger: dependencies.Logger,
 	}, nil
 }
@@ -149,6 +151,9 @@ func (service *CollectionService) execute(ctx context.Context, request domain.Co
 	}
 	if !connection.Enabled || connection.Deleted {
 		return service.fail(ctx, run, request.Targets, domain.FetchResult{}, domain.CollectionErrorPermanent, errors.New("source connection is unavailable"))
+	}
+	if err := service.admission.AuthorizeCollection(ctx, *connection); err != nil {
+		return service.fail(ctx, run, request.Targets, domain.FetchResult{}, domain.ClassifyCollectionError(err), err)
 	}
 	connector, err := service.connectors.Resolve(ctx, *connection)
 	if err != nil {

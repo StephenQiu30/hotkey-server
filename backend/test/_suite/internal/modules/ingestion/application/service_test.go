@@ -607,6 +607,7 @@ func collectRunThroughSourcePolicy(t *testing.T, runtime *database.Runtime, allo
 	}
 	collector, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sources, Runs: sourcepostgres.NewCollectionRepository(runtime),
+		Admission: allowingSourceCollectionAdmission{},
 		Connectors: policyConnectorRegistry{connector: policyConnector{item: sourcedomain.SourceItem{
 			SourceCode: "rss", ExternalID: "policy-item", ContentType: "article", Title: "Policy item",
 			Body: "licensed full body", URL: "https://example.test/policy-item", Language: "en", ObservedAt: now,
@@ -623,4 +624,10 @@ func collectRunThroughSourcePolicy(t *testing.T, runtime *database.Runtime, allo
 		t.Fatalf("Collect() = %#v/%v, want succeeded", run, err)
 	}
 	return run.ID, connection.ID
+}
+
+type allowingSourceCollectionAdmission struct{}
+
+func (allowingSourceCollectionAdmission) AuthorizeCollection(context.Context, sourcedomain.SourceConnection) error {
+	return nil
 }

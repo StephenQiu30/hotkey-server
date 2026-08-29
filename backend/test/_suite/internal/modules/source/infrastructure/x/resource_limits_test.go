@@ -3,6 +3,7 @@ package x
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -187,6 +188,36 @@ func TestXResourceLimitOrderingValidatesInputAndCredentialBeforeBudgetOrNetwork(
 	result, err := connector.Fetch(context.Background(), xFetchRequest())
 	if domain.ClassifyCollectionError(err) != domain.CollectionErrorRateLimited || result.RateLimit.RetryAfter == nil || credentialReads.Load() != 1 || budget.callCount() != 1 || requests.Load() != 0 {
 		t.Fatalf("quota ordering result/error/credential/budget/network = %#v/%v/%d/%d/%d", result, err, credentialReads.Load(), budget.callCount(), requests.Load())
+	}
+}
+
+func TestXEndpointPolicyRejectsUnsafeResolutionBeforeCredentialBudgetOrDial(t *testing.T) {
+	var credentialReads, dialCalls atomic.Int32
+	budget := &boundedXRequestBudget{limit: 1}
+	connector, err := newConnector(xConnection(), connectorOptions{
+		lookupEnv: func(string) (string, bool) {
+			credentialReads.Add(1)
+			return "fixture-secret", true
+		},
+		requestBudget:  budget,
+		resourceLimits: testXResourceLimitProfile(),
+		retryWait:      noXRetryWait,
+		resolver: func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
+		},
+		dialContext: func(context.Context, string, string) (net.Conn, error) {
+			dialCalls.Add(1)
+			return nil, errors.New("unexpected dial")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connector.Fetch(context.Background(), xFetchRequest()); domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent {
+		t.Fatalf("unsafe endpoint error = %v", err)
+	}
+	if credentialReads.Load() != 0 || budget.callCount() != 0 || dialCalls.Load() != 0 {
+		t.Fatalf("unsafe endpoint credential/budget/dial = %d/%d/%d, want 0/0/0", credentialReads.Load(), budget.callCount(), dialCalls.Load())
 	}
 }
 

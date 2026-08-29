@@ -111,6 +111,59 @@ func TestRightsDecisionReaderAppliesEndpointPolicyAndExactDenyPrecedence(t *test
 	}
 }
 
+func TestRightsDecisionReaderResolvesCurrentEndpointFetchConservatively(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+
+	connection := sourceConnection("endpoint-fetch-rights-reader")
+	if err := sourcepostgres.NewRepository(runtime).Create(context.Background(), &connection); err != nil {
+		t.Fatalf("create source connection: %v", err)
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	firstPolicy := insertRightsReaderPolicy(t, runtime, connection.ID, "source_endpoint", "feed-reader", 1, 300, now.Add(-time.Hour))
+	secondPolicy := insertRightsReaderPolicy(t, runtime, connection.ID, "source_endpoint", "feed-reader", 2, 300, now.Add(-time.Hour))
+	allowID := insertRightsReaderEndpointDecision(t, runtime, connection.ID, firstPolicy, "fetch", "allow", nil, now.Add(-3*time.Minute))
+	unknownID := insertRightsReaderEndpointDecision(t, runtime, connection.ID, secondPolicy, "fetch", "unknown", nil, now.Add(-time.Minute))
+
+	reader := sourcepostgres.NewRightsDecisionReader(runtime)
+	result, err := reader.ResolveCurrentFetch(context.Background(), sourceapplication.CurrentCollectionFetchRightsQuery{
+		SourceConnectionID: connection.ID,
+		DecisionAt:         now,
+	})
+	if err != nil {
+		t.Fatalf("ResolveCurrentFetch(): %v", err)
+	}
+	if result.Decision != "deny" || !result.EvaluatedAt.Equal(now) || len(result.DecisionIDs) != 2 || len(result.PolicyIDs) != 2 {
+		t.Fatalf("conflicting endpoint fetch result = %#v", result)
+	}
+	if result.DecisionIDs[0] != allowID || result.DecisionIDs[1] != unknownID {
+		t.Fatalf("decision receipts = %v", result.DecisionIDs)
+	}
+
+	allowedAt := now.Add(-2 * time.Minute)
+	result, err = reader.ResolveCurrentFetch(context.Background(), sourceapplication.CurrentCollectionFetchRightsQuery{
+		SourceConnectionID: connection.ID,
+		DecisionAt:         allowedAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Decision != "allow" || len(result.DecisionIDs) != 1 || result.DecisionIDs[0] != allowID {
+		t.Fatalf("explicit allow result = %#v", result)
+	}
+
+	missing, err := reader.ResolveCurrentFetch(context.Background(), sourceapplication.CurrentCollectionFetchRightsQuery{
+		SourceConnectionID: connection.ID,
+		DecisionAt:         now.Add(-2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing.Decision != "unknown" || len(missing.DecisionIDs) != 0 || len(missing.PolicyIDs) != 0 {
+		t.Fatalf("missing endpoint fetch result = %#v", missing)
+	}
+}
+
 type rightsReaderPolicyFixture struct {
 	ID           int64
 	Revision     int64

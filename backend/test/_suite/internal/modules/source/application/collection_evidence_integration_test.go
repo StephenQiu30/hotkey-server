@@ -26,7 +26,7 @@ func TestCollectionServiceArchivesFilteredRawEvidenceBeforeLegacyPersistence(t *
 	}}
 	request.Targets[0].Terms = append(request.Targets[0].Terms, domain.CollectionTerm{Value: "blocked", Excluded: true})
 	archiver := &collectionEvidenceArchiverFake{runtime: runtime}
-	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: connector}, Evidence: archiver, Now: func() time.Time { return request.WindowEnd },
 	})
@@ -51,7 +51,7 @@ func TestCollectionServiceTreatsMissingRawStorageRightsAsPolicySkip(t *testing.T
 	request := collectionRequestForService(t, runtime, "raw-evidence-policy-skip", 1)
 	snapshot := collectionEvidenceSnapshot(t, request.WindowStart)
 	archiver := &collectionEvidenceArchiverFake{runtime: runtime, err: domain.ErrRawArchiveNotAuthorized}
-	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{result: domain.FetchResult{
 			Snapshots: []domain.EvidenceSnapshot{snapshot},
@@ -73,7 +73,7 @@ func TestCollectionServiceFailsRetryablyWhenAuthorizedRawArchiveStorageFails(t *
 	request := collectionRequestForService(t, runtime, "raw-evidence-store-failure", 1)
 	snapshot := collectionEvidenceSnapshot(t, request.WindowStart)
 	archiver := &collectionEvidenceArchiverFake{runtime: runtime, err: errors.New("object store failed")}
-	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{result: domain.FetchResult{
 			Snapshots: []domain.EvidenceSnapshot{snapshot},

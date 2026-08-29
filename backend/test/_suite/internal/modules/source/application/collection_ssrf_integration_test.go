@@ -23,7 +23,7 @@ func TestCollectionSSRFSecurityRejectionPersistsOnlySanitizedOperationalAudit(t 
 		domain.CollectionErrorPermanent,
 		errors.New("RSS destination is not permitted"),
 	)}
-	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: connectorRegistryForAcceptance{connector: connector}, SecurityAudit: operationspostgres.NewAuditWriter(runtime),
 		Now: func() time.Time { return request.WindowEnd },
@@ -95,7 +95,7 @@ func TestCollectionCompressionSecurityRejectionPersistsNoBusinessFactsOrPayload(
 		domain.CollectionErrorPermanent,
 		errors.New("RSS compressed response is not permitted"),
 	)}
-	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: connectorRegistryForAcceptance{connector: connector}, SecurityAudit: operationspostgres.NewAuditWriter(runtime),
 		Now: func() time.Time { return request.WindowEnd },
@@ -148,10 +148,73 @@ FROM audit_logs WHERE action='collection.security_rejected' AND resource_id=$1`,
 	}
 }
 
+func TestCollectionFetchRightsDenialStopsBeforeConnectorResolutionAndPersistsSanitizedAudit(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	request := collectionRequestForService(t, runtime, "fetch-rights-rejection", 1)
+	before := readCollectionBusinessFactCounts(t, runtime)
+	admission := &denyingCollectionAdmission{}
+	registry := &countingCollectionConnectorRegistry{}
+	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
+		Admission: admission, Connectors: registry, SecurityAudit: operationspostgres.NewAuditWriter(runtime),
+		Now: func() time.Time { return request.WindowEnd },
+	})
+	if err != nil {
+		t.Fatalf("NewCollectionService(): %v", err)
+	}
+
+	run, collectErr := service.Collect(context.Background(), request)
+	if collectErr == nil || domain.ClassifyCollectionError(collectErr) != domain.CollectionErrorPermanent || run.Status != domain.CollectionRunFailed {
+		t.Fatalf("fetch Rights rejection = %#v / %v", run, collectErr)
+	}
+	if admission.calls != 1 || registry.calls != 0 {
+		t.Fatalf("admission/connector resolution calls = %d/%d, want 1/0", admission.calls, registry.calls)
+	}
+	if after := readCollectionBusinessFactCounts(t, runtime); after != before {
+		t.Fatalf("business facts changed after fetch Rights rejection: before=%#v after=%#v", before, after)
+	}
+
+	var runStatus, runError, afterData, allRows string
+	var auditCount int
+	if err := runtime.SQL.QueryRow(`
+SELECT status, COALESCE(error_code, '') FROM collection_runs WHERE id=$1`, run.ID).Scan(&runStatus, &runError); err != nil {
+		t.Fatalf("read denied collection run: %v", err)
+	}
+	if err := runtime.SQL.QueryRow(`
+SELECT count(*), COALESCE(min(after_data::text), ''), COALESCE(string_agg(row_to_json(audit_logs)::text, ''), '')
+FROM audit_logs WHERE action='collection.security_rejected' AND resource_id=$1`, run.ID).
+		Scan(&auditCount, &afterData, &allRows); err != nil {
+		t.Fatalf("read fetch Rights security audit: %v", err)
+	}
+	if runStatus != "failed" || runError != "permanent" || auditCount != 1 || afterData != `{"reason_code": "fetch_rights_not_permitted"}` {
+		t.Fatalf("fetch Rights persisted result = %q/%q/%d/%q", runStatus, runError, auditCount, afterData)
+	}
+	for _, forbidden := range []string{"credential", "token", "endpoint", "feeds.example"} {
+		if strings.Contains(allRows, forbidden) {
+			t.Fatalf("fetch Rights audit leaked %q: %s", forbidden, allRows)
+		}
+	}
+}
+
 type connectorRegistryForAcceptance struct{ connector domain.Connector }
 
 func (registry connectorRegistryForAcceptance) Resolve(context.Context, domain.SourceConnection) (domain.Connector, error) {
 	return registry.connector, nil
+}
+
+type denyingCollectionAdmission struct{ calls int }
+
+func (admission *denyingCollectionAdmission) AuthorizeCollection(context.Context, domain.SourceConnection) error {
+	admission.calls++
+	return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("source fetch rights are not permitted"))
+}
+
+type countingCollectionConnectorRegistry struct{ calls int }
+
+func (registry *countingCollectionConnectorRegistry) Resolve(context.Context, domain.SourceConnection) (domain.Connector, error) {
+	registry.calls++
+	return nil, errors.New("connector resolution must not be reached")
 }
 
 type collectionBusinessFactCounts struct {

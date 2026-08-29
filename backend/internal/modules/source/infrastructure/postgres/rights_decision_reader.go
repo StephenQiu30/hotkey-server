@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
@@ -16,9 +17,86 @@ type RightsDecisionReader struct {
 }
 
 var _ sourceapplication.CurrentRawEvidenceRightsReader = (*RightsDecisionReader)(nil)
+var _ sourceapplication.CurrentCollectionFetchRightsReader = (*RightsDecisionReader)(nil)
 
 func NewRightsDecisionReader(runtime *database.Runtime) *RightsDecisionReader {
 	return &RightsDecisionReader{runtime: runtime}
+}
+
+func (reader *RightsDecisionReader) ResolveCurrentFetch(ctx context.Context, query sourceapplication.CurrentCollectionFetchRightsQuery) (sourceapplication.CurrentCollectionFetchRightsResult, error) {
+	if reader == nil || reader.runtime == nil || reader.runtime.SQL == nil {
+		return sourceapplication.CurrentCollectionFetchRightsResult{}, sharedrepository.ErrUnavailable
+	}
+	if err := query.Validate(); err != nil {
+		return sourceapplication.CurrentCollectionFetchRightsResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	rows, err := reader.runtime.SQL.QueryContext(ctx, `
+WITH terminal AS (
+  SELECT decision.id,decision.policy_id,decision.priority_rank,decision.decision
+  FROM source_rights_decisions AS decision
+  JOIN source_rights_policies AS policy
+    ON policy.id=decision.policy_id
+   AND policy.policy_hash=decision.input_digest
+  WHERE decision.source_connection_id=$1
+    AND decision.subject_type='source_endpoint'
+    AND decision.subject_key=($1::bigint)::text
+    AND decision.action='fetch'
+    AND decision.effective_from <= $2
+    AND (decision.expires_at IS NULL OR $2 < decision.expires_at)
+    AND NOT EXISTS (
+      SELECT 1 FROM source_rights_decisions AS superseding
+      WHERE superseding.supersedes_decision_id=decision.id
+        AND superseding.effective_from <= $2
+    )
+), highest AS (
+  SELECT max(priority_rank) AS priority_rank FROM terminal
+)
+SELECT terminal.id,terminal.policy_id,terminal.priority_rank,terminal.decision
+FROM terminal JOIN highest USING (priority_rank)
+ORDER BY terminal.id`, query.SourceConnectionID, query.DecisionAt.UTC())
+	if err != nil {
+		return sourceapplication.CurrentCollectionFetchRightsResult{}, databaserepository.MapError(err)
+	}
+	defer rows.Close()
+
+	result := sourceapplication.CurrentCollectionFetchRightsResult{
+		Decision: domain.RightsUnknown, DecisionIDs: []int64{}, PolicyIDs: []int64{}, EvaluatedAt: query.DecisionAt.UTC(),
+	}
+	policies := make(map[int64]struct{})
+	allAllowed := true
+	priority := 0
+	for rows.Next() {
+		var decisionID, policyID int64
+		var currentPriority int
+		var state domain.RightsState
+		if err := rows.Scan(&decisionID, &policyID, &currentPriority, &state); err != nil {
+			return sourceapplication.CurrentCollectionFetchRightsResult{}, databaserepository.MapError(err)
+		}
+		if decisionID <= 0 || policyID <= 0 || currentPriority <= 0 || !state.Valid() || priority != 0 && currentPriority != priority {
+			return sourceapplication.CurrentCollectionFetchRightsResult{}, fmt.Errorf("%w: current fetch rights record is invalid", sharedrepository.ErrConstraint)
+		}
+		priority = currentPriority
+		result.DecisionIDs = append(result.DecisionIDs, decisionID)
+		policies[policyID] = struct{}{}
+		allAllowed = allAllowed && state == domain.RightsAllow
+	}
+	if err := rows.Err(); err != nil {
+		return sourceapplication.CurrentCollectionFetchRightsResult{}, databaserepository.MapError(err)
+	}
+	if len(result.DecisionIDs) > 0 {
+		result.Decision = domain.RightsDeny
+		if allAllowed {
+			result.Decision = domain.RightsAllow
+		}
+		for policyID := range policies {
+			result.PolicyIDs = append(result.PolicyIDs, policyID)
+		}
+		sort.Slice(result.PolicyIDs, func(left, right int) bool { return result.PolicyIDs[left] < result.PolicyIDs[right] })
+	}
+	if err := result.Validate(query); err != nil {
+		return sourceapplication.CurrentCollectionFetchRightsResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+	}
+	return result, nil
 }
 
 // ResolveCurrent evaluates the complete bounded batch in one PostgreSQL

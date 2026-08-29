@@ -50,6 +50,7 @@ type connectorOptions struct {
 	tlsConfig      *tls.Config
 	now            func() time.Time
 	lookupEnv      func(string) (string, bool)
+	lookupManaged  func(context.Context, string) (string, bool)
 	resourceLimits ResourceLimitProfile
 	requestBudget  domain.ExternalRequestBudget
 	retryWait      func(context.Context, int) error
@@ -63,7 +64,8 @@ type Connector struct {
 	deleted        bool
 	http           *http.Client
 	now            func() time.Time
-	lookupEnv      func(string) (string, bool)
+	lookupManaged  func(context.Context, string) (string, bool)
+	resolver       lookupIPAddrFunc
 	resourceLimits ResourceLimitProfile
 	requestBudget  domain.ExternalRequestBudget
 	retryWait      func(context.Context, int) error
@@ -188,6 +190,16 @@ func NewWithCredentialLookup(connection domain.SourceConnection, resolver source
 	return newConnector(connection, options)
 }
 
+// NewWithManagedCredentialLookup defers managed credential decryption until
+// the request boundary, after static and resolved endpoint policy checks.
+func NewWithManagedCredentialLookup(connection domain.SourceConnection, resolver sourcenet.Resolver, lookup func(context.Context, string) (string, bool), requestBudget domain.ExternalRequestBudget) (*Connector, error) {
+	options := connectorOptions{lookupManaged: lookup, requestBudget: requestBudget}
+	if resolver != nil {
+		options.resolver = resolver.LookupIPAddr
+	}
+	return newConnector(connection, options)
+}
+
 func newConnector(connection domain.SourceConnection, options connectorOptions) (*Connector, error) {
 	normalized, err := domain.NormalizeSourceConnection(connection)
 	if err != nil || normalized.SourceType != domain.SourceTypeX || normalized.Endpoint != domain.XRecentSearchEndpoint {
@@ -208,6 +220,9 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	}
 	if options.lookupEnv == nil {
 		options.lookupEnv = os.LookupEnv
+	}
+	if options.lookupManaged == nil {
+		options.lookupManaged = func(_ context.Context, name string) (string, bool) { return options.lookupEnv(name) }
 	}
 	if options.resourceLimits.Version == "" {
 		options.resourceLimits = DefaultResourceLimitProfile()
@@ -253,7 +268,8 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	return &Connector{
 		sourceID: normalized.ID, endpoint: endpoint, credentialRef: normalized.CredentialRef,
 		enabled: normalized.Enabled, deleted: normalized.Deleted, http: client,
-		now: options.now, lookupEnv: options.lookupEnv, resourceLimits: options.resourceLimits,
+		now: options.now, resourceLimits: options.resourceLimits,
+		lookupManaged: options.lookupManaged, resolver: options.resolver,
 		requestBudget: options.requestBudget, retryWait: options.retryWait,
 	}, nil
 }
@@ -288,7 +304,10 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 	}
 	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
 	defer cancel()
-	token, err := connector.token()
+	if err := connector.validateEndpointPolicy(ctx, connector.endpoint); err != nil {
+		return result, err
+	}
+	token, err := connector.token(ctx)
 	if err != nil {
 		return result, err
 	}
@@ -417,7 +436,10 @@ func (connector *Connector) LookupPostMetrics(ctx context.Context, request domai
 	}
 	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
 	defer cancel()
-	token, err := connector.token()
+	if err := connector.validateEndpointPolicy(ctx, &lookupEndpoint); err != nil {
+		return result, err
+	}
+	token, err := connector.token(ctx)
 	if err != nil {
 		return result, err
 	}
@@ -473,7 +495,10 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 	}
 	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
 	defer cancel()
-	token, err := connector.token()
+	if err := connector.validateEndpointPolicy(ctx, connector.endpoint); err != nil {
+		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.ClassifyCollectionError(err), DiagnosticCode: "endpoint_not_permitted"}
+	}
+	token, err := connector.token(ctx)
 	if err != nil {
 		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.CollectionErrorAuthentication, DiagnosticCode: "credential_unavailable"}
 	}
@@ -488,13 +513,31 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 	return domain.HealthResult{Healthy: true, CheckedAt: checkedAt}
 }
 
-func (connector *Connector) token() (string, error) {
+func (connector *Connector) token(ctx context.Context) (string, error) {
 	name := strings.TrimPrefix(connector.credentialRef, "env:")
-	token, ok := connector.lookupEnv(name)
+	token, ok := connector.lookupManaged(ctx, name)
 	if !ok || strings.TrimSpace(token) == "" || strings.ContainsAny(token, "\r\n") {
 		return "", domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("X credential is unavailable"))
 	}
 	return token, nil
+}
+
+func (connector *Connector) validateEndpointPolicy(ctx context.Context, endpoint *url.URL) error {
+	if connector == nil || connector.resolver == nil || !permittedOfficialEndpoint(connector.endpoint, endpoint) {
+		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X destination is not permitted"))
+	}
+	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.ConnectTimeout)
+	defer cancel()
+	addresses, err := connector.resolver(ctx, endpoint.Hostname())
+	if err != nil || len(addresses) == 0 {
+		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X destination is not permitted"))
+	}
+	for _, address := range addresses {
+		if !publicAddress(address.IP) {
+			return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X destination is not permitted"))
+		}
+	}
+	return nil
 }
 
 func (connector *Connector) get(ctx context.Context, parameters url.Values, token string, byteBudget *responseByteBudget) (fetchedJSONResponse, domain.RateLimit, error) {
@@ -958,6 +1001,16 @@ func sameOfficialEndpoint(endpoint, candidate *url.URL) bool {
 	return endpoint != nil && candidate != nil && candidate.Scheme == "https" &&
 		strings.EqualFold(candidate.Hostname(), endpoint.Hostname()) &&
 		(candidate.Port() == "" || candidate.Port() == "443") && candidate.Path == endpoint.Path
+}
+
+func permittedOfficialEndpoint(endpoint, candidate *url.URL) bool {
+	if endpoint == nil || candidate == nil || candidate.Scheme != "https" ||
+		!strings.EqualFold(candidate.Hostname(), endpoint.Hostname()) ||
+		(candidate.Port() != "" && candidate.Port() != "443") ||
+		candidate.RawQuery != "" || candidate.Fragment != "" || candidate.User != nil {
+		return false
+	}
+	return candidate.Path == endpoint.Path || candidate.Path == "/2/tweets"
 }
 
 func secureDialContext(resolver lookupIPAddrFunc, dialContext func(context.Context, string, string) (net.Conn, error), timeout time.Duration) func(context.Context, string, string) (net.Conn, error) {

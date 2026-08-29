@@ -48,12 +48,28 @@ func (registry *ConnectorRegistry) Resolve(ctx context.Context, connection domai
 	if registry == nil || registry.credentials == nil {
 		return managed, nil
 	}
+	runtimeConnection := normalized
+	runtimeConnection.CredentialRef = "env:" + managedCredentialEnvName
+	if normalized.SourceType == domain.SourceTypeX {
+		lookup := func(callCtx context.Context, name string) (string, bool) {
+			if name != managedCredentialEnvName {
+				return "", false
+			}
+			secret, err := registry.credentials.Resolve(callCtx, normalized.ID)
+			return secret, err == nil && secret != ""
+		}
+		connector, err := xconnector.NewWithManagedCredentialLookup(runtimeConnection, registry.resolver, lookup, registry.requestBudget)
+		if err != nil {
+			return nil, err
+		}
+		managed.inner = connector
+		managed.runtime = runtimeConnection
+		return managed, nil
+	}
 	secret, err := registry.credentials.Resolve(ctx, normalized.ID)
 	if err != nil || secret == "" {
 		return managed, nil
 	}
-	runtimeConnection := normalized
-	runtimeConnection.CredentialRef = "env:" + managedCredentialEnvName
 	lookup := func(name string) (string, bool) {
 		if name != managedCredentialEnvName {
 			return "", false

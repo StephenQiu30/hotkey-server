@@ -33,7 +33,7 @@ func TestCollectionServiceFetchesOnceAndDurablyReconcilesEveryTarget(t *testing.
 			Metrics: domain.SourceMetrics{ViewCount: domain.KnownMetric(12), CommentCount: domain.KnownMetric(3)},
 		}}, NextCursor: "cursor-42", ETag: "etag-42", LastModified: "Wed, 16 Jul 2026 08:05:00 GMT",
 	}}
-	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: connector},
 	})
@@ -106,7 +106,7 @@ func TestCollectionServiceProjectsThreeSourcePartialSuccessWithoutPersistingAggr
 		domain.SourceTypeRSS: rss, domain.SourceTypeHackerNews: hackerNews, domain.SourceTypeX: x,
 	}}
 	runs := sourcepostgres.NewCollectionRepository(runtime)
-	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs,
 		Connectors: registry, Now: func() time.Time { return requests[0].WindowEnd },
 	})
@@ -212,7 +212,7 @@ func TestCollectionServiceDistinguishesPartialItemResultsFromFullFailure(t *test
 		NextCursor: "101", HasMore: true,
 		Diagnostics: []domain.FetchDiagnostic{{Code: "item_temporary_failure", SourceExternalID: "102"}},
 	}}
-	partialService, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	partialService, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: partialConnector}, Now: func() time.Time { return partialRequest.WindowEnd },
 	})
@@ -236,7 +236,7 @@ FROM collection_runs WHERE id = $1`, partialRun.ID).Scan(&partialStatus, &partia
 
 	failedRequest := collectionRequestForService(t, runtime, "full-item-window-failure", 1)
 	failedConnector := &collectionConnectorFake{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("all item requests failed"))}
-	failedService, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	failedService, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: failedConnector}, Now: func() time.Time { return failedRequest.WindowEnd },
 	})
@@ -323,7 +323,7 @@ VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.Monit
 	if jobCount != 1 || triggerType != "manual" {
 		t.Fatalf("manual jobs = %d trigger=%q, want one manual envelope", jobCount, triggerType)
 	}
-	collections, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	collections, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{result: domain.FetchResult{Items: []domain.SourceItem{{
 			SourceCode: "rss", ExternalID: "manual-item", ContentType: "article", Title: "Manual collection item", ObservedAt: now,
@@ -391,7 +391,7 @@ func TestCollectionServiceFailureRetainsCursorAndPersistsRetryState(t *testing.T
 		result: domain.FetchResult{RateLimit: domain.RateLimit{RetryAfter: &retryAfter}},
 		err:    domain.NewCollectionError(domain.CollectionErrorRateLimited, fmt.Errorf("limited")),
 	}
-	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: connector}, Now: func() time.Time { return now },
 	})
@@ -455,7 +455,7 @@ WHERE id=(SELECT monitor_id FROM monitor_config_versions WHERE id=$1)`, request.
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: connector}, Now: func() time.Time { return now },
 	})
@@ -524,7 +524,7 @@ func TestCollectionServicePersistsAuthenticationAndPermanentFailures(t *testing.
 				t.Fatalf("seed cursor: %v", err)
 			}
 			connector := &collectionConnectorFake{err: domain.NewCollectionError(test.kind, fmt.Errorf("upstream failure"))}
-			service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+			service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 				Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 				Connectors: collectionConnectorRegistryFake{connector: connector}, Now: func() time.Time { return request.WindowEnd },
 			})
@@ -558,7 +558,7 @@ func TestCollectionServiceRestartUsesPersistedCursorAndNoContentKeepsIt(t *testi
 	firstRequest := collectionRequestForService(t, runtime, "restart", 1)
 	now := time.Date(2026, time.July, 16, 10, 0, 0, 0, time.UTC)
 	firstConnector := &collectionConnectorFake{result: domain.FetchResult{NextCursor: "persisted-cursor", ETag: "persisted-etag"}}
-	firstService, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	firstService, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: firstConnector}, Now: func() time.Time { return now },
 	})
@@ -584,7 +584,7 @@ func TestCollectionServiceRestartUsesPersistedCursorAndNoContentKeepsIt(t *testi
 	secondRequest.Targets[0].Checkpoint.ETag = etag
 	secondRequest.Targets[0].Checkpoint.NextPollAt = now
 	secondConnector := &collectionConnectorFake{result: domain.FetchResult{}}
-	secondService, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	secondService, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: secondConnector}, Now: func() time.Time { return now.Add(time.Hour) },
 	})
@@ -616,7 +616,7 @@ func TestCollectionServiceIsolatesOneTargetCheckpointConflict(t *testing.T) {
 	connector := &collectionConnectorFake{result: domain.FetchResult{Items: []domain.SourceItem{{
 		SourceCode: "rss", ExternalID: "isolated-item", ContentType: "article", ObservedAt: request.WindowStart,
 	}}, NextCursor: "isolated-cursor"}}
-	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: connector}, Now: func() time.Time { return request.WindowEnd },
 	})
@@ -768,7 +768,7 @@ WHERE id = (SELECT monitor_id FROM monitor_config_versions WHERE id = $1)`, requ
 	if !checkpoint.Equal(request.WindowStart) || jobState != "available" || attempt != 1 || maxAttempts != 4 {
 		t.Fatalf("retry facts = checkpoint %s job %s attempt %d/%d", checkpoint, jobState, attempt, maxAttempts)
 	}
-	collections, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	collections, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs,
 		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Now: func() time.Time { return request.WindowEnd },
 	})
@@ -1018,7 +1018,7 @@ func testCollectionClaimRetryWins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	collections, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	collections, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs,
 		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
 	})
@@ -1089,7 +1089,7 @@ func testCollectionClaimNewerWorkerWins(t *testing.T) {
 		t.Fatal(err)
 	}
 	newer := newerCollectionRequest(t, runtime, request)
-	collections, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	collections, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs,
 		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Now: func() time.Time { return newer.WindowEnd },
 	})
@@ -1322,7 +1322,7 @@ func TestCollectionServiceReclaimsQueuedAndStaleRunningRuns(t *testing.T) {
 				}
 			}
 			connector := &collectionConnectorFake{result: domain.FetchResult{NextCursor: test.wantCursor}}
-			service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+			service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 				Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: repository,
 				Connectors: collectionConnectorRegistryFake{connector: connector}, Now: func() time.Time { return now },
 			})
@@ -1347,7 +1347,7 @@ func TestCollectionServiceDoesNotAdvanceTargetWithDifferentCheckpointState(t *te
 		t.Fatalf("seed old checkpoint state: %v", err)
 	}
 	connector := &collectionConnectorFake{result: domain.FetchResult{}}
-	service, err := sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
+	service, err := newCollectionServiceForTest(sourceapplication.CollectionDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: connector}, Now: func() time.Time { return request.WindowEnd },
 	})

@@ -117,6 +117,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newRightsManagementAuditWriter,
 				newRightsManagementService,
 				newSourceCredentialStore,
+				sourcepostgres.NewRightsDecisionReader,
 				sourcepostgres.NewMetricCapabilityRepository,
 				newMetricCapabilityService,
 				newIntelligenceRepository,
@@ -291,7 +292,6 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 					sourcejobs.NewSourceDocumentGenerationScheduler,
 					ingestionjobs.NewPublishedDocumentMatchEvaluationScheduler,
 					newEvidenceSnapshotRepository,
-					sourcepostgres.NewRightsDecisionReader,
 					sourcepostgres.NewEvidenceSelectionManifestReader,
 					newSourceEvidenceSelectorVerifier,
 					newSourceRawEvidenceStore,
@@ -670,15 +670,20 @@ type collectionServiceParams struct {
 	Sources    *sourcepostgres.Repository
 	Runs       *sourcepostgres.CollectionRepository
 	Connectors *sourceinfrastructure.ConnectorRegistry
+	Rights     *sourcepostgres.RightsDecisionReader
 	Evidence   *sourceapplication.RawEvidenceCollectionService `optional:"true"`
 	Audit      *operationspostgres.AuditWriter
 	Logger     *zap.Logger
 }
 
 func newCollectionService(params collectionServiceParams) (*sourceapplication.CollectionService, error) {
+	admission, err := sourceapplication.NewCollectionAdmissionGate(sourceapplication.CollectionAdmissionDependencies{Rights: params.Rights})
+	if err != nil {
+		return nil, err
+	}
 	return sourceapplication.NewCollectionService(sourceapplication.CollectionDependencies{
 		Runtime: params.Runtime, Sources: params.Sources, Runs: params.Runs, Connectors: params.Connectors,
-		Evidence: params.Evidence, SecurityAudit: params.Audit, Logger: params.Logger,
+		Admission: admission, Evidence: params.Evidence, SecurityAudit: params.Audit, Logger: params.Logger,
 	})
 }
 

@@ -94,6 +94,8 @@ func SafeCollectionErrorCause(cause error) string {
 		"X compressed response is not permitted",
 		"Foundry destination is not permitted",
 		"source connection is unavailable",
+		"collection source capability is unavailable",
+		"source fetch rights are not permitted",
 		"resolved collection identity changed":
 		return innermost.Error()
 	default:
@@ -117,6 +119,8 @@ func CollectionSecurityRejectionReason(cause error) string {
 		"Hacker News compressed response is not permitted",
 		"X compressed response is not permitted":
 		return "compressed_content_not_permitted"
+	case "source fetch rights are not permitted":
+		return "fetch_rights_not_permitted"
 	default:
 		return ""
 	}

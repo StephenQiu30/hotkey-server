@@ -77,8 +77,8 @@ func TestConnectorRegistryResolvesManagedCredentialWithoutChangingSourceFact(t *
 	if err != nil {
 		t.Fatalf("Resolve(managed) error = %v", err)
 	}
-	if credentials.resolvedID != connection.ID {
-		t.Fatalf("credential source id = %d, want %d", credentials.resolvedID, connection.ID)
+	if credentials.resolvedID != 0 {
+		t.Fatalf("credential decrypted during connector resolution for source %d", credentials.resolvedID)
 	}
 	if err := connector.Validate(context.Background(), connection); err != nil {
 		t.Fatalf("Validate(original managed fact) error = %v", err)
@@ -94,6 +94,32 @@ func TestConnectorRegistryResolvesManagedCredentialWithoutChangingSourceFact(t *
 	health := unavailable.Health(context.Background(), connection)
 	if health.Healthy || health.ErrorKind != domain.CollectionErrorAuthentication || health.DiagnosticCode != "credential_unavailable" {
 		t.Fatalf("managed credential unavailable health = %#v", health)
+	}
+}
+
+func TestConnectorRegistryDefersManagedCredentialDecryptionUntilTheRequestBoundary(t *testing.T) {
+	resolver, err := sourcenet.NewResolver("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	credentials := &credentialStoreFake{value: "managed-x-token"}
+	connection := domain.SourceConnection{
+		ID: 19, SourceType: domain.SourceTypeX, Name: "Lazy managed X", Endpoint: domain.XRecentSearchEndpoint,
+		AuthType: domain.AuthTypeBearer, CredentialRef: domain.ManagedCredentialReference,
+		Config: domain.DefaultSourceConfig(), Enabled: true, HealthStatus: domain.HealthStatusHealthy,
+	}
+	connector, err := NewConnectorRegistry(resolver, credentials, allowingExternalRequestBudget{}).Resolve(context.Background(), connection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credentials.resolvedID != 0 {
+		t.Fatalf("managed credential decrypted during connector resolution for source %d", credentials.resolvedID)
+	}
+	if err := connector.Validate(context.Background(), connection); err != nil {
+		t.Fatal(err)
+	}
+	if credentials.resolvedID != 0 {
+		t.Fatalf("managed credential decrypted during static validation for source %d", credentials.resolvedID)
 	}
 }
 
