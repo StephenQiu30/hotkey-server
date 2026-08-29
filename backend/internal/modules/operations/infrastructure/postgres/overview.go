@@ -16,7 +16,6 @@ var _ operationsapplication.OverviewStore = (*JobRepository)(nil)
 
 const (
 	riverQueueLagAlertThresholdSeconds = 300
-	riverAlertRunbookURL               = "https://github.com/StephenQiu30/hotkey-server/blob/main/docs/operations/004-%E5%8F%AF%E8%A7%82%E6%B5%8B%E6%80%A7SLO%E4%B8%8E%E4%BA%8B%E4%BB%B6%E5%93%8D%E5%BA%94.md#river-alert-response"
 )
 
 func (repository *JobRepository) RuntimeOverview(ctx context.Context) (operationsdomain.RuntimeOverview, error) {
@@ -44,6 +43,7 @@ FROM river_job`).Scan(
 		value := oldest.Time.UTC()
 		overview.OldestAvailableAt = &value
 	}
+	overview.AlertPolicyVersion = operationsdomain.RuntimeAlertPolicyVersion
 	overview.Alerts, err = repository.runtimeAlerts(ctx)
 	if err != nil {
 		return operationsdomain.RuntimeOverview{}, err
@@ -56,55 +56,136 @@ FROM river_job`).Scan(
 
 func (repository *JobRepository) runtimeAlerts(ctx context.Context) ([]operationsdomain.RuntimeAlert, error) {
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `
-WITH candidates AS (
+WITH source_auth_candidates AS (
+    SELECT DISTINCT ON (source.id)
+           source.id AS resource_id,
+           target.updated_at AS triggered_at
+    FROM source_checkpoints AS checkpoint
+    JOIN monitor_sources AS monitor_source
+      ON monitor_source.id=checkpoint.monitor_source_id AND monitor_source.enabled
+    JOIN source_connections AS source
+      ON source.id=monitor_source.source_connection_id
+     AND source.enabled AND source.deleted_at IS NULL
+    JOIN LATERAL (
+        SELECT candidate.error_code,candidate.updated_at
+        FROM collection_run_targets AS candidate
+        WHERE candidate.monitor_source_id=monitor_source.id
+        ORDER BY candidate.updated_at DESC,candidate.id DESC
+        LIMIT 1
+    ) AS target ON true
+    WHERE checkpoint.consecutive_failures >= 3
+      AND target.error_code='authentication'
+    ORDER BY source.id,target.updated_at ASC
+), latest_minio_reconciliation AS (
+    SELECT id,scope
+    FROM evidence_lineage_reconciliation_runs
+    WHERE scope IN ('pg-minio','all') AND status IN ('completed','failed')
+    ORDER BY id DESC
+    LIMIT 1
+), ai_terminal AS (
+    SELECT id,status,error_code,created_at,
+           row_number() OVER (ORDER BY created_at DESC,id DESC) AS terminal_rank
+    FROM ai_runs
+    WHERE status IN ('succeeded','failed')
+), ai_failure_streak AS (
+    SELECT min(id) AS resource_id,min(created_at) AS triggered_at,count(*)::bigint AS affected_count
+    FROM ai_terminal
+    WHERE terminal_rank <= 3
+    HAVING count(*)=3
+       AND bool_and(status='failed')
+       AND bool_and(error_code IN (70001,70003,70004,70005,70006))
+), latest_vault_sync AS (
+    SELECT id,conflict_count,COALESCE(finished_at,started_at,created_at) AS triggered_at
+    FROM vault_sync_runs
+    WHERE status IN ('succeeded','failed')
+    ORDER BY id DESC
+    LIMIT 1
+), candidates AS (
     SELECT 'ALERT-RIVER-JOB-FAILED'::text AS alert_id,
-           'river_job_discarded'::text AS reason_code,
            id AS job_id,
            kind,
            args,
-           COALESCE(finalized_at, attempted_at, scheduled_at, created_at) AS triggered_at
+           ''::text AS resource_type,
+           0::bigint AS resource_id,
+           COALESCE(finalized_at, attempted_at, scheduled_at, created_at) AS triggered_at,
+           1::bigint AS affected_weight
     FROM river_job
     WHERE state = 'discarded'
     UNION ALL
     SELECT 'ALERT-RIVER-NO-WORKER'::text AS alert_id,
-           'river_queue_lag_exceeded'::text AS reason_code,
            id AS job_id,
            kind,
            args,
-           scheduled_at AS triggered_at
+           ''::text AS resource_type,
+           0::bigint AS resource_id,
+           scheduled_at AS triggered_at,
+           1::bigint AS affected_weight
     FROM river_job
     WHERE state = 'available'
       AND scheduled_at <= now() - make_interval(secs => $1)
+    UNION ALL
+    SELECT 'ALERT-SOURCE-AUTH',0,'','{}'::jsonb,'source_connection',resource_id,triggered_at,1
+    FROM source_auth_candidates
+    UNION ALL
+    SELECT 'ALERT-MINIO-WRITE',0,'','{}'::jsonb,'evidence_reconciliation',run.id,item.created_at,1
+    FROM latest_minio_reconciliation AS run
+    JOIN evidence_lineage_reconciliation_items AS item ON item.run_id=run.id AND item.scope=run.scope
+    WHERE item.asset_type IN ('evidence_snapshot','raw_object_orphan')
+      AND item.finding IN ('missing','digest_mismatch')
+    UNION ALL
+    SELECT 'ALERT-CODEX-FAILURE',0,'','{}'::jsonb,'ai_run',resource_id,triggered_at,affected_count
+    FROM ai_failure_streak
+    UNION ALL
+    SELECT 'ALERT-VAULT-CONFLICT',0,'','{}'::jsonb,'vault_sync_run',id,triggered_at,conflict_count
+    FROM latest_vault_sync
+    WHERE conflict_count > 0
+    UNION ALL
+    SELECT 'ALERT-SEARCH-BACKLOG',id,kind,args,'river_job',id,scheduled_at,1
+    FROM river_job
+    WHERE state='available'
+      AND scheduled_at <= now() - make_interval(secs => $1)
+      AND kind IN ($2,$3,$4,$5)
 ), ranked AS (
     SELECT candidates.*,
-           count(*) OVER (PARTITION BY alert_id) AS affected_count,
+           sum(affected_weight) OVER (PARTITION BY alert_id) AS affected_count,
            row_number() OVER (PARTITION BY alert_id ORDER BY triggered_at ASC, job_id ASC) AS alert_rank
     FROM candidates
 )
-SELECT alert_id, reason_code, job_id, kind, args, triggered_at, affected_count
+SELECT alert_id,job_id,kind,args,resource_type,resource_id,triggered_at,affected_count
 FROM ranked
 WHERE alert_rank = 1
 ORDER BY CASE alert_id
     WHEN 'ALERT-RIVER-JOB-FAILED' THEN 1
     WHEN 'ALERT-RIVER-NO-WORKER' THEN 2
-    ELSE 3
-END`, riverQueueLagAlertThresholdSeconds)
+    WHEN 'ALERT-SOURCE-AUTH' THEN 3
+    WHEN 'ALERT-MINIO-WRITE' THEN 4
+    WHEN 'ALERT-CODEX-FAILURE' THEN 5
+    WHEN 'ALERT-VAULT-CONFLICT' THEN 6
+    WHEN 'ALERT-SEARCH-BACKLOG' THEN 7
+    ELSE 8
+END`, riverQueueLagAlertThresholdSeconds, queue.KindProjectKnowledge, queue.KindReconcileKnowledge,
+		queue.KindGenerateSourceDocument, queue.KindProjectAcceptedDocumentMatch)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 
-	alerts := make([]operationsdomain.RuntimeAlert, 0, 2)
+	alerts := make([]operationsdomain.RuntimeAlert, 0, 7)
 	for rows.Next() {
 		var alert operationsdomain.RuntimeAlert
 		var kind string
 		var args json.RawMessage
-		if err := rows.Scan(&alert.AlertID, &alert.ReasonCode, &alert.JobID, &kind, &args, &alert.TriggeredAt, &alert.AffectedCount); err != nil {
+		if err := rows.Scan(
+			&alert.AlertID, &alert.JobID, &kind, &args, &alert.ResourceType, &alert.ResourceID,
+			&alert.TriggeredAt, &alert.AffectedCount,
+		); err != nil {
 			return nil, databaserepository.MapError(err)
 		}
-		alert.Severity = "p1"
-		alert.RunbookURL = riverAlertRunbookURL
 		alert.EventID, alert.TraceID = safeEventCorrelation(kind, args)
+		alert, found := operationsdomain.ApplyRuntimeAlertPolicy(alert)
+		if !found {
+			return nil, sharedrepository.ErrConstraint
+		}
 		alerts = append(alerts, alert)
 	}
 	if err := rows.Err(); err != nil {

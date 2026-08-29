@@ -46,6 +46,7 @@ describe("GovernancePage", () => {
     mocks.getOperationsRetentionPolicies.mockResolvedValue({ data: policies });
     mocks.getOperationsAuditLogs.mockResolvedValue({ data: { items: [{ id: 10, action: "monitor.published", resource_type: "monitor", resource_id: 7, actor_type: "user", actor_id: 1, result: "success", created_at: "2026-08-08T08:00:00Z" }] } });
     mocks.getOperationsOverview.mockResolvedValue({ data: {
+      alert_policy_version: "p0-operational-alerts-v1",
       available_jobs: 2,
       running_jobs: 1,
       completed_jobs: 8,
@@ -55,7 +56,11 @@ describe("GovernancePage", () => {
       alerts: [
         {
           alert_id: "ALERT-RIVER-JOB-FAILED",
+          policy_version: "p0-operational-alerts-v1",
           severity: "p1",
+          owner: "hotkey-oncall",
+          silence_key: "ALERT-RIVER-JOB-FAILED",
+          threshold_count: 1,
           reason_code: "river_job_discarded",
           runbook_url: "https://github.com/StephenQiu30/hotkey-server/blob/main/docs/operations/004-observability.md#river-alert-response",
           job_id: 31,
@@ -66,7 +71,11 @@ describe("GovernancePage", () => {
         },
         {
           alert_id: "ALERT-DELIVERY-UNKNOWN",
+          policy_version: "p0-operational-alerts-v1",
           severity: "p1",
+          owner: "hotkey-oncall",
+          silence_key: "ALERT-DELIVERY-UNKNOWN",
+          threshold_count: 1,
           reason_code: "notification_delivery_unknown",
           runbook_url: "https://github.com/StephenQiu30/hotkey-server/blob/main/docs/operations/004-observability.md#delivery-unknown-alert-response",
           attempt_id: 91,
@@ -109,6 +118,8 @@ describe("GovernancePage", () => {
     expect(screen.getByText("retryable")).toBeInTheDocument();
     expect(screen.getByText("45 秒")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "运行告警" })).toBeInTheDocument();
+    expect(screen.getByText("策略 p0-operational-alerts-v1")).toBeInTheDocument();
+    expect(screen.getAllByText("责任人 hotkey-oncall")).toHaveLength(2);
     expect(screen.getByText("ALERT-RIVER-JOB-FAILED")).toBeInTheDocument();
     expect(screen.getByText(/任务 #31/)).toBeInTheDocument();
     expect(screen.getByText(/事件 #42/)).toBeInTheDocument();
@@ -121,6 +132,41 @@ describe("GovernancePage", () => {
     const runbookLinks = screen.getAllByRole("link", { name: "打开处置手册" });
     expect(runbookLinks[0]).toHaveAttribute("href", expect.stringContaining("#river-alert-response"));
     expect(runbookLinks[1]).toHaveAttribute("href", expect.stringContaining("#delivery-unknown-alert-response"));
+  });
+
+  it("labels every durable-fact alert with its bounded impact and threshold", async () => {
+    const alerts = [
+      ["ALERT-SOURCE-AUTH", "来源", 3, 0],
+      ["ALERT-MINIO-WRITE", "证据异常", 1, 0],
+      ["ALERT-CODEX-FAILURE", "智能任务", 3, 0],
+      ["ALERT-VAULT-CONFLICT", "冲突", 1, 0],
+      ["ALERT-SEARCH-BACKLOG", "检索任务", 1, 300],
+    ] as const;
+    mocks.getOperationsOverview.mockResolvedValue({ data: {
+      alert_policy_version: "p0-operational-alerts-v1",
+      alerts: alerts.map(([alertID, , thresholdCount, thresholdSeconds], index) => ({
+        alert_id: alertID,
+        policy_version: "p0-operational-alerts-v1",
+        severity: "p1",
+        owner: "hotkey-oncall",
+        reason_code: `fixture_${index}`,
+        resource_type: "fixture",
+        resource_id: index + 1,
+        affected_count: index + 1,
+        threshold_count: thresholdCount,
+        threshold_seconds: thresholdSeconds,
+        runbook_url: `https://example.test/runbook#${alertID}`,
+      })),
+    } });
+
+    render(<GovernancePage />);
+
+    for (const [alertID, unit] of alerts) {
+      expect(await screen.findByText(alertID)).toBeInTheDocument();
+      expect(screen.getByText(new RegExp(`个${unit}$`))).toBeInTheDocument();
+    }
+    expect(screen.getAllByText(/阈值 3 次$/)).toHaveLength(2);
+    expect(screen.getByText(/阈值 300 秒$/)).toBeInTheDocument();
   });
 
   it("filters jobs and confirms bounded retry or cancellation", async () => {

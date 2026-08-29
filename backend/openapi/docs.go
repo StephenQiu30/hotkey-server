@@ -8698,6 +8698,12 @@ const docTemplate = `{
                 "notification_id": {
                     "type": "integer"
                 },
+                "owner": {
+                    "type": "string"
+                },
+                "policy_version": {
+                    "type": "string"
+                },
                 "reason_code": {
                     "type": "string"
                 },
@@ -8713,6 +8719,15 @@ const docTemplate = `{
                 "severity": {
                     "type": "string"
                 },
+                "silence_key": {
+                    "type": "string"
+                },
+                "threshold_count": {
+                    "type": "integer"
+                },
+                "threshold_seconds": {
+                    "type": "integer"
+                },
                 "trace_id": {
                     "type": "string"
                 },
@@ -8724,6 +8739,9 @@ const docTemplate = `{
         "domain.RuntimeOverview": {
             "type": "object",
             "properties": {
+                "alert_policy_version": {
+                    "type": "string"
+                },
                 "alerts": {
                     "type": "array",
                     "items": {

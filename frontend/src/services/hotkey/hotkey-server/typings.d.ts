@@ -2714,16 +2714,22 @@ required property without making explicit null impossible to bind. */
     event_id?: number;
     job_id?: number;
     notification_id?: number;
+    owner?: string;
+    policy_version?: string;
     reason_code?: string;
     resource_id?: number;
     resource_type?: string;
     runbook_url?: string;
     severity?: string;
+    silence_key?: string;
+    threshold_count?: number;
+    threshold_seconds?: number;
     trace_id?: string;
     triggered_at?: string;
   };
 
   type RuntimeOverview = {
+    alert_policy_version?: string;
     alerts?: RuntimeAlert[];
     available_jobs?: number;
     cancelled_jobs?: number;

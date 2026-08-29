@@ -65,6 +65,22 @@ const jobStateLabels: Record<string, string> = {
   completed: "已完成",
 };
 
+const alertImpactUnits: Record<string, string> = {
+  "ALERT-DELIVERY-UNKNOWN": "交付",
+  "ALERT-SOURCE-AUTH": "来源",
+  "ALERT-MINIO-WRITE": "证据异常",
+  "ALERT-CODEX-FAILURE": "智能任务",
+  "ALERT-VAULT-CONFLICT": "冲突",
+  "ALERT-SEARCH-BACKLOG": "检索任务",
+};
+
+function alertThreshold(alert: HotKeyAPI.RuntimeAlert) {
+  const parts: string[] = [];
+  if ((alert.threshold_count ?? 0) > 1) parts.push(`${alert.threshold_count} 次`);
+  if ((alert.threshold_seconds ?? 0) > 0) parts.push(`${alert.threshold_seconds} 秒`);
+  return parts.join(" · ");
+}
+
 type PendingAction = {
   action: "cancel" | "retry";
   job: HotKeyAPI.JobResponse;
@@ -221,6 +237,9 @@ export function RuntimeOperationsPanel() {
                 <div className="flex items-center gap-2">
                   <TriangleAlert className="h-4 w-4 text-destructive" aria-hidden="true" />
                   <h3 className="font-semibold">运行告警</h3>
+                  {overview?.alert_policy_version ? (
+                    <Badge variant="outline">策略 {overview.alert_policy_version}</Badge>
+                  ) : null}
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
                   {overview?.alerts?.map((alert) => (
@@ -230,10 +249,17 @@ export function RuntimeOperationsPanel() {
                         <Badge variant="destructive">{alert.severity?.toUpperCase() ?? "P1"}</Badge>
                         <code className="text-xs font-semibold">{alert.alert_id}</code>
                         <span className="text-xs text-muted-foreground">
-                          影响 {alert.affected_count ?? 0} 个{alert.alert_id === "ALERT-DELIVERY-UNKNOWN" ? "交付" : "任务"}
+                          影响 {alert.affected_count ?? 0} 个{alertImpactUnits[alert.alert_id ?? ""] ?? "任务"}
                         </span>
                       </div>
                       <p className="mt-3 font-mono text-xs text-muted-foreground">{alert.reason_code}</p>
+                      {alert.owner || alertThreshold(alert) ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {alert.owner ? `责任人 ${alert.owner}` : ""}
+                          {alert.owner && alertThreshold(alert) ? " · " : ""}
+                          {alertThreshold(alert) ? `阈值 ${alertThreshold(alert)}` : ""}
+                        </p>
+                      ) : null}
                       {alert.job_id ? (
                         <p className="mt-2 text-sm">
                           任务 #{alert.job_id}

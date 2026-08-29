@@ -47,10 +47,13 @@ func TestOverviewServiceAppendsBoundedUnknownDeliveryAlert(t *testing.T) {
 		t.Fatalf("alerts = %#v", overview.Alerts)
 	}
 	alert := overview.Alerts[1]
-	if alert.AlertID != "ALERT-DELIVERY-UNKNOWN" || alert.Severity != "p1" ||
+	if overview.AlertPolicyVersion != "p0-operational-alerts-v1" ||
+		alert.AlertID != "ALERT-DELIVERY-UNKNOWN" || alert.PolicyVersion != overview.AlertPolicyVersion ||
+		alert.Severity != "p1" || alert.Owner != "hotkey-oncall" ||
 		alert.ReasonCode != "notification_delivery_unknown" || alert.AttemptID != 91 ||
 		alert.NotificationID != 52 || alert.ResourceType != "micro_event" || alert.ResourceID != 43 ||
-		alert.AffectedCount != 2 || !alert.TriggeredAt.Equal(triggeredAt) || alert.RunbookURL == "" {
+		alert.AffectedCount != 2 || !alert.TriggeredAt.Equal(triggeredAt) || alert.RunbookURL == "" ||
+		alert.SilenceKey != alert.AlertID || alert.ThresholdCount != 1 || alert.ThresholdSeconds != 0 {
 		t.Fatalf("delivery alert = %#v", alert)
 	}
 }
@@ -69,5 +72,8 @@ func TestOverviewServiceKeepsAlertsNonNilWithoutUnknownDeliveries(t *testing.T) 
 	}
 	if overview.Alerts == nil || len(overview.Alerts) != 0 {
 		t.Fatalf("healthy alerts = %#v", overview.Alerts)
+	}
+	if overview.AlertPolicyVersion != "p0-operational-alerts-v1" {
+		t.Fatalf("alert policy version = %q", overview.AlertPolicyVersion)
 	}
 }
