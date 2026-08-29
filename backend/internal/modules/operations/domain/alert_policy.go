@@ -49,6 +49,11 @@ var runtimeAlertRules = map[string]runtimeAlertRule{
 		runbookURL:     "https://github.com/StephenQiu30/hotkey-server/blob/main/docs/operations/004-%E5%8F%AF%E8%A7%82%E6%B5%8B%E6%80%A7SLO%E4%B8%8E%E4%BA%8B%E4%BB%B6%E5%93%8D%E5%BA%94.md#vault-conflict-alert-response",
 		thresholdCount: 1,
 	},
+	"ALERT-BACKUP-FAILED": {
+		severity: "p0", reasonCode: "backup_failed_or_recovery_point_stale",
+		runbookURL:     "https://github.com/StephenQiu30/hotkey-server/blob/main/docs/operations/004-%E5%8F%AF%E8%A7%82%E6%B5%8B%E6%80%A7SLO%E4%B8%8E%E4%BA%8B%E4%BB%B6%E5%93%8D%E5%BA%94.md#backup-alert-response",
+		thresholdCount: 1, thresholdSeconds: 900,
+	},
 	"ALERT-SEARCH-BACKLOG": {
 		severity: "p2", reasonCode: "search_projection_lag_exceeded",
 		runbookURL:     "https://github.com/StephenQiu30/hotkey-server/blob/main/docs/operations/004-%E5%8F%AF%E8%A7%82%E6%B5%8B%E6%80%A7SLO%E4%B8%8E%E4%BA%8B%E4%BB%B6%E5%93%8D%E5%BA%94.md#search-backlog-alert-response",

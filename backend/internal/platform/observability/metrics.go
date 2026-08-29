@@ -158,7 +158,8 @@ var allowedDependencyLabels = map[string]bool{
 var allowedOperationalAlertIDs = map[string]bool{
 	"ALERT-DB-UNAVAILABLE": true, "ALERT-RIVER-JOB-FAILED": true, "ALERT-RIVER-NO-WORKER": true,
 	"ALERT-SOURCE-AUTH": true, "ALERT-MINIO-WRITE": true, "ALERT-CODEX-FAILURE": true,
-	"ALERT-VAULT-CONFLICT": true, "ALERT-SEARCH-BACKLOG": true, "ALERT-DELIVERY-UNKNOWN": true,
+	"ALERT-VAULT-CONFLICT": true, "ALERT-BACKUP-FAILED": true, "ALERT-SEARCH-BACKLOG": true,
+	"ALERT-DELIVERY-UNKNOWN": true,
 }
 var allowedOperationalAlertPolicyVersions = map[string]bool{"p0-operational-alerts-v1": true}
 var allowedOperationalAlertSeverities = map[string]bool{"p0": true, "p1": true, "p2": true, "p3": true}

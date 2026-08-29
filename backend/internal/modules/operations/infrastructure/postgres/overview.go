@@ -15,7 +15,8 @@ import (
 var _ operationsapplication.OverviewStore = (*JobRepository)(nil)
 
 const (
-	riverQueueLagAlertThresholdSeconds = 300
+	riverQueueLagAlertThresholdSeconds  = 300
+	backupRecoveryPointThresholdSeconds = 900
 )
 
 func (repository *JobRepository) RuntimeOverview(ctx context.Context) (operationsdomain.RuntimeOverview, error) {
@@ -100,6 +101,11 @@ WITH source_auth_candidates AS (
     WHERE status IN ('succeeded','failed')
     ORDER BY id DESC
     LIMIT 1
+), latest_backup AS (
+    SELECT id,status,recovery_point_at,completed_at
+    FROM backup_runs
+    ORDER BY id DESC
+    LIMIT 1
 ), candidates AS (
     SELECT 'ALERT-RIVER-JOB-FAILED'::text AS alert_id,
            id AS job_id,
@@ -140,6 +146,11 @@ WITH source_auth_candidates AS (
     FROM latest_vault_sync
     WHERE conflict_count > 0
     UNION ALL
+	SELECT 'ALERT-BACKUP-FAILED',0,'','{}'::jsonb,'backup_run',id,completed_at,1
+	FROM latest_backup
+	WHERE status='failed'
+	   OR recovery_point_at < now() - make_interval(secs => $6)
+	UNION ALL
     SELECT 'ALERT-SEARCH-BACKLOG',id,kind,args,'river_job',id,scheduled_at,1
     FROM river_job
     WHERE state='available'
@@ -161,16 +172,17 @@ ORDER BY CASE alert_id
     WHEN 'ALERT-MINIO-WRITE' THEN 4
     WHEN 'ALERT-CODEX-FAILURE' THEN 5
     WHEN 'ALERT-VAULT-CONFLICT' THEN 6
-    WHEN 'ALERT-SEARCH-BACKLOG' THEN 7
-    ELSE 8
+    WHEN 'ALERT-BACKUP-FAILED' THEN 7
+    WHEN 'ALERT-SEARCH-BACKLOG' THEN 8
+    ELSE 9
 END`, riverQueueLagAlertThresholdSeconds, queue.KindProjectKnowledge, queue.KindReconcileKnowledge,
-		queue.KindGenerateSourceDocument, queue.KindProjectAcceptedDocumentMatch)
+		queue.KindGenerateSourceDocument, queue.KindProjectAcceptedDocumentMatch, backupRecoveryPointThresholdSeconds)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
 	defer rows.Close()
 
-	alerts := make([]operationsdomain.RuntimeAlert, 0, 7)
+	alerts := make([]operationsdomain.RuntimeAlert, 0, 8)
 	for rows.Next() {
 		var alert operationsdomain.RuntimeAlert
 		var kind string

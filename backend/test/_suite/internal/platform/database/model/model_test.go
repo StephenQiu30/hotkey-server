@@ -106,7 +106,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 			t.Errorf("missing mapped table %s", table)
 		}
 	}
-	if got, want := len(seen), 154; got != want {
+	if got, want := len(seen), 155; got != want {
 		t.Errorf("mapped table count = %d, want %d", got, want)
 	}
 }

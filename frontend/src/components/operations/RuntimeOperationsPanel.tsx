@@ -71,6 +71,7 @@ const alertImpactUnits: Record<string, string> = {
   "ALERT-MINIO-WRITE": "证据异常",
   "ALERT-CODEX-FAILURE": "智能任务",
   "ALERT-VAULT-CONFLICT": "冲突",
+  "ALERT-BACKUP-FAILED": "备份运行",
   "ALERT-SEARCH-BACKLOG": "检索任务",
 };
 

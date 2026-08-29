@@ -213,7 +213,7 @@ observability-alert-acceptance: test-env
 		./internal/modules/operations/application \
 		./internal/modules/operations/infrastructure/postgres \
 		./internal/modules/notification/infrastructure/postgres \
-		-run '^(TestDatabaseReadinessProjectsExternalAlertSignalAndClearsAfterRecovery|TestRuntimeAlertPolicy.*|TestJobRepositoryRuntimeOverview.*|TestOverviewService.*|TestRepository.*UnknownDelivery.*)$$' \
+		-run '^(TestDatabaseReadinessProjectsExternalAlertSignalAndClearsAfterRecovery|TestParseBackupRunFlagsRequiresExactlyOneManifest|TestBackupRun.*|TestRuntimeAlertPolicy.*|TestJobRepositoryRuntimeOverview.*|TestOverviewService.*|TestRepository.*UnknownDelivery.*)$$' \
 		-count=1 -v
 
 build:

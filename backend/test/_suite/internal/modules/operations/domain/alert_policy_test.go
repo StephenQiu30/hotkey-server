@@ -21,6 +21,7 @@ func TestRuntimeAlertPolicyRegistersOnlyTheApprovedBoundedRules(t *testing.T) {
 		{"ALERT-MINIO-WRITE", "p0", "evidence_object_integrity_failed", 1, 0},
 		{"ALERT-CODEX-FAILURE", "p1", "agent_failure_streak", 3, 0},
 		{"ALERT-VAULT-CONFLICT", "p2", "vault_projection_conflict", 1, 0},
+		{"ALERT-BACKUP-FAILED", "p0", "backup_failed_or_recovery_point_stale", 1, 900},
 		{"ALERT-SEARCH-BACKLOG", "p2", "search_projection_lag_exceeded", 1, 300},
 		{"ALERT-DELIVERY-UNKNOWN", "p1", "notification_delivery_unknown", 1, 0},
 	}

@@ -140,6 +140,7 @@ describe("GovernancePage", () => {
       ["ALERT-MINIO-WRITE", "证据异常", 1, 0],
       ["ALERT-CODEX-FAILURE", "智能任务", 3, 0],
       ["ALERT-VAULT-CONFLICT", "冲突", 1, 0],
+      ["ALERT-BACKUP-FAILED", "备份运行", 1, 900],
       ["ALERT-SEARCH-BACKLOG", "检索任务", 1, 300],
     ] as const;
     mocks.getOperationsOverview.mockResolvedValue({ data: {
@@ -166,6 +167,7 @@ describe("GovernancePage", () => {
       expect(screen.getByText(new RegExp(`个${unit}$`))).toBeInTheDocument();
     }
     expect(screen.getAllByText(/阈值 3 次$/)).toHaveLength(2);
+    expect(screen.getByText(/阈值 900 秒$/)).toBeInTheDocument();
     expect(screen.getByText(/阈值 300 秒$/)).toBeInTheDocument();
   });
 
