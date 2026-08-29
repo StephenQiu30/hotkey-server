@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	eventpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/infrastructure/postgres"
+	identitypostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/infrastructure/postgres"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/postgres"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
 	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
@@ -27,6 +28,10 @@ func newPaginationCodec(cfg config.Config) (*pagination.Codec, error) {
 
 func newSourceRepository(runtime *database.Runtime, codec *pagination.Codec) *sourcepostgres.Repository {
 	return sourcepostgres.NewRepositoryWithCursorCodec(runtime, codec)
+}
+
+func newUserRepository(runtime *database.Runtime, codec *pagination.Codec) *identitypostgres.UserRepository {
+	return identitypostgres.NewUserRepositoryWithCursorCodec(runtime, codec)
 }
 
 func newCollectionRepository(runtime *database.Runtime, codec *pagination.Codec) *sourcepostgres.CollectionRepository {

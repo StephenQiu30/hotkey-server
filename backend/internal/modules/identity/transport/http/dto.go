@@ -75,6 +75,11 @@ type UserResponse struct {
 	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
 }
 
+type UserPageResponse struct {
+	Items      []UserResponse `json:"items"`
+	NextCursor string         `json:"next_cursor,omitempty"`
+}
+
 type AuthenticationResponse struct {
 	AccessToken string       `json:"access_token" example:"signed-access-token"`
 	User        UserResponse `json:"user"`

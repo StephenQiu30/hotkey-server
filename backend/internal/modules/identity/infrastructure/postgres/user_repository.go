@@ -2,26 +2,39 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	databaserepository "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database/repository"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
 type UserRepository struct {
-	runtime *database.Runtime
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
 }
 
 var _ domain.UserRepository = (*UserRepository)(nil)
 
 func NewUserRepository(runtime *database.Runtime) *UserRepository {
-	return &UserRepository{runtime: runtime}
+	seed := "identity-user:unavailable"
+	if runtime != nil && runtime.Pool != nil {
+		seed = "identity-user:" + runtime.Pool.Config().ConnString()
+	}
+	return NewUserRepositoryWithCursorCodec(runtime, pagination.NewTestCodec(seed))
+}
+
+func NewUserRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *UserRepository {
+	return &UserRepository{runtime: runtime, cursorCodec: codec}
 }
 
 func (repository *UserRepository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
@@ -51,33 +64,124 @@ FROM users
 WHERE id = $1 AND deleted_at IS NULL`, id)
 }
 
-// ListUsers returns every user record in stable identifier order. Soft-deleted
-// records stay visible because restore administration needs that domain fact.
-func (repository *UserRepository) ListUsers(ctx context.Context) ([]domain.User, error) {
-	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
-		return nil, sharedrepository.ErrUnavailable
+const (
+	userListDefaultLimit  = 50
+	userListMaximumLimit  = 200
+	userListCursorVersion = 1
+)
+
+type userListCursor struct {
+	Version           int    `json:"v"`
+	FilterFingerprint string `json:"filter"`
+	SnapshotID        int64  `json:"snapshot_id"`
+	AfterID           int64  `json:"after_id"`
+}
+
+// ListUsers keeps soft-deleted records visible for restore administration and
+// freezes the matching ID range on the first page so concurrent registrations
+// appear only in a fresh traversal.
+func (repository *UserRepository) ListUsers(ctx context.Context, query domain.UserListQuery) (domain.UserPage, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || repository.cursorCodec == nil {
+		return domain.UserPage{}, sharedrepository.ErrUnavailable
+	}
+	limit, search, cursor, err := repository.userListParameters(ctx, query)
+	if err != nil {
+		return domain.UserPage{}, err
+	}
+	if cursor.SnapshotID == 0 {
+		return domain.UserPage{Items: []domain.User{}}, nil
+	}
+	role := ""
+	if query.Role != nil {
+		role = string(*query.Role)
 	}
 	rows, err := transactionRows(ctx, repository.runtime).QueryContext(ctx, `
 SELECT id, email, password_hash, display_name, role, status, last_login_at, created_at, updated_at, deleted_at
 FROM users
-ORDER BY id ASC`)
+WHERE id > $1 AND id <= $2
+  AND ($3::text = '' OR strpos(lower(email), lower($3::text)) > 0 OR strpos(lower(display_name), lower($3::text)) > 0)
+  AND ($4::text = '' OR role = $4::text)
+  AND (
+    $5::text = ''
+    OR ($5::text = 'deleted' AND deleted_at IS NOT NULL)
+    OR ($5::text IN ('active','disabled') AND deleted_at IS NULL AND status = $5::text)
+  )
+ORDER BY id ASC
+LIMIT $6`, cursor.AfterID, cursor.SnapshotID, search, role, string(query.Status), limit+1)
 	if err != nil {
-		return nil, mapRepositoryError(err)
+		return domain.UserPage{}, mapRepositoryError(err)
 	}
 	defer rows.Close()
 
-	users := make([]domain.User, 0)
+	users := make([]domain.User, 0, limit+1)
 	for rows.Next() {
 		user, err := scanUser(rows)
 		if err != nil {
-			return nil, err
+			return domain.UserPage{}, err
 		}
 		users = append(users, user)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, mapRepositoryError(err)
+		return domain.UserPage{}, mapRepositoryError(err)
 	}
-	return users, nil
+	if len(users) <= limit {
+		return domain.UserPage{Items: users}, nil
+	}
+	users = users[:limit]
+	cursor.AfterID = users[len(users)-1].ID
+	nextCursor, err := repository.cursorCodec.Seal("identity_user_list", cursor)
+	if err != nil {
+		return domain.UserPage{}, fmt.Errorf("%w: encode user cursor: %v", sharedrepository.ErrInvalidInput, err)
+	}
+	return domain.UserPage{Items: users, NextCursor: nextCursor}, nil
+}
+
+func (repository *UserRepository) userListParameters(ctx context.Context, query domain.UserListQuery) (int, string, userListCursor, error) {
+	limit := query.Limit
+	if limit == 0 {
+		limit = userListDefaultLimit
+	}
+	search := strings.TrimSpace(query.Search)
+	if limit < 1 || limit > userListMaximumLimit || utf8.RuneCountInString(search) > 200 || strings.ContainsRune(search, '\x00') ||
+		query.Role != nil && !query.Role.Valid() || !query.Status.Valid() {
+		return 0, "", userListCursor{}, fmt.Errorf("%w: user list query is invalid", sharedrepository.ErrInvalidInput)
+	}
+	fingerprint := userListFilterFingerprint(search, query.Role, query.Status)
+	cursor := userListCursor{Version: userListCursorVersion, FilterFingerprint: fingerprint}
+	if query.Cursor != "" {
+		if err := repository.cursorCodec.Open(query.Cursor, "identity_user_list", &cursor); err != nil ||
+			cursor.Version != userListCursorVersion || cursor.FilterFingerprint != fingerprint ||
+			cursor.SnapshotID <= 0 || cursor.AfterID <= 0 || cursor.AfterID >= cursor.SnapshotID {
+			return 0, "", userListCursor{}, fmt.Errorf("%w: user cursor is invalid", sharedrepository.ErrInvalidInput)
+		}
+		return limit, search, cursor, nil
+	}
+	role := ""
+	if query.Role != nil {
+		role = string(*query.Role)
+	}
+	if err := transactionSQL(ctx, repository.runtime).QueryRowContext(ctx, `
+SELECT COALESCE(MAX(id), 0)
+FROM users
+WHERE ($1::text = '' OR strpos(lower(email), lower($1::text)) > 0 OR strpos(lower(display_name), lower($1::text)) > 0)
+  AND ($2::text = '' OR role = $2::text)
+  AND (
+    $3::text = ''
+    OR ($3::text = 'deleted' AND deleted_at IS NOT NULL)
+    OR ($3::text IN ('active','disabled') AND deleted_at IS NULL AND status = $3::text)
+  )`, search, role, string(query.Status)).Scan(&cursor.SnapshotID); err != nil {
+		return 0, "", userListCursor{}, mapRepositoryError(err)
+	}
+	return limit, search, cursor, nil
+}
+
+func userListFilterFingerprint(search string, role *domain.Role, status domain.UserListStatus) string {
+	roleValue := ""
+	if role != nil {
+		roleValue = string(*role)
+	}
+	sum := sha256.Sum256([]byte("identity-user-list-v1\x00" + strings.ToLower(search) + "\x00" + roleValue + "\x00" + string(status)))
+	return "identity-users-" + hex.EncodeToString(sum[:])
 }
 
 // LockByID includes soft-deleted users so lifecycle restore operations can

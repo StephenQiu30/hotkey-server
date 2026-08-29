@@ -26,7 +26,7 @@ type VerificationTicket struct {
 type UserRepository interface {
 	FindByEmail(context.Context, string) (*User, error)
 	FindByID(context.Context, int64) (*User, error)
-	ListUsers(context.Context) ([]User, error)
+	ListUsers(context.Context, UserListQuery) (UserPage, error)
 	LockByID(context.Context, int64) (*User, error)
 	LockActiveAdmins(context.Context) ([]User, error)
 	Create(context.Context, *User) error

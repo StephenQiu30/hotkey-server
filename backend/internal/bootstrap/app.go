@@ -109,7 +109,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newGovernanceRepository,
 				operationspostgres.NewRetentionRepository,
 				operationspostgres.NewDecisionQualityRepository,
-				identitypostgres.NewUserRepository,
+				newUserRepository,
 				newSourceRepository,
 				newRightsManagementRepository,
 				sourcepostgres.NewRightsManagementTransactionAdapter,
@@ -889,7 +889,7 @@ func newGovernanceService(runtime *database.Runtime, store *operationspostgres.G
 	return operationsapplication.NewGovernanceService(operationsapplication.GovernanceDependencies{Runtime: runtime, Store: store, Retention: retention, Audit: audit})
 }
 
-func newIdentityService(runtime *database.Runtime, cfg config.Config, verification *identityredis.VerificationStore) (*identityapplication.Service, error) {
+func newIdentityService(runtime *database.Runtime, users *identitypostgres.UserRepository, cfg config.Config, verification *identityredis.VerificationStore) (*identityapplication.Service, error) {
 	tokens, err := identitysecurity.NewJWT(identitysecurity.JWTConfig{
 		Secret:         cfg.Authentication.JWTSecret,
 		KeyID:          cfg.Authentication.JWTKeyID,
@@ -903,7 +903,7 @@ func newIdentityService(runtime *database.Runtime, cfg config.Config, verificati
 	}
 	return identityapplication.NewService(identityapplication.Dependencies{
 		Runtime:      runtime,
-		Users:        identitypostgres.NewUserRepository(runtime),
+		Users:        users,
 		Sessions:     identitypostgres.NewSessionRepository(runtime),
 		Audit:        identitypostgres.NewAuditRepository(runtime),
 		Passwords:    identitysecurity.NewPasswordHasher(),

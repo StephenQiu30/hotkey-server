@@ -38,6 +38,34 @@ func (s UserStatus) Valid() bool {
 	return s == UserStatusActive || s == UserStatusDisabled
 }
 
+type UserListStatus string
+
+const (
+	UserListStatusActive   UserListStatus = "active"
+	UserListStatusDisabled UserListStatus = "disabled"
+	UserListStatusDeleted  UserListStatus = "deleted"
+)
+
+func (status UserListStatus) Valid() bool {
+	return status == "" || status == UserListStatusActive || status == UserListStatusDisabled || status == UserListStatusDeleted
+}
+
+// UserListQuery fixes the public administration list to an immutable ID
+// traversal. Search and lifecycle filters are bound into the signed cursor by
+// the repository rather than being applied to a partially loaded UI page.
+type UserListQuery struct {
+	Cursor string
+	Limit  int
+	Search string
+	Role   *Role
+	Status UserListStatus
+}
+
+type UserPage struct {
+	Items      []User
+	NextCursor string
+}
+
 type User struct {
 	ID           int64
 	Email        string

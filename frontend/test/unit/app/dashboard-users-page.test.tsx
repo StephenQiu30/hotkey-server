@@ -32,7 +32,7 @@ function setRole(role: UserRole) {
 describe("UsersPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getUsers.mockResolvedValue({ data: users });
+    mocks.getUsers.mockResolvedValue({ data: { items: users } });
     mocks.patchUsersId.mockResolvedValue({ data: { ...users[1], role: "viewer" } });
     mocks.deleteUsersId.mockResolvedValue({ data: { ...users[1], deleted_at: "2026-08-07T00:00:00Z" } });
     mocks.postUsersIdRestore.mockResolvedValue({ data: { ...users[2], deleted_at: undefined } });
@@ -47,16 +47,23 @@ describe("UsersPage", () => {
     expect(mocks.getUsers).not.toHaveBeenCalled();
   });
 
-  it("filters users and exposes audited lifecycle actions", async () => {
+  it("passes user filters to the server and exposes audited lifecycle actions", async () => {
     render(<UsersPage />);
     const user = userEvent.setup();
 
     expect(await screen.findByText("editor@example.test")).toBeInTheDocument();
     await user.type(screen.getByRole("searchbox", { name: "搜索用户" }), "deleted@");
-    expect(screen.getByText("deleted@example.test")).toBeInTheDocument();
-    expect(screen.queryByText("editor@example.test")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.getUsers).toHaveBeenCalledWith({
+        limit: 10,
+        search: "deleted@",
+      }),
+    );
 
     await user.clear(screen.getByRole("searchbox", { name: "搜索用户" }));
+    await waitFor(() =>
+      expect(screen.getByText("deleted@example.test")).toBeInTheDocument(),
+    );
     await user.click(screen.getByRole("button", { name: "恢复 deleted@example.test" }));
     await waitFor(() => expect(mocks.postUsersIdRestore).toHaveBeenCalledWith({ id: 3 }));
 
@@ -64,6 +71,31 @@ describe("UsersPage", () => {
     expect(screen.getByRole("alertdialog", { name: "删除用户？" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(mocks.deleteUsersId).toHaveBeenCalledWith({ id: 2 }));
+  });
+
+  it("uses opaque cursors for next and previous pages", async () => {
+    mocks.getUsers
+      .mockResolvedValueOnce({
+        data: { items: users.slice(0, 2), next_cursor: "page-2" },
+      })
+      .mockResolvedValueOnce({ data: { items: users.slice(2) } })
+      .mockResolvedValueOnce({
+        data: { items: users.slice(0, 2), next_cursor: "page-2" },
+      });
+    render(<UsersPage />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("editor@example.test")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    expect(await screen.findByText("deleted@example.test")).toBeInTheDocument();
+    expect(mocks.getUsers).toHaveBeenNthCalledWith(2, {
+      limit: 10,
+      cursor: "page-2",
+    });
+
+    await user.click(screen.getByRole("button", { name: "上一页" }));
+    expect(await screen.findByText("editor@example.test")).toBeInTheDocument();
+    expect(mocks.getUsers).toHaveBeenNthCalledWith(3, { limit: 10 });
   });
 
   it("changes a user status through the generated admin API", async () => {
@@ -93,7 +125,7 @@ describe("UsersPage", () => {
   it("offers a retry after the user list fails to load", async () => {
     mocks.getUsers
       .mockRejectedValueOnce(new Error("network unavailable"))
-      .mockResolvedValueOnce({ data: users });
+      .mockResolvedValueOnce({ data: { items: users } });
     render(<UsersPage />);
     const user = userEvent.setup();
 

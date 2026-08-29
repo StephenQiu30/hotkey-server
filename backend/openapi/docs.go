@@ -8245,11 +8245,64 @@ const docTemplate = `{
                     "identity"
                 ],
                 "summary": "List users",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "opaque signed user cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 200,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 50,
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 200,
+                        "type": "string",
+                        "description": "email or display name search",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "admin",
+                            "analyst",
+                            "editor",
+                            "viewer"
+                        ],
+                        "type": "string",
+                        "description": "role",
+                        "name": "role",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "active",
+                            "disabled",
+                            "deleted"
+                        ],
+                        "type": "string",
+                        "description": "lifecycle status",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.IdentityResult-array_http_UserResponse"
+                            "$ref": "#/definitions/http.IdentityResult-http_UserPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.IdentityResult-internal_modules_identity_transport_http_EmptyResponse"
                         }
                     },
                     "401": {
@@ -10767,23 +10820,6 @@ const docTemplate = `{
                 }
             }
         },
-        "http.IdentityResult-array_http_UserResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "integer"
-                },
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/http.UserResponse"
-                    }
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
         "http.IdentityResult-http_AuthenticationResponse": {
             "type": "object",
             "properties": {
@@ -10806,6 +10842,20 @@ const docTemplate = `{
                 },
                 "data": {
                     "$ref": "#/definitions/http.ConfirmVerificationResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.IdentityResult-http_UserPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.UserPageResponse"
                 },
                 "message": {
                     "type": "string"
@@ -15390,6 +15440,20 @@ const docTemplate = `{
                 },
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "http.UserPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.UserResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
                 }
             }
         },

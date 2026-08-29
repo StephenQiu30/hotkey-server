@@ -5,9 +5,12 @@ package http
 
 import (
 	"context"
+	"fmt"
 	stdhttp "net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	identityapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
@@ -34,7 +37,7 @@ type identityService interface {
 	CurrentUser(context.Context, domain.Subject) (*domain.User, error)
 	ChangePassword(context.Context, domain.Subject, string, string) error
 	ConfirmPasswordReset(context.Context, string, string) error
-	ListUsers(context.Context) ([]domain.User, error)
+	ListUsers(context.Context, domain.UserListQuery) (domain.UserPage, error)
 	UpdateUser(context.Context, domain.Subject, int64, identityapplication.UserUpdate) (*domain.User, error)
 	DeleteUser(context.Context, domain.Subject, int64) (*domain.User, error)
 	RestoreUser(context.Context, domain.Subject, int64) (*domain.User, error)
@@ -272,18 +275,28 @@ func (handler *Handler) ConfirmPasswordReset(c *gin.Context) error {
 // @Tags identity
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} IdentityResult[[]UserResponse]
+// @Param cursor query string false "opaque signed user cursor"
+// @Param limit query int false "page size" minimum(1) maximum(200) default(50)
+// @Param search query string false "email or display name search" maxlength(200)
+// @Param role query string false "role" Enums(admin,analyst,editor,viewer)
+// @Param status query string false "lifecycle status" Enums(active,disabled,deleted)
+// @Success 200 {object} IdentityResult[UserPageResponse]
+// @Failure 400 {object} IdentityResult[EmptyResponse]
 // @Failure 401 {object} IdentityResult[EmptyResponse]
 // @Failure 403 {object} IdentityResult[EmptyResponse]
 // @Failure 503 {object} IdentityResult[EmptyResponse]
 // @Router /api/v1/users [get]
 func (handler *Handler) ListUsers(c *gin.Context) error {
 	httptransport.SetModule(c, "identity")
-	users, err := handler.service.ListUsers(c.Request.Context())
+	query, err := userListQuery(c)
 	if err != nil {
 		return err
 	}
-	httptransport.OK(c, userResponses(users))
+	page, err := handler.service.ListUsers(c.Request.Context(), query)
+	if err != nil {
+		return err
+	}
+	httptransport.OK(c, UserPageResponse{Items: userResponses(page.Items), NextCursor: page.NextCursor})
 	return nil
 }
 
@@ -413,6 +426,33 @@ func pathUserID(c *gin.Context) (int64, error) {
 		return 0, invalidRequest(err)
 	}
 	return value, nil
+}
+
+func userListQuery(c *gin.Context) (domain.UserListQuery, error) {
+	const defaultLimit, maximumLimit = 50, 200
+	query := domain.UserListQuery{Cursor: c.Query("cursor"), Limit: defaultLimit, Search: strings.TrimSpace(c.Query("search"))}
+	if raw := c.Query("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit < 1 || limit > maximumLimit {
+			return domain.UserListQuery{}, invalidRequest(fmt.Errorf("limit must be 1-%d", maximumLimit))
+		}
+		query.Limit = limit
+	}
+	if utf8.RuneCountInString(query.Search) > 200 || strings.ContainsRune(query.Search, '\x00') {
+		return domain.UserListQuery{}, invalidRequest(fmt.Errorf("search must be at most 200 characters"))
+	}
+	if raw := c.Query("role"); raw != "" {
+		role := domain.Role(raw)
+		if !role.Valid() {
+			return domain.UserListQuery{}, invalidRequest(fmt.Errorf("role is invalid"))
+		}
+		query.Role = &role
+	}
+	query.Status = domain.UserListStatus(c.Query("status"))
+	if !query.Status.Valid() {
+		return domain.UserListQuery{}, invalidRequest(fmt.Errorf("status is invalid"))
+	}
+	return query, nil
 }
 
 func invalidRequest(cause error) error {

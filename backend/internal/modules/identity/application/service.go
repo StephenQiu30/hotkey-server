@@ -114,11 +114,15 @@ func (service *Service) Authenticator() *Authenticator {
 
 // ListUsers intentionally delegates the read-only query port. Admin
 // authorization belongs to the Task 5/6 transport middleware boundary.
-func (service *Service) ListUsers(ctx context.Context) ([]domain.User, error) {
+func (service *Service) ListUsers(ctx context.Context, query domain.UserListQuery) (domain.UserPage, error) {
 	if service == nil || service.users == nil {
-		return nil, unavailable(nil)
+		return domain.UserPage{}, unavailable(nil)
 	}
-	return service.users.ListUsers(ctx)
+	page, err := service.users.ListUsers(ctx, query)
+	if err != nil {
+		return domain.UserPage{}, serviceError(err)
+	}
+	return page, nil
 }
 
 func (authenticator *Authenticator) Authenticate(ctx context.Context, rawAccessToken string) (domain.Subject, error) {

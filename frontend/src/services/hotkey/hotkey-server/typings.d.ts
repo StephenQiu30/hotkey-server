@@ -1047,6 +1047,19 @@ required property without making explicit null impossible to bind. */
     limit?: number;
   };
 
+  type getUsersParams = {
+    /** opaque signed user cursor */
+    cursor?: string;
+    /** page size */
+    limit?: number;
+    /** email or display name search */
+    search?: string;
+    /** role */
+    role?: "admin" | "analyst" | "editor" | "viewer";
+    /** lifecycle status */
+    status?: "active" | "disabled" | "deleted";
+  };
+
   type GovernanceResultArrayHttpRetentionPolicyResponse = {
     code?: number;
     data?: RetentionPolicyResponse[];
@@ -1111,12 +1124,6 @@ required property without making explicit null impossible to bind. */
     urgent?: number;
   };
 
-  type IdentityResultArrayHttpUserResponse = {
-    code?: number;
-    data?: UserResponse[];
-    message?: string;
-  };
-
   type IdentityResultHttpAuthenticationResponse = {
     code?: number;
     data?: AuthenticationResponse;
@@ -1126,6 +1133,12 @@ required property without making explicit null impossible to bind. */
   type IdentityResultHttpConfirmVerificationResponse = {
     code?: number;
     data?: ConfirmVerificationResponse;
+    message?: string;
+  };
+
+  type IdentityResultHttpUserPageResponse = {
+    code?: number;
+    data?: UserPageResponse;
     message?: string;
   };
 
@@ -3033,6 +3046,11 @@ value never authorizes v2 raw evidence or document body persistence. */
     summary?: string;
     title?: string;
     version?: number;
+  };
+
+  type UserPageResponse = {
+    items?: UserResponse[];
+    next_cursor?: string;
   };
 
   type UserResponse = {

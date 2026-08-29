@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
@@ -55,30 +57,90 @@ func TestUserRepositoryCreatesPreferenceAndEnforcesNormalizedEmailUniqueness(t *
 	}
 }
 
-func TestUserRepositoryListsUsersByIDAndIncludesSoftDeletedFacts(t *testing.T) {
+func TestUserRepositoryListCursorIsSignedFilterBoundExpiringAndSnapshotStable(t *testing.T) {
 	runtime := newIdentityRuntime(t)
-	repository := NewUserRepository(runtime)
+	codec, err := pagination.NewCodec(strings.Repeat("identity-user-list-secret-", 2), time.Minute)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(): %v", err)
+	}
+	repository := NewUserRepositoryWithCursorCodec(runtime, codec)
 
 	first := createIdentityUser(t, repository, "list-first")
 	second := createIdentityUser(t, repository, "list-second")
 	third := createIdentityUser(t, repository, "list-third")
+	if _, err := repository.ChangeRole(context.Background(), third.ID, domain.RoleEditor, time.Now().UTC()); err != nil {
+		t.Fatalf("ChangeRole(): %v", err)
+	}
 	deletedAt := time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC)
 	if _, err := repository.SoftDelete(context.Background(), second.ID, deletedAt); err != nil {
 		t.Fatalf("SoftDelete(): %v", err)
 	}
 
-	users, err := repository.ListUsers(context.Background())
+	firstPage, err := repository.ListUsers(context.Background(), domain.UserListQuery{Limit: 2})
+	if err != nil || len(firstPage.Items) != 2 || firstPage.NextCursor == "" {
+		t.Fatalf("ListUsers(first) = %#v, %v", firstPage, err)
+	}
+	if firstPage.Items[0].ID != first.ID || firstPage.Items[1].ID != second.ID || strings.Count(firstPage.NextCursor, ".") != 1 {
+		t.Fatalf("ListUsers(first) users/cursor = %#v/%q", firstPage.Items, firstPage.NextCursor)
+	}
+	if firstPage.Items[1].DeletedAt == nil || !firstPage.Items[1].DeletedAt.Equal(deletedAt) {
+		t.Fatalf("ListUsers(first) deleted user = %#v", firstPage.Items[1])
+	}
+	concurrent := createIdentityUser(t, repository, "list-concurrent")
+	secondPage, err := repository.ListUsers(context.Background(), domain.UserListQuery{Limit: 2, Cursor: firstPage.NextCursor})
+	if err != nil || len(secondPage.Items) != 1 || secondPage.Items[0].ID != third.ID || secondPage.NextCursor != "" {
+		t.Fatalf("ListUsers(second) = %#v, %v; concurrent=%d", secondPage, err, concurrent.ID)
+	}
+	fresh, err := repository.ListUsers(context.Background(), domain.UserListQuery{Limit: 10})
+	if err != nil || len(fresh.Items) != 4 || fresh.Items[3].ID != concurrent.ID {
+		t.Fatalf("ListUsers(fresh) = %#v, %v", fresh, err)
+	}
+
+	tampered := firstPage.NextCursor[:len(firstPage.NextCursor)-1] + "A"
+	if strings.HasSuffix(firstPage.NextCursor, "A") {
+		tampered = firstPage.NextCursor[:len(firstPage.NextCursor)-1] + "B"
+	}
+	if _, err := repository.ListUsers(context.Background(), domain.UserListQuery{Limit: 2, Cursor: tampered}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("tampered cursor error = %v", err)
+	}
+	editor := domain.RoleEditor
+	for name, query := range map[string]domain.UserListQuery{
+		"search": {Limit: 2, Cursor: firstPage.NextCursor, Search: "list-first"},
+		"role":   {Limit: 2, Cursor: firstPage.NextCursor, Role: &editor},
+		"status": {Limit: 2, Cursor: firstPage.NextCursor, Status: domain.UserListStatusDeleted},
+	} {
+		if _, err := repository.ListUsers(context.Background(), query); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+			t.Fatalf("cross-%s cursor error = %v", name, err)
+		}
+	}
+	searchPage, err := repository.ListUsers(context.Background(), domain.UserListQuery{Limit: 10, Search: "LIST-FIRST"})
+	if err != nil || len(searchPage.Items) != 1 || searchPage.Items[0].ID != first.ID {
+		t.Fatalf("search page = %#v, %v", searchPage, err)
+	}
+	rolePage, err := repository.ListUsers(context.Background(), domain.UserListQuery{Limit: 10, Role: &editor})
+	if err != nil || len(rolePage.Items) != 1 || rolePage.Items[0].ID != third.ID {
+		t.Fatalf("role page = %#v, %v", rolePage, err)
+	}
+	deletedPage, err := repository.ListUsers(context.Background(), domain.UserListQuery{Limit: 10, Status: domain.UserListStatusDeleted})
+	if err != nil || len(deletedPage.Items) != 1 || deletedPage.Items[0].ID != second.ID {
+		t.Fatalf("deleted page = %#v, %v", deletedPage, err)
+	}
+	if _, err := repository.ListUsers(context.Background(), domain.UserListQuery{Limit: 201}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("oversized page error = %v", err)
+	}
+
+	shortCodec, err := pagination.NewCodec(strings.Repeat("identity-user-short-", 2), time.Millisecond)
 	if err != nil {
-		t.Fatalf("ListUsers(): %v", err)
+		t.Fatalf("pagination.NewCodec(short): %v", err)
 	}
-	if len(users) != 3 {
-		t.Fatalf("ListUsers() returned %d users, want 3", len(users))
+	shortRepository := NewUserRepositoryWithCursorCodec(runtime, shortCodec)
+	shortPage, err := shortRepository.ListUsers(context.Background(), domain.UserListQuery{Limit: 1})
+	if err != nil || shortPage.NextCursor == "" {
+		t.Fatalf("short first page = %#v, %v", shortPage, err)
 	}
-	if users[0].ID != first.ID || users[1].ID != second.ID || users[2].ID != third.ID {
-		t.Fatalf("ListUsers() IDs = [%d %d %d], want [%d %d %d] in ascending ID order", users[0].ID, users[1].ID, users[2].ID, first.ID, second.ID, third.ID)
-	}
-	if users[1].DeletedAt == nil || !users[1].DeletedAt.Equal(deletedAt) {
-		t.Fatalf("ListUsers() deleted user = %#v, want persisted deleted_at %s", users[1], deletedAt)
+	time.Sleep(5 * time.Millisecond)
+	if _, err := shortRepository.ListUsers(context.Background(), domain.UserListQuery{Limit: 1, Cursor: shortPage.NextCursor}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired cursor error = %v", err)
 	}
 }
 

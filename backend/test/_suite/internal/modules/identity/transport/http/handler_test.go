@@ -210,6 +210,58 @@ func TestAuthenticationHTTPFailuresAreSafeAndStable(t *testing.T) {
 	})
 }
 
+func TestListUsersPassesPaginationAndFiltersAndReturnsSafePage(t *testing.T) {
+	t.Parallel()
+	service := successfulService()
+	var captured domain.UserListQuery
+	service.listUsers = func(_ context.Context, query domain.UserListQuery) (domain.UserPage, error) {
+		captured = query
+		return domain.UserPage{
+			Items:      []domain.User{{ID: 7, Email: "editor@example.test", PasswordHash: "must-never-leak", DisplayName: "Editor", Role: domain.RoleEditor, Status: domain.UserStatusDisabled}},
+			NextCursor: "next-page",
+		}, nil
+	}
+	response := serveAuthorized(t, newIdentityRouter(service, httptransport.Subject{UserID: 1, SessionID: 2, Role: httptransport.RoleAdmin}, false), http.MethodGet,
+		"/api/v1/users?cursor=current-page&limit=25&search=editor&role=editor&status=disabled", "", "access-token")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", response.Code, response.Body.String())
+	}
+	if captured.Cursor != "current-page" || captured.Limit != 25 || captured.Search != "editor" || captured.Role == nil || *captured.Role != domain.RoleEditor || captured.Status != domain.UserListStatusDisabled {
+		t.Fatalf("captured query = %#v", captured)
+	}
+	var envelope struct {
+		Data UserPageResponse `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(envelope.Data.Items) != 1 || envelope.Data.Items[0].ID != 7 || envelope.Data.NextCursor != "next-page" {
+		t.Fatalf("response page = %#v", envelope.Data)
+	}
+	assertNoSensitiveResponseFields(t, response.Body.String())
+}
+
+func TestListUsersRejectsInvalidQueryBeforeService(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{
+		"/api/v1/users?limit=201",
+		"/api/v1/users?role=owner",
+		"/api/v1/users?status=inactive",
+		"/api/v1/users?search=" + strings.Repeat("x", 201),
+	} {
+		service := successfulService()
+		calls := 0
+		service.listUsers = func(context.Context, domain.UserListQuery) (domain.UserPage, error) {
+			calls++
+			return domain.UserPage{}, nil
+		}
+		response := serveAuthorized(t, newIdentityRouter(service, httptransport.Subject{UserID: 1, SessionID: 2, Role: httptransport.RoleAdmin}, false), http.MethodGet, path, "", "access-token")
+		if response.Code != http.StatusBadRequest || calls != 0 {
+			t.Fatalf("GET %s status/calls = %d/%d, want 400/0: %s", path, response.Code, calls, response.Body.String())
+		}
+	}
+}
+
 func TestAuthenticationCookiesAreSecureInProduction(t *testing.T) {
 	t.Parallel()
 
@@ -231,7 +283,7 @@ type identityServiceStub struct {
 	currentUser          func(context.Context, domain.Subject) (*domain.User, error)
 	changePassword       func(context.Context, domain.Subject, string, string) error
 	confirmPasswordReset func(context.Context, string, string) error
-	listUsers            func(context.Context) ([]domain.User, error)
+	listUsers            func(context.Context, domain.UserListQuery) (domain.UserPage, error)
 	updateUser           func(context.Context, domain.Subject, int64, identityapplication.UserUpdate) (*domain.User, error)
 	deleteUser           func(context.Context, domain.Subject, int64) (*domain.User, error)
 	restoreUser          func(context.Context, domain.Subject, int64) (*domain.User, error)
@@ -264,8 +316,8 @@ func (s *identityServiceStub) ChangePassword(ctx context.Context, subject domain
 func (s *identityServiceStub) ConfirmPasswordReset(ctx context.Context, ticket, password string) error {
 	return s.confirmPasswordReset(ctx, ticket, password)
 }
-func (s *identityServiceStub) ListUsers(ctx context.Context) ([]domain.User, error) {
-	return s.listUsers(ctx)
+func (s *identityServiceStub) ListUsers(ctx context.Context, query domain.UserListQuery) (domain.UserPage, error) {
+	return s.listUsers(ctx, query)
 }
 func (s *identityServiceStub) UpdateUser(ctx context.Context, actor domain.Subject, id int64, input identityapplication.UserUpdate) (*domain.User, error) {
 	return s.updateUser(ctx, actor, id, input)
@@ -295,7 +347,9 @@ func successfulService() *identityServiceStub {
 		currentUser:          func(context.Context, domain.Subject) (*domain.User, error) { return &user, nil },
 		changePassword:       func(context.Context, domain.Subject, string, string) error { return nil },
 		confirmPasswordReset: func(context.Context, string, string) error { return nil },
-		listUsers:            func(context.Context) ([]domain.User, error) { return []domain.User{user}, nil },
+		listUsers: func(context.Context, domain.UserListQuery) (domain.UserPage, error) {
+			return domain.UserPage{Items: []domain.User{user}}, nil
+		},
 		updateUser: func(context.Context, domain.Subject, int64, identityapplication.UserUpdate) (*domain.User, error) {
 			return &user, nil
 		},

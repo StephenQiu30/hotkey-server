@@ -166,21 +166,30 @@ func TestLoginDoesNotTurnRepositoryOutageIntoInvalidCredentials(t *testing.T) {
 
 func TestListUsersDelegatesToTheDomainPortWithoutAuthorization(t *testing.T) {
 	service, users, _ := newFakeService(t)
-	users.listUsers = []domain.User{
+	users.listPage = domain.UserPage{Items: []domain.User{
 		{ID: 2, Email: "deleted@example.test", Role: domain.RoleViewer, Status: domain.UserStatusDisabled, DeletedAt: pointerToTime(time.Date(2026, time.July, 16, 9, 0, 0, 0, time.UTC))},
 		{ID: 3, Email: "active@example.test", Role: domain.RoleEditor, Status: domain.UserStatusActive},
-	}
+	}, NextCursor: "next-page"}
+	query := domain.UserListQuery{Cursor: "current-page", Limit: 25, Search: "active", Status: domain.UserListStatusActive}
 
-	listed, err := service.ListUsers(context.Background())
+	listed, err := service.ListUsers(context.Background(), query)
 	if err != nil {
 		t.Fatalf("ListUsers(): %v", err)
 	}
 	if users.listCalls != 1 {
 		t.Fatalf("ListUsers() repository calls = %d, want 1", users.listCalls)
 	}
-	if !reflect.DeepEqual(listed, users.listUsers) {
-		t.Fatalf("ListUsers() = %#v, want unmodified domain users %#v", listed, users.listUsers)
+	if !reflect.DeepEqual(users.listQuery, query) || !reflect.DeepEqual(listed, users.listPage) {
+		t.Fatalf("ListUsers() query/page = %#v/%#v, want %#v/%#v", users.listQuery, listed, query, users.listPage)
 	}
+}
+
+func TestListUsersMapsInvalidCursorToStableValidationError(t *testing.T) {
+	service, users, _ := newFakeService(t)
+	users.listErr = sharedrepository.ErrInvalidInput
+
+	_, err := service.ListUsers(context.Background(), domain.UserListQuery{Cursor: "tampered", Limit: 25})
+	requireAppCode(t, err, sharederrors.CodeValidation)
 }
 
 func TestAuthenticatorUsesCurrentDatabaseSubjectAndRejectsClaimMismatch(t *testing.T) {
@@ -579,7 +588,9 @@ type userRepositoryFake struct {
 	nextID                   int64
 	lastWriteUsedTransaction bool
 	findByEmailErr           error
-	listUsers                []domain.User
+	listPage                 domain.UserPage
+	listQuery                domain.UserListQuery
+	listErr                  error
 	listCalls                int
 }
 
@@ -632,11 +643,14 @@ func (repository *userRepositoryFake) FindByID(_ context.Context, id int64) (*do
 	return &copy, nil
 }
 
-func (repository *userRepositoryFake) ListUsers(context.Context) ([]domain.User, error) {
+func (repository *userRepositoryFake) ListUsers(_ context.Context, query domain.UserListQuery) (domain.UserPage, error) {
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
 	repository.listCalls++
-	return append([]domain.User(nil), repository.listUsers...), nil
+	repository.listQuery = query
+	page := repository.listPage
+	page.Items = append([]domain.User(nil), page.Items...)
+	return page, repository.listErr
 }
 
 func (repository *userRepositoryFake) LockByID(ctx context.Context, id int64) (*domain.User, error) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useState } from "react";
 import {
   AlertCircle,
   Loader2,
@@ -66,59 +66,49 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(canManage);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [role, setRole] = useState("all");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const [nextCursor, setNextCursor] = useState<string>();
   const [actionId, setActionId] = useState<number>();
   const [deleteTarget, setDeleteTarget] = useState<HotKeyAPI.UserResponse>();
 
-  const load = useCallback(async () => {
-    if (!canManage) return;
-    setLoading(true);
-    setError("");
-    try {
-      const result = await getUsers();
-      setUsers(result.data ?? []);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "用户列表加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [canManage]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const filteredUsers = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase();
-    return users.filter((user) => {
-      const deleted = Boolean(user.deleted_at);
-      const matchesQuery =
-        !normalized ||
-        user.email?.toLocaleLowerCase().includes(normalized) ||
-        user.display_name?.toLocaleLowerCase().includes(normalized);
-      const matchesRole = role === "all" || user.role === role;
-      const matchesStatus =
-        status === "all" ||
-        (status === "deleted" ? deleted : !deleted && user.status === status);
-      return matchesQuery && matchesRole && matchesStatus;
-    });
-  }, [query, role, status, users]);
-
-  useEffect(() => setPage(1), [query, role, status]);
-
-  const visibleUsers = filteredUsers.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
+  const loadPage = useCallback(
+    async (cursor: string | undefined, pageNumber: number) => {
+      if (!canManage) return;
+      setLoading(true);
+      setError("");
+      try {
+        const params: HotKeyAPI.getUsersParams = { limit: PAGE_SIZE };
+        if (cursor) params.cursor = cursor;
+        if (deferredQuery.trim()) params.search = deferredQuery.trim();
+        if (role !== "all")
+          params.role = role as HotKeyAPI.getUsersParams["role"];
+        if (status !== "all")
+          params.status = status as HotKeyAPI.getUsersParams["status"];
+        const result = await getUsers(params);
+        setUsers(result.data?.items ?? []);
+        setNextCursor(result.data?.next_cursor);
+        setPage(pageNumber);
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "用户列表加载失败");
+        setUsers([]);
+        setNextCursor(undefined);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [canManage, deferredQuery, role, status]
   );
 
-  const replaceUser = (updated?: HotKeyAPI.UserResponse) => {
-    if (updated?.id == null) return;
-    setUsers((current) =>
-      current.map((user) => (user.id === updated.id ? updated : user))
-    );
-  };
+  useEffect(() => {
+    setCursors([undefined]);
+    void loadPage(undefined, 1);
+  }, [loadPage]);
+
+  const refreshPage = () => loadPage(cursors[page - 1], page);
 
   const updateUser = async (
     target: HotKeyAPI.UserResponse,
@@ -127,8 +117,8 @@ export default function UsersPage() {
     if (target.id == null) return;
     setActionId(target.id);
     try {
-      const result = await patchUsersId({ id: target.id }, update);
-      replaceUser(result.data);
+      await patchUsersId({ id: target.id }, update);
+      await refreshPage();
       toast.success("用户权限已更新");
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : "用户更新失败");
@@ -141,9 +131,9 @@ export default function UsersPage() {
     if (deleteTarget?.id == null) return;
     setActionId(deleteTarget.id);
     try {
-      const result = await deleteUsersId({ id: deleteTarget.id });
-      replaceUser(result.data);
+      await deleteUsersId({ id: deleteTarget.id });
       setDeleteTarget(undefined);
+      await refreshPage();
       toast.success("用户已软删除，会话已撤销");
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : "用户删除失败");
@@ -156,14 +146,31 @@ export default function UsersPage() {
     if (target.id == null) return;
     setActionId(target.id);
     try {
-      const result = await postUsersIdRestore({ id: target.id });
-      replaceUser(result.data);
+      await postUsersIdRestore({ id: target.id });
+      await refreshPage();
       toast.success("用户已恢复为禁用状态");
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : "用户恢复失败");
     } finally {
       setActionId(undefined);
     }
+  };
+
+  const previousPage = () => {
+    if (page <= 1) return;
+    const targetPage = page - 1;
+    void loadPage(cursors[targetPage - 1], targetPage);
+  };
+
+  const nextPage = () => {
+    if (!nextCursor) return;
+    const targetPage = page + 1;
+    setCursors((current) => {
+      const updated = current.slice(0, targetPage - 1);
+      updated[targetPage - 1] = nextCursor;
+      return updated;
+    });
+    void loadPage(nextCursor, targetPage);
   };
 
   if (!canManage) {
@@ -219,7 +226,11 @@ export default function UsersPage() {
               <AlertTitle>无法加载用户</AlertTitle>
               <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
                 <span>{error}</span>
-                <Button size="sm" variant="outline" onClick={() => void load()}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void refreshPage()}
+                >
                   重试
                 </Button>
               </AlertDescription>
@@ -231,7 +242,7 @@ export default function UsersPage() {
               <Skeleton key={index} className="h-12 w-full" />
             ))}
           </div>
-        ) : visibleUsers.length === 0 ? (
+        ) : users.length === 0 ? (
           <Empty className="min-h-64 rounded-none border-0">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -253,7 +264,7 @@ export default function UsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleUsers.map((target) => {
+              {users.map((target) => {
                 const deleted = Boolean(target.deleted_at);
                 const busy = actionId === target.id;
                 return (
@@ -381,9 +392,9 @@ export default function UsersPage() {
           <CursorPagination
             page={page}
             pageSize={PAGE_SIZE}
-            hasNext={page * PAGE_SIZE < filteredUsers.length}
-            onPrevious={() => setPage((current) => Math.max(1, current - 1))}
-            onNext={() => setPage((current) => current + 1)}
+            hasNext={Boolean(nextCursor)}
+            onPrevious={previousPage}
+            onNext={nextPage}
           />
         ) : null}
       </Card>
