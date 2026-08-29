@@ -6,7 +6,7 @@ import (
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 )
 
-func TestCatalogKeepsFreePresetsFirstAndConnectionDetailsServerSide(t *testing.T) {
+func TestCatalogHasFixedTwelveItemMaximumAndKeepsConnectionDetailsServerSide(t *testing.T) {
 	items := Catalog()
 	wantIDs := []string{
 		"rss_custom", "youtube_channel", "github_releases", "arxiv_search",
@@ -15,6 +15,9 @@ func TestCatalogKeepsFreePresetsFirstAndConnectionDetailsServerSide(t *testing.T
 	}
 	if len(items) != len(wantIDs) {
 		t.Fatalf("len(Catalog()) = %d, want %d", len(items), len(wantIDs))
+	}
+	if len(items) > 12 {
+		t.Fatalf("len(Catalog()) = %d, fixed reference catalog maximum is 12", len(items))
 	}
 	for index, wantID := range wantIDs {
 		if items[index].ID != wantID {
@@ -26,6 +29,12 @@ func TestCatalogKeepsFreePresetsFirstAndConnectionDetailsServerSide(t *testing.T
 	}
 	if items[0].Cost != CostFree || items[5].Cost != CostFree || items[7].Cost != CostPaid {
 		t.Fatalf("catalog cost ordering is not free-first: %#v", items)
+	}
+	items[0].ID = "client-mutated"
+	items[0].Inputs = append(items[0].Inputs, Input{Key: "client-mutated"})
+	fresh := Catalog()
+	if fresh[0].ID != "rss_custom" || len(fresh[0].Inputs) != 1 {
+		t.Fatalf("Catalog() returned mutable shared state: %#v", fresh[0])
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
 // UpdateProfile changes only operational settings on an existing profile. A
@@ -105,34 +106,88 @@ func (repository *Repository) GetProfile(ctx context.Context, id int64) (intelli
 	return profile, err
 }
 
-// ListProfiles returns active and soft-deleted profiles in deterministic id
-// order. Candidate selection remains the separate EligibleProfiles boundary.
-func (repository *Repository) ListProfiles(ctx context.Context) ([]intelligencedomain.ModelProfile, error) {
-	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
-		return nil, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+const (
+	modelProfileListDefaultLimit  = 50
+	modelProfileListMaximumLimit  = 200
+	modelProfileListCursorVersion = 1
+	modelProfileListCursorPurpose = "ai_model_profile_list"
+)
+
+type modelProfileListCursor struct {
+	Version    int   `json:"v"`
+	SnapshotID int64 `json:"snapshot_id"`
+	AfterID    int64 `json:"after_id"`
+}
+
+// ListProfilePage returns active and soft-deleted profiles for the
+// administrative control plane. The first page freezes the maximum matching
+// ID so profiles created during traversal appear only in a fresh query.
+func (repository *Repository) ListProfilePage(ctx context.Context, query intelligencedomain.ModelProfileListQuery) (intelligencedomain.ModelProfilePage, error) {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || repository.cursorCodec == nil {
+		return intelligencedomain.ModelProfilePage{}, sharedrepository.ErrUnavailable
+	}
+	limit, cursor, err := repository.modelProfileListParameters(ctx, query)
+	if err != nil {
+		return intelligencedomain.ModelProfilePage{}, err
+	}
+	if cursor.SnapshotID == 0 {
+		return intelligencedomain.ModelProfilePage{Items: []intelligencedomain.ModelProfile{}}, nil
 	}
 	rows, err := repository.queryRows(ctx, `
 SELECT id,version,name,task_type,provider,model_name,model_version,credential_ref,embedding_dimensions,
        timeout_seconds,max_attempts,max_cost::text,daily_budget::text,fallback_priority,enabled,created_at,updated_at,deleted_at IS NOT NULL
 FROM ai_model_profiles
-ORDER BY id ASC`)
+WHERE id > $1 AND id <= $2
+ORDER BY id ASC
+LIMIT $3`, cursor.AfterID, cursor.SnapshotID, limit+1)
 	if err != nil {
-		return nil, fmt.Errorf("list AI profiles: %w", err)
+		return intelligencedomain.ModelProfilePage{}, fmt.Errorf("list AI profiles: %w", err)
 	}
 	defer rows.Close()
 
-	profiles := make([]intelligencedomain.ModelProfile, 0)
+	profiles := make([]intelligencedomain.ModelProfile, 0, limit+1)
 	for rows.Next() {
 		profile, _, err := scanProfile(rows)
 		if err != nil {
-			return nil, err
+			return intelligencedomain.ModelProfilePage{}, err
 		}
 		profiles = append(profiles, profile)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate AI profiles: %w", err)
+		return intelligencedomain.ModelProfilePage{}, fmt.Errorf("iterate AI profiles: %w", err)
 	}
-	return profiles, nil
+	if len(profiles) <= limit {
+		return intelligencedomain.ModelProfilePage{Items: profiles}, nil
+	}
+	profiles = profiles[:limit]
+	cursor.AfterID = profiles[len(profiles)-1].ID
+	nextCursor, err := repository.cursorCodec.Seal(modelProfileListCursorPurpose, cursor)
+	if err != nil {
+		return intelligencedomain.ModelProfilePage{}, fmt.Errorf("%w: encode AI profile cursor", sharedrepository.ErrInvalidInput)
+	}
+	return intelligencedomain.ModelProfilePage{Items: profiles, NextCursor: nextCursor}, nil
+}
+
+func (repository *Repository) modelProfileListParameters(ctx context.Context, query intelligencedomain.ModelProfileListQuery) (int, modelProfileListCursor, error) {
+	limit := query.Limit
+	if limit == 0 {
+		limit = modelProfileListDefaultLimit
+	}
+	if limit < 1 || limit > modelProfileListMaximumLimit {
+		return 0, modelProfileListCursor{}, fmt.Errorf("%w: invalid AI profile page size", sharedrepository.ErrInvalidInput)
+	}
+	cursor := modelProfileListCursor{Version: modelProfileListCursorVersion}
+	if query.Cursor != "" {
+		if err := repository.cursorCodec.Open(query.Cursor, modelProfileListCursorPurpose, &cursor); err != nil ||
+			cursor.Version != modelProfileListCursorVersion || cursor.SnapshotID <= 0 || cursor.AfterID <= 0 || cursor.AfterID >= cursor.SnapshotID {
+			return 0, modelProfileListCursor{}, fmt.Errorf("%w: invalid AI profile cursor", sharedrepository.ErrInvalidInput)
+		}
+		return limit, cursor, nil
+	}
+	if err := repository.queryRow(ctx, `SELECT COALESCE(MAX(id),0) FROM ai_model_profiles`).Scan(&cursor.SnapshotID); err != nil {
+		return 0, modelProfileListCursor{}, fmt.Errorf("read AI profile snapshot: %w", err)
+	}
+	return limit, cursor, nil
 }
 
 // EligibleProfiles returns the enabled, non-deleted candidates in the one

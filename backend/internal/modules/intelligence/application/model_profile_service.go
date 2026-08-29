@@ -57,13 +57,13 @@ func (service *ModelProfileService) Create(ctx context.Context, profile domain.M
 	return profile, nil
 }
 
-// List returns every profile, including archived ones, for the administrator
-// control plane. HTTP maps this value to a DTO that excludes credentials.
-func (service *ModelProfileService) List(ctx context.Context) ([]domain.ModelProfile, error) {
+// List returns one safe administrative page, including archived profiles.
+// HTTP maps the values to credential-free DTOs.
+func (service *ModelProfileService) List(ctx context.Context, query domain.ModelProfileListQuery) (domain.ModelProfilePage, error) {
 	if service == nil || service.profiles == nil {
-		return nil, fmt.Errorf("AI model profile service is unavailable")
+		return domain.ModelProfilePage{}, fmt.Errorf("AI model profile service is unavailable")
 	}
-	return service.profiles.ListProfiles(ctx)
+	return service.profiles.ListProfilePage(ctx, query)
 }
 
 // Get includes the deletion state so an administrator can restore a profile.

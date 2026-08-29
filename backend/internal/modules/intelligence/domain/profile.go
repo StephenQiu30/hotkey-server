@@ -30,6 +30,18 @@ type ModelProfile struct {
 	CreatedAt, UpdatedAt                          time.Time
 }
 
+// ModelProfileListQuery defines the administrative profile traversal. The
+// repository owns cursor verification and the immutable ID snapshot boundary.
+type ModelProfileListQuery struct {
+	Cursor string
+	Limit  int
+}
+
+type ModelProfilePage struct {
+	Items      []ModelProfile
+	NextCursor string
+}
+
 func (profile ModelProfile) Validate() error {
 	if strings.TrimSpace(profile.Name) == "" || !profile.TaskType.Valid() || !profile.Provider.Valid() ||
 		strings.TrimSpace(profile.ModelName) == "" || strings.TrimSpace(profile.ModelVersion) == "" ||

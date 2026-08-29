@@ -4,13 +4,36 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func TestRetentionPolicySchemaRejectsAnEighthDataClass(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := database.Open(ctx, postgresfixture.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+	if err := database.InitializeEmpty(ctx, runtime.Pool); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM retention_policies`).Scan(&count); err != nil || count != 7 {
+		t.Fatalf("retention policy count = %d, %v; want fixed seven-item catalog", count, err)
+	}
+	_, err = runtime.SQL.ExecContext(ctx, `INSERT INTO retention_policies (data_class,retention_days,action) VALUES ('arbitrary_extra_class',30,'delete')`)
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) || postgresError.Code != "23514" {
+		t.Fatalf("insert eighth retention policy error = %#v, want PostgreSQL CHECK violation", err)
+	}
+}
 
 func TestRetentionRepositoryDeletesOnlyWhitelistedBoundedOperationalRows(t *testing.T) {
 	ctx := context.Background()

@@ -29,11 +29,34 @@ const docTemplate = `{
                     "ai"
                 ],
                 "summary": "List AI model profiles",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "opaque signed model profile cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 200,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 50,
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/http.ModelProfileResult-http_ModelProfileListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ModelProfileResult-internal_modules_intelligence_transport_http_EmptyResponse"
                         }
                     },
                     "401": {
@@ -12047,6 +12070,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/http.ModelProfileResponse"
                     }
+                },
+                "next_cursor": {
+                    "type": "string"
                 }
             }
         },

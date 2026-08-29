@@ -1041,6 +1041,15 @@ func assertSafeModelProfileOpenAPIDefinitions(t *testing.T, definitions map[stri
 	Required   []string                   `json:"required"`
 }) {
 	t.Helper()
+	list, ok := definitions["http.ModelProfileListResponse"]
+	if !ok {
+		t.Fatal("missing http.ModelProfileListResponse")
+	}
+	for _, field := range []string{"items", "next_cursor"} {
+		if _, exists := list.Properties[field]; !exists {
+			t.Errorf("model profile list response misses %q", field)
+		}
+	}
 	response, ok := definitions["http.ModelProfileResponse"]
 	if !ok {
 		t.Fatal("missing http.ModelProfileResponse")

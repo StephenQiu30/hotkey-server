@@ -83,7 +83,8 @@ type ModelProfileResponse struct {
 }
 
 type ModelProfileListResponse struct {
-	Items []ModelProfileResponse `json:"items"`
+	Items      []ModelProfileResponse `json:"items"`
+	NextCursor string                 `json:"next_cursor,omitempty"`
 }
 
 func createModelProfile(request CreateModelProfileRequest) intelligencedomain.ModelProfile {
@@ -105,10 +106,10 @@ func modelProfileResponse(profile intelligencedomain.ModelProfile) ModelProfileR
 	}
 }
 
-func modelProfileListResponse(profiles []intelligencedomain.ModelProfile) ModelProfileListResponse {
-	items := make([]ModelProfileResponse, 0, len(profiles))
-	for _, profile := range profiles {
+func modelProfileListResponse(page intelligencedomain.ModelProfilePage) ModelProfileListResponse {
+	items := make([]ModelProfileResponse, 0, len(page.Items))
+	for _, profile := range page.Items {
 		items = append(items, modelProfileResponse(profile))
 	}
-	return ModelProfileListResponse{Items: items}
+	return ModelProfileListResponse{Items: items, NextCursor: page.NextCursor}
 }

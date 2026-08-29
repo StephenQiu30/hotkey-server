@@ -14,12 +14,26 @@ import (
 
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
-type Repository struct{ runtime *database.Runtime }
+type Repository struct {
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
+}
 
-func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }
+func NewRepository(runtime *database.Runtime) *Repository {
+	seed := "intelligence:unavailable"
+	if runtime != nil && runtime.Pool != nil {
+		seed = "intelligence:" + runtime.Pool.Config().ConnString()
+	}
+	return NewRepositoryWithCursorCodec(runtime, pagination.NewTestCodec(seed))
+}
+
+func NewRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *Repository {
+	return &Repository{runtime: runtime, cursorCodec: codec}
+}
 
 func (repository *Repository) CreateProfile(ctx context.Context, profile *intelligencedomain.ModelProfile) error {
 	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || profile == nil {

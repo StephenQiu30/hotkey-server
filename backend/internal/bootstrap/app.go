@@ -119,7 +119,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newSourceCredentialStore,
 				sourcepostgres.NewMetricCapabilityRepository,
 				newMetricCapabilityService,
-				intelligencepostgres.NewRepository,
+				newIntelligenceRepository,
 				intelligenceapplication.NewSchemaRegistry,
 				newAIProviderRegistry,
 				newAgentShadowRunner,

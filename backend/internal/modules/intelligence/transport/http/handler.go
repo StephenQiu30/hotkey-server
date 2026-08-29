@@ -14,11 +14,12 @@ import (
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/gin-gonic/gin"
 )
 
 type modelProfileService interface {
-	List(context.Context) ([]intelligencedomain.ModelProfile, error)
+	List(context.Context, intelligencedomain.ModelProfileListQuery) (intelligencedomain.ModelProfilePage, error)
 	Get(context.Context, int64) (intelligencedomain.ModelProfile, error)
 	Create(context.Context, intelligencedomain.ModelProfile) (intelligencedomain.ModelProfile, error)
 	Update(context.Context, intelligencedomain.ModelProfile, int64) (intelligencedomain.ModelProfile, error)
@@ -39,19 +40,39 @@ func NewHandler(service modelProfileService) *Handler { return &Handler{service:
 // @Tags ai
 // @Produce json
 // @Security BearerAuth
+// @Param cursor query string false "opaque signed model profile cursor"
+// @Param limit query int false "page size" minimum(1) maximum(200) default(50)
 // @Success 200 {object} ModelProfileResult[ModelProfileListResponse]
+// @Failure 400 {object} ModelProfileResult[EmptyResponse]
 // @Failure 401 {object} ModelProfileResult[EmptyResponse]
 // @Failure 403 {object} ModelProfileResult[EmptyResponse]
 // @Failure 503 {object} ModelProfileResult[EmptyResponse]
 // @Router /api/v1/ai/model-profiles [get]
 func (handler *Handler) List(c *gin.Context) error {
 	httptransport.SetModule(c, "intelligence")
-	profiles, err := handler.service.List(c.Request.Context())
+	query, err := modelProfileListQuery(c)
+	if err != nil {
+		return err
+	}
+	page, err := handler.service.List(c.Request.Context(), query)
 	if err != nil {
 		return modelProfileError(err)
 	}
-	httptransport.OK(c, modelProfileListResponse(profiles))
+	httptransport.OK(c, modelProfileListResponse(page))
 	return nil
+}
+
+func modelProfileListQuery(c *gin.Context) (intelligencedomain.ModelProfileListQuery, error) {
+	const defaultLimit, maximumLimit = 50, 200
+	query := intelligencedomain.ModelProfileListQuery{Cursor: c.Query("cursor"), Limit: defaultLimit}
+	if raw := c.Query("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit < 1 || limit > maximumLimit {
+			return intelligencedomain.ModelProfileListQuery{}, invalidModelProfileRequest(fmt.Errorf("limit must be 1-%d", maximumLimit))
+		}
+		query.Limit = limit
+	}
+	return query, nil
 }
 
 // Get returns one safe profile projection, never its credential reference.
@@ -322,6 +343,12 @@ func modelProfileError(err error) error {
 		if definition, found := sharederrors.Lookup(code); found {
 			return sharederrors.New(code, definition.HTTPStatus, "")
 		}
+	}
+	switch {
+	case errors.Is(err, sharedrepository.ErrInvalidInput), errors.Is(err, sharedrepository.ErrConstraint):
+		return sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "")
+	case errors.Is(err, sharedrepository.ErrUnavailable):
+		return sharederrors.New(sharederrors.CodeUnavailable, stdhttp.StatusServiceUnavailable, "")
 	}
 	return err
 }

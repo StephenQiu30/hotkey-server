@@ -723,6 +723,13 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
+  type getAiModelProfilesParams = {
+    /** opaque signed model profile cursor */
+    cursor?: string;
+    /** page size */
+    limit?: number;
+  };
+
   type getCollectionRunsParams = {
     /** cursor */
     cursor?: string;
@@ -1554,6 +1561,7 @@ probability or a cross-channel relevance percentage. */
 
   type ModelProfileListResponse = {
     items?: ModelProfileResponse[];
+    next_cursor?: string;
   };
 
   type ModelProfileResponse = {

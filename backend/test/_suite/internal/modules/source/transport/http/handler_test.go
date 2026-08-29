@@ -57,6 +57,15 @@ func TestSourcePresetCatalogIsServedByTheBackend(t *testing.T) {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
 	}
 	body := response.Body.String()
+	var catalog struct {
+		Data SourcePresetPageResponse `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &catalog); err != nil {
+		t.Fatalf("decode preset catalog: %v", err)
+	}
+	if len(catalog.Data.Items) != 12 || strings.Contains(body, "next_cursor") {
+		t.Fatalf("preset reference catalog must return exactly 12 items without traversal: %#v", catalog.Data)
+	}
 	for _, value := range []string{`"id":"youtube_channel"`, `"label":"YouTube 频道（免费）"`, `"key":"youtube_channel_id"`, `"id":"x"`, `"cost":"paid"`} {
 		if !strings.Contains(body, value) {
 			t.Fatalf("preset catalog is missing %s: %s", value, body)

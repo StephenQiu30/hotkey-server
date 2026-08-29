@@ -89,6 +89,22 @@ func TestModelProfileRoutesEnforceAdminControlPlaneAndRedactCredentials(t *testi
 		}
 	})
 
+	t.Run("list forwards opaque pagination and rejects invalid limits", func(t *testing.T) {
+		service := &modelProfileServiceStub{profile: profile, nextCursor: "signed.next"}
+		response := modelProfileRequest(newModelProfileRouter(service, httptransport.RoleAdmin), stdhttp.MethodGet, "/api/v1/ai/model-profiles?cursor=opaque.cursor&limit=2", "", "admin")
+		if response.Code != stdhttp.StatusOK || service.listCalls != 1 || service.listQuery.Cursor != "opaque.cursor" || service.listQuery.Limit != 2 || !strings.Contains(response.Body.String(), `"next_cursor":"signed.next"`) {
+			t.Fatalf("list pagination status/query/body = %d/%#v/%s", response.Code, service.listQuery, response.Body.String())
+		}
+		for _, query := range []string{"limit=0", "limit=201", "limit=invalid"} {
+			service := &modelProfileServiceStub{profile: profile}
+			response := modelProfileRequest(newModelProfileRouter(service, httptransport.RoleAdmin), stdhttp.MethodGet, "/api/v1/ai/model-profiles?"+query, "", "admin")
+			assertModelProfileError(t, response, stdhttp.StatusBadRequest, sharederrors.CodeInvalidRequest)
+			if service.listCalls != 0 {
+				t.Fatalf("%s list calls = %d, want 0", query, service.listCalls)
+			}
+		}
+	})
+
 	t.Run("immutable PATCH fields return 70000 without an update", func(t *testing.T) {
 		for _, field := range []string{"task_type", "provider", "model_name", "model_version", "credential_ref", "embedding_dimensions"} {
 			t.Run(field, func(t *testing.T) {
@@ -136,17 +152,20 @@ func TestModelProfileRoutesRegisterExactlySixControlPlanePaths(t *testing.T) {
 type modelProfileServiceStub struct {
 	profile                                       intelligencedomain.ModelProfile
 	created, updated                              intelligencedomain.ModelProfile
+	listQuery                                     intelligencedomain.ModelProfileListQuery
+	nextCursor                                    string
 	listCalls, getCalls, createCalls, updateCalls int
 	deleteCalls, restoreCalls                     int
 	err                                           error
 }
 
-func (service *modelProfileServiceStub) List(context.Context) ([]intelligencedomain.ModelProfile, error) {
+func (service *modelProfileServiceStub) List(_ context.Context, query intelligencedomain.ModelProfileListQuery) (intelligencedomain.ModelProfilePage, error) {
 	service.listCalls++
+	service.listQuery = query
 	if service.err != nil {
-		return nil, service.err
+		return intelligencedomain.ModelProfilePage{}, service.err
 	}
-	return []intelligencedomain.ModelProfile{service.profile}, nil
+	return intelligencedomain.ModelProfilePage{Items: []intelligencedomain.ModelProfile{service.profile}, NextCursor: service.nextCursor}, nil
 }
 func (service *modelProfileServiceStub) Get(context.Context, int64) (intelligencedomain.ModelProfile, error) {
 	service.getCalls++

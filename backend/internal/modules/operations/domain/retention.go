@@ -2,7 +2,6 @@ package domain
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -17,10 +16,19 @@ type RetentionPolicy struct {
 }
 
 func (policy RetentionPolicy) Validate() error {
-	if policy.ID <= 0 || policy.Version <= 0 || strings.TrimSpace(policy.DataClass) == "" || policy.RetentionDays <= 0 || (policy.Action != "archive" && policy.Action != "delete") {
+	if policy.ID <= 0 || policy.Version <= 0 || !supportedRetentionDataClass(policy.DataClass) || policy.RetentionDays <= 0 || (policy.Action != "archive" && policy.Action != "delete") {
 		return fmt.Errorf("invalid retention policy")
 	}
 	return nil
+}
+
+func supportedRetentionDataClass(value string) bool {
+	switch value {
+	case "captured_items", "content_metric_snapshots", "event_metric_snapshots", "sessions", "delivery_attempts", "job_attempts", "audit_logs":
+		return true
+	default:
+		return false
+	}
 }
 
 type CleanupResult struct {

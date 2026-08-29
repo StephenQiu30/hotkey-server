@@ -16,6 +16,9 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 		"internal/modules/identity/infrastructure/postgres/user_repository.go": {
 			"NewUserRepositoryWithCursorCodec", `cursorCodec.Seal("identity_user_list"`, `cursorCodec.Open(query.Cursor, "identity_user_list"`,
 		},
+		"internal/modules/intelligence/infrastructure/postgres/model_profile_repository.go": {
+			`modelProfileListCursorPurpose = "ai_model_profile_list"`, `cursorCodec.Seal(modelProfileListCursorPurpose`, `cursorCodec.Open(query.Cursor, modelProfileListCursorPurpose`,
+		},
 		"internal/modules/event/infrastructure/postgres/micro_event_query_repository.go": {
 			`codec.Seal("micro_event_list"`, `codec.Open(value, "micro_event_list"`,
 			`codec.Seal("micro_event_evidence_list"`, `codec.Open(value, "micro_event_evidence_list"`,
@@ -66,7 +69,7 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 			"hmac.Equal", "ErrExpiredCursor", "ErrStaleCursor", "maximumEncodedCursorSize",
 		},
 		"internal/bootstrap/pagination.go": {
-			"pagination.NewCodec", "newUserRepository", "NewUserRepositoryWithCursorCodec", "newKnowledgeRepository", "NewRepositoryWithCursorCodec", "newMonitorScanReader", "NewMonitorScanReaderWithCursorCodec", "NewMicroEventQueryPostgresRepositoryWithCursorCodec", "newRightsManagementRepository", "newContentRepository", "newReportRepository", "newJobRepository", "newGovernanceRepository",
+			"pagination.NewCodec", "newUserRepository", "NewUserRepositoryWithCursorCodec", "newKnowledgeRepository", "NewRepositoryWithCursorCodec", "newIntelligenceRepository", "newMonitorScanReader", "NewMonitorScanReaderWithCursorCodec", "NewMicroEventQueryPostgresRepositoryWithCursorCodec", "newRightsManagementRepository", "newContentRepository", "newReportRepository", "newJobRepository", "newGovernanceRepository",
 		},
 		"internal/bootstrap/monitor_intent_expansion.go": {
 			"newDocumentMatchRepository", "NewDocumentMatchRepositoryWithCursorCodec",

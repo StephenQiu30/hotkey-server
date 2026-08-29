@@ -2,12 +2,80 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
+	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
+
+func TestModelProfileListCursorIsSignedExpiringAndSnapshotStable(t *testing.T) {
+	runtime := openIntelligenceRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	codec, err := pagination.NewCodec(strings.Repeat("model-profile-list-secret-", 2), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := intelligencepostgres.NewRepositoryWithCursorCodec(runtime, codec)
+	create := func(name string) intelligencedomain.ModelProfile {
+		t.Helper()
+		profile := testEmbeddingProfile()
+		profile.Name = name
+		if err := repository.CreateProfile(context.Background(), &profile); err != nil {
+			t.Fatalf("CreateProfile(%s): %v", name, err)
+		}
+		return profile
+	}
+	first := create("profile-cursor-first")
+	second := create("profile-cursor-second")
+	third := create("profile-cursor-third")
+
+	firstPage, err := repository.ListProfilePage(context.Background(), intelligencedomain.ModelProfileListQuery{Limit: 2})
+	if err != nil || len(firstPage.Items) != 2 || firstPage.Items[0].ID != first.ID || firstPage.Items[1].ID != second.ID || firstPage.NextCursor == "" || strings.Count(firstPage.NextCursor, ".") != 1 {
+		t.Fatalf("ListProfilePage(first) = %#v, %v", firstPage, err)
+	}
+	concurrent := create("profile-cursor-concurrent")
+	secondPage, err := repository.ListProfilePage(context.Background(), intelligencedomain.ModelProfileListQuery{Limit: 2, Cursor: firstPage.NextCursor})
+	if err != nil || len(secondPage.Items) != 1 || secondPage.Items[0].ID != third.ID || secondPage.NextCursor != "" {
+		t.Fatalf("ListProfilePage(second) = %#v, %v; concurrent=%d", secondPage, err, concurrent.ID)
+	}
+	fresh, err := repository.ListProfilePage(context.Background(), intelligencedomain.ModelProfileListQuery{Limit: 10})
+	if err != nil || len(fresh.Items) != 4 || fresh.Items[3].ID != concurrent.ID {
+		t.Fatalf("ListProfilePage(fresh) = %#v, %v", fresh, err)
+	}
+
+	tampered := firstPage.NextCursor[:len(firstPage.NextCursor)-1] + "A"
+	if strings.HasSuffix(firstPage.NextCursor, "A") {
+		tampered = firstPage.NextCursor[:len(firstPage.NextCursor)-1] + "B"
+	}
+	for name, query := range map[string]intelligencedomain.ModelProfileListQuery{
+		"tampered":  {Limit: 2, Cursor: tampered},
+		"oversized": {Limit: 201},
+	} {
+		if _, err := repository.ListProfilePage(context.Background(), query); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+			t.Errorf("%s query error = %v", name, err)
+		}
+	}
+
+	shortCodec, err := pagination.NewCodec(strings.Repeat("short-model-profile-secret-", 2), time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiringRepository := intelligencepostgres.NewRepositoryWithCursorCodec(runtime, shortCodec)
+	expiring, err := expiringRepository.ListProfilePage(context.Background(), intelligencedomain.ModelProfileListQuery{Limit: 1})
+	if err != nil || expiring.NextCursor == "" {
+		t.Fatalf("expiring profile page = %#v, %v", expiring, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := expiringRepository.ListProfilePage(context.Background(), intelligencedomain.ModelProfileListQuery{Limit: 1, Cursor: expiring.NextCursor}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired profile cursor error = %v", err)
+	}
+}
 
 func TestModelProfileRepositoryUsesOptimisticOperationalUpdatesAndSoftLifecycle(t *testing.T) {
 	runtime := openIntelligenceRuntime(t)
