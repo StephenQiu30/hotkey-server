@@ -69,10 +69,10 @@ WHERE snapshot.lifecycle_state IN ('raw_available','retention_blocked')
       snapshot.lifecycle_state='raw_available'
       OR COALESCE((
           SELECT latest.event_type='delete_failed' OR latest.occurred_at <= $2
-          FROM evidence_deletion_audits AS latest
-          WHERE latest.evidence_snapshot_id=snapshot.id
-          ORDER BY latest.attempt_no DESC,latest.id DESC LIMIT 1
-      ),false)
+      FROM evidence_deletion_audits AS latest
+      WHERE latest.evidence_snapshot_id=snapshot.id
+      ORDER BY latest.attempt_no DESC,latest.id DESC LIMIT 1
+      ),true)
   )
 ORDER BY snapshot.retention_until,snapshot.id
 LIMIT $3

@@ -22,6 +22,26 @@ func TestParseRawEvidenceRetentionFlagsRequiresExplicitBoundedApply(t *testing.T
 	}
 }
 
+func TestParseDerivedArtifactRetentionFlagsRequiresExplicitBoundedApply(t *testing.T) {
+	command, err := parseDerivedArtifactRetentionFlags([]string{"--batch-size", "25", "--apply", "--confirm-delete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command.BatchSize != 25 || !command.Apply || !command.ConfirmDelete {
+		t.Fatalf("unexpected derived artifact retention command: %#v", command)
+	}
+	for _, args := range [][]string{
+		{"--batch-size", "0", "--apply", "--confirm-delete"},
+		{"--batch-size", "101", "--apply", "--confirm-delete"},
+		{"--batch-size", "1", "--confirm-delete"},
+		{"--batch-size", "1", "--apply"},
+	} {
+		if _, err := parseDerivedArtifactRetentionFlags(args); err == nil {
+			t.Fatalf("parseDerivedArtifactRetentionFlags(%v) error=nil", args)
+		}
+	}
+}
+
 func TestEvidenceLineageBackfillFlagsSeparateDryRunFromConfirmedApply(t *testing.T) {
 	dryRun, err := parseEvidenceLineageBackfillFlags([]string{"--phase", "source", "--batch-size", "200", "--dry-run"})
 	if err != nil {

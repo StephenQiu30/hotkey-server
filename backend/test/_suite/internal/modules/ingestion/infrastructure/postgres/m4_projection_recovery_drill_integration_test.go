@@ -3,6 +3,7 @@
 package postgres_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -763,9 +764,22 @@ func dumpM4ProjectionRecoveryDatabase(t *testing.T, ctx context.Context, dsn, pa
 
 func restoreM4ProjectionRecoveryDatabase(t *testing.T, ctx context.Context, dsn, path string) {
 	t.Helper()
-	command := exec.CommandContext(ctx, "pg_restore", "--dbname="+dsn, "--no-owner", "--no-acl", "--exit-on-error", path)
-	if _, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("restore isolated M4 PostgreSQL copy: %v", err)
+	render := exec.CommandContext(ctx, "pg_restore", "--no-owner", "--no-acl", "--file=-", path)
+	var portableSQL, renderErrors bytes.Buffer
+	render.Stdout = &portableSQL
+	render.Stderr = &renderErrors
+	if err := render.Run(); err != nil {
+		t.Fatalf("render isolated M4 PostgreSQL restore: %v: %s", err, strings.TrimSpace(renderErrors.String()))
+	}
+	// Newer pg_dump clients emit this session setting even when the source
+	// server and restore target predate PostgreSQL 17. It is not a schema fact,
+	// so remove it to keep the recovery drill portable across supported client
+	// and server minor/major combinations.
+	restoreSQL := bytes.ReplaceAll(portableSQL.Bytes(), []byte("SET transaction_timeout = 0;\n"), nil)
+	restore := exec.CommandContext(ctx, "psql", "--dbname="+dsn, "--set=ON_ERROR_STOP=1", "--quiet")
+	restore.Stdin = bytes.NewReader(restoreSQL)
+	if output, err := restore.CombinedOutput(); err != nil {
+		t.Fatalf("restore isolated M4 PostgreSQL copy: %v: %s", err, strings.TrimSpace(string(output)))
 	}
 }
 

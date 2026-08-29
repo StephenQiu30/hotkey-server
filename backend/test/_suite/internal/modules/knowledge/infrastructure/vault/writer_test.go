@@ -1,15 +1,56 @@
 package vault
 
 import (
+	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
 
+	knowledgeapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/domain"
 )
+
+func TestWriterDeletesOnlyExactAutomaticProjectionAndPreservesHumanVaultFile(t *testing.T) {
+	root := t.TempDir()
+	writer := NewWriter(root)
+	human := "# Human record\n\n人工维护内容必须原样保留。\n"
+	humanPath, err := writer.Write("events", "evt-retained", human)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection := []byte("# Automatic projection\n\nrebuildable bytes\n")
+	projectionSHA := fmt.Sprintf("%x", sha256.Sum256(projection))
+	profile := strings.Repeat("a", 64)
+	stored, err := writer.PutIfAbsent(context.Background(), knowledgeapplication.StoreProjectionCommand{
+		DocumentID: 7, DocumentVersionID: 11, Format: "markdown", TransformerProfileSHA256: profile,
+		RelativePath: fmt.Sprintf("documents/7/11/markdown/%s.md", profile), MIMEType: "text/markdown; charset=utf-8",
+		Content: projection, SHA256: projectionSHA,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := writer.DeleteProjection(context.Background(), knowledgeapplication.DeleteStoredProjectionCommand{Receipt: stored})
+	if err != nil || !deleted.Deleted || deleted.AlreadyMissing || deleted.RelativePath != stored.RelativePath ||
+		deleted.SHA256 != stored.SHA256 || deleted.SizeBytes != stored.SizeBytes {
+		t.Fatalf("DeleteProjection() = %#v/%v", deleted, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(stored.RelativePath))); !os.IsNotExist(err) {
+		t.Fatalf("automatic projection still exists: %v", err)
+	}
+	retained, err := os.ReadFile(humanPath)
+	if err != nil || string(retained) != human {
+		t.Fatalf("human Vault file changed = %q/%v", retained, err)
+	}
+	replayed, err := writer.DeleteProjection(context.Background(), knowledgeapplication.DeleteStoredProjectionCommand{Receipt: stored})
+	if err != nil || replayed.Deleted || !replayed.AlreadyMissing {
+		t.Fatalf("DeleteProjection(replay) = %#v/%v", replayed, err)
+	}
+}
 
 func TestWriterUsesAtomicStablePath(t *testing.T) {
 	root := t.TempDir()

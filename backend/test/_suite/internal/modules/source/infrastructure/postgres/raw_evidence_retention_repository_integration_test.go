@@ -124,6 +124,12 @@ VALUES ($1,$2,'approved retention cannot override current rights denial',CURRENT
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := runtime.SQL.Exec(`
+UPDATE evidence_snapshots
+SET lifecycle_state='retention_blocked',available_at=NULL,failure_code=NULL,updated_at=$2
+WHERE id=$1`, snapshot.ID, at); err != nil {
+		t.Fatalf("apply reconciliation-first retention block: %v", err)
+	}
 	candidates, err := retention.ClaimExpired(ctx, at, 10)
 	if err != nil {
 		t.Fatal(err)

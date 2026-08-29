@@ -106,6 +106,21 @@ type StoredProjectionContentDTO struct {
 	SizeBytes int64
 }
 
+// DeleteStoredProjectionCommand identifies one immutable automatic projection.
+// The full receipt prevents retention code from deleting an arbitrary Vault
+// path or a file whose bytes no longer match PostgreSQL lineage facts.
+type DeleteStoredProjectionCommand struct {
+	Receipt ProjectionStoreReceiptDTO
+}
+
+type ProjectionDeleteReceiptDTO struct {
+	RelativePath   string
+	SHA256         string
+	SizeBytes      int64
+	Deleted        bool
+	AlreadyMissing bool
+}
+
 type ProjectionPublisher interface {
 	Publish(context.Context, PublishProjectionCommand) (PublishProjectionResult, error)
 }
@@ -115,6 +130,13 @@ type ProjectionPublisher interface {
 type ProjectionStore interface {
 	PutIfAbsent(context.Context, StoreProjectionCommand) (ProjectionStoreReceiptDTO, error)
 	ReadProjection(context.Context, ReadStoredProjectionCommand) (StoredProjectionContentDTO, error)
+}
+
+// ProjectionDeleter is deliberately separate from ProjectionStore so normal
+// publishing code cannot acquire deletion authority by depending on the write
+// boundary. Only the approved retention workflow receives this capability.
+type ProjectionDeleter interface {
+	DeleteProjection(context.Context, DeleteStoredProjectionCommand) (ProjectionDeleteReceiptDTO, error)
 }
 
 // ProjectionService is the only Application contract other modules use for
@@ -215,6 +237,10 @@ func ValidateReadStoredProjectionCommand(command ReadStoredProjectionCommand) er
 	if command.MaxBytes <= 0 || command.Receipt.SizeBytes > command.MaxBytes {
 		return ErrProjectionInvalid
 	}
+	return ValidateProjectionStoreReceiptDTO(command.Receipt)
+}
+
+func ValidateDeleteStoredProjectionCommand(command DeleteStoredProjectionCommand) error {
 	return ValidateProjectionStoreReceiptDTO(command.Receipt)
 }
 

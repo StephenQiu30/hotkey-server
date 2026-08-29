@@ -43,7 +43,7 @@ worker-recovery-acceptance: test-env minio-test-env
 		./internal/modules/ingestion/application \
 		./internal/modules/source/infrastructure/postgres \
 		./internal/modules/ingestion/infrastructure/postgres \
-		-run '^(TestWorkerKillAfterClaimReclaimsLeaseAndAppliesSideEffectOnce|TestIngestWorkerKillAfterMinIOWriteRecoversWithoutDuplicateSideEffects|TestEvidenceWorkerKillAfterObservationCommitRecoversOneDocumentJob|TestDocumentProjectionWorkerKillAfterVaultWriteRecoversOneArtifact|TestRawEvidenceRightsRevocationDeletesExactMinIOObjectAndKeepsImmutableLineage)$$' \
+		-run '^(TestWorkerKillAfterClaimReclaimsLeaseAndAppliesSideEffectOnce|TestIngestWorkerKillAfterMinIOWriteRecoversWithoutDuplicateSideEffects|TestEvidenceWorkerKillAfterObservationCommitRecoversOneDocumentJob|TestDocumentProjectionWorkerKillAfterVaultWriteRecoversOneArtifact|TestRawEvidenceRightsRevocationDeletesExactMinIOObjectAndKeepsImmutableLineage|TestDerivedArtifactRightsRevocationDeletesOnlyAutomaticVaultProjectionAndKeepsLineage)$$' \
 		-count=1 -v
 
 m4-fault-recovery-acceptance: test-env minio-test-env

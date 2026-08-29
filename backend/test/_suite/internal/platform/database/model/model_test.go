@@ -35,6 +35,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 		"document_versions":                     {"id", "version", "document_id", "source_observation_id", "revision_no", "version_key", "quality_score", "content_sha256", "extractor_profile_version", "extractor_profile_sha256", "display_private_rights_decision_id", "lifecycle_state"},
 		"document_identity_keys":                {"id", "version", "source_connection_id", "document_id", "identity_kind", "identity_value"},
 		"derived_artifacts":                     {"id", "source_connection_id", "document_version_id", "store_derived_rights_decision_id", "retain_rights_decision_id", "artifact_type", "transformer_profile_sha256", "vault_relative_path", "sha256", "anchor_normalization_version", "anchor_map_profile_version", "anchor_plaintext_sha256", "anchor_markdown_sha256", "anchor_map_sha256", "retention_until", "lifecycle_state", "active"},
+		"derived_artifact_deletion_audits":      {"id", "derived_artifact_id", "source_connection_id", "retention_policy_id", "retention_policy_version", "attempt_no", "event_type", "vault_relative_path", "sha256", "size_bytes", "reason_code", "already_missing", "occurred_at", "created_at"},
 		"document_anchor_blocks":                {"id", "derived_artifact_id", "anchor_map_sha256", "block_ordinal", "plaintext_utf8_byte_start", "plaintext_utf8_byte_end", "markdown_utf8_byte_start", "markdown_utf8_byte_end", "markdown_anchor", "created_at"},
 		"document_text_quote_selectors":         {"id", "version", "source_connection_id", "document_version_id", "plaintext_artifact_id", "markdown_artifact_id", "quote_rights_decision_id", "retain_rights_decision_id", "exact_quote", "prefix", "suffix", "utf8_byte_start", "utf8_byte_end", "quote_sha256", "plaintext_sha256", "normalization_version", "selector_version", "anchor_map_sha256", "markdown_anchor", "retention_until", "created_at"},
 		"document_version_search_indexes":       {"id", "version", "document_version_id", "source_connection_id", "derived_artifact_id", "store_derived_rights_decision_id", "retain_rights_decision_id", "normalization_profile_version", "normalized_text_sha256", "title_search_vector", "body_search_vector", "title_trigrams", "body_trigrams", "entity_keys", "action_keys", "location_keys", "region_keys", "lifecycle_state", "tombstoned_at", "purge_reason", "retention_until", "indexed_at", "created_at"},
@@ -88,8 +89,8 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 		"web_push_subscriptions":                {"id", "version", "user_id", "endpoint_sha256", "endpoint_ciphertext", "p256dh_ciphertext", "auth_ciphertext", "encryption_key_version", "device_label", "timezone", "quiet_start", "quiet_end", "ttl_seconds", "status", "expiration_reason", "last_success_at", "last_failure_at", "idempotency_key", "command_fingerprint", "created_at", "updated_at"},
 		"web_push_subscription_monitors":        {"id", "subscription_id", "monitor_id", "created_at"},
 		"source_credentials":                    {"id", "source_connection_id", "key_version", "nonce", "ciphertext", "updated_at"},
-		"retention_runs":                       {"id", "version", "retention_policy_id", "retention_policy_version", "data_class", "cutoff", "batch_size", "candidate_count", "has_more", "candidate_hash", "status", "requested_by_user_id", "approved_by_user_id", "approved_at", "executed_by_user_id", "executed_at", "affected", "failure_code", "created_at", "updated_at"},
-		"retention_run_items":                  {"id", "retention_run_id", "ordinal", "candidate_id", "created_at"},
+		"retention_runs":                        {"id", "version", "retention_policy_id", "retention_policy_version", "data_class", "cutoff", "batch_size", "candidate_count", "has_more", "candidate_hash", "status", "requested_by_user_id", "approved_by_user_id", "approved_at", "executed_by_user_id", "executed_at", "affected", "failure_code", "created_at", "updated_at"},
+		"retention_run_items":                   {"id", "retention_run_id", "ordinal", "candidate_id", "created_at"},
 	}
 	for _, spec := range All() {
 		if spec.Table == "" || seen[spec.Table] {
@@ -108,7 +109,7 @@ func TestSpecsHaveUniqueTablesAndColumns(t *testing.T) {
 			t.Errorf("missing mapped table %s", table)
 		}
 	}
-	if got, want := len(seen), 157; got != want {
+	if got, want := len(seen), 158; got != want {
 		t.Errorf("mapped table count = %d, want %d", got, want)
 	}
 }

@@ -179,6 +179,80 @@ func (writer *Writer) ReadProjection(ctx context.Context, command knowledgeappli
 	}, nil
 }
 
+// DeleteProjection removes only an immutable automatic projection whose path,
+// digest, and size still match the PostgreSQL receipt. Human-maintainable Vault
+// namespaces are structurally unreachable because receipt validation accepts
+// only deterministic documents/... projection paths.
+func (writer *Writer) DeleteProjection(ctx context.Context, command knowledgeapplication.DeleteStoredProjectionCommand) (knowledgeapplication.ProjectionDeleteReceiptDTO, error) {
+	if writer == nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, fmt.Errorf("vault writer is required")
+	}
+	receipt, err := projectionReceiptRecordFromDTO(command.Receipt)
+	if err != nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, err
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	relativePath, err := validateProjectionRelativePath(receipt.relativePath)
+	if err != nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, err
+	}
+	root, err := writer.openRoot()
+	if err != nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, err
+	}
+	defer root.Close()
+	if err := rejectRootSymlinkComponents(root, filepath.Dir(relativePath)); err != nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, err
+	}
+	result := knowledgeapplication.ProjectionDeleteReceiptDTO{
+		RelativePath: receipt.relativePath, SHA256: receipt.sha256, SizeBytes: receipt.sizeBytes,
+	}
+	info, err := root.Lstat(relativePath)
+	if os.IsNotExist(err) {
+		result.AlreadyMissing = true
+		return result, nil
+	}
+	if err != nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() != receipt.sizeBytes {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, knowledgeapplication.ErrProjectionIntegrity
+	}
+	file, err := root.Open(relativePath)
+	if err != nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, err
+	}
+	content, readErr := io.ReadAll(io.LimitReader(file, receipt.sizeBytes+1))
+	openedInfo, statErr := file.Stat()
+	closeErr := file.Close()
+	if readErr != nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, readErr
+	}
+	if statErr != nil || !os.SameFile(info, openedInfo) || closeErr != nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, knowledgeapplication.ErrProjectionIntegrity
+	}
+	digest := sha256.Sum256(content)
+	if int64(len(content)) != receipt.sizeBytes || hex.EncodeToString(digest[:]) != receipt.sha256 {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, knowledgeapplication.ErrProjectionIntegrity
+	}
+	currentInfo, err := root.Lstat(relativePath)
+	if err != nil || !os.SameFile(info, currentInfo) {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, knowledgeapplication.ErrProjectionIntegrity
+	}
+	if err := root.Remove(relativePath); err != nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, err
+	}
+	if err := syncRootDirectory(root, filepath.Dir(relativePath)); err != nil {
+		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, err
+	}
+	result.Deleted = true
+	return result, nil
+}
+
 func (writer *Writer) Write(kind, key, content string) (string, error) {
 	if writer == nil {
 		return "", fmt.Errorf("vault writer is required")
@@ -607,3 +681,4 @@ func rejectRootSymlinkComponents(root *os.Root, target string) error {
 }
 
 var _ knowledgeapplication.ProjectionStore = (*Writer)(nil)
+var _ knowledgeapplication.ProjectionDeleter = (*Writer)(nil)
