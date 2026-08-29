@@ -10,7 +10,7 @@ canonical_path: docs/acceptance/001-HotKey产品需求分析与总体架构验�
 design: docs/design/001-HotKey产品需求分析与总体架构设计.md
 prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 plan: docs/plans/001-HotKey产品需求分析与总体架构计划.md
-verified_revision: "6d69779b09bee7d92d040aad7cb3555c6d079a45"
+verified_revision: "d287d813430cdddd8b8278ad8fe06b947fcf279d"
 verification_date: "2026-08-29"
 ---
 
@@ -18,7 +18,7 @@ verification_date: "2026-08-29"
 
 ## 结论
 
-本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护、日报列表游标、微事件 Evidence 列表游标、全文检索结果游标、运维任务列表游标、审计日志列表游标、内容/热点列表游标、Monitor 列表游标、来源连接列表游标、采集运行列表游标和采集条目工作列表游标十五组可复核证据；完整四角色 UAT、人工键盘矩阵、PostgreSQL/MinIO/Vault/River 联合恢复、全范围关键写入矩阵和全范围游标矩阵仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
+本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护、日报列表游标、微事件 Evidence 列表游标、全文检索结果游标、运维任务列表游标、审计日志列表游标、内容/热点列表游标、Monitor 列表游标、来源连接列表游标、采集运行列表游标、采集条目工作列表游标和相关性匹配列表游标十六组可复核证据；完整四角色 UAT、人工键盘矩阵、PostgreSQL/MinIO/Vault/River 联合恢复、全范围关键写入矩阵和全范围游标矩阵仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
 
 本文件只关闭证据完整的局部门禁，不将浏览器 Fixture、自动化测试或候选性能结果扩大解释为完整 P0 发布验收。
 
@@ -27,11 +27,11 @@ verification_date: "2026-08-29"
 | 项目 | 实际值 |
 |---|---|
 | 验证日期 | 2026-08-29（Asia/Shanghai） |
-| 代码基线 | `6d69779b09bee7d92d040aad7cb3555c6d079a45` |
+| 代码基线 | `d287d813430cdddd8b8278ad8fe06b947fcf279d` |
 | 本机环境 | macOS 26.6.2、Apple arm64、Go 1.26.5、Node.js 24.19.0、uv 0.11.32 |
 | 项目运行 | 根 `docker-compose.yml`；Go Core、Python Agent、Web、PostgreSQL、Redis、MinIO 共 6 个服务均为 `healthy`；API `/readyz` 与 Web 首页均返回 HTTP 200 |
 | 自动化环境 | 本机既有工具链与可丢弃测试库；GitHub Actions Ubuntu Runner 与隔离 PostgreSQL、Redis、MinIO、Fresh Compose Project |
-| 远端证据 | [GitHub Actions 33222427410](https://github.com/StephenQiu30/hotkey-server/actions/runs/33222427410)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose、Fresh-container browser 与最终 `All acceptance gates` 全部 `success` |
+| 远端证据 | [GitHub Actions 33224826425](https://github.com/StephenQiu30/hotkey-server/actions/runs/33224826425)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose、Fresh-container browser 与最终 `All acceptance gates` 全部 `success` |
 
 ## P0 主故事现状矩阵
 
@@ -48,6 +48,7 @@ verification_date: "2026-08-29"
 | Vault 知识 | PostgreSQL Knowledge 事实、Vault 自动/人工区域与受保护 Revision | `/api/v1/knowledge/*`、`/dashboard/knowledge` | `TestUpdateVaultDocumentPreservesHumanRegionByteForByte`、`TestRecoverVaultDocumentUsesOnlyProtectedHumanRegionSources` | 自动区域可重建且人工区域逐字保护已验证；浏览器 Fixture 精确应用 1 个知识投影 |
 | 全文检索 | `document_version_search_indexes` 与三个拥有模块的 PostgreSQL 词法查询 | `/api/v1/search`、`/dashboard/search` | `TestP0LexicalRecallUsesOnlyAuditablePostgresFTS`、三个 PostgreSQL 词法集成测试、`TestServiceCursorIsSignedBoundExpiringAndSnapshotStableAcrossOwners` | P0 不调用向量/Embedding/RAG；结果列表使用短期签名快照游标；浏览器 Fixture 精确检出 1 个知识结果 |
 | 内容与热点列表 | `contents`、`content_metric_snapshots` 与 Ingestion Owner Repository | `/api/v1/contents`、`/api/v1/hotspots`、`/dashboard/contents` | `TestContentCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentChanges`、`TestContentListStatementUsesDatabaseOrderingForEveryHotspotSort` | 列表使用短期签名快照游标；热度指标变化不再改变已开始遍历的边界，并发新增不污染既有快照 |
+| 相关性匹配列表 | `monitor_matches` 与 Ingestion Relevance Repository | `/api/v1/monitors/{id}/matches` | `TestRelevanceMatchListCursorKeepsFirstPageHighWaterAcrossConcurrentInsert`、`TestRelevanceCursorsRejectTamperingAndCrossQueryReuse` | 列表使用 Monitor/decision 绑定的短期签名高水位游标；首屏后的低分新增匹配不进入既有遍历 |
 | 运维任务 | `river_job` 安全元数据投影与 Operations Owner Repository | `/api/v1/operations/jobs`、`/dashboard/governance` | `TestJobRepositoryCursorIsSignedBoundExpiringAndSnapshotStable`、`TestJobListForwardsOpaqueSubjectBoundCursorAndReturnsNextCursor` | 管理员任务列表使用主体/筛选绑定的签名快照游标，连续遍历不跳过 `limit+1` 边界项 |
 | 运维审计日志 | 追加写 `audit_logs` 与 Operations Governance Repository | `/api/v1/operations/audit-logs`、`/dashboard/governance` | `TestGovernanceAuditCursorIsSignedBoundExpiringAndStableAcrossConcurrentInsert`、`TestGovernanceAuditForwardsOpaqueSubjectBoundCursor` | 管理员审计列表使用主体/筛选绑定的短期签名游标；篡改、过期和跨上下文复用均受控拒绝 |
 
@@ -185,6 +186,16 @@ verification_date: "2026-08-29"
 - CI 证据：远端运行 `33222427410` 的 8 个执行 Job 和最终聚合门禁全部为 `success`，其中 Backend test 为 10 分 32 秒，Fresh-container browser 为 3 分 6 秒；
 - 边界：该列表是标准化 Worker 的有界工作遍历，不是用户可调用 API；快照排除首屏后新增的更高 ID，已成功绑定或明确失败的条目仍按工作状态有意退出默认结果集，不将本证据扩大解释为可变状态的历史时间旅行快照。
 
+### `EV-001-016`：相关性匹配列表签名高水位游标
+
+- 映射：`TASK-001-S02-T06` → `SPEC-001-API-004` → `AC-001-010` → `CHK-001-G3-004`；
+- 结果：相关性匹配列表子项通过，`CHK-001-G3-004` 仍不关闭；
+- 失败证据：`TestRelevanceMatchListCursorKeepsFirstPageHighWaterAcrossConcurrentInsert` 在修复前稳定复现首屏返回 90/80 分匹配后，新插入的 60 分匹配错误进入第二页并与原 70 分匹配一起返回，证明旧游标没有冻结一次遍历的新增成员范围；
+- 代码证据：提交 `d287d813430cdddd8b8278ad8fe06b947fcf279d` 为 `relevance_match_list` 游标增加首次查询的最大匹配 ID，并让后续页只在 `match.id <= snapshot_id` 范围内按 `final_score,id` 继续；Monitor、decision 筛选绑定、签名有效期、OpenAPI 和前端生成契约保持不变；
+- 测试证据：上述 PostgreSQL 测试证明两页只完整返回原始三项且排除并发低分新增；`TestRelevanceCursorsRejectTamperingAndCrossQueryReuse` 覆盖篡改、跨 Monitor 和跨 decision 复用拒绝，统一 Cursor Codec 测试覆盖过期拒绝，`TestP0UserListCursorsUseSignedExpiringCodec` 固定 `relevance_match_list` 必须调用 `Seal/Open`；Ingestion 全模块、前端与 Agent 回归均通过；
+- CI 证据：远端运行 `33224826425` 的 8 个执行 Job 和最终聚合门禁全部为 `success`，其中 Backend test 为 9 分 2 秒，Fresh-container browser 为 3 分 30 秒；
+- 边界：本证据冻结同一次遍历的新增匹配 ID 高水位，不扩大解释为对首屏后人工/AI 更新的分数、decision 或 Content 可见状态提供历史时间旅行快照；其他 P0 列表仍须分别完成统一矩阵。
+
 ## AC 结果
 
 | AC | 结果 | 说明 |
@@ -198,7 +209,7 @@ verification_date: "2026-08-29"
 | `AC-001-007` | passed | 见 `EV-001-004` |
 | `AC-001-008` | passed | 见 `EV-001-005` |
 | `AC-001-009` | partial | 多个关键写入已有授权、幂等、版本、冲突和审计测试，但尚无全 P0 写入口统一矩阵 |
-| `AC-001-010` | partial | 日报、微事件 Evidence、全文检索结果、内容/热点、Monitor、来源连接、采集运行、采集条目工作列表、运维任务与审计日志列表已覆盖适用的签名、过期、主体/筛选/资源绑定、篡改拒绝和并发新增期间稳定遍历；尚无全部 P0 列表的统一矩阵 |
+| `AC-001-010` | partial | 日报、微事件 Evidence、全文检索结果、内容/热点、Monitor、来源连接、采集运行、采集条目工作、相关性匹配、运维任务与审计日志列表已覆盖适用的签名、过期、主体/筛选/资源绑定、篡改拒绝和并发新增期间稳定遍历；尚无全部 P0 列表的统一矩阵 |
 
 ## 实际命令与结果摘要
 
@@ -207,10 +218,10 @@ backend: make ci
 frontend: npm run openapi:check; npm run typecheck; npm run test:unit; npm audit --omit=dev --audit-level=high; npm run build
 agent: uv run ruff format --check .; uv run ruff check .; uv run mypy src; uv run pytest; uv run pip-audit
 repository: docker compose -f docker-compose.yml config --quiet; docker compose --env-file .env.prod.example -f docker-compose-prod.yml config --quiet（必填生产变量使用 CI 合成值注入）; git diff --check
-specialized: make agent-degradation-acceptance; make agent-skill-contract-acceptance; make report-publication-acceptance; make m4-fault-recovery-acceptance; go run ./test/runner test ./internal/modules/search/... -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/event/infrastructure/postgres -run 'TestMicroEvent(EvidenceCursorIsSignedBoundExpiringAndSnapshotStable|LexicalSearchUsesSnapshotKeysetOrdering)' -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/ingestion/infrastructure/postgres -run 'TestContent(CursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentChanges|RepositoryListsOnlyActiveContentWithPublishedCursor|RepositorySearchFiltersLatestMatchAndStableRelevanceCursor)' -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/monitor/infrastructure/postgres -run TestMonitorListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert -count=20; go run ./test/runner test ./internal/modules/source/infrastructure/postgres -run TestSourceConnectionListCursorIsSignedExpiringAndSnapshotStableAcrossConcurrentInsert -count=20; go run ./test/runner test ./internal/modules/source/infrastructure/postgres -run TestCollectionRunListCursorIsSignedExpiringAndSnapshotStableAcrossConcurrentInsert -count=20; go run ./test/runner test ./internal/modules/source/infrastructure/postgres -run TestCapturedItemListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert -count=20; go run ./test/runner test ./internal/modules/ingestion/infrastructure/jobs -run TestNormalizeHandlerDrainsEveryCapturedItemPageWithoutLegacyFanout -count=1; go run ./test/runner test ./internal/shared/pagination -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/operations/infrastructure/postgres -run 'Test(JobRepositoryCursorIsSignedBoundExpiringAndSnapshotStable|GovernanceAuditCursorIsSignedBoundExpiringAndStableAcrossConcurrentInsert)' -count=1; go run ./test/runner test ./test/architecture -count=1
+specialized: make agent-degradation-acceptance; make agent-skill-contract-acceptance; make report-publication-acceptance; make m4-fault-recovery-acceptance; go run ./test/runner test ./internal/modules/search/... -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/event/infrastructure/postgres -run 'TestMicroEvent(EvidenceCursorIsSignedBoundExpiringAndSnapshotStable|LexicalSearchUsesSnapshotKeysetOrdering)' -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/ingestion/infrastructure/postgres -run 'Test(ContentCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentChanges|ContentRepositoryListsOnlyActiveContentWithPublishedCursor|ContentRepositorySearchFiltersLatestMatchAndStableRelevanceCursor|RelevanceMatchListCursorKeepsFirstPageHighWaterAcrossConcurrentInsert)' -count=1; go run ./test/runner test ./internal/modules/ingestion/transport/http -run TestRelevanceCursorsRejectTamperingAndCrossQueryReuse -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/monitor/infrastructure/postgres -run TestMonitorListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert -count=20; go run ./test/runner test ./internal/modules/source/infrastructure/postgres -run TestSourceConnectionListCursorIsSignedExpiringAndSnapshotStableAcrossConcurrentInsert -count=20; go run ./test/runner test ./internal/modules/source/infrastructure/postgres -run TestCollectionRunListCursorIsSignedExpiringAndSnapshotStableAcrossConcurrentInsert -count=20; go run ./test/runner test ./internal/modules/source/infrastructure/postgres -run TestCapturedItemListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert -count=20; go run ./test/runner test ./internal/modules/ingestion/infrastructure/jobs -run TestNormalizeHandlerDrainsEveryCapturedItemPageWithoutLegacyFanout -count=1; go run ./test/runner test ./internal/shared/pagination -count=1; go run ./test/runner test -tags=integration -p=1 ./internal/modules/operations/infrastructure/postgres -run 'Test(JobRepositoryCursorIsSignedBoundExpiringAndSnapshotStable|GovernanceAuditCursorIsSignedBoundExpiringAndStableAcrossConcurrentInsert)' -count=1; go run ./test/runner test ./test/architecture -count=1
 ```
 
-本机全量结果通过；前端 252 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33222427410` 的 8 个执行 Job 和最终聚合门禁全部通过，其中 Backend test 为 10 分 32 秒，Fresh-container browser 为 3 分 6 秒。记录期间并行出现但未纳入本验收提交的前端工作区改动不计入该基线。
+本机全量结果通过；前端 252 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33224826425` 的 8 个执行 Job 和最终聚合门禁全部通过，其中 Backend test 为 9 分 2 秒，Fresh-container browser 为 3 分 30 秒。
 
 ## 未完成项与停止条件
 
@@ -218,14 +229,14 @@ specialized: make agent-degradation-acceptance; make agent-skill-contract-accept
 - `CHK-001-G2-001`：等待完整人工键盘/焦点矩阵，不以自动 Tab 与 WCAG 扫描替代；
 - `CHK-001-G3-002`：等待同一隔离恢复副本上的联合恢复、对账和真实 RPO/RTO；
 - `CHK-001-G3-003`：等待所有 P0 关键写入口的统一副作用、事实计数和追加审计矩阵；
-- `CHK-001-G3-004`：日报、微事件 Evidence、全文检索结果、内容/热点、Monitor、来源连接、采集运行、采集条目工作列表、运维任务与审计日志列表子项已完成；等待其余 P0 列表的并列排序、并发新增、连续遍历和越权/篡改/过期游标矩阵。
+- `CHK-001-G3-004`：日报、微事件 Evidence、全文检索结果、内容/热点、Monitor、来源连接、采集运行、采集条目工作、相关性匹配、运维任务与审计日志列表子项已完成；等待其余 P0 列表的并列排序、并发新增、连续遍历和越权/篡改/过期游标矩阵。
 
 以上任一项缺失时，本 Acceptance 不得改为 `passed`，001 Plan/PRD 不得改为 `completed/implemented`。
 
 ## 影响与回滚验证
 
-- Schema、运行配置、部署拓扑和 OpenAPI：无变更；OpenAPI 的日报、微事件 Evidence、全文检索、内容/热点、Monitor、来源连接、采集运行、运维任务与审计日志 `cursor`/`next_cursor` 使用不透明字符串；采集条目工作列表只存在于 Go 模块内部；
-- 运行影响：日报列表拒绝篡改、过期或跨筛选复用的游标，微事件 Evidence 列表拒绝篡改、过期或跨事件复用的游标，全文检索拒绝篡改、过期、跨主体或跨筛选复用的游标并冻结遍历快照，内容/热点列表拒绝篡改、过期或跨筛选/排序复用并以首屏指标快照稳定后续页，Monitor 列表拒绝篡改、过期或跨可见性复用并排除首屏后的新增 ID，来源连接与采集运行列表拒绝篡改和过期游标并排除首屏后的新增 ID，采集条目工作列表额外拒绝跨运行或跨失败重试筛选复用并排除首屏后的新增 ID，运维任务列表拒绝篡改、过期、跨管理员或跨筛选复用并修复分页漏项，审计日志列表拒绝篡改、过期、跨管理员或跨筛选复用；所有签名游标拒绝非规范 Base64 别名；项目继续由根 Compose 运行，测试继续使用本机锁定工具链和可丢弃测试服务；
+- Schema、运行配置、部署拓扑和 OpenAPI：无变更；OpenAPI 的日报、微事件 Evidence、全文检索、内容/热点、Monitor、来源连接、采集运行、相关性匹配、运维任务与审计日志 `cursor`/`next_cursor` 使用不透明字符串；采集条目工作列表只存在于 Go 模块内部；
+- 运行影响：日报列表拒绝篡改、过期或跨筛选复用的游标，微事件 Evidence 列表拒绝篡改、过期或跨事件复用的游标，全文检索拒绝篡改、过期、跨主体或跨筛选复用的游标并冻结遍历快照，内容/热点列表拒绝篡改、过期或跨筛选/排序复用并以首屏指标快照稳定后续页，Monitor 列表拒绝篡改、过期或跨可见性复用并排除首屏后的新增 ID，来源连接与采集运行列表拒绝篡改和过期游标并排除首屏后的新增 ID，采集条目工作列表额外拒绝跨运行或跨失败重试筛选复用并排除首屏后的新增 ID，相关性匹配列表拒绝篡改、过期或跨 Monitor/decision 复用并排除首屏后的新增 ID，运维任务列表拒绝篡改、过期、跨管理员或跨筛选复用并修复分页漏项，审计日志列表拒绝篡改、过期、跨管理员或跨筛选复用；所有签名游标拒绝非规范 Base64 别名；项目继续由根 Compose 运行，测试继续使用本机锁定工具链和可丢弃测试服务；
 - 回滚：若证据引用失效，回退本文件对应 EV 和 Plan 勾选即可，不删除业务事实、对象、Vault 内容或任务历史；架构契约会在引用的测试、命令或门禁状态漂移时失败；
 - 已知限制：本文件固定的代码基线早于记录本文件的提交；记录提交由同一 CI 再验证，但不以无法实现的“提交自引用哈希”冒充证据。
 
