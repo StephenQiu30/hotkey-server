@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FileText, FolderSync, LibraryBig, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/PageHeader";
+import { CursorPagination } from "@/components/dashboard/CursorPagination";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,19 +39,45 @@ const proposalStatus: Readonly<Record<string, string>> = {
   conflict: "冲突",
 };
 
+const PAGE_SIZE = 10;
+
 export default function KnowledgePage() {
   const role = useAuthStore((state) => state.user?.role);
   const publisher = role === UserRole.Editor || role === UserRole.Admin;
   const admin = role === UserRole.Admin;
   const [documents, setDocuments] = useState<HotKeyAPI.DocumentResponse[]>([]);
   const [proposals, setProposals] = useState<HotKeyAPI.ProposalResponse[]>([]);
+  const [documentPage, setDocumentPage] = useState(1);
+  const [documentCursors, setDocumentCursors] = useState<(string | undefined)[]>([undefined]);
+  const [documentNextCursor, setDocumentNextCursor] = useState<string>();
+  const [proposalPage, setProposalPage] = useState(1);
+  const [proposalCursors, setProposalCursors] = useState<(string | undefined)[]>([undefined]);
+  const [proposalNextCursor, setProposalNextCursor] = useState<string>();
   const [reconciliation, setReconciliation] = useState<HotKeyAPI.ReconciliationResponse>();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState<string>();
   const [permissionDenied, setPermissionDenied] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadDocuments = useCallback(async (cursor: string | undefined, page: number) => {
+    const params: HotKeyAPI.getKnowledgeDocumentsParams = { limit: PAGE_SIZE };
+    if (cursor) params.cursor = cursor;
+    const result = await getKnowledgeDocuments(params);
+    setDocuments(result.data?.items ?? []);
+    setDocumentNextCursor(result.data?.next_cursor);
+    setDocumentPage(page);
+  }, []);
+
+  const loadProposals = useCallback(async (cursor: string | undefined, page: number) => {
+    const params: HotKeyAPI.getKnowledgeProposalsParams = { limit: PAGE_SIZE };
+    if (cursor) params.cursor = cursor;
+    const result = await getKnowledgeProposals(params);
+    setProposals(result.data?.items ?? []);
+    setProposalNextCursor(result.data?.next_cursor);
+    setProposalPage(page);
+  }, []);
+
+  const loadInitial = useCallback(async () => {
     if (!publisher) {
       setLoading(false);
       setPermissionDenied(true);
@@ -60,23 +87,36 @@ export default function KnowledgePage() {
     setError(undefined);
     setPermissionDenied(false);
     try {
-      const [documentResult, proposalResult] = await Promise.all([
-        getKnowledgeDocuments(),
-        getKnowledgeProposals({}),
-      ]);
-      setDocuments(documentResult.data ?? []);
-      setProposals(proposalResult.data ?? []);
+      setDocumentCursors([undefined]);
+      setProposalCursors([undefined]);
+      await Promise.all([loadDocuments(undefined, 1), loadProposals(undefined, 1)]);
     } catch (reason) {
       setPermissionDenied(reason instanceof HotKeyAPIError && reason.status === 403);
       setError(reason instanceof Error ? reason.message : "知识投影加载失败");
     } finally {
       setLoading(false);
     }
-  }, [publisher]);
+  }, [loadDocuments, loadProposals, publisher]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadInitial();
+  }, [loadInitial]);
+
+  async function refreshCurrent() {
+    setLoading(true);
+    setError(undefined);
+    try {
+      await Promise.all([
+        loadDocuments(documentCursors[documentPage - 1], documentPage),
+        loadProposals(proposalCursors[proposalPage - 1], proposalPage),
+      ]);
+    } catch (reason) {
+      setPermissionDenied(reason instanceof HotKeyAPIError && reason.status === 403);
+      setError(reason instanceof Error ? reason.message : "知识投影加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function mutateProposal(
     label: string,
@@ -93,7 +133,7 @@ export default function KnowledgePage() {
       } else {
         const next = result.data as HotKeyAPI.DocumentResponse | undefined;
         if (next?.id) setDocuments((current) => current.map((item) => item.id === next.id ? next : item));
-        await load();
+        await refreshCurrent();
       }
     } catch (reason) {
       setPermissionDenied(reason instanceof HotKeyAPIError && reason.status === 403);
@@ -115,6 +155,54 @@ export default function KnowledgePage() {
     } finally {
       setBusy(undefined);
     }
+  }
+
+  async function changeDocumentPage(cursor: string | undefined, page: number) {
+    setBusy("documents-page");
+    setError(undefined);
+    try {
+      await loadDocuments(cursor, page);
+    } catch (reason) {
+      setPermissionDenied(reason instanceof HotKeyAPIError && reason.status === 403);
+      setError(reason instanceof Error ? reason.message : "知识文档加载失败");
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
+  async function changeProposalPage(cursor: string | undefined, page: number) {
+    setBusy("proposals-page");
+    setError(undefined);
+    try {
+      await loadProposals(cursor, page);
+    } catch (reason) {
+      setPermissionDenied(reason instanceof HotKeyAPIError && reason.status === 403);
+      setError(reason instanceof Error ? reason.message : "知识提案加载失败");
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
+  function nextDocumentPage() {
+    if (!documentNextCursor) return;
+    const targetPage = documentPage + 1;
+    setDocumentCursors((current) => {
+      const updated = current.slice(0, targetPage - 1);
+      updated[targetPage - 1] = documentNextCursor;
+      return updated;
+    });
+    void changeDocumentPage(documentNextCursor, targetPage);
+  }
+
+  function nextProposalPage() {
+    if (!proposalNextCursor) return;
+    const targetPage = proposalPage + 1;
+    setProposalCursors((current) => {
+      const updated = current.slice(0, targetPage - 1);
+      updated[targetPage - 1] = proposalNextCursor;
+      return updated;
+    });
+    void changeProposalPage(proposalNextCursor, targetPage);
   }
 
   if (!publisher && permissionDenied) {
@@ -143,7 +231,7 @@ export default function KnowledgePage() {
                 {busy === "reconcile" ? <Loader2 className="animate-spin" /> : <FolderSync />}执行 Vault 对账
               </Button>
             ) : null}
-            <Button variant="outline" onClick={() => void load()} disabled={loading || Boolean(busy)}><RefreshCw />刷新</Button>
+            <Button variant="outline" onClick={() => void refreshCurrent()} disabled={loading || Boolean(busy)}><RefreshCw />刷新</Button>
           </div>
         }
       />
@@ -199,6 +287,14 @@ export default function KnowledgePage() {
                 </Surface>
               ))}
             </CardContent>
+            <CursorPagination
+              page={documentPage}
+              pageSize={PAGE_SIZE}
+              hasNext={Boolean(documentNextCursor)}
+              loading={busy === "documents-page"}
+              onPrevious={() => void changeDocumentPage(documentCursors[documentPage - 2], documentPage - 1)}
+              onNext={nextDocumentPage}
+            />
           </Card>
 
           <Card className="min-w-0">
@@ -240,6 +336,14 @@ export default function KnowledgePage() {
                 </Surface>
               ))}
             </CardContent>
+            <CursorPagination
+              page={proposalPage}
+              pageSize={PAGE_SIZE}
+              hasNext={Boolean(proposalNextCursor)}
+              loading={busy === "proposals-page"}
+              onPrevious={() => void changeProposalPage(proposalCursors[proposalPage - 2], proposalPage - 1)}
+              onNext={nextProposalPage}
+            />
           </Card>
         </div>
       )}

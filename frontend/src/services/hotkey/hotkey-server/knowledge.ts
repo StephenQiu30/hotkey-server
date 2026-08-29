@@ -3,11 +3,20 @@
 import { request, type RequestOptions } from "@/lib/request";
 
 /** List knowledge documents GET /api/v1/knowledge/documents */
-export async function getKnowledgeDocuments(options?: RequestOptions) {
-  return request<HotKeyAPI.ProposalResultArrayHttpDocumentResponse>(
+export async function getKnowledgeDocuments(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.getKnowledgeDocumentsParams,
+  options?: RequestOptions
+) {
+  return request<HotKeyAPI.ProposalResultHttpDocumentPageResponse>(
     "/api/v1/knowledge/documents",
     {
       method: "GET",
+      params: {
+        // limit has a default value: 50
+        limit: "50",
+        ...params,
+      },
       ...(options || {}),
     }
   );
@@ -36,11 +45,13 @@ export async function getKnowledgeProposals(
   params: HotKeyAPI.getKnowledgeProposalsParams,
   options?: RequestOptions
 ) {
-  return request<HotKeyAPI.ProposalResultArrayHttpProposalResponse>(
+  return request<HotKeyAPI.ProposalResultHttpProposalPageResponse>(
     "/api/v1/knowledge/proposals",
     {
       method: "GET",
       params: {
+        // limit has a default value: 50
+        limit: "50",
         ...params,
       },
       ...(options || {}),

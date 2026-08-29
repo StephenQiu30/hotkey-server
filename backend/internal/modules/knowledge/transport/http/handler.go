@@ -35,27 +35,34 @@ func NewHandler(proposals *knowledgeapplication.ProposalService, reader proposal
 // @Tags knowledge
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} ProposalResult[[]DocumentResponse]
+// @Param cursor query string false "opaque signed document cursor"
+// @Param limit query int false "page size" minimum(1) maximum(200) default(50)
+// @Success 200 {object} ProposalResult[DocumentPageResponse]
+// @Failure 400 {object} ProposalResult[EmptyResponse]
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
 // @Router /api/v1/knowledge/documents [get]
 func (handler *Handler) ListDocuments(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	reader, ok := handler.reader.(interface {
-		ListDocuments(context.Context) ([]knowledgedomain.Document, error)
+		ListDocumentPage(context.Context, knowledgedomain.DocumentListQuery) (knowledgedomain.DocumentPage, error)
 	})
 	if !ok {
 		return knowledgeError(sharedrepository.ErrUnavailable)
 	}
-	items, err := reader.ListDocuments(c.Request.Context())
+	limit, err := knowledgeListLimit(c)
+	if err != nil {
+		return err
+	}
+	page, err := reader.ListDocumentPage(c.Request.Context(), knowledgedomain.DocumentListQuery{Cursor: c.Query("cursor"), Limit: limit})
 	if err != nil {
 		return knowledgeError(err)
 	}
-	response := make([]DocumentResponse, 0, len(items))
-	for _, item := range items {
+	response := make([]DocumentResponse, 0, len(page.Items))
+	for _, item := range page.Items {
 		response = append(response, documentResponse(item))
 	}
-	httptransport.OK(c, response)
+	httptransport.OK(c, DocumentPageResponse{Items: response, NextCursor: page.NextCursor})
 	return nil
 }
 
@@ -90,34 +97,44 @@ func (handler *Handler) GetDocument(c *gin.Context) error {
 	return nil
 }
 
-// ListProposals returns up to one hundred newest proposals.
+// ListProposals returns one stable page of newest proposals.
 // @Summary List knowledge proposals
 // @Tags knowledge
 // @Produce json
 // @Security BearerAuth
-// @Param status query string false "proposal status"
-// @Success 200 {object} ProposalResult[[]ProposalResponse]
+// @Param cursor query string false "opaque signed proposal cursor"
+// @Param limit query int false "page size" minimum(1) maximum(200) default(50)
+// @Param status query string false "proposal status" Enums(pending,approved,rejected,conflict,applied,failed)
+// @Success 200 {object} ProposalResult[ProposalPageResponse]
+// @Failure 400 {object} ProposalResult[EmptyResponse]
 // @Failure 401 {object} ProposalResult[EmptyResponse]
 // @Failure 403 {object} ProposalResult[EmptyResponse]
 // @Router /api/v1/knowledge/proposals [get]
 func (handler *Handler) ListProposals(c *gin.Context) error {
 	httptransport.SetModule(c, "knowledge")
 	status := knowledgedomain.ProposalStatus(c.Query("status"))
+	if !status.ValidListFilter() {
+		return sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "invalid proposal status")
+	}
+	limit, err := knowledgeListLimit(c)
+	if err != nil {
+		return err
+	}
 	reader, ok := handler.reader.(interface {
-		ListProposals(context.Context, knowledgedomain.ProposalStatus) ([]knowledgedomain.Proposal, error)
+		ListProposalPage(context.Context, knowledgedomain.ProposalListQuery) (knowledgedomain.ProposalPage, error)
 	})
 	if !ok {
 		return knowledgeError(sharedrepository.ErrUnavailable)
 	}
-	items, err := reader.ListProposals(c.Request.Context(), status)
+	page, err := reader.ListProposalPage(c.Request.Context(), knowledgedomain.ProposalListQuery{Cursor: c.Query("cursor"), Limit: limit, Status: status})
 	if err != nil {
 		return knowledgeError(err)
 	}
-	response := make([]ProposalResponse, 0, len(items))
-	for _, item := range items {
+	response := make([]ProposalResponse, 0, len(page.Items))
+	for _, item := range page.Items {
 		response = append(response, proposalResponse(item))
 	}
-	httptransport.OK(c, response)
+	httptransport.OK(c, ProposalPageResponse{Items: response, NextCursor: page.NextCursor})
 	return nil
 }
 
@@ -311,6 +328,19 @@ func positivePathID(c *gin.Context, resource string) (int64, error) {
 		return 0, sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "invalid "+resource+" id")
 	}
 	return id, nil
+}
+
+func knowledgeListLimit(c *gin.Context) (int, error) {
+	const defaultLimit, maximumLimit = 50, 200
+	raw := c.Query("limit")
+	if raw == "" {
+		return defaultLimit, nil
+	}
+	limit, err := strconv.Atoi(raw)
+	if err != nil || limit < 1 || limit > maximumLimit {
+		return 0, sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "invalid knowledge page size")
+	}
+	return limit, nil
 }
 
 func knowledgeError(err error) error {

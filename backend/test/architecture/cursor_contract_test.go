@@ -9,6 +9,10 @@ import (
 func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 	root := repositoryRoot(t)
 	contracts := map[string][]string{
+		"internal/modules/knowledge/infrastructure/postgres/repository.go": {
+			"NewRepositoryWithCursorCodec", `cursorCodec.Seal("knowledge_document_list"`, `cursorCodec.Open(query.Cursor, "knowledge_document_list"`,
+			`cursorCodec.Seal("knowledge_proposal_list"`, `cursorCodec.Open(query.Cursor, "knowledge_proposal_list"`,
+		},
 		"internal/modules/identity/infrastructure/postgres/user_repository.go": {
 			"NewUserRepositoryWithCursorCodec", `cursorCodec.Seal("identity_user_list"`, `cursorCodec.Open(query.Cursor, "identity_user_list"`,
 		},
@@ -58,7 +62,7 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 			"hmac.Equal", "ErrExpiredCursor", "ErrStaleCursor", "maximumEncodedCursorSize",
 		},
 		"internal/bootstrap/pagination.go": {
-			"pagination.NewCodec", "newUserRepository", "NewUserRepositoryWithCursorCodec", "NewRepositoryWithCursorCodec", "NewMicroEventQueryPostgresRepositoryWithCursorCodec", "newRightsManagementRepository", "newContentRepository", "newReportRepository", "newJobRepository", "newGovernanceRepository",
+			"pagination.NewCodec", "newUserRepository", "NewUserRepositoryWithCursorCodec", "newKnowledgeRepository", "NewRepositoryWithCursorCodec", "NewMicroEventQueryPostgresRepositoryWithCursorCodec", "newRightsManagementRepository", "newContentRepository", "newReportRepository", "newJobRepository", "newGovernanceRepository",
 		},
 		"internal/bootstrap/monitor_intent_expansion.go": {
 			"newDocumentMatchRepository", "NewDocumentMatchRepositoryWithCursorCodec",

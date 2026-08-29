@@ -29,6 +29,16 @@ type ProposalResponse struct {
 	Status              string `json:"status"`
 }
 
+type DocumentPageResponse struct {
+	Items      []DocumentResponse `json:"items"`
+	NextCursor string             `json:"next_cursor,omitempty"`
+}
+
+type ProposalPageResponse struct {
+	Items      []ProposalResponse `json:"items"`
+	NextCursor string             `json:"next_cursor,omitempty"`
+}
+
 type ReconciliationIssueResponse struct {
 	Path         string `json:"path"`
 	Kind         string `json:"kind"`

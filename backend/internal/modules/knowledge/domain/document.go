@@ -48,6 +48,16 @@ type Document struct {
 	EventID, TopicID, ReportID            *int64
 }
 
+type DocumentListQuery struct {
+	Cursor string
+	Limit  int
+}
+
+type DocumentPage struct {
+	Items      []Document
+	NextCursor string
+}
+
 func (document Document) Validate() error {
 	if document.ID <= 0 || document.Version <= 0 || document.RevisionNo < 0 || strings.TrimSpace(document.VaultPath) == "" {
 		return fmt.Errorf("invalid knowledge document")
@@ -72,10 +82,25 @@ const (
 	ProposalFailed   ProposalStatus = "failed"
 )
 
+func (status ProposalStatus) ValidListFilter() bool {
+	return status == "" || status == ProposalPending || status == ProposalApproved || status == ProposalRejected || status == ProposalConflict || status == ProposalApplied || status == ProposalFailed
+}
+
 type Proposal struct {
 	ID, Version, DocumentID, BaseRevisionNo                          int64
 	BaseHash, ProposedFrontmatter, ProposedBody, DiffSummary, Reason string
 	Status                                                           ProposalStatus
+}
+
+type ProposalListQuery struct {
+	Cursor string
+	Limit  int
+	Status ProposalStatus
+}
+
+type ProposalPage struct {
+	Items      []Proposal
+	NextCursor string
 }
 
 func (proposal Proposal) ValidateCreate() error {

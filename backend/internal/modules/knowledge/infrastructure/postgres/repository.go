@@ -7,17 +7,32 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	databaserepository "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database/repository"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
-type Repository struct{ runtime *database.Runtime }
+type Repository struct {
+	runtime     *database.Runtime
+	cursorCodec *pagination.Codec
+}
 
-func NewRepository(runtime *database.Runtime) *Repository { return &Repository{runtime: runtime} }
+func NewRepository(runtime *database.Runtime) *Repository {
+	seed := "knowledge:unavailable"
+	if runtime != nil && runtime.Pool != nil {
+		seed = "knowledge:" + runtime.Pool.Config().ConnString()
+	}
+	return NewRepositoryWithCursorCodec(runtime, pagination.NewTestCodec(seed))
+}
+
+func NewRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.Codec) *Repository {
+	return &Repository{runtime: runtime, cursorCodec: codec}
+}
 
 func (repository *Repository) GetDocument(id int64) (domain.Document, error) {
 	return repository.GetDocumentContext(context.Background(), id)
@@ -66,6 +81,85 @@ FROM knowledge_documents WHERE status <> 'archived' ORDER BY id`)
 		return nil, databaserepository.MapError(err)
 	}
 	return documents, nil
+}
+
+const (
+	knowledgeListDefaultLimit = 50
+	knowledgeListMaximumLimit = 200
+	knowledgeCursorVersion    = 1
+)
+
+type knowledgeDocumentCursor struct {
+	Version    int   `json:"v"`
+	SnapshotID int64 `json:"snapshot_id"`
+	AfterID    int64 `json:"after_id"`
+}
+
+func (repository *Repository) ListDocumentPage(ctx context.Context, query domain.DocumentListQuery) (domain.DocumentPage, error) {
+	if repository == nil || repository.runtime == nil || repository.cursorCodec == nil {
+		return domain.DocumentPage{}, sharedrepository.ErrUnavailable
+	}
+	limit, cursor, err := repository.documentPageParameters(ctx, query)
+	if err != nil {
+		return domain.DocumentPage{}, err
+	}
+	if cursor.SnapshotID == 0 {
+		return domain.DocumentPage{Items: []domain.Document{}}, nil
+	}
+	rows, err := knowledgeQueryerFor(ctx, repository.runtime).QueryContext(ctx, `
+SELECT id, version, revision_no, document_type, vault_path, coalesce(content_hash, ''), coalesce(generated_hash, ''), status, event_id, topic_id, report_id
+FROM knowledge_documents
+WHERE status <> 'archived' AND id > $1 AND id <= $2
+ORDER BY id ASC
+LIMIT $3`, cursor.AfterID, cursor.SnapshotID, limit+1)
+	if err != nil {
+		return domain.DocumentPage{}, databaserepository.MapError(err)
+	}
+	defer rows.Close()
+	items := make([]domain.Document, 0, limit+1)
+	for rows.Next() {
+		var item domain.Document
+		if err := rows.Scan(&item.ID, &item.Version, &item.RevisionNo, &item.Type, &item.VaultPath, &item.ContentHash, &item.GeneratedHash, &item.Status, &item.EventID, &item.TopicID, &item.ReportID); err != nil {
+			return domain.DocumentPage{}, databaserepository.MapError(err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.DocumentPage{}, databaserepository.MapError(err)
+	}
+	if len(items) <= limit {
+		return domain.DocumentPage{Items: items}, nil
+	}
+	items = items[:limit]
+	cursor.AfterID = items[len(items)-1].ID
+	nextCursor, err := repository.cursorCodec.Seal("knowledge_document_list", cursor)
+	if err != nil {
+		return domain.DocumentPage{}, fmt.Errorf("%w: encode document cursor", sharedrepository.ErrInvalidInput)
+	}
+	return domain.DocumentPage{Items: items, NextCursor: nextCursor}, nil
+}
+
+func (repository *Repository) documentPageParameters(ctx context.Context, query domain.DocumentListQuery) (int, knowledgeDocumentCursor, error) {
+	limit := query.Limit
+	if limit == 0 {
+		limit = knowledgeListDefaultLimit
+	}
+	if limit < 1 || limit > knowledgeListMaximumLimit {
+		return 0, knowledgeDocumentCursor{}, fmt.Errorf("%w: invalid document page size", sharedrepository.ErrInvalidInput)
+	}
+	cursor := knowledgeDocumentCursor{Version: knowledgeCursorVersion}
+	if query.Cursor != "" {
+		if err := repository.cursorCodec.Open(query.Cursor, "knowledge_document_list", &cursor); err != nil ||
+			cursor.Version != knowledgeCursorVersion || cursor.SnapshotID <= 0 || cursor.AfterID <= 0 || cursor.AfterID >= cursor.SnapshotID {
+			return 0, knowledgeDocumentCursor{}, fmt.Errorf("%w: invalid document cursor", sharedrepository.ErrInvalidInput)
+		}
+		return limit, cursor, nil
+	}
+	if err := knowledgeQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
+SELECT COALESCE(MAX(id), 0) FROM knowledge_documents WHERE status <> 'archived'`).Scan(&cursor.SnapshotID); err != nil {
+		return 0, knowledgeDocumentCursor{}, databaserepository.MapError(err)
+	}
+	return limit, cursor, nil
 }
 
 // LoadVaultRebuildFact closes the PostgreSQL lineage needed to reproduce the
@@ -158,6 +252,105 @@ LIMIT 100`, status)
 		return nil, databaserepository.MapError(err)
 	}
 	return items, nil
+}
+
+type knowledgeProposalCursor struct {
+	Version        int                   `json:"v"`
+	Status         domain.ProposalStatus `json:"status"`
+	SnapshotID     int64                 `json:"snapshot_id"`
+	AfterCreatedAt time.Time             `json:"after_created_at"`
+	AfterID        int64                 `json:"after_id"`
+}
+
+type knowledgeProposalRow struct {
+	proposal  domain.Proposal
+	createdAt time.Time
+}
+
+func (repository *Repository) ListProposalPage(ctx context.Context, query domain.ProposalListQuery) (domain.ProposalPage, error) {
+	if repository == nil || repository.runtime == nil || repository.cursorCodec == nil {
+		return domain.ProposalPage{}, sharedrepository.ErrUnavailable
+	}
+	limit, cursor, err := repository.proposalPageParameters(ctx, query)
+	if err != nil {
+		return domain.ProposalPage{}, err
+	}
+	if cursor.SnapshotID == 0 {
+		return domain.ProposalPage{Items: []domain.Proposal{}}, nil
+	}
+	var afterCreatedAt *time.Time
+	if !cursor.AfterCreatedAt.IsZero() {
+		afterCreatedAt = &cursor.AfterCreatedAt
+	}
+	rows, err := knowledgeQueryerFor(ctx, repository.runtime).QueryContext(ctx, `
+SELECT id, version, document_id, base_revision_no, coalesce(base_hash, ''), proposed_frontmatter, proposed_body, diff_summary, reason, status, created_at
+FROM knowledge_change_proposals
+WHERE ($1::text = '' OR status = $1::text)
+  AND id <= $2
+  AND ($3::timestamptz IS NULL OR (created_at, id) < ($3::timestamptz, $4))
+ORDER BY created_at DESC, id DESC
+LIMIT $5`, query.Status, cursor.SnapshotID, afterCreatedAt, cursor.AfterID, limit+1)
+	if err != nil {
+		return domain.ProposalPage{}, databaserepository.MapError(err)
+	}
+	defer rows.Close()
+	entries := make([]knowledgeProposalRow, 0, limit+1)
+	for rows.Next() {
+		var entry knowledgeProposalRow
+		var frontmatter []byte
+		if err := rows.Scan(&entry.proposal.ID, &entry.proposal.Version, &entry.proposal.DocumentID, &entry.proposal.BaseRevisionNo, &entry.proposal.BaseHash, &frontmatter, &entry.proposal.ProposedBody, &entry.proposal.DiffSummary, &entry.proposal.Reason, &entry.proposal.Status, &entry.createdAt); err != nil {
+			return domain.ProposalPage{}, databaserepository.MapError(err)
+		}
+		entry.proposal.ProposedFrontmatter = string(frontmatter)
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.ProposalPage{}, databaserepository.MapError(err)
+	}
+	items := make([]domain.Proposal, 0, min(len(entries), limit))
+	for index, entry := range entries {
+		if index == limit {
+			break
+		}
+		items = append(items, entry.proposal)
+	}
+	if len(entries) <= limit {
+		return domain.ProposalPage{Items: items}, nil
+	}
+	last := entries[limit-1]
+	cursor.AfterCreatedAt = last.createdAt
+	cursor.AfterID = last.proposal.ID
+	nextCursor, err := repository.cursorCodec.Seal("knowledge_proposal_list", cursor)
+	if err != nil {
+		return domain.ProposalPage{}, fmt.Errorf("%w: encode proposal cursor", sharedrepository.ErrInvalidInput)
+	}
+	return domain.ProposalPage{Items: items, NextCursor: nextCursor}, nil
+}
+
+func (repository *Repository) proposalPageParameters(ctx context.Context, query domain.ProposalListQuery) (int, knowledgeProposalCursor, error) {
+	limit := query.Limit
+	if limit == 0 {
+		limit = knowledgeListDefaultLimit
+	}
+	if limit < 1 || limit > knowledgeListMaximumLimit || !query.Status.ValidListFilter() {
+		return 0, knowledgeProposalCursor{}, fmt.Errorf("%w: invalid proposal list query", sharedrepository.ErrInvalidInput)
+	}
+	cursor := knowledgeProposalCursor{Version: knowledgeCursorVersion, Status: query.Status}
+	if query.Cursor != "" {
+		if err := repository.cursorCodec.Open(query.Cursor, "knowledge_proposal_list", &cursor); err != nil ||
+			cursor.Version != knowledgeCursorVersion || cursor.Status != query.Status || cursor.SnapshotID <= 0 ||
+			cursor.AfterCreatedAt.IsZero() || cursor.AfterID <= 0 || cursor.AfterID > cursor.SnapshotID {
+			return 0, knowledgeProposalCursor{}, fmt.Errorf("%w: invalid proposal cursor", sharedrepository.ErrInvalidInput)
+		}
+		return limit, cursor, nil
+	}
+	if err := knowledgeQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
+SELECT COALESCE(MAX(id), 0)
+FROM knowledge_change_proposals
+WHERE ($1::text = '' OR status = $1::text)`, query.Status).Scan(&cursor.SnapshotID); err != nil {
+		return 0, knowledgeProposalCursor{}, databaserepository.MapError(err)
+	}
+	return limit, cursor, nil
 }
 
 // EnsureReportDocument creates the single knowledge projection assigned to a

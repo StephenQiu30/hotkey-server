@@ -197,7 +197,7 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				newSourceConnectorRegistry,
 				newKnowledgeVaultWriter,
 				newKnowledgeProjectionService,
-				knowledgepostgres.NewRepository,
+				newKnowledgeRepository,
 				newReportRepository,
 				reportpostgres.NewCandidateReader,
 				newKnowledgeProposalService,

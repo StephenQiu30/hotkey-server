@@ -627,6 +627,11 @@ required property without making explicit null impossible to bind. */
     raw_score?: number;
   };
 
+  type DocumentPageResponse = {
+    items?: DocumentResponse[];
+    next_cursor?: string;
+  };
+
   type DocumentResponse = {
     contentHash?: string;
     eventID?: number;
@@ -798,14 +803,31 @@ required property without making explicit null impossible to bind. */
     id: number;
   };
 
+  type getKnowledgeDocumentsParams = {
+    /** opaque signed document cursor */
+    cursor?: string;
+    /** page size */
+    limit?: number;
+  };
+
   type getKnowledgeProposalsIdParams = {
     /** proposal ID */
     id: number;
   };
 
   type getKnowledgeProposalsParams = {
+    /** opaque signed proposal cursor */
+    cursor?: string;
+    /** page size */
+    limit?: number;
     /** proposal status */
-    status?: string;
+    status?:
+      | "pending"
+      | "approved"
+      | "rejected"
+      | "conflict"
+      | "applied"
+      | "failed";
   };
 
   type getMicroEventsIdEvidenceParams = {
@@ -2133,6 +2155,11 @@ probability or a cross-channel relevance percentage. */
     unapproved_rule_ids?: number[];
   };
 
+  type ProposalPageResponse = {
+    items?: ProposalResponse[];
+    next_cursor?: string;
+  };
+
   type ProposalRequest = {
     base_hash?: string;
     base_revision?: number;
@@ -2155,21 +2182,21 @@ probability or a cross-channel relevance percentage. */
     version?: number;
   };
 
-  type ProposalResultArrayHttpDocumentResponse = {
+  type ProposalResultHttpDocumentPageResponse = {
     code?: number;
-    data?: DocumentResponse[];
-    message?: string;
-  };
-
-  type ProposalResultArrayHttpProposalResponse = {
-    code?: number;
-    data?: ProposalResponse[];
+    data?: DocumentPageResponse;
     message?: string;
   };
 
   type ProposalResultHttpDocumentResponse = {
     code?: number;
     data?: DocumentResponse;
+    message?: string;
+  };
+
+  type ProposalResultHttpProposalPageResponse = {
+    code?: number;
+    data?: ProposalPageResponse;
     message?: string;
   };
 

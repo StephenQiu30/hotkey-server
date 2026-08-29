@@ -1772,11 +1772,34 @@ const docTemplate = `{
                     "knowledge"
                 ],
                 "summary": "List knowledge documents",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "opaque signed document cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 200,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 50,
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.ProposalResult-array_http_DocumentResponse"
+                            "$ref": "#/definitions/http.ProposalResult-http_DocumentPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
                         }
                     },
                     "401": {
@@ -1862,6 +1885,29 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "opaque signed proposal cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 200,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 50,
+                        "description": "page size",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "pending",
+                            "approved",
+                            "rejected",
+                            "conflict",
+                            "applied",
+                            "failed"
+                        ],
+                        "type": "string",
                         "description": "proposal status",
                         "name": "status",
                         "in": "query"
@@ -1871,7 +1917,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/http.ProposalResult-array_http_ProposalResponse"
+                            "$ref": "#/definitions/http.ProposalResult-http_ProposalPageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http.ProposalResult-internal_modules_knowledge_transport_http_EmptyResponse"
                         }
                     },
                     "401": {
@@ -10527,6 +10579,20 @@ const docTemplate = `{
                 }
             }
         },
+        "http.DocumentPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.DocumentResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
         "http.DocumentResponse": {
             "type": "object",
             "properties": {
@@ -13008,6 +13074,20 @@ const docTemplate = `{
                 }
             }
         },
+        "http.ProposalPageResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.ProposalResponse"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
         "http.ProposalRequest": {
             "type": "object",
             "properties": {
@@ -13066,34 +13146,14 @@ const docTemplate = `{
                 }
             }
         },
-        "http.ProposalResult-array_http_DocumentResponse": {
+        "http.ProposalResult-http_DocumentPageResponse": {
             "type": "object",
             "properties": {
                 "code": {
                     "type": "integer"
                 },
                 "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/http.DocumentResponse"
-                    }
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "http.ProposalResult-array_http_ProposalResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "integer"
-                },
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/http.ProposalResponse"
-                    }
+                    "$ref": "#/definitions/http.DocumentPageResponse"
                 },
                 "message": {
                     "type": "string"
@@ -13108,6 +13168,20 @@ const docTemplate = `{
                 },
                 "data": {
                     "$ref": "#/definitions/http.DocumentResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "http.ProposalResult-http_ProposalPageResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {
+                    "$ref": "#/definitions/http.ProposalPageResponse"
                 },
                 "message": {
                     "type": "string"
