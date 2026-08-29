@@ -7612,7 +7612,7 @@ CREATE TABLE IF NOT EXISTS backup_runs (
     asset_count smallint NOT NULL CHECK (asset_count BETWEEN 0 AND 5),
     created_at timestamptz NOT NULL DEFAULT now(),
     CHECK (completed_at >= started_at),
-    CHECK (completed_at <= created_at + interval '5 minutes'),
+    CHECK (completed_at <= (created_at + '00:05:00'::interval)),
     CHECK (recovery_point_at IS NULL OR recovery_point_at <= completed_at),
     CHECK (
         (status='succeeded' AND recovery_point_at IS NOT NULL AND failure_code IS NULL AND asset_count=5)
