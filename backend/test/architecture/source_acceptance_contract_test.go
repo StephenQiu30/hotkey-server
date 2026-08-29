@@ -14,7 +14,7 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 	if status := frontmatterStatus(t, filepath.Join(repository, acceptancePath)); status != "failed" {
 		t.Fatalf("002 partial Acceptance must remain failed, got %q", status)
 	}
-	if !regexp.MustCompile(`(?m)^verified_revision: "9ea2b30b08d6cf50bb8cc4d072bd0bb069f91288"$`).MatchString(acceptance) {
+	if !regexp.MustCompile(`(?m)^verified_revision: "6ff813bc8e90bd673d24d8d50b1ef076d5a70a04"$`).MatchString(acceptance) {
 		t.Errorf("002 Acceptance must pin the exact verified implementation revision")
 	}
 
@@ -41,7 +41,7 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 	}
 
 	open := map[string]string{
-		"CHK-002-G3-002": "EV-002-009",
+		"CHK-002-G3-002": "EV-002-011",
 		"CHK-002-G5-001": "EV-002-008",
 	}
 	for checkID, evidenceID := range open {
@@ -61,9 +61,14 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 		"TestGovernanceAuditQueryCoversFiveSourceManagementCategoriesWithoutSyntheticSecrets",
 		"TestSourceServiceAuditsBudgetConfigurationChangeWithoutPersistingConfiguration",
 		"make source-management-audit-acceptance",
-		"RSS/HN/X 的完整 Capability/Rights/Credential/Budget/Rate Limit/Endpoint 准入矩阵",
+		"`EV-002-011`",
+		"TestCollectionAdmissionChecksBudgetAndRateLimitAfterCredentialStatus",
+		"TestCollectionHealthAdmissionDenialStopsBeforeConnectorResolutionAndPersistsSafeAudit",
+		"TestExternalRequestBudgetEnforcesPerMinuteRateLimitAtomicallyWithoutConsumingDailyBudget",
+		"make source-admission-matrix-acceptance",
+		"只剩三来源真实授权冒烟",
 		"不得用 Fixture、模拟响应或本机候选容量替代真实授权证据",
-		"33251371397",
+		"33253811195",
 	} {
 		if !strings.Contains(acceptance, fragment) {
 			t.Errorf("002 Acceptance is missing %q", fragment)

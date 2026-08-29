@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test ci-test worker-recovery-acceptance m4-fault-recovery-acceptance joint-recovery-acceptance source-resource-limit-acceptance source-admission-matrix-acceptance source-management-audit-acceptance request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test ci-test worker-recovery-acceptance m4-fault-recovery-acceptance joint-recovery-acceptance source-resource-limit-acceptance source-admission-matrix-acceptance source-management-audit-acceptance source-live-smoke request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -88,6 +88,12 @@ source-management-audit-acceptance: test-env
 		./internal/modules/operations/infrastructure/postgres \
 		-run '^(TestSourceServiceCreatesAndRotatesEncryptedManagedCredential|TestSourceServiceAuditsBudgetConfigurationChangeWithoutPersistingConfiguration|TestManualCollectionUsesDurableCooldownAndActivePublishedTargets|TestCollectionControlListsRetriesAndPersistsSafeHealth|TestGovernanceAuditQueryCoversFiveSourceManagementCategoriesWithoutSyntheticSecrets|TestRetentionPreviewRunIsBoundedProtectedAndAudited)$$' \
 		-count=1 -v
+
+# This target is intentionally excluded from CI. It requires an explicitly
+# authorized trusted environment and exercises the running API against real
+# RSS, Hacker News, and X connections.
+source-live-smoke:
+	$(GO) run ./test/tools/source-live-smoke
 
 request-boundary-acceptance: test-env
 	$(GO) run ./test/runner test -p=1 \
