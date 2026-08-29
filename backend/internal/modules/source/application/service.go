@@ -177,6 +177,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (*domain.
 		if err := service.audit.Write(ctx, service.auditEntry(ctx, input.Subject, operationsdomain.ActionSourceCreated, connection.ID, nil, sourceMetadata(connection))); err != nil {
 			return err
 		}
+		if connection.CredentialRef != "" {
+			if err := service.audit.Write(ctx, service.auditEntry(ctx, input.Subject, operationsdomain.ActionSourceCredentialChanged, connection.ID, nil, sourceMetadata(connection))); err != nil {
+				return err
+			}
+		}
 		created = connection
 		return nil
 	})
@@ -259,6 +264,16 @@ func (service *Service) Update(ctx context.Context, input UpdateInput) (*domain.
 		}
 		if err := service.audit.Write(ctx, service.auditEntry(ctx, input.Subject, operationsdomain.ActionSourceUpdated, next.ID, before, sourceMetadata(next))); err != nil {
 			return err
+		}
+		if credentialChanged || input.Credential != nil {
+			if err := service.audit.Write(ctx, service.auditEntry(ctx, input.Subject, operationsdomain.ActionSourceCredentialChanged, next.ID, before, sourceMetadata(next))); err != nil {
+				return err
+			}
+		}
+		if sourceBudgetChanged(current.Config, next.Config) {
+			if err := service.audit.Write(ctx, service.auditEntry(ctx, input.Subject, operationsdomain.ActionSourceBudgetUpdated, next.ID, before, sourceMetadata(next))); err != nil {
+				return err
+			}
 		}
 		changed = next
 		return nil
@@ -618,6 +633,11 @@ func sourceConfigsEqual(left, right domain.SourceConfig) bool {
 	// The domain normalizer sorts/deduplicates its arrays, making structural
 	// equality a stable semantic boundary rather than a JSON-map comparison.
 	return reflect.DeepEqual(left, right)
+}
+
+func sourceBudgetChanged(left, right domain.SourceConfig) bool {
+	return left.RateLimitPerMinute != right.RateLimitPerMinute ||
+		left.XMetricRefreshDailyRequestBudget != right.XMetricRefreshDailyRequestBudget
 }
 
 // isBodyStorageAuthorizationUpgrade is the only source semantic change that

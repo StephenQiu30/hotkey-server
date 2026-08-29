@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
@@ -418,7 +419,7 @@ func measureAPI(ctx context.Context, runtimeDB *database.Runtime, samples, concu
 	runs := sourcepostgres.NewCollectionRepository(runtimeDB)
 	service, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtimeDB, Sources: sourcepostgres.NewRepository(runtimeDB), Runs: runs,
-		Connectors: inertConnectorRegistry{}, Retries: inertRetryActivator{},
+		Connectors: inertConnectorRegistry{}, Retries: inertRetryActivator{}, Audit: operationspostgres.NewAuditWriter(runtimeDB),
 	})
 	if err != nil {
 		return apiEvidence{}, err

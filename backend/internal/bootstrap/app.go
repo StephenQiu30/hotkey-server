@@ -579,10 +579,10 @@ func newMetricCapabilityService(runtime *database.Runtime, profiles *sourcepostg
 	return sourceapplication.NewMetricCapabilityService(sourceapplication.MetricCapabilityDependencies{Runtime: runtime, Profiles: profiles, SourceContexts: sources, Audit: audit})
 }
 
-func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, retries *sourcejobs.CollectionRetryActivator, manuals *sourcejobs.ManualCollectionActivator, targets *monitorpostgres.PublishedCollectionTargetReader, scans *monitorpostgres.MonitorScanReader, quota *operationspostgres.GovernanceRepository, metrics *observability.Metrics, monitors *monitorapplication.Service) (*sourceapplication.CollectionControlService, error) {
+func newCollectionControlService(runtime *database.Runtime, sources *sourcepostgres.Repository, runs *sourcepostgres.CollectionRepository, connectors *sourceinfrastructure.ConnectorRegistry, retries *sourcejobs.CollectionRetryActivator, manuals *sourcejobs.ManualCollectionActivator, targets *monitorpostgres.PublishedCollectionTargetReader, scans *monitorpostgres.MonitorScanReader, quota *operationspostgres.GovernanceRepository, metrics *observability.Metrics, monitors *monitorapplication.Service, audit *operationspostgres.AuditWriter) (*sourceapplication.CollectionControlService, error) {
 	return sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sources, Runs: runs, Connectors: connectors, Retries: retries,
-		Manuals: manuals, Targets: targets, Scans: scans, Metrics: metrics, Quota: quota, Monitors: monitors,
+		Manuals: manuals, Targets: targets, Scans: scans, Metrics: metrics, Quota: quota, Monitors: monitors, Audit: audit,
 	})
 }
 

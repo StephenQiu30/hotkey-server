@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test ci-test worker-recovery-acceptance m4-fault-recovery-acceptance joint-recovery-acceptance source-resource-limit-acceptance request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test ci-test worker-recovery-acceptance m4-fault-recovery-acceptance joint-recovery-acceptance source-resource-limit-acceptance source-management-audit-acceptance request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -67,6 +67,13 @@ source-resource-limit-acceptance: test-env
 		./internal/modules/source/infrastructure/x \
 		./internal/modules/source/infrastructure/postgres \
 		-run '^(TestExternalRequestBudgetContractsRejectUnboundedOrAmbiguousFacts|TestRSSResourceLimitProfileFreezesEightFiniteDimensions|TestRSSResourceLimitsStopBeforeTheNextExternalOrEvidenceSideEffect|TestRSSResourceLimitsBoundConnectReadAndWallClock|TestRSSResourceLimitProfileRejectsMissingOrUnboundedDimensions|TestHackerNewsResourceLimitProfileFreezesEightFiniteDimensions|TestHackerNewsResourceLimitsStopBeforeNextExternalOrEvidenceSideEffect|TestHackerNewsResourceLimitsBoundConnectReadAndWallClock|TestHackerNewsResourceLimitProfileRejectsMissingOrUnboundedDimensions|TestXResourceLimitProfileFreezesEightFiniteDimensions|TestXResourceLimitsStopBeforeNextExternalOrEvidenceSideEffect|TestXResourceLimitOrderingValidatesInputAndCredentialBeforeBudgetOrNetwork|TestXResourceLimitsBoundConnectReadAndWallClock|TestXResourceLimitProfileRejectsMissingOrUnboundedDimensions|TestExternalRequestBudgetEnforcesUTCSourceProfileQuotaAtomically|TestCollectionServiceFailureRetainsCursorAndPersistsRetryState|TestCollectionServicePersistsAuthenticationAndPermanentFailures)$$' \
+		-count=1 -v
+
+source-management-audit-acceptance: test-env
+	$(GO) run ./test/runner test -p=1 \
+		./internal/modules/source/application \
+		./internal/modules/operations/infrastructure/postgres \
+		-run '^(TestSourceServiceCreatesAndRotatesEncryptedManagedCredential|TestSourceServiceAuditsBudgetConfigurationChangeWithoutPersistingConfiguration|TestManualCollectionUsesDurableCooldownAndActivePublishedTargets|TestCollectionControlListsRetriesAndPersistsSafeHealth|TestGovernanceAuditQueryCoversFiveSourceManagementCategoriesWithoutSyntheticSecrets|TestRetentionPreviewRunIsBoundedProtectedAndAudited)$$' \
 		-count=1 -v
 
 request-boundary-acceptance: test-env

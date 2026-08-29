@@ -127,6 +127,70 @@ func TestGovernanceAuditCursorIsSignedBoundExpiringAndStableAcrossConcurrentInse
 	}
 }
 
+func TestGovernanceAuditQueryCoversFiveSourceManagementCategoriesWithoutSyntheticSecrets(t *testing.T) {
+	ctx := context.Background()
+	runtime := governanceRuntime(t)
+	defer runtime.Close()
+	userID := governanceUser(t, runtime)
+	writer := operationspostgres.NewAuditWriter(runtime)
+	entries := []operationsdomain.AuditEntry{
+		{ActorType: "user", ActorID: userID, Action: operationsdomain.ActionSourceUpdated, ResourceType: "source_connection", ResourceID: 11, Result: operationsdomain.AuditResultSuccess},
+		{ActorType: "user", ActorID: userID, Action: operationsdomain.ActionSourceCredentialChanged, ResourceType: "source_connection", ResourceID: 11, Result: operationsdomain.AuditResultSuccess},
+		{ActorType: "user", ActorID: userID, Action: operationsdomain.ActionSourceBudgetUpdated, ResourceType: "source_connection", ResourceID: 11, Result: operationsdomain.AuditResultSuccess},
+		{ActorType: "user", ActorID: userID, Action: operationsdomain.ActionCollectionManualRequested, ResourceType: "monitor", ResourceID: 12, Result: operationsdomain.AuditResultSuccess},
+		{ActorType: "user", ActorID: userID, Action: operationsdomain.ActionRetentionExecuted, ResourceType: "retention_policy", ResourceID: 13, Result: operationsdomain.AuditResultSuccess},
+	}
+	if err := runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+		for _, entry := range entries {
+			if err := writer.Write(transactionCtx, entry); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("write five-category management audits: %v", err)
+	}
+
+	syntheticSecret := "synthetic-source-token-never-persist"
+	leaky := entries[1]
+	leaky.ResourceID = 99
+	leaky.After = map[string]any{"credential_ref": syntheticSecret}
+	if err := runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+		return writer.Write(transactionCtx, leaky)
+	}); err == nil {
+		t.Fatal("synthetic credential was accepted by the audit boundary")
+	}
+
+	page, err := operationspostgres.NewGovernanceRepository(runtime).ListAudit(ctx, operationsdomain.AuditQuery{SubjectUserID: userID, Limit: 20})
+	if err != nil {
+		t.Fatalf("ListAudit() error = %v", err)
+	}
+	want := map[string]bool{
+		string(operationsdomain.ActionSourceUpdated):             false,
+		string(operationsdomain.ActionSourceCredentialChanged):   false,
+		string(operationsdomain.ActionSourceBudgetUpdated):       false,
+		string(operationsdomain.ActionCollectionManualRequested): false,
+		string(operationsdomain.ActionRetentionExecuted):         false,
+	}
+	for _, item := range page.Items {
+		if _, found := want[item.Action]; found {
+			want[item.Action] = true
+		}
+	}
+	for action, found := range want {
+		if !found {
+			t.Errorf("unified audit query omitted management action %q", action)
+		}
+	}
+	var persisted string
+	if err := runtime.SQL.QueryRow(`SELECT coalesce(string_agg(action || coalesce(before_data::text, '') || coalesce(after_data::text, ''), ''), '') FROM audit_logs`).Scan(&persisted); err != nil {
+		t.Fatalf("read audit leak sentinel surface: %v", err)
+	}
+	if strings.Contains(persisted, syntheticSecret) {
+		t.Fatalf("audit surface leaked synthetic secret: %s", persisted)
+	}
+}
+
 func insertGovernanceAudit(t *testing.T, runtime *database.Runtime, userID int64, action, result string, resourceID int) int64 {
 	t.Helper()
 	var id int64

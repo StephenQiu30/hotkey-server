@@ -138,7 +138,7 @@ func TestCollectionServiceProjectsThreeSourcePartialSuccessWithoutPersistingAggr
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Connectors: registry,
 		Retries: collectionRetryActivatorFake{}, Scans: monitorpostgres.NewMonitorScanReader(runtime),
-		Monitors: monitorAuthorizer,
+		Monitors: monitorAuthorizer, Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatalf("NewCollectionControlService(): %v", err)
@@ -285,7 +285,7 @@ VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.Monit
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: sourcepostgres.NewCollectionRepository(runtime),
 		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Retries: collectionRetryActivatorFake{},
 		Manuals: manuals, Targets: targetReader, Quota: operationspostgres.NewGovernanceRepository(runtime),
-		Monitors: monitorAuthorizer, Now: func() time.Time { return now },
+		Monitors: monitorAuthorizer, Now: func() time.Time { return now }, Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -314,6 +314,13 @@ VALUES ($1, 'keyword', 'contains', 'climate', 'user', 'approved')`, target.Monit
 	}
 	if monitorAuthorizer.calls != 2 {
 		t.Fatalf("monitor contribution authorization calls = %d, want 2 analyst calls", monitorAuthorizer.calls)
+	}
+	var manualAuditCount int
+	if err := runtime.SQL.QueryRow(`SELECT count(*) FROM audit_logs WHERE action = 'collection.manual_requested' AND resource_type = 'monitor' AND resource_id = $1`, monitorID).Scan(&manualAuditCount); err != nil {
+		t.Fatalf("read manual collection audits: %v", err)
+	}
+	if manualAuditCount != 3 {
+		t.Fatalf("manual collection audit count = %d, want every authorized request including cooldown reuse", manualAuditCount)
 	}
 	var jobCount int
 	var triggerType string
@@ -667,7 +674,7 @@ func TestCollectionControlListsRetriesAndPersistsSafeHealth(t *testing.T) {
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs,
 		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{health: domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.CollectionErrorTemporary, DiagnosticCode: "request_failed"}}},
-		Metrics:    metrics, Retries: collectionRetryActivatorFake{}, Now: func() time.Time { return checkedAt },
+		Metrics:    metrics, Retries: collectionRetryActivatorFake{}, Now: func() time.Time { return checkedAt }, Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatalf("NewCollectionControlService(): %v", err)
@@ -694,6 +701,27 @@ func TestCollectionControlListsRetriesAndPersistsSafeHealth(t *testing.T) {
 	}
 	if !metrics.recorded("list", "success") || !metrics.recorded("retry", "success") || !metrics.recorded("health", "unhealthy") {
 		t.Fatalf("collection metrics = %#v, want list/retry/health observations", metrics.values)
+	}
+	var retryAudits, healthAudits int
+	var auditText string
+	if err := runtime.SQL.QueryRow(`
+SELECT
+  count(*) FILTER (WHERE action = 'collection.retry_requested'),
+  count(*) FILTER (WHERE action = 'source.health_checked'),
+  coalesce(string_agg(action || coalesce(before_data::text, '') || coalesce(after_data::text, ''), ''), '')
+FROM audit_logs
+WHERE (resource_type = 'collection_run' AND resource_id = $1)
+   OR (resource_type = 'source_connection' AND resource_id = $2)`, run.ID, request.SourceConnectionID).
+		Scan(&retryAudits, &healthAudits, &auditText); err != nil {
+		t.Fatalf("read collection control audits: %v", err)
+	}
+	if retryAudits != 1 || healthAudits != 1 {
+		t.Fatalf("collection control audit counts = retry:%d health:%d, want one each", retryAudits, healthAudits)
+	}
+	for _, forbidden := range []string{"synthetic upstream detail", request.QuerySignature, request.Query} {
+		if strings.Contains(auditText, forbidden) {
+			t.Fatalf("collection control audit leaked %q: %s", forbidden, auditText)
+		}
 	}
 }
 
@@ -746,7 +774,7 @@ WHERE id = (SELECT monitor_id FROM monitor_config_versions WHERE id = $1)`, requ
 	}
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: activator,
-		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -857,7 +885,7 @@ WHERE id = (SELECT monitor_id FROM monitor_config_versions WHERE id = $1)`, requ
 	}
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: activator,
-		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -910,7 +938,7 @@ func TestCollectionControlRetryRejectsAdvancedCheckpointAndRollsBack(t *testing.
 	}
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: collectionRetryActivatorFake{},
-		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -953,7 +981,7 @@ func TestCollectionControlRetryIsConcurrentSafe(t *testing.T) {
 	}
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: collectionRetryActivatorFake{},
-		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1013,7 +1041,7 @@ func testCollectionClaimRetryWins(t *testing.T) {
 	activator := &blockingCollectionRetryActivator{entered: make(chan struct{}), release: make(chan struct{})}
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: activator,
-		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1110,7 +1138,7 @@ func testCollectionClaimNewerWorkerWins(t *testing.T) {
 	<-resolverEntered
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: collectionRetryActivatorFake{},
-		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1228,7 +1256,7 @@ func TestCollectionControlRetryRejectsNewerQueuedOrRunningRun(t *testing.T) {
 	}
 	control, err := sourceapplication.NewCollectionControlService(sourceapplication.CollectionControlDependencies{
 		Runtime: runtime, Sources: sourcepostgres.NewRepository(runtime), Runs: runs, Retries: collectionRetryActivatorFake{},
-		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}},
+		Connectors: collectionConnectorRegistryFake{connector: &collectionConnectorFake{}}, Audit: operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatal(err)

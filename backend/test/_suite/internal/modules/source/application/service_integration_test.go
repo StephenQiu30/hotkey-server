@@ -166,6 +166,70 @@ WHERE connection.id = $1`, created.ID).Scan(&reference, &ciphertext); err != nil
 	if resolved, err := credentials.Resolve(ctx, created.ID); err != nil || resolved != second {
 		t.Fatalf("stale update changed credential to %q, error %v", resolved, err)
 	}
+	none := domain.AuthTypeNone
+	removed, err := service.Update(ctx, sourceapplication.UpdateInput{Subject: admin, ID: created.ID, ExpectedVersion: rotated.Version, AuthType: &none})
+	if err != nil {
+		t.Fatalf("Update(remove credential) error = %v", err)
+	}
+	if removed.CredentialConfigured {
+		t.Fatal("removed managed credential still appears configured")
+	}
+	if _, err := credentials.Resolve(ctx, created.ID); err == nil {
+		t.Fatal("removed managed credential remains resolvable")
+	}
+	var credentialAudits int
+	var auditText string
+	if err := runtime.SQL.QueryRow(`
+SELECT count(*), coalesce(string_agg(action || coalesce(before_data::text, '') || coalesce(after_data::text, ''), ''), '')
+FROM audit_logs
+WHERE resource_type = 'source_connection' AND resource_id = $1 AND action = 'source_credential.changed'`, created.ID).
+		Scan(&credentialAudits, &auditText); err != nil {
+		t.Fatalf("read source credential audits: %v", err)
+	}
+	if credentialAudits != 3 {
+		t.Fatalf("source credential audit count = %d, want create, rotation and removal", credentialAudits)
+	}
+	for _, secret := range []string{first, second, stale} {
+		if bytes.Contains([]byte(auditText), []byte(secret)) {
+			t.Fatalf("source credential audit leaked synthetic secret %q", secret)
+		}
+	}
+}
+
+func TestSourceServiceAuditsBudgetConfigurationChangeWithoutPersistingConfiguration(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	admin := seedAdmin(t, runtime)
+	service := newService(t, runtime, usageReader{})
+	created, err := service.Create(context.Background(), sourceapplication.CreateInput{Subject: admin, Connection: sourceConnection("budget-audit")})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	config := created.Config
+	config.RateLimitPerMinute++
+	updated, err := service.Update(context.Background(), sourceapplication.UpdateInput{
+		Subject: admin, ID: created.ID, ExpectedVersion: created.Version, Config: &config,
+	})
+	if err != nil {
+		t.Fatalf("Update(budget) error = %v", err)
+	}
+	var count int
+	var payload string
+	if err := runtime.SQL.QueryRow(`
+SELECT count(*), coalesce(string_agg(coalesce(before_data::text, '') || coalesce(after_data::text, ''), ''), '')
+FROM audit_logs
+WHERE resource_type = 'source_connection' AND resource_id = $1 AND action = 'source_budget.updated'`, updated.ID).
+		Scan(&count, &payload); err != nil {
+		t.Fatalf("read source budget audit: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("source budget audit count = %d, want 1", count)
+	}
+	for _, forbidden := range []string{"rate_limit_per_minute", fmt.Sprintf("%d", config.RateLimitPerMinute), created.Endpoint} {
+		if bytes.Contains([]byte(payload), []byte(forbidden)) {
+			t.Fatalf("source budget audit leaked raw configuration %q: %s", forbidden, payload)
+		}
+	}
 }
 
 func TestBilibiliDeauthorizationIsAtomicAuditedAndIdempotent(t *testing.T) {

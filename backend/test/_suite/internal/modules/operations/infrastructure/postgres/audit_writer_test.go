@@ -248,10 +248,14 @@ func TestAuditActionWhitelistIsClosed(t *testing.T) {
 		operationsdomain.ActionMonitorAICandidateApproved, operationsdomain.ActionMonitorAICandidateRejected, operationsdomain.ActionMonitorPublished,
 		operationsdomain.ActionMonitorPaused, operationsdomain.ActionMonitorResumed, operationsdomain.ActionMonitorArchived, operationsdomain.ActionMonitorRestored, operationsdomain.ActionMonitorDeleted,
 		operationsdomain.ActionSourceCreated, operationsdomain.ActionSourceUpdated, operationsdomain.ActionSourceEnabled, operationsdomain.ActionSourceDisabled,
-		operationsdomain.ActionSourceArchived, operationsdomain.ActionSourceRestored, operationsdomain.ActionCollectionSecurityRejected,
+		operationsdomain.ActionSourceArchived, operationsdomain.ActionSourceRestored, operationsdomain.ActionSourceCredentialChanged,
+		operationsdomain.ActionSourceBudgetUpdated, operationsdomain.ActionSourceHealthChecked, operationsdomain.ActionSourceCredentialsRotated,
+		operationsdomain.ActionCollectionManualRequested, operationsdomain.ActionCollectionRetryRequested, operationsdomain.ActionCollectionSecurityRejected,
 		operationsdomain.ActionRightsPolicyCreated, operationsdomain.ActionRightsDecisionBatchRecorded,
+		operationsdomain.ActionMetricCapabilityDrafted, operationsdomain.ActionMetricCapabilityPublished, operationsdomain.ActionMetricCapabilityArchived,
 		operationsdomain.ActionSubscriptionCreated, operationsdomain.ActionSubscriptionUpdated, operationsdomain.ActionSubscriptionTokenRotated, operationsdomain.ActionSubscriptionDeleted,
-		operationsdomain.ActionKnowledgeProjectionRejected,
+		operationsdomain.ActionJobCancelled, operationsdomain.ActionJobRetried, operationsdomain.ActionRetentionExecuted,
+		operationsdomain.ActionKnowledgeProjectionRejected, operationsdomain.ActionReportContentRejected, operationsdomain.ActionRequestBoundaryRejected,
 	} {
 		if !action.Valid() {
 			t.Errorf("whitelisted action %q is invalid", action)

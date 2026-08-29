@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
@@ -29,6 +30,7 @@ func TestCollectionAdminHTTPIntegrationUsesSafeDTOsAndDurableStateCommands(t *te
 		Connectors: collectionHTTPRegistry{connector: collectionHTTPConnector{health: domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.CollectionErrorTemporary, DiagnosticCode: "request_failed"}}},
 		Retries:    collectionHTTPRetryActivator{},
 		Now:        func() time.Time { return checkedAt },
+		Audit:      operationspostgres.NewAuditWriter(runtime),
 	})
 	if err != nil {
 		t.Fatalf("NewCollectionControlService(): %v", err)

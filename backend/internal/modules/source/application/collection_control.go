@@ -9,10 +9,12 @@ import (
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
+	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
 )
 
 // CollectionControlDependencies are separate from CollectionDependencies:
@@ -30,6 +32,7 @@ type CollectionControlDependencies struct {
 	Now        func() time.Time
 	Quota      operationsapplication.QuotaGuard
 	Monitors   MonitorContributionAuthorizer
+	Audit      operationsapplication.AuditWriter
 }
 
 type MonitorContributionAuthorizer interface {
@@ -58,10 +61,11 @@ type CollectionControlService struct {
 	now        func() time.Time
 	quota      operationsapplication.QuotaGuard
 	monitors   MonitorContributionAuthorizer
+	audit      operationsapplication.AuditWriter
 }
 
 func NewCollectionControlService(dependencies CollectionControlDependencies) (*CollectionControlService, error) {
-	if dependencies.Runtime == nil || dependencies.Sources == nil || dependencies.Runs == nil || dependencies.Connectors == nil || dependencies.Retries == nil {
+	if dependencies.Runtime == nil || dependencies.Sources == nil || dependencies.Runs == nil || dependencies.Connectors == nil || dependencies.Retries == nil || dependencies.Audit == nil {
 		return nil, errors.New("collection control dependencies are required")
 	}
 	if dependencies.Metrics == nil {
@@ -74,7 +78,7 @@ func NewCollectionControlService(dependencies CollectionControlDependencies) (*C
 		runtime: dependencies.Runtime, sources: dependencies.Sources, runs: dependencies.Runs,
 		connectors: dependencies.Connectors, metrics: dependencies.Metrics, retries: dependencies.Retries,
 		manuals: dependencies.Manuals, targets: dependencies.Targets, now: dependencies.Now, quota: dependencies.Quota,
-		scans: dependencies.Scans, monitors: dependencies.Monitors,
+		scans: dependencies.Scans, monitors: dependencies.Monitors, audit: dependencies.Audit,
 	}, nil
 }
 
@@ -192,6 +196,14 @@ func (service *CollectionControlService) Manual(ctx context.Context, input Manua
 			if err := service.quota.RecordManualSearch(transactionCtx, input.Subject.UserID, now); err != nil {
 				return err
 			}
+		}
+		if err := service.audit.Write(transactionCtx, operationsdomain.AuditEntry{
+			ActorType: "user", ActorID: input.Subject.UserID, Action: operationsdomain.ActionCollectionManualRequested,
+			ResourceType: "monitor", ResourceID: input.MonitorID,
+			RequestID: requestcontext.RequestID(transactionCtx), TraceID: requestcontext.TraceID(transactionCtx),
+			Result: operationsdomain.AuditResultSuccess,
+		}); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -322,7 +334,15 @@ func (service *CollectionControlService) Retry(ctx context.Context, input Collec
 		}
 		var err error
 		summary, err = service.runs.RetryRunWithHook(transactionCtx, input.ID, service.retries.Reactivate)
-		return err
+		if err != nil {
+			return err
+		}
+		return service.audit.Write(transactionCtx, operationsdomain.AuditEntry{
+			ActorType: "user", ActorID: input.Subject.UserID, Action: operationsdomain.ActionCollectionRetryRequested,
+			ResourceType: "collection_run", ResourceID: input.ID,
+			RequestID: requestcontext.RequestID(transactionCtx), TraceID: requestcontext.TraceID(transactionCtx),
+			Result: operationsdomain.AuditResultSuccess,
+		})
 	})
 	if err != nil {
 		service.metrics.RecordCollectionOperation("retry", "error")
@@ -364,7 +384,7 @@ func (service *CollectionControlService) Health(ctx context.Context, input Sourc
 	if !probe.Healthy {
 		result.ErrorCode = safeHealthCode(probe.DiagnosticCode)
 	}
-	if err := service.persistHealth(ctx, *connection, probe); err != nil {
+	if err := service.persistHealth(ctx, input.Subject, *connection, probe); err != nil {
 		service.metrics.RecordCollectionOperation("health", "error")
 		return domain.SourceHealth{}, err
 	}
@@ -376,7 +396,7 @@ func (service *CollectionControlService) Health(ctx context.Context, input Sourc
 	return result, nil
 }
 
-func (service *CollectionControlService) persistHealth(ctx context.Context, observed domain.SourceConnection, probe domain.HealthResult) error {
+func (service *CollectionControlService) persistHealth(ctx context.Context, subject identitydomain.Subject, observed domain.SourceConnection, probe domain.HealthResult) error {
 	if service == nil || service.runtime == nil {
 		return sharederrors.New(sharederrors.CodeUnavailable, 503, "")
 	}
@@ -393,7 +413,16 @@ func (service *CollectionControlService) persistHealth(ctx context.Context, obse
 		if err := service.sources.Update(ctx, &next); err != nil {
 			return sourceHealthWriteError(err)
 		}
-		return nil
+		after := sourceMetadata(next)
+		if !probe.Healthy {
+			after["reason_code"] = safeHealthCode(probe.DiagnosticCode)
+		}
+		return service.audit.Write(ctx, operationsdomain.AuditEntry{
+			ActorType: "user", ActorID: subject.UserID, Action: operationsdomain.ActionSourceHealthChecked,
+			ResourceType: "source_connection", ResourceID: observed.ID,
+			RequestID: requestcontext.RequestID(ctx), TraceID: requestcontext.TraceID(ctx),
+			Before: sourceMetadata(*current), After: after, Result: operationsdomain.AuditResultSuccess,
+		})
 	})
 }
 

@@ -30,7 +30,12 @@ const (
 	ActionSourceDisabled              AuditAction = "source.disabled"
 	ActionSourceArchived              AuditAction = "source.archived"
 	ActionSourceRestored              AuditAction = "source.restored"
+	ActionSourceCredentialChanged     AuditAction = "source_credential.changed"
+	ActionSourceBudgetUpdated         AuditAction = "source_budget.updated"
+	ActionSourceHealthChecked         AuditAction = "source.health_checked"
 	ActionSourceCredentialsRotated    AuditAction = "source_credentials.rotated"
+	ActionCollectionManualRequested   AuditAction = "collection.manual_requested"
+	ActionCollectionRetryRequested    AuditAction = "collection.retry_requested"
 	ActionCollectionSecurityRejected  AuditAction = "collection.security_rejected"
 	ActionRightsPolicyCreated         AuditAction = "rights_policy.created"
 	ActionRightsDecisionBatchRecorded AuditAction = "rights_decision_batch.recorded"
@@ -56,9 +61,10 @@ const (
 var allowedActions = map[AuditAction]struct{}{
 	ActionMonitorCreated: {}, ActionMonitorDraftUpdated: {}, ActionMonitorAICandidateCreated: {}, ActionMonitorAICandidateApproved: {}, ActionMonitorAICandidateRejected: {},
 	ActionMonitorPublished: {}, ActionMonitorPaused: {}, ActionMonitorResumed: {}, ActionMonitorArchived: {}, ActionMonitorRestored: {}, ActionMonitorDeleted: {},
-	ActionSourceCreated: {}, ActionSourceUpdated: {}, ActionSourceEnabled: {}, ActionSourceDisabled: {}, ActionSourceArchived: {}, ActionSourceRestored: {}, ActionSourceCredentialsRotated: {},
-	ActionCollectionSecurityRejected: {},
-	ActionRightsPolicyCreated:        {}, ActionRightsDecisionBatchRecorded: {},
+	ActionSourceCreated: {}, ActionSourceUpdated: {}, ActionSourceEnabled: {}, ActionSourceDisabled: {}, ActionSourceArchived: {}, ActionSourceRestored: {},
+	ActionSourceCredentialChanged: {}, ActionSourceBudgetUpdated: {}, ActionSourceHealthChecked: {}, ActionSourceCredentialsRotated: {},
+	ActionCollectionManualRequested: {}, ActionCollectionRetryRequested: {}, ActionCollectionSecurityRejected: {},
+	ActionRightsPolicyCreated: {}, ActionRightsDecisionBatchRecorded: {},
 	ActionMetricCapabilityDrafted: {}, ActionMetricCapabilityPublished: {}, ActionMetricCapabilityArchived: {},
 	ActionSubscriptionCreated: {}, ActionSubscriptionUpdated: {}, ActionSubscriptionTokenRotated: {}, ActionSubscriptionDeleted: {},
 	ActionJobCancelled: {}, ActionJobRetried: {},
