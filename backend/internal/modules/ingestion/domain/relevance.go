@@ -118,6 +118,7 @@ type RelevanceCandidate struct {
 }
 
 type RelevanceSnapshotCursor struct {
+	SnapshotID int64
 	FinalScore float64
 	ID         int64
 }
@@ -164,7 +165,8 @@ func (input SuccessfulReviewInput) Validate() error {
 
 func (query RelevanceSnapshotListQuery) Validate() error {
 	if query.Limit < 1 || query.Limit > 100 || query.Decision != nil && !query.Decision.Valid() ||
-		query.Cursor != nil && (!validRelevanceScore(query.Cursor.FinalScore) || query.Cursor.ID <= 0) {
+		query.Cursor != nil && (!validRelevanceScore(query.Cursor.FinalScore) || query.Cursor.ID <= 0 ||
+			query.Cursor.SnapshotID < query.Cursor.ID) {
 		return fmt.Errorf("invalid relevance snapshot list query")
 	}
 	return nil

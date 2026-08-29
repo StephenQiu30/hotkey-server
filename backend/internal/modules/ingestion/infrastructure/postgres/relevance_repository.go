@@ -201,9 +201,16 @@ func (repository *RelevanceRepository) ListLatestSnapshots(ctx context.Context, 
 	}
 	var cursorScore any
 	var cursorID int64
+	var snapshotID int64
 	if query.Cursor != nil {
 		cursorScore = query.Cursor.FinalScore
 		cursorID = query.Cursor.ID
+		snapshotID = query.Cursor.SnapshotID
+	} else if err := repository.queryRow(ctx, `
+SELECT COALESCE(max(id), 0)
+FROM monitor_matches
+WHERE monitor_id = $1`, monitorID).Scan(&snapshotID); err != nil {
+		return ingestiondomain.RelevanceSnapshotPage{}, databaserepository.MapError(err)
 	}
 
 	rows, err := repository.queryRows(ctx, `
@@ -212,16 +219,17 @@ WITH latest AS (
     FROM monitor_matches AS match
     JOIN contents AS content ON content.id = match.content_id
     WHERE match.monitor_id = $1
+      AND match.id <= $2
       AND content.content_status = 'active'
       AND content.deleted_at IS NULL
     ORDER BY match.monitor_config_version_id, match.content_id, match.created_at DESC, match.id DESC
 )
 SELECT `+snapshotColumns("match")+`
 FROM latest AS match
-WHERE ($2::varchar IS NULL OR match.decision = $2)
-  AND ($3::numeric IS NULL OR (match.final_score, match.id) < ($3, $4))
+WHERE ($3::varchar IS NULL OR match.decision = $3)
+  AND ($4::numeric IS NULL OR (match.final_score, match.id) < ($4, $5))
 ORDER BY match.final_score DESC, match.id DESC
-LIMIT $5`, monitorID, decision, cursorScore, cursorID, query.Limit+1)
+LIMIT $6`, monitorID, snapshotID, decision, cursorScore, cursorID, query.Limit+1)
 	if err != nil {
 		return ingestiondomain.RelevanceSnapshotPage{}, databaserepository.MapError(err)
 	}
@@ -234,7 +242,8 @@ LIMIT $5`, monitorID, decision, cursorScore, cursorID, query.Limit+1)
 			return ingestiondomain.RelevanceSnapshotPage{}, databaserepository.MapError(err)
 		}
 		if len(page.Items) == query.Limit {
-			page.Next = &ingestiondomain.RelevanceSnapshotCursor{FinalScore: page.Items[len(page.Items)-1].FinalScore, ID: page.Items[len(page.Items)-1].ID}
+			last := page.Items[len(page.Items)-1]
+			page.Next = &ingestiondomain.RelevanceSnapshotCursor{SnapshotID: snapshotID, FinalScore: last.FinalScore, ID: last.ID}
 			break
 		}
 		page.Items = append(page.Items, snapshot)

@@ -542,6 +542,7 @@ func relevanceSubject(c *gin.Context) (identitydomain.Subject, error) {
 type relevanceMatchCursorPayload struct {
 	MonitorID  int64   `json:"monitor_id"`
 	Decision   string  `json:"decision"`
+	SnapshotID int64   `json:"snapshot_id"`
 	FinalScore float64 `json:"final_score"`
 	ID         int64   `json:"id"`
 }
@@ -558,17 +559,19 @@ func encodeMatchCursor(codec *pagination.Codec, monitorID int64, decision *inges
 		return "", nil
 	}
 	return codec.Seal("relevance_match_list", relevanceMatchCursorPayload{
-		MonitorID: monitorID, Decision: relevanceMatchDecisionScope(decision), FinalScore: cursor.FinalScore, ID: cursor.ID,
+		MonitorID: monitorID, Decision: relevanceMatchDecisionScope(decision), SnapshotID: cursor.SnapshotID,
+		FinalScore: cursor.FinalScore, ID: cursor.ID,
 	})
 }
 
 func decodeMatchCursor(codec *pagination.Codec, raw string, monitorID int64, decision *ingestiondomain.MatchDecision) (*ingestiondomain.RelevanceSnapshotCursor, error) {
 	var payload relevanceMatchCursorPayload
 	if err := codec.Open(raw, "relevance_match_list", &payload); err != nil || payload.MonitorID != monitorID ||
-		payload.Decision != relevanceMatchDecisionScope(decision) || payload.ID <= 0 || payload.FinalScore < 0 || payload.FinalScore > 100 {
+		payload.Decision != relevanceMatchDecisionScope(decision) || payload.ID <= 0 || payload.SnapshotID < payload.ID ||
+		payload.FinalScore < 0 || payload.FinalScore > 100 {
 		return nil, invalidRequest(fmt.Errorf("invalid relevance match cursor"))
 	}
-	return &ingestiondomain.RelevanceSnapshotCursor{FinalScore: payload.FinalScore, ID: payload.ID}, nil
+	return &ingestiondomain.RelevanceSnapshotCursor{SnapshotID: payload.SnapshotID, FinalScore: payload.FinalScore, ID: payload.ID}, nil
 }
 
 func encodeSuggestionCursor(codec *pagination.Codec, monitorID int64, status *ingestiondomain.SuggestionStatus, cursor *ingestiondomain.RelevanceSuggestionCursor) (string, error) {

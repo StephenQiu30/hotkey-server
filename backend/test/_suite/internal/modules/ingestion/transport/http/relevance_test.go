@@ -132,11 +132,11 @@ func TestPlan009RelevanceRoutes(t *testing.T) {
 func TestRelevanceCursorsRejectTamperingAndCrossQueryReuse(t *testing.T) {
 	codec := pagination.NewTestCodec("relevance-query-binding")
 	accepted := ingestiondomain.MatchDecisionAccepted
-	matchCursor, err := encodeMatchCursor(codec, 7, &accepted, &ingestiondomain.RelevanceSnapshotCursor{FinalScore: 91, ID: 42})
+	matchCursor, err := encodeMatchCursor(codec, 7, &accepted, &ingestiondomain.RelevanceSnapshotCursor{SnapshotID: 84, FinalScore: 91, ID: 42})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decoded, err := decodeMatchCursor(codec, matchCursor, 7, &accepted); err != nil || decoded.ID != 42 {
+	if decoded, err := decodeMatchCursor(codec, matchCursor, 7, &accepted); err != nil || decoded.ID != 42 || decoded.SnapshotID != 84 {
 		t.Fatalf("decode bound match cursor = %#v / %v", decoded, err)
 	}
 	if _, err := decodeMatchCursor(codec, matchCursor, 8, &accepted); err == nil {

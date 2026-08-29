@@ -122,6 +122,53 @@ func TestPlan009RelevanceSnapshotRepository(t *testing.T) {
 	}
 }
 
+func TestRelevanceMatchListCursorKeepsFirstPageHighWaterAcrossConcurrentInsert(t *testing.T) {
+	runtime, fixture := openRelevanceRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := ingestionpostgres.NewRelevanceRepository(runtime)
+	ctx := context.Background()
+
+	var originalIDs []int64
+	for index, score := range []float64{90, 80, 70} {
+		contentID := fixture.contentID
+		if index > 0 {
+			contentID = createRelevanceContent(t, runtime, fixture.sourceID, fmt.Sprintf("cursor-original-%d", index))
+		}
+		input := relevanceSnapshotInput(fixture, strings.Repeat(string(rune('a'+index)), 64))
+		input.ContentID = contentID
+		input.RuleScore, input.FinalScore, input.SemanticScore = score, score, float64Pointer(score)
+		input.Explanation = relevanceExplanation(score)
+		stored, created, err := repository.UpsertSnapshot(ctx, input)
+		if err != nil || !created {
+			t.Fatalf("create original relevance snapshot %d: created=%t err=%v", index, created, err)
+		}
+		originalIDs = append(originalIDs, stored.ID)
+	}
+
+	first, err := repository.ListLatestSnapshots(ctx, fixture.monitorID, ingestiondomain.RelevanceSnapshotListQuery{Limit: 2})
+	if err != nil || len(first.Items) != 2 || first.Items[0].ID != originalIDs[0] || first.Items[1].ID != originalIDs[1] || first.Next == nil {
+		t.Fatalf("first relevance page = %#v / %v", first, err)
+	}
+
+	concurrentContentID := createRelevanceContent(t, runtime, fixture.sourceID, "cursor-concurrent")
+	concurrent := relevanceSnapshotInput(fixture, strings.Repeat("d", 64))
+	concurrent.ContentID = concurrentContentID
+	concurrent.RuleScore, concurrent.FinalScore, concurrent.SemanticScore = 60, 60, float64Pointer(60)
+	concurrent.Explanation = relevanceExplanation(60)
+	concurrentSnapshot, created, err := repository.UpsertSnapshot(ctx, concurrent)
+	if err != nil || !created {
+		t.Fatalf("create concurrent relevance snapshot: created=%t err=%v", created, err)
+	}
+
+	second, err := repository.ListLatestSnapshots(ctx, fixture.monitorID, ingestiondomain.RelevanceSnapshotListQuery{Limit: 2, Cursor: first.Next})
+	if err != nil {
+		t.Fatalf("second relevance page: %v", err)
+	}
+	if len(second.Items) != 1 || second.Items[0].ID != originalIDs[2] || second.Items[0].ID == concurrentSnapshot.ID || second.Next != nil {
+		t.Fatalf("second relevance page absorbed a concurrent insert: %#v", second)
+	}
+}
+
 func TestPlan009FeedbackRepositoryUsesOwnVersion(t *testing.T) {
 	runtime, fixture := openRelevanceRuntime(t)
 	defer func() { _ = runtime.Close() }()
