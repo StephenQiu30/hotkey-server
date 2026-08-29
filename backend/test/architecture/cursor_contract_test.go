@@ -20,6 +20,10 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 		"internal/modules/ingestion/infrastructure/postgres/repository.go": {
 			"NewContentRepositoryWithCursorCodec", `cursorCodec.Seal("content_list"`, `cursorCodec.Open(query.Cursor, "content_list"`,
 		},
+		"internal/modules/ingestion/infrastructure/postgres/document_match_query_repository.go": {
+			`document-match-list-v1:%d:%s`, `cursorCodec.Decode(query.Cursor, "document_match_decision_id", true, fingerprint)`,
+			`"document_match_decision_id", true, fingerprint`,
+		},
 		"internal/modules/monitor/infrastructure/postgres/repository.go": {
 			"NewRepositoryWithCursorCodec", `cursorCodec.Seal("monitor_list"`, `cursorCodec.Open(query.Cursor, "monitor_list"`,
 		},
@@ -29,6 +33,10 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 		"internal/modules/source/infrastructure/postgres/collection_repository.go": {
 			"NewCollectionRepositoryWithCursorCodec", `cursorCodec.Seal("collection_run_list"`, `cursorCodec.Open(query.Cursor, "collection_run_list"`,
 			`cursorCodec.Seal("captured_item_list"`, `cursorCodec.Open(query.Cursor, "captured_item_list"`,
+		},
+		"internal/modules/source/infrastructure/postgres/rights_management_projection_repository.go": {
+			`rightsProjectionPageParameters("policies"`, `rightsProjectionPageParameters("decision-batches"`,
+			`cursorCodec.Decode(encodedCursor, "id", true, fingerprint)`, `cursorCodec.Encode("id", true, fingerprint`,
 		},
 		"internal/modules/report/infrastructure/postgres/repository.go": {
 			"NewRepositoryWithCursorCodec", `cursorCodec.Decode(query.Cursor, "id", true, reportListFingerprint(query))`,
@@ -47,7 +55,10 @@ func TestP0UserListCursorsUseSignedExpiringCodec(t *testing.T) {
 			"hmac.Equal", "ErrExpiredCursor", "ErrStaleCursor", "maximumEncodedCursorSize",
 		},
 		"internal/bootstrap/pagination.go": {
-			"pagination.NewCodec", "NewRepositoryWithCursorCodec", "NewMicroEventQueryPostgresRepositoryWithCursorCodec", "newContentRepository", "newReportRepository", "newJobRepository", "newGovernanceRepository",
+			"pagination.NewCodec", "NewRepositoryWithCursorCodec", "NewMicroEventQueryPostgresRepositoryWithCursorCodec", "newRightsManagementRepository", "newContentRepository", "newReportRepository", "newJobRepository", "newGovernanceRepository",
+		},
+		"internal/bootstrap/monitor_intent_expansion.go": {
+			"newDocumentMatchRepository", "NewDocumentMatchRepositoryWithCursorCodec",
 		},
 	}
 	for relative, required := range contracts {

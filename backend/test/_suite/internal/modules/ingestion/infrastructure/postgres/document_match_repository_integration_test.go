@@ -10,6 +10,7 @@ import (
 
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	sharedpagination "github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
@@ -79,6 +80,102 @@ func TestDocumentMatchRepositoryPersistsAtomicExactVersionBatchAndReplays(t *tes
 	}
 	if len(secondPage.Items) != 1 || secondPage.NextCursor != "" || secondPage.Items[0].Automatic.ID == firstPage.Items[0].Automatic.ID {
 		t.Fatalf("second document match page = %#v", secondPage)
+	}
+}
+
+func TestDocumentMatchListCursorIsSignedBoundExpiringAndStableAcrossConcurrentInsert(t *testing.T) {
+	runtime := openDocumentMatchRuntime(t)
+	defer runtime.Close()
+	fixture := createDocumentMatchFixture(t, runtime, "list-cursor")
+	codec, err := sharedpagination.NewCodec(strings.Repeat("document-match-list-secret-", 2), time.Minute)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(): %v", err)
+	}
+	repository, err := NewDocumentMatchRepositoryWithCursorCodec(runtime, codec)
+	if err != nil {
+		t.Fatalf("NewDocumentMatchRepositoryWithCursorCodec(): %v", err)
+	}
+	thirdDocumentVersionID := insertDocumentMatchVersion(t, runtime, "list-cursor-third", 3)
+	stored, err := repository.PersistAutomaticDocumentMatches(context.Background(), []ingestionapplication.PersistAutomaticDocumentMatchCommand{
+		documentMatchCommand(fixture, fixture.firstDocumentVersionID, 'a'),
+		documentMatchCommand(fixture, fixture.secondDocumentVersionID, 'b'),
+		documentMatchCommand(fixture, thirdDocumentVersionID, 'c'),
+	})
+	if err != nil {
+		t.Fatalf("persist document match cursor fixtures: %v", err)
+	}
+
+	first, err := repository.ListDocumentMatches(context.Background(), ingestionapplication.ListDocumentMatchesQuery{
+		ActorUserID: fixture.viewerUserID, MonitorID: fixture.monitorID, EffectiveDecision: "review", Limit: 2,
+	})
+	if err != nil || len(first.Items) != 2 || first.Items[0].Automatic.ID != stored[2].ID ||
+		first.Items[1].Automatic.ID != stored[1].ID || first.NextCursor == "" || !strings.Contains(first.NextCursor, ".") {
+		t.Fatalf("first document match cursor page = %#v / %v", first, err)
+	}
+	tampered := "A" + first.NextCursor[1:]
+	if first.NextCursor[0] == 'A' {
+		tampered = "B" + first.NextCursor[1:]
+	}
+	for name, query := range map[string]ingestionapplication.ListDocumentMatchesQuery{
+		"tampered": {
+			ActorUserID: fixture.viewerUserID, MonitorID: fixture.monitorID, EffectiveDecision: "review", Cursor: tampered, Limit: 2,
+		},
+		"cross monitor": {
+			ActorUserID: fixture.viewerUserID, MonitorID: fixture.monitorID + 999999, EffectiveDecision: "review", Cursor: first.NextCursor, Limit: 2,
+		},
+		"cross filter": {
+			ActorUserID: fixture.viewerUserID, MonitorID: fixture.monitorID, EffectiveDecision: "accepted", Cursor: first.NextCursor, Limit: 2,
+		},
+	} {
+		if _, err := repository.ListDocumentMatches(context.Background(), query); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+			t.Fatalf("%s document match cursor error = %v", name, err)
+		}
+	}
+
+	concurrentDocumentVersionID := insertDocumentMatchVersion(t, runtime, "list-cursor-concurrent", 4)
+	concurrent, err := repository.PersistAutomaticDocumentMatches(context.Background(), []ingestionapplication.PersistAutomaticDocumentMatchCommand{
+		documentMatchCommand(fixture, concurrentDocumentVersionID, 'd'),
+	})
+	if err != nil {
+		t.Fatalf("persist concurrent document match: %v", err)
+	}
+	second, err := repository.ListDocumentMatches(context.Background(), ingestionapplication.ListDocumentMatchesQuery{
+		ActorUserID: fixture.viewerUserID, MonitorID: fixture.monitorID, EffectiveDecision: "review", Cursor: first.NextCursor, Limit: 2,
+	})
+	if err != nil || len(second.Items) != 1 || second.Items[0].Automatic.ID != stored[0].ID || second.NextCursor != "" {
+		t.Fatalf("second document match cursor page = %#v / %v", second, err)
+	}
+	fresh, err := repository.ListDocumentMatches(context.Background(), ingestionapplication.ListDocumentMatchesQuery{
+		ActorUserID: fixture.viewerUserID, MonitorID: fixture.monitorID, EffectiveDecision: "review", Limit: 1,
+	})
+	if err != nil || len(fresh.Items) != 1 || fresh.Items[0].Automatic.ID != concurrent[0].ID {
+		t.Fatalf("fresh document match cursor page = %#v / %v", fresh, err)
+	}
+	if _, err := repository.ListDocumentMatches(context.Background(), ingestionapplication.ListDocumentMatchesQuery{
+		ActorUserID: fixture.viewerUserID, MonitorID: fixture.monitorID, Limit: ingestionapplication.MaximumDocumentMatchPageSize + 1,
+	}); !errors.Is(err, ingestionapplication.ErrInvalidDocumentMatchContract) {
+		t.Fatalf("oversized document match page error = %v", err)
+	}
+
+	shortCodec, err := sharedpagination.NewCodec(strings.Repeat("short-document-match-secret-", 2), time.Millisecond)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(short): %v", err)
+	}
+	shortRepository, err := NewDocumentMatchRepositoryWithCursorCodec(runtime, shortCodec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiring, err := shortRepository.ListDocumentMatches(context.Background(), ingestionapplication.ListDocumentMatchesQuery{
+		ActorUserID: fixture.viewerUserID, MonitorID: fixture.monitorID, EffectiveDecision: "review", Limit: 1,
+	})
+	if err != nil || expiring.NextCursor == "" {
+		t.Fatalf("expiring document match page = %#v / %v", expiring, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := shortRepository.ListDocumentMatches(context.Background(), ingestionapplication.ListDocumentMatchesQuery{
+		ActorUserID: fixture.viewerUserID, MonitorID: fixture.monitorID, EffectiveDecision: "review", Cursor: expiring.NextCursor, Limit: 1,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired document match cursor error = %v", err)
 	}
 }
 

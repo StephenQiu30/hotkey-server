@@ -3,12 +3,14 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
 	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/pagination"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 )
 
@@ -105,6 +107,153 @@ func TestRightsManagementProjectionReadsEndpointHistoryWithBoundCursors(t *testi
 	}
 	if strings.Contains(loaded.BasisSummary, "object_key") {
 		t.Fatalf("decision projection leaked an object address: %#v", loaded)
+	}
+}
+
+func TestRightsManagementProjectionListCursorsAreSignedBoundExpiringAndStable(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	codec, err := pagination.NewCodec(strings.Repeat("rights-history-cursor-secret-", 2), time.Minute)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(): %v", err)
+	}
+	repository := sourcepostgres.NewRightsManagementRepositoryWithCursorCodec(runtime, codec)
+	ctx := context.Background()
+	sourceID := insertRightsManagementSource(t, runtime.SQL, "projection-cursor-matrix")
+	otherSourceID := insertRightsManagementSource(t, runtime.SQL, "projection-cursor-matrix-other")
+	actorID := insertRightsFixtureActor(t, runtime.SQL, "projection-cursor-matrix")
+
+	policies := make([]sourceapplication.RightsPolicyDTO, 0, 3)
+	for index := 1; index <= 3; index++ {
+		request := rightsManagementPolicyRequest(
+			sourceID, actorID, fmt.Sprintf("policy.projection.cursor.%d", index), rightsFixtureDigest("projection-cursor-policy", fmt.Sprint(index)), int64(60+index),
+		)
+		stored, err := repository.CreateRightsPolicy(ctx, request)
+		if err != nil {
+			t.Fatalf("create cursor policy %d: %v", index, err)
+		}
+		policies = append(policies, stored.Policy)
+	}
+	policyFirst, err := repository.ListRightsPolicies(ctx, sourceapplication.ListRightsPoliciesRepositoryDTO{SourceEndpointID: sourceID, Limit: 2})
+	if err != nil || len(policyFirst.Items) != 2 || policyFirst.Items[0].ID != policies[2].ID ||
+		policyFirst.Items[1].ID != policies[1].ID || policyFirst.NextCursor == "" || !strings.Contains(policyFirst.NextCursor, ".") {
+		t.Fatalf("first rights policy cursor page = %#v / %v", policyFirst, err)
+	}
+	policyTampered := "A" + policyFirst.NextCursor[1:]
+	if policyFirst.NextCursor[0] == 'A' {
+		policyTampered = "B" + policyFirst.NextCursor[1:]
+	}
+	for name, query := range map[string]sourceapplication.ListRightsPoliciesRepositoryDTO{
+		"tampered":       {SourceEndpointID: sourceID, Cursor: policyTampered, Limit: 2},
+		"cross endpoint": {SourceEndpointID: otherSourceID, Cursor: policyFirst.NextCursor, Limit: 2},
+	} {
+		if _, err := repository.ListRightsPolicies(ctx, query); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+			t.Fatalf("%s rights policy cursor error = %v", name, err)
+		}
+	}
+	concurrentPolicyRequest := rightsManagementPolicyRequest(
+		sourceID, actorID, "policy.projection.cursor.concurrent", rightsFixtureDigest("projection-cursor-policy-concurrent"), 64,
+	)
+	concurrentPolicy, err := repository.CreateRightsPolicy(ctx, concurrentPolicyRequest)
+	if err != nil {
+		t.Fatalf("create concurrent cursor policy: %v", err)
+	}
+	policySecond, err := repository.ListRightsPolicies(ctx, sourceapplication.ListRightsPoliciesRepositoryDTO{
+		SourceEndpointID: sourceID, Cursor: policyFirst.NextCursor, Limit: 2,
+	})
+	if err != nil || len(policySecond.Items) != 1 || policySecond.Items[0].ID != policies[0].ID || policySecond.NextCursor != "" {
+		t.Fatalf("second rights policy cursor page = %#v / %v", policySecond, err)
+	}
+	policyFresh, err := repository.ListRightsPolicies(ctx, sourceapplication.ListRightsPoliciesRepositoryDTO{SourceEndpointID: sourceID, Limit: 1})
+	if err != nil || len(policyFresh.Items) != 1 || policyFresh.Items[0].ID != concurrentPolicy.Policy.ID {
+		t.Fatalf("fresh rights policy cursor page = %#v / %v", policyFresh, err)
+	}
+
+	batches := make([]sourceapplication.RecordRightsDecisionRepositoryResultDTO, 0, len(policies))
+	for index, policy := range policies {
+		request := rightsManagementDecisionRequest(
+			sourceID, actorID, policy, fmt.Sprintf("decision.projection.cursor.%d", index+1), rightsFixtureDigest("projection-cursor-decision", fmt.Sprint(index+1)),
+		)
+		stored, err := repository.RecordRightsDecisions(ctx, request)
+		if err != nil {
+			t.Fatalf("create cursor decision batch %d: %v", index+1, err)
+		}
+		batches = append(batches, stored)
+	}
+	batchFirst, err := repository.ListRightsDecisionBatches(ctx, sourceapplication.ListRightsDecisionBatchesRepositoryDTO{SourceEndpointID: sourceID, Limit: 2})
+	if err != nil || len(batchFirst.Items) != 2 || batchFirst.Items[0].ID != batches[2].DecisionBatchID ||
+		batchFirst.Items[1].ID != batches[1].DecisionBatchID || batchFirst.NextCursor == "" || !strings.Contains(batchFirst.NextCursor, ".") {
+		t.Fatalf("first rights decision batch cursor page = %#v / %v", batchFirst, err)
+	}
+	batchTampered := "A" + batchFirst.NextCursor[1:]
+	if batchFirst.NextCursor[0] == 'A' {
+		batchTampered = "B" + batchFirst.NextCursor[1:]
+	}
+	for name, query := range map[string]sourceapplication.ListRightsDecisionBatchesRepositoryDTO{
+		"tampered":       {SourceEndpointID: sourceID, Cursor: batchTampered, Limit: 2},
+		"cross endpoint": {SourceEndpointID: otherSourceID, Cursor: batchFirst.NextCursor, Limit: 2},
+		"policy cursor":  {SourceEndpointID: sourceID, Cursor: policyFirst.NextCursor, Limit: 2},
+	} {
+		if _, err := repository.ListRightsDecisionBatches(ctx, query); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+			t.Fatalf("%s rights decision batch cursor error = %v", name, err)
+		}
+	}
+	if _, err := repository.ListRightsPolicies(ctx, sourceapplication.ListRightsPoliciesRepositoryDTO{
+		SourceEndpointID: sourceID, Cursor: batchFirst.NextCursor, Limit: 2,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("decision batch cursor crossed into policy list: %v", err)
+	}
+	concurrentBatchRequest := rightsManagementDecisionRequest(
+		sourceID, actorID, concurrentPolicy.Policy, "decision.projection.cursor.concurrent", rightsFixtureDigest("projection-cursor-decision-concurrent"),
+	)
+	concurrentBatch, err := repository.RecordRightsDecisions(ctx, concurrentBatchRequest)
+	if err != nil {
+		t.Fatalf("create concurrent cursor decision batch: %v", err)
+	}
+	batchSecond, err := repository.ListRightsDecisionBatches(ctx, sourceapplication.ListRightsDecisionBatchesRepositoryDTO{
+		SourceEndpointID: sourceID, Cursor: batchFirst.NextCursor, Limit: 2,
+	})
+	if err != nil || len(batchSecond.Items) != 1 || batchSecond.Items[0].ID != batches[0].DecisionBatchID || batchSecond.NextCursor != "" {
+		t.Fatalf("second rights decision batch cursor page = %#v / %v", batchSecond, err)
+	}
+	batchFresh, err := repository.ListRightsDecisionBatches(ctx, sourceapplication.ListRightsDecisionBatchesRepositoryDTO{SourceEndpointID: sourceID, Limit: 1})
+	if err != nil || len(batchFresh.Items) != 1 || batchFresh.Items[0].ID != concurrentBatch.DecisionBatchID {
+		t.Fatalf("fresh rights decision batch cursor page = %#v / %v", batchFresh, err)
+	}
+	if _, err := repository.ListRightsPolicies(ctx, sourceapplication.ListRightsPoliciesRepositoryDTO{
+		SourceEndpointID: sourceID, Limit: 101,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("oversized rights policy page error = %v", err)
+	}
+	if _, err := repository.ListRightsDecisionBatches(ctx, sourceapplication.ListRightsDecisionBatchesRepositoryDTO{
+		SourceEndpointID: sourceID, Limit: 101,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("oversized rights decision batch page error = %v", err)
+	}
+
+	shortCodec, err := pagination.NewCodec(strings.Repeat("short-rights-history-secret-", 2), time.Millisecond)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(short): %v", err)
+	}
+	shortRepository := sourcepostgres.NewRightsManagementRepositoryWithCursorCodec(runtime, shortCodec)
+	expiringPolicy, err := shortRepository.ListRightsPolicies(ctx, sourceapplication.ListRightsPoliciesRepositoryDTO{SourceEndpointID: sourceID, Limit: 1})
+	if err != nil || expiringPolicy.NextCursor == "" {
+		t.Fatalf("expiring rights policy page = %#v / %v", expiringPolicy, err)
+	}
+	expiringBatch, err := shortRepository.ListRightsDecisionBatches(ctx, sourceapplication.ListRightsDecisionBatchesRepositoryDTO{SourceEndpointID: sourceID, Limit: 1})
+	if err != nil || expiringBatch.NextCursor == "" {
+		t.Fatalf("expiring rights decision batch page = %#v / %v", expiringBatch, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := shortRepository.ListRightsPolicies(ctx, sourceapplication.ListRightsPoliciesRepositoryDTO{
+		SourceEndpointID: sourceID, Cursor: expiringPolicy.NextCursor, Limit: 1,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired rights policy cursor error = %v", err)
+	}
+	if _, err := shortRepository.ListRightsDecisionBatches(ctx, sourceapplication.ListRightsDecisionBatchesRepositoryDTO{
+		SourceEndpointID: sourceID, Cursor: expiringBatch.NextCursor, Limit: 1,
+	}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired rights decision batch cursor error = %v", err)
 	}
 }
 
