@@ -1,0 +1,157 @@
+{
+  "version": "hotkey-m4-business-flow-capacity-v1",
+  "status": "measured",
+  "approval": "required",
+  "git_revision": "a577fa1f7de64003c3057e9685fc282e03a7057d",
+  "environment": "github-actions-fresh-container",
+  "hardware": "GitHub hosted ubuntu-latest; 4 logical CPU; 16373452 KiB RAM; Docker loopback",
+  "run_id": "m4-capacity-33260393634-1",
+  "percentile_algorithm": "nearest-rank-ceiling",
+  "workload": {
+    "warmups": 2,
+    "samples": 12,
+    "concurrency": 1,
+    "cache_state": "warm",
+    "inter_flow_interval_millis": 31000,
+    "flow": "daily_report_to_notification_to_vault_to_postgresql_search"
+  },
+  "stages": {
+    "report_build": {
+      "samples": 12,
+      "duration_micros": [
+        6714,
+        6752,
+        6896,
+        6897,
+        6909,
+        7092,
+        7110,
+        7149,
+        7192,
+        8164,
+        11993,
+        13794
+      ],
+      "p50_micros": 7092,
+      "p95_micros": 13794,
+      "p99_micros": 13794,
+      "errors": 0
+    },
+    "notification_visibility": {
+      "samples": 12,
+      "duration_micros": [
+        6629,
+        6718,
+        6913,
+        8265,
+        9483,
+        9709,
+        10379,
+        11040,
+        11086,
+        12193,
+        16529,
+        19233
+      ],
+      "p50_micros": 9709,
+      "p95_micros": 19233,
+      "p99_micros": 19233,
+      "errors": 0
+    },
+    "report_publication": {
+      "samples": 12,
+      "duration_micros": [
+        5199,
+        5228,
+        5417,
+        5935,
+        6281,
+        8868,
+        9171,
+        9219,
+        9234,
+        9324,
+        10535,
+        14742
+      ],
+      "p50_micros": 8868,
+      "p95_micros": 14742,
+      "p99_micros": 14742,
+      "errors": 0
+    },
+    "vault_publication": {
+      "samples": 12,
+      "duration_micros": [
+        13905,
+        14281,
+        15398,
+        15505,
+        15525,
+        15552,
+        15661,
+        15942,
+        16136,
+        16515,
+        18189,
+        20987
+      ],
+      "p50_micros": 15552,
+      "p95_micros": 20987,
+      "p99_micros": 20987,
+      "errors": 0
+    },
+    "search_visibility": {
+      "samples": 12,
+      "duration_micros": [
+        6205,
+        6243,
+        6339,
+        6646,
+        7106,
+        7367,
+        8188,
+        8346,
+        8348,
+        8397,
+        9151,
+        10416
+      ],
+      "p50_micros": 7367,
+      "p95_micros": 10416,
+      "p99_micros": 10416,
+      "errors": 0
+    }
+  },
+  "correlation": {
+    "strategy": "x-request-id",
+    "observed": 127,
+    "unique": 127
+  },
+  "privacy": {
+    "retained_fields": [
+      "safe_run_id",
+      "git_revision",
+      "bounded_workload",
+      "duration_micros",
+      "request_correlation_counts"
+    ],
+    "excluded_fields": [
+      "access_token",
+      "authorization",
+      "email",
+      "password",
+      "report_content",
+      "query_text",
+      "vault_path",
+      "host_path"
+    ],
+    "sentinel_leaks": 0
+  },
+  "exclusions": [
+    "external_provider_delivery",
+    "cold_cache",
+    "production_hardware",
+    "production_traffic"
+  ],
+  "errors": 0
+}

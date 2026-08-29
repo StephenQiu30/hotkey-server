@@ -1,0 +1,12 @@
+{
+  "version": "hotkey-sentinel-scan-v1",
+  "run_id": "browser-33260393634-1",
+  "scanned_surfaces": [
+    "container_logs",
+    "audit_logs",
+    "job_errors",
+    "delivery_errors"
+  ],
+  "sentinels": 5,
+  "leaks": 0
+}

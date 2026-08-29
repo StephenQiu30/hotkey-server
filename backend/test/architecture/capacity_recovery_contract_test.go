@@ -273,6 +273,27 @@ func TestM4BusinessFlowCapacityUsesTheFreshStackAndKeepsApprovalExplicit(t *test
 			`hotkey-m4-business-flow-capacity-v1`,
 			`HOTKEY_M4_CAPACITY_PRODUCTION_EGRESS_DISABLED=true`,
 		},
+		"docs/acceptance/evidence/004/m4-business-flow-capacity-github-ubuntu-a577fa1f.json": {
+			`"version": "hotkey-m4-business-flow-capacity-v1"`,
+			`"status": "measured"`,
+			`"approval": "required"`,
+			`"git_revision": "a577fa1f7de64003c3057e9685fc282e03a7057d"`,
+			`"observed": 127`,
+			`"unique": 127`,
+			`"sentinel_leaks": 0`,
+			`"errors": 0`,
+		},
+		"docs/acceptance/evidence/004/m4-sentinel-scan-github-ubuntu-a577fa1f.json": {
+			`"version": "hotkey-sentinel-scan-v1"`,
+			`"sentinels": 5`,
+			`"leaks": 0`,
+		},
+		"docs/acceptance/evidence/004/m4-secret-surface-scan-github-ubuntu-a577fa1f.json": {
+			`"version": "hotkey-secret-surface-scan-v2"`,
+			`"files_scanned": 607`,
+			`"bytes_scanned": 9558825`,
+			`"leaks": []`,
+		},
 	}
 	for relative, required := range contracts {
 		payload := readRepositoryFile(t, repository, relative)
