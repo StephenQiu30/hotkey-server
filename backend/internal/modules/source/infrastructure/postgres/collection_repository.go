@@ -37,9 +37,17 @@ const (
 	collectionCaptureDefaultLimit  = 100
 	collectionCaptureMaximumLimit  = 200
 	collectionCaptureFingerprint   = "captured-items"
+	collectionCaptureCursorVersion = 1
 )
 
 type collectionRunListCursor struct {
+	Version           int    `json:"v"`
+	FilterFingerprint string `json:"filter"`
+	SnapshotID        int64  `json:"snapshot_id"`
+	AfterID           int64  `json:"after_id"`
+}
+
+type capturedItemListCursor struct {
 	Version           int    `json:"v"`
 	FilterFingerprint string `json:"filter"`
 	SnapshotID        int64  `json:"snapshot_id"`
@@ -237,19 +245,19 @@ LIMIT $3`, cursor.AfterID, cursor.SnapshotID, limit+1)
 // stable item-ID cursor lets ingestion resume safely without seeing bound
 // items or changing collection/target outcomes.
 func (repository *CollectionRepository) ListUnboundCaptured(ctx context.Context, query domain.CapturedItemQuery) (domain.CapturedItemPage, error) {
-	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil {
+	if repository == nil || repository.runtime == nil || repository.runtime.SQL == nil || repository.cursorCodec == nil {
 		return domain.CapturedItemPage{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
 		return domain.CapturedItemPage{}, fmt.Errorf("%w: captured item query: %v", sharedrepository.ErrInvalidInput, err)
 	}
-	limit, cursorID, err := repository.capturedItemListParameters(query)
-	if err != nil {
-		return domain.CapturedItemPage{}, err
-	}
 	statuses := []string{"pending"}
 	if query.IncludeFailed {
 		statuses = append(statuses, "failed")
+	}
+	limit, cursor, err := repository.capturedItemListParameters(ctx, query, statuses)
+	if err != nil {
+		return domain.CapturedItemPage{}, err
 	}
 	rows, err := repository.queryRows(ctx, `
 SELECT id, run_id, source_connection_id, captured_item
@@ -259,8 +267,9 @@ WHERE run_id = $1
   AND content_id IS NULL
   AND ingestion_status = ANY($2)
   AND id > $3
+  AND id <= $4
 ORDER BY id ASC
-LIMIT $4`, query.RunID, statuses, cursorID, limit+1)
+LIMIT $5`, query.RunID, statuses, cursor.AfterID, cursor.SnapshotID, limit+1)
 	if err != nil {
 		return domain.CapturedItemPage{}, databaserepository.MapError(err)
 	}
@@ -287,7 +296,8 @@ LIMIT $4`, query.RunID, statuses, cursorID, limit+1)
 		return page, nil
 	}
 	page.Items = page.Items[:limit]
-	page.NextCursor, err = repository.cursorCodec.Encode("id", false, collectionCaptureFingerprint, page.Items[len(page.Items)-1].ID)
+	cursor.AfterID = page.Items[len(page.Items)-1].ID
+	page.NextCursor, err = repository.cursorCodec.Seal("captured_item_list", cursor)
 	if err != nil {
 		return domain.CapturedItemPage{}, fmt.Errorf("%w: encode captured item cursor: %v", sharedrepository.ErrInvalidInput, err)
 	}
@@ -1025,19 +1035,34 @@ func (repository *CollectionRepository) collectionRunListParameters(ctx context.
 	return limit, cursor, nil
 }
 
-func (repository *CollectionRepository) capturedItemListParameters(query domain.CapturedItemQuery) (int, int64, error) {
+func (repository *CollectionRepository) capturedItemListParameters(ctx context.Context, query domain.CapturedItemQuery, statuses []string) (int, capturedItemListCursor, error) {
 	limit := query.Limit
 	if limit == 0 {
 		limit = collectionCaptureDefaultLimit
 	}
 	if limit < 1 || limit > collectionCaptureMaximumLimit {
-		return 0, 0, fmt.Errorf("%w: captured item limit must be from 1 to %d", sharedrepository.ErrInvalidInput, collectionCaptureMaximumLimit)
+		return 0, capturedItemListCursor{}, fmt.Errorf("%w: captured item limit must be from 1 to %d", sharedrepository.ErrInvalidInput, collectionCaptureMaximumLimit)
 	}
-	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", false, collectionCaptureFingerprint)
-	if err != nil {
-		return 0, 0, fmt.Errorf("%w: captured item cursor: %v", sharedrepository.ErrInvalidInput, err)
+	fingerprint := fmt.Sprintf("%s:run=%d:include_failed=%t", collectionCaptureFingerprint, query.RunID, query.IncludeFailed)
+	cursor := capturedItemListCursor{Version: collectionCaptureCursorVersion, FilterFingerprint: fingerprint}
+	if query.Cursor != "" {
+		if err := repository.cursorCodec.Open(query.Cursor, "captured_item_list", &cursor); err != nil ||
+			cursor.Version != collectionCaptureCursorVersion || cursor.FilterFingerprint != fingerprint ||
+			cursor.SnapshotID <= 0 || cursor.AfterID <= 0 || cursor.AfterID >= cursor.SnapshotID {
+			return 0, capturedItemListCursor{}, fmt.Errorf("%w: captured item cursor is invalid", sharedrepository.ErrInvalidInput)
+		}
+		return limit, cursor, nil
 	}
-	return limit, cursor.ID, nil
+	if err := repository.runtime.SQL.QueryRowContext(ctx, `
+SELECT COALESCE(MAX(id), 0)
+FROM collection_run_items
+WHERE run_id = $1
+  AND outcome = 'captured'
+  AND content_id IS NULL
+  AND ingestion_status = ANY($2)`, query.RunID, statuses).Scan(&cursor.SnapshotID); err != nil {
+		return 0, capturedItemListCursor{}, databaserepository.MapError(err)
+	}
+	return limit, cursor, nil
 }
 
 // initialRequestState selects an explicit checkpoint-equivalence group. A

@@ -590,6 +590,108 @@ func TestCollectionRunListCursorIsSignedExpiringAndSnapshotStableAcrossConcurren
 	}
 }
 
+func TestCapturedItemListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert(t *testing.T) {
+	runtime := openRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	codec, err := pagination.NewCodec(strings.Repeat("captured-item-list-secret-", 2), time.Minute)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(): %v", err)
+	}
+	repository := sourcepostgres.NewCollectionRepositoryWithCursorCodec(runtime, codec)
+	createRun := func(name string, count int) (domain.CollectionRun, domain.CollectionRequest) {
+		t.Helper()
+		request := collectionRequestForRepository(t, runtime, name, 1)
+		run, created, err := repository.CreateOrReuseRun(context.Background(), request)
+		if err != nil || !created {
+			t.Fatalf("CreateOrReuseRun(%s) run/created/error = %#v/%t/%v", name, run, created, err)
+		}
+		if _, started, err := repository.StartRun(context.Background(), run.ID, time.Time{}); err != nil || !started {
+			t.Fatalf("StartRun(%s) started/error = %t/%v", name, started, err)
+		}
+		policy := domain.CapturePolicy{Version: domain.CapturedItemVersionV2, RawPayloadDisposition: domain.RawPayloadDiscarded}
+		items := make([]domain.CapturedItem, 0, count)
+		for index := range count {
+			item, err := policy.Capture(domain.SourceItem{
+				SourceCode: "rss", ExternalID: fmt.Sprintf("%s-item-%d", name, index+1), ContentType: "article", ObservedAt: request.WindowStart,
+			})
+			if err != nil {
+				t.Fatalf("Capture(%s, %d): %v", name, index+1, err)
+			}
+			items = append(items, item)
+		}
+		persisted, err := repository.PersistSuccess(context.Background(), domain.CollectionRunSuccess{
+			RunID: run.ID, Targets: request.Targets, Items: items, CompletedAt: request.WindowEnd,
+		})
+		if err != nil || persisted.Status != domain.CollectionRunSucceeded {
+			t.Fatalf("PersistSuccess(%s) run/error = %#v/%v", name, persisted, err)
+		}
+		return persisted, request
+	}
+	run, _ := createRun("captured-cursor", 3)
+
+	first, err := repository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: run.ID, Limit: 2})
+	if err != nil || len(first.Items) != 2 || first.NextCursor == "" {
+		t.Fatalf("ListUnboundCaptured(first) page/error = %#v/%v", first, err)
+	}
+	if first.Items[0].ID >= first.Items[1].ID || strings.Count(first.NextCursor, ".") != 1 {
+		t.Fatalf("first page = %#v", first)
+	}
+	var originalLastID int64
+	if err := runtime.SQL.QueryRow(`SELECT max(id) FROM collection_run_items WHERE run_id = $1`, run.ID).Scan(&originalLastID); err != nil {
+		t.Fatalf("read initial captured item high-water mark: %v", err)
+	}
+	var concurrentID int64
+	concurrentExternalID := "captured-cursor-concurrent"
+	if err := runtime.SQL.QueryRow(`
+INSERT INTO collection_run_items
+    (run_id, source_connection_id, source_code, external_id, content_type, captured_item_version,
+     captured_item, payload_hash, raw_payload_disposition, outcome, observed_at)
+SELECT run_id, source_connection_id, source_code, $2::varchar, content_type, captured_item_version,
+	   jsonb_set(captured_item, '{external_id}', to_jsonb($2::varchar), true), $3, raw_payload_disposition, outcome, observed_at
+FROM collection_run_items
+WHERE id = $1
+RETURNING id`, first.Items[0].ID, concurrentExternalID, strings.Repeat("e", 64)).Scan(&concurrentID); err != nil {
+		t.Fatalf("insert concurrent captured item: %v", err)
+	}
+
+	second, err := repository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: run.ID, Cursor: first.NextCursor, Limit: 2})
+	if err != nil || len(second.Items) != 1 || second.Items[0].ID != originalLastID || second.NextCursor != "" {
+		t.Fatalf("ListUnboundCaptured(second) page/error = %#v/%v; concurrent=%d", second, err, concurrentID)
+	}
+
+	otherRun, _ := createRun("captured-cursor-other", 3)
+	if _, err := repository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: otherRun.ID, Cursor: first.NextCursor, Limit: 2}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("cross-run cursor error = %v, want invalid input", err)
+	}
+	if _, err := repository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: run.ID, Cursor: first.NextCursor, Limit: 2, IncludeFailed: true}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("cross-filter cursor error = %v, want invalid input", err)
+	}
+	tampered := first.NextCursor[:len(first.NextCursor)-1] + "A"
+	if strings.HasSuffix(first.NextCursor, "A") {
+		tampered = first.NextCursor[:len(first.NextCursor)-1] + "B"
+	}
+	if _, err := repository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: run.ID, Cursor: tampered, Limit: 2}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("tampered cursor error = %v, want invalid input", err)
+	}
+	if _, err := repository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: run.ID, Limit: 201}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("oversized page error = %v, want invalid input", err)
+	}
+
+	shortCodec, err := pagination.NewCodec(strings.Repeat("short-captured-item-secret-", 2), time.Millisecond)
+	if err != nil {
+		t.Fatalf("pagination.NewCodec(short): %v", err)
+	}
+	shortRepository := sourcepostgres.NewCollectionRepositoryWithCursorCodec(runtime, shortCodec)
+	expiring, err := shortRepository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: run.ID, Limit: 2})
+	if err != nil || expiring.NextCursor == "" {
+		t.Fatalf("ListUnboundCaptured(expiring) page/error = %#v/%v", expiring, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := shortRepository.ListUnboundCaptured(context.Background(), domain.CapturedItemQuery{RunID: run.ID, Cursor: expiring.NextCursor, Limit: 2}); !errors.Is(err, sharedrepository.ErrInvalidInput) {
+		t.Fatalf("expired cursor error = %v, want invalid input", err)
+	}
+}
+
 func successfulRetryHook(context.Context, domain.CollectionRunRetry) error {
 	return nil
 }
