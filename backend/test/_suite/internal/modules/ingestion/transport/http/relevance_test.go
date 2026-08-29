@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
@@ -155,15 +154,35 @@ func TestRelevanceCursorsRejectTamperingAndCrossQueryReuse(t *testing.T) {
 	}
 
 	pending := ingestiondomain.SuggestionStatusPending
-	suggestionCursor, err := encodeSuggestionCursor(codec, 7, &pending, &ingestiondomain.RelevanceSuggestionCursor{
-		UpdatedAt: time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC), ID: 9,
-	})
+	suggestionCursor, err := encodeSuggestionCursor(codec, 7, &pending, &ingestiondomain.RelevanceSuggestionCursor{ID: 9})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if decoded, err := decodeSuggestionCursor(codec, suggestionCursor, 7, &pending); err != nil || decoded.ID != 9 {
+		t.Fatalf("decode bound suggestion cursor = %#v / %v", decoded, err)
+	}
+	if _, err := decodeSuggestionCursor(codec, suggestionCursor, 8, &pending); err == nil {
+		t.Fatal("suggestion cursor crossed monitor scope")
 	}
 	approved := ingestiondomain.SuggestionStatusApproved
 	if _, err := decodeSuggestionCursor(codec, suggestionCursor, 7, &approved); err == nil {
 		t.Fatal("suggestion cursor crossed status filter")
+	}
+	tamperedSuggestion := "A" + suggestionCursor[1:]
+	if suggestionCursor[0] == 'A' {
+		tamperedSuggestion = "B" + suggestionCursor[1:]
+	}
+	if _, err := decodeSuggestionCursor(codec, tamperedSuggestion, 7, &pending); err == nil {
+		t.Fatal("tampered suggestion cursor was accepted")
+	}
+	legacySuggestion, err := codec.Seal("relevance_suggestion_list", relevanceSuggestionCursorPayload{
+		Version: 1, MonitorID: 7, Status: relevanceSuggestionStatusScope(&pending), ID: 9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeSuggestionCursor(codec, legacySuggestion, 7, &pending); err == nil {
+		t.Fatal("legacy mutable-order suggestion cursor was accepted")
 	}
 }
 

@@ -261,8 +261,7 @@ type RelevanceSuggestion struct {
 }
 
 type RelevanceSuggestionCursor struct {
-	UpdatedAt time.Time
-	ID        int64
+	ID int64
 }
 
 type RelevanceSuggestionListQuery struct {
@@ -278,7 +277,7 @@ type RelevanceSuggestionPage struct {
 
 func (query RelevanceSuggestionListQuery) Validate() error {
 	if query.Limit < 1 || query.Limit > 100 || query.Status != nil && !query.Status.Valid() ||
-		query.Cursor != nil && (query.Cursor.ID <= 0 || query.Cursor.UpdatedAt.IsZero()) {
+		query.Cursor != nil && query.Cursor.ID <= 0 {
 		return fmt.Errorf("invalid relevance suggestion list query")
 	}
 	return nil

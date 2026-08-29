@@ -6,7 +6,6 @@ import (
 	"fmt"
 	stdhttp "net/http"
 	"strconv"
-	"time"
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
@@ -548,11 +547,13 @@ type relevanceMatchCursorPayload struct {
 }
 
 type relevanceSuggestionCursorPayload struct {
+	Version   int    `json:"version"`
 	MonitorID int64  `json:"monitor_id"`
 	Status    string `json:"status"`
-	UpdatedAt string `json:"updated_at"`
 	ID        int64  `json:"id"`
 }
+
+const relevanceSuggestionCursorVersion = 2
 
 func encodeMatchCursor(codec *pagination.Codec, monitorID int64, decision *ingestiondomain.MatchDecision, cursor *ingestiondomain.RelevanceSnapshotCursor) (string, error) {
 	if cursor == nil {
@@ -579,21 +580,19 @@ func encodeSuggestionCursor(codec *pagination.Codec, monitorID int64, status *in
 		return "", nil
 	}
 	return codec.Seal("relevance_suggestion_list", relevanceSuggestionCursorPayload{
-		MonitorID: monitorID, Status: relevanceSuggestionStatusScope(status), UpdatedAt: cursor.UpdatedAt.UTC().Format(time.RFC3339Nano), ID: cursor.ID,
+		Version: relevanceSuggestionCursorVersion, MonitorID: monitorID,
+		Status: relevanceSuggestionStatusScope(status), ID: cursor.ID,
 	})
 }
 
 func decodeSuggestionCursor(codec *pagination.Codec, raw string, monitorID int64, status *ingestiondomain.SuggestionStatus) (*ingestiondomain.RelevanceSuggestionCursor, error) {
 	var payload relevanceSuggestionCursorPayload
-	if err := codec.Open(raw, "relevance_suggestion_list", &payload); err != nil || payload.MonitorID != monitorID ||
+	if err := codec.Open(raw, "relevance_suggestion_list", &payload); err != nil || payload.Version != relevanceSuggestionCursorVersion ||
+		payload.MonitorID != monitorID ||
 		payload.Status != relevanceSuggestionStatusScope(status) || payload.ID <= 0 {
 		return nil, invalidRequest(fmt.Errorf("invalid relevance suggestion cursor"))
 	}
-	updatedAt, err := time.Parse(time.RFC3339Nano, payload.UpdatedAt)
-	if err != nil || updatedAt.IsZero() {
-		return nil, invalidRequest(fmt.Errorf("invalid relevance suggestion cursor"))
-	}
-	return &ingestiondomain.RelevanceSuggestionCursor{UpdatedAt: updatedAt.UTC(), ID: payload.ID}, nil
+	return &ingestiondomain.RelevanceSuggestionCursor{ID: payload.ID}, nil
 }
 
 func relevanceMatchDecisionScope(decision *ingestiondomain.MatchDecision) string {

@@ -518,22 +518,22 @@ func (repository *RelevanceRepository) ListSuggestions(ctx context.Context, moni
 	if monitorID <= 0 || query.Validate() != nil {
 		return ingestiondomain.RelevanceSuggestionPage{}, fmt.Errorf("%w: relevance suggestion list", sharedrepository.ErrInvalidInput)
 	}
-	var status, updatedAt any
+	var status any
 	var cursorID int64
 	if query.Status != nil {
 		status = string(*query.Status)
 	}
 	if query.Cursor != nil {
-		updatedAt, cursorID = query.Cursor.UpdatedAt.UTC(), query.Cursor.ID
+		cursorID = query.Cursor.ID
 	}
 	rows, err := repository.queryRows(ctx, `
 SELECT id, version, monitor_id, monitor_config_version_id, suggestion_type, value,
        support_count, status, reviewed_by_user_id, created_at, updated_at
 FROM monitor_feedback_suggestions
 WHERE monitor_id = $1 AND ($2::varchar IS NULL OR status = $2)
-  AND ($3::timestamptz IS NULL OR (updated_at, id) < ($3, $4))
-ORDER BY updated_at DESC, id DESC
-LIMIT $5`, monitorID, status, updatedAt, cursorID, query.Limit+1)
+  AND ($3::bigint = 0 OR id < $3)
+ORDER BY id DESC
+LIMIT $4`, monitorID, status, cursorID, query.Limit+1)
 	if err != nil {
 		return ingestiondomain.RelevanceSuggestionPage{}, databaserepository.MapError(err)
 	}
@@ -546,7 +546,7 @@ LIMIT $5`, monitorID, status, updatedAt, cursorID, query.Limit+1)
 		}
 		if len(page.Items) == query.Limit {
 			last := page.Items[len(page.Items)-1]
-			page.Next = &ingestiondomain.RelevanceSuggestionCursor{UpdatedAt: last.UpdatedAt, ID: last.ID}
+			page.Next = &ingestiondomain.RelevanceSuggestionCursor{ID: last.ID}
 			break
 		}
 		page.Items = append(page.Items, suggestion)

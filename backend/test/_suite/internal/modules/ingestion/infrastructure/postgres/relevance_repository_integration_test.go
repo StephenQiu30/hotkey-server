@@ -250,6 +250,46 @@ func TestPlan009FeedbackRepositoryUsesOwnVersion(t *testing.T) {
 	}
 }
 
+func TestRelevanceSuggestionListCursorUsesImmutableOrderAcrossConcurrentUpdate(t *testing.T) {
+	runtime, fixture := openRelevanceRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	repository := ingestionpostgres.NewRelevanceRepository(runtime)
+	ctx := context.Background()
+
+	inputs := []ingestiondomain.RelevanceSuggestionInput{
+		{MonitorID: fixture.monitorID, MonitorConfigVersionID: fixture.configID, SuggestionType: ingestiondomain.SuggestionTypeAddTerm, Value: "alpha", SupportCount: 2},
+		{MonitorID: fixture.monitorID, MonitorConfigVersionID: fixture.configID, SuggestionType: ingestiondomain.SuggestionTypeAddTerm, Value: "beta", SupportCount: 2},
+		{MonitorID: fixture.monitorID, MonitorConfigVersionID: fixture.configID, SuggestionType: ingestiondomain.SuggestionTypeAddTerm, Value: "gamma", SupportCount: 2},
+	}
+	stored := make([]ingestiondomain.RelevanceSuggestion, 0, len(inputs))
+	for index, input := range inputs {
+		suggestion, created, err := repository.UpsertPendingSuggestion(ctx, input)
+		if err != nil || !created {
+			t.Fatalf("create suggestion %d: created=%t err=%v", index, created, err)
+		}
+		stored = append(stored, suggestion)
+	}
+
+	first, err := repository.ListSuggestions(ctx, fixture.monitorID, ingestiondomain.RelevanceSuggestionListQuery{Limit: 2})
+	if err != nil || len(first.Items) != 2 || first.Items[0].ID != stored[2].ID || first.Items[1].ID != stored[1].ID || first.Next == nil {
+		t.Fatalf("first suggestion page = %#v / %v", first, err)
+	}
+	updatedInput := inputs[0]
+	updatedInput.SupportCount = 3
+	updated, created, err := repository.UpsertPendingSuggestion(ctx, updatedInput)
+	if err != nil || created || updated.ID != stored[0].ID || updated.SupportCount != 3 {
+		t.Fatalf("update unseen suggestion = %#v created=%t err=%v", updated, created, err)
+	}
+
+	second, err := repository.ListSuggestions(ctx, fixture.monitorID, ingestiondomain.RelevanceSuggestionListQuery{Limit: 2, Cursor: first.Next})
+	if err != nil {
+		t.Fatalf("second suggestion page: %v", err)
+	}
+	if len(second.Items) != 1 || second.Items[0].ID != stored[0].ID || second.Next != nil {
+		t.Fatalf("second suggestion page lost concurrently updated item = %#v", second)
+	}
+}
+
 func TestPlan009FalseNegativeFeedbackRequiresNoSnapshot(t *testing.T) {
 	runtime, fixture := openRelevanceRuntime(t)
 	defer func() { _ = runtime.Close() }()
