@@ -247,3 +247,45 @@ func TestM4ProjectionRecoveryKeepsFactsHumanRegionsAndAgentBoundary(t *testing.T
 		t.Error("M4 recovery checklist was completed before an isolated end-to-end recovery run")
 	}
 }
+
+func TestM4BusinessFlowCapacityUsesTheFreshStackAndKeepsApprovalExplicit(t *testing.T) {
+	repository := filepath.Clean(filepath.Join(repositoryRoot(t), ".."))
+	contracts := map[string][]string{
+		"frontend/test/browser/business-flow-capacity.mjs": {
+			`hotkey-m4-business-flow-capacity-v1`,
+			`daily_report_to_notification_to_vault_to_postgresql_search`,
+			`nearest-rank-ceiling`,
+			`X-Request-ID`,
+			`productionEgressDisabled !== true`,
+			`flag: "wx", mode: 0o600`,
+		},
+		"frontend/test/browser/business-flow-capacity.test.mjs": {
+			`measures report, notification, Vault and PostgreSQL search through the real HTTP contract`,
+			`writes one exclusive sanitized artifact`,
+		},
+		".github/workflows/ci.yml": {
+			`Measure fixed-environment M4 business-flow capacity`,
+			`node frontend/test/browser/measure-business-flow-capacity.mjs`,
+			`HOTKEY_M4_CAPACITY_INTER_FLOW_INTERVAL_MILLIS: "31000"`,
+			`/tmp/hotkey-m4-capacity.json`,
+		},
+		"docs/operations/004-可观测性SLO与事件响应.md": {
+			`hotkey-m4-business-flow-capacity-v1`,
+			`HOTKEY_M4_CAPACITY_PRODUCTION_EGRESS_DISABLED=true`,
+		},
+	}
+	for relative, required := range contracts {
+		payload := readRepositoryFile(t, repository, relative)
+		for _, fragment := range required {
+			if !strings.Contains(payload, fragment) {
+				t.Errorf("%s is missing M4 business-flow capacity contract %q", relative, fragment)
+			}
+		}
+	}
+
+	plan := readRepositoryFile(t, repository, "docs/plans/004-通知报告知识投影与检索计划.md")
+	if !strings.Contains(plan, "hotkey-m4-business-flow-capacity-v1") ||
+		!strings.Contains(plan, "- [ ] `CHK-004-G5-002`") {
+		t.Error("M4 capacity candidate must be traceable without claiming fixed-environment approval")
+	}
+}

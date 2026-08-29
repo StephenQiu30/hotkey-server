@@ -445,7 +445,7 @@ jobs:
           agent-browser network requests --json > /tmp/hotkey-browser-network.json
           node frontend/test/browser/verify-artifacts.mjs
 
-      - name: Verify database, Vault and leak-sentinel closure
+      - name: Verify database and Vault closure
         run: |
           docker exec -i "$HOTKEY_CONTAINER_PREFIX-postgres" \
             psql -qAt -U hotkey -d hotkey \
@@ -453,6 +453,29 @@ jobs:
             > /tmp/hotkey-browser-database.json
           docker exec "$HOTKEY_CONTAINER_PREFIX-api" \
             test -f "/var/lib/hotkey/vault/reports/report-$HOTKEY_BROWSER_REPORT_ID.md"
+
+      - name: Measure fixed-environment M4 business-flow capacity
+        env:
+          HOTKEY_M4_CAPACITY_RUN_ID: m4-capacity-${{ github.run_id }}-${{ github.run_attempt }}
+          HOTKEY_M4_CAPACITY_ENVIRONMENT: github-actions-fresh-container
+          HOTKEY_M4_CAPACITY_GIT_REVISION: ${{ github.sha }}
+          HOTKEY_M4_CAPACITY_CONFIRM_ISOLATED: "true"
+          HOTKEY_M4_CAPACITY_PRODUCTION_EGRESS_DISABLED: "true"
+          HOTKEY_M4_CAPACITY_WARMUPS: "2"
+          HOTKEY_M4_CAPACITY_SAMPLES: "12"
+          HOTKEY_M4_CAPACITY_INTER_FLOW_INTERVAL_MILLIS: "31000"
+          HOTKEY_M4_CAPACITY_OUTPUT: /tmp/hotkey-m4-capacity.json
+          HOTKEY_M4_CAPACITY_BODY_SENTINEL: HOTKEY_BODY_SENTINEL_7f4b9c2a
+          HOTKEY_M4_CAPACITY_EMAIL_SENTINEL: mail-list-one@example.test
+          HOTKEY_M4_CAPACITY_HOST_PATH_SENTINEL: /Users/hotkey-ci/private-vault/report.md
+        run: |
+          logical_cpus="$(getconf _NPROCESSORS_ONLN)"
+          memory_kib="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
+          export HOTKEY_M4_CAPACITY_HARDWARE="GitHub hosted ubuntu-latest; ${logical_cpus} logical CPU; ${memory_kib} KiB RAM; Docker loopback"
+          node frontend/test/browser/measure-business-flow-capacity.mjs
+
+      - name: Verify leak-sentinel closure after every business-flow request
+        run: |
           docker compose -p hotkey-ci -f docker-compose.yml logs --no-color \
             > /tmp/hotkey-container-logs.txt
           node frontend/test/browser/verify-no-sentinel-leak.mjs /tmp/hotkey-container-logs.txt
@@ -476,6 +499,7 @@ jobs:
             /tmp/hotkey-browser-database.json \
             /tmp/hotkey-browser-network-summary.json \
             /tmp/hotkey-browser-content-security.json \
+            /tmp/hotkey-m4-capacity.json \
             /tmp/hotkey-sentinel-scan.json \
             /tmp/hotkey-a11y-*.json \
             /tmp/hotkey-acceptance-attachments/
@@ -495,6 +519,7 @@ jobs:
             /tmp/hotkey-browser-database.json
             /tmp/hotkey-browser-network-summary.json
             /tmp/hotkey-browser-content-security.json
+            /tmp/hotkey-m4-capacity.json
             /tmp/hotkey-sentinel-scan.json
             /tmp/hotkey-secret-surface-scan.json
             /tmp/hotkey-a11y-*.json
