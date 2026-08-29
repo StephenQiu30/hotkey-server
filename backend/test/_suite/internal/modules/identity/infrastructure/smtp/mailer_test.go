@@ -10,6 +10,7 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
+	"github.com/StephenQiu30/hotkey-server/backend/test/smtpfixture"
 )
 
 func TestMailerSanitizesSMTPFailuresAndNeverExposesVerificationCode(t *testing.T) {
@@ -99,5 +100,60 @@ func TestMailerCancelsDirectTLSHandshakeWithCallerContext(t *testing.T) {
 		}
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("direct TLS handshake did not stop when caller context was cancelled")
+	}
+}
+
+func TestIdentitySMTPCredentialRotationPrechecksRollsBackAndRevokesOldPassword(t *testing.T) {
+	server := smtpfixture.New(t)
+	host, port := server.Endpoint()
+	username := "identity-rotation@example.test"
+	oldSecret := "synthetic-identity-smtp-old-credential-012345"
+	newSecret := "synthetic-identity-smtp-new-credential-012345"
+	invalidSecret := "synthetic-identity-smtp-invalid-credential-012345"
+	server.SetCredentials(map[string]string{username: oldSecret, username + ".next": newSecret})
+	base := Config{Enabled: true, Host: host, Port: port, TLSMode: "tls", FromEmail: username, FromName: "HotKey"}
+	mailer := func(user, password string) *Mailer {
+		t.Helper()
+		configured := base
+		configured.Username = user
+		configured.Password = password
+		return newMailerWithTLSConfig(configured, server.TLSConfig())
+	}
+	send := func(candidate *Mailer) error {
+		t.Helper()
+		return candidate.SendVerificationCode(context.Background(), domain.VerificationPurposeRegistration, "rotation-recipient@example.test", "123456")
+	}
+
+	oldMailer := mailer(username, oldSecret)
+	newMailer := mailer(username+".next", newSecret)
+	if err := send(oldMailer); err != nil {
+		t.Fatalf("old identity SMTP credential baseline failed: %v", err)
+	}
+	if err := send(newMailer); err != nil {
+		t.Fatalf("new identity SMTP credential preflight failed: %v", err)
+	}
+	if err := send(mailer(username+".next", invalidSecret)); err == nil {
+		t.Fatal("invalid identity SMTP candidate unexpectedly passed preflight")
+	} else if strings.Contains(err.Error(), invalidSecret) {
+		t.Fatal("identity SMTP preflight error exposed candidate credential plaintext")
+	}
+	if err := send(oldMailer); err != nil {
+		t.Fatalf("failed identity SMTP candidate changed approved old credential: %v", err)
+	}
+	if err := send(newMailer); err != nil {
+		t.Fatalf("rolled identity SMTP client did not use new credential: %v", err)
+	}
+
+	server.SetCredentials(map[string]string{username + ".next": newSecret})
+	if err := send(oldMailer); err == nil {
+		t.Fatal("revoked old identity SMTP credential remained usable")
+	} else if strings.Contains(err.Error(), oldSecret) {
+		t.Fatal("identity SMTP revocation error exposed old credential plaintext")
+	}
+	if err := send(newMailer); err != nil {
+		t.Fatalf("new identity SMTP credential failed after revocation: %v", err)
+	}
+	if got, want := server.Deliveries(), 5; got != want {
+		t.Fatalf("identity SMTP accepted deliveries = %d, want %d without failed-candidate or revoked duplicates", got, want)
 	}
 }

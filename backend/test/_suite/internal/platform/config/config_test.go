@@ -515,6 +515,7 @@ func TestAIConfigUsesOnlyExplicitProviderAndArtifactKeys(t *testing.T) {
 	t.Setenv("HOTKEY_ONNX_MODEL_PATH", "/fixtures/model.onnx")
 	t.Setenv("HOTKEY_ONNX_TOKENIZER_PATH", "/fixtures/tokenizer.json")
 	t.Setenv("HOTKEY_ONNX_MANIFEST_PATH", "/fixtures/manifest.json")
+	t.Setenv("HOTKEY_CODEX_AUTH_FILE", "/fixtures/codex-auth.json")
 
 	cfg, err := Load()
 	if err != nil {
@@ -529,6 +530,9 @@ func TestAIConfigUsesOnlyExplicitProviderAndArtifactKeys(t *testing.T) {
 	if got, want := cfg.AI.ONNXManifestPath, "/fixtures/manifest.json"; got != want {
 		t.Errorf("AI.ONNXManifestPath = %q, want %q", got, want)
 	}
+	if got, want := cfg.AI.CodexAuthFile, "/fixtures/codex-auth.json"; got != want {
+		t.Errorf("AI.CodexAuthFile = %q, want %q", got, want)
+	}
 
 	keys := strings.Join(configKeys(), ",")
 	for _, key := range []string{
@@ -540,6 +544,7 @@ func TestAIConfigUsesOnlyExplicitProviderAndArtifactKeys(t *testing.T) {
 		"onnx_model_path",
 		"onnx_tokenizer_path",
 		"onnx_manifest_path",
+		"codex_auth_file",
 	} {
 		if !strings.Contains(keys, key) {
 			t.Errorf("configKeys() does not bind %q", key)
@@ -564,6 +569,7 @@ func TestAIConfigUsesOnlyExplicitProviderAndArtifactKeys(t *testing.T) {
 		"HOTKEY_ONNX_MODEL_PATH=",
 		"HOTKEY_ONNX_TOKENIZER_PATH=",
 		"HOTKEY_ONNX_MANIFEST_PATH=",
+		"HOTKEY_CODEX_AUTH_FILE=",
 	} {
 		if !strings.Contains(string(example), key) {
 			t.Errorf(".env.example does not document %q", key)

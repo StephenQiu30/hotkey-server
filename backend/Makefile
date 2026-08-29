@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test ci-test worker-recovery-acceptance m4-fault-recovery-acceptance joint-recovery-acceptance source-resource-limit-acceptance source-admission-matrix-acceptance source-management-audit-acceptance source-live-smoke request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test ci-test worker-recovery-acceptance m4-fault-recovery-acceptance joint-recovery-acceptance source-resource-limit-acceptance source-admission-matrix-acceptance source-management-audit-acceptance source-live-smoke request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-core-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -179,15 +179,23 @@ report-publication-acceptance: test-env
 		-count=1 -v
 	cd ../frontend && npm run test:unit -- content-security-policy.test.ts dashboard-reports-page.test.tsx
 
-secret-rotation-acceptance: test-env
-	$(GO) run ./test/runner test -p=1 \
+secret-rotation-core-acceptance: test-env minio-test-env
+	$(GO) run ./test/runner test -tags=integration -p=1 \
 		./internal/platform/config \
+		./internal/platform/database \
 		./internal/modules/identity/infrastructure/security \
 		./internal/modules/identity/infrastructure/redis \
+		./internal/modules/identity/infrastructure/smtp \
 		./internal/modules/source/infrastructure/credentialstore \
+		./internal/modules/ingestion/infrastructure/minio \
+		./internal/modules/intelligence/infrastructure/provider \
+		./internal/modules/delivery/infrastructure/smtp \
 		./internal/bootstrap \
-		-run '^(TestEnvironmentExampleDocumentsSecretRotationWindow|TestLoadUsesExplicitSecretRotationConfiguration|TestJWT.*Rotation.*|TestVerificationHMACRotation.*|TestCipherKeyringWritesCurrentVersionReadsPreviousAndRejectsItAfterRevocation|TestRotateBatch.*|TestSourceCredentialRotationCommand.*)$$' \
+		./test/tools/secret-rotation-report \
+		-run '^(TestEnvironmentExampleDocumentsSecretRotationWindow|TestLoadUsesExplicitSecretRotationConfiguration|TestJWT.*Rotation.*|TestVerificationHMACRotation.*|TestCipherKeyringWritesCurrentVersionReadsPreviousAndRejectsItAfterRevocation|TestRotateBatch.*|TestSourceCredentialRotationCommand.*|TestDatabaseCredentialRotationPrechecksRollsBackAndRevokesOldLogin|TestMinIOCredentialRotationPrechecksRollsBackAndRevokesScopedOldUser|TestCodexCLIAuthFile.*|Test.*SMTPCredentialRotation.*|TestSecretRotationReport.*)$$' \
 		-count=1 -v
+
+secret-rotation-acceptance: secret-rotation-core-acceptance
 	cd ../agent && uv run pytest
 
 observability-cardinality-acceptance:

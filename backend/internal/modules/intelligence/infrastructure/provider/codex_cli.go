@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	stdErrors "errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,6 +49,7 @@ const (
 	defaultCodexCLIConcurrentRuns = 1
 	maxCodexCLIInputFiles         = 32
 	maxCodexCLIInputBytes         = 16 << 20
+	maxCodexCLIAuthBytes          = 64 << 10
 	maxCodexCLIOutputBytes        = 64 << 20
 	maxCodexCLIConcurrentRuns     = 64
 	maxCodexCLITimeout            = time.Hour
@@ -82,6 +84,7 @@ type CodexCLIProcessResult struct {
 type CodexCLIAdapter struct {
 	executable     string
 	workspaceRoot  string
+	authFile       string
 	timeout        time.Duration
 	maxOutputBytes int64
 	concurrency    chan struct{}
@@ -90,6 +93,7 @@ type CodexCLIAdapter struct {
 type CodexCLIAdapterOptions struct {
 	Executable     string
 	WorkspaceRoot  string
+	AuthFile       string
 	Timeout        time.Duration
 	MaxOutputBytes int64
 	MaxConcurrent  int
@@ -108,7 +112,9 @@ func NewCodexCLIAdapter(executable string) (*CodexCLIAdapter, error) {
 func NewCodexCLIAdapterWithOptions(options CodexCLIAdapterOptions) (*CodexCLIAdapter, error) {
 	executable := strings.TrimSpace(options.Executable)
 	workspaceRoot := strings.TrimSpace(options.WorkspaceRoot)
+	authFile := strings.TrimSpace(options.AuthFile)
 	if executable == "" || !filepath.IsAbs(executable) || workspaceRoot == "" || !filepath.IsAbs(workspaceRoot) ||
+		(authFile != "" && !filepath.IsAbs(authFile)) ||
 		options.Timeout <= 0 || options.Timeout > maxCodexCLITimeout ||
 		options.MaxOutputBytes <= 0 || options.MaxOutputBytes > maxCodexCLIOutputBytes ||
 		options.MaxConcurrent <= 0 || options.MaxConcurrent > maxCodexCLIConcurrentRuns {
@@ -121,6 +127,7 @@ func NewCodexCLIAdapterWithOptions(options CodexCLIAdapterOptions) (*CodexCLIAda
 	return &CodexCLIAdapter{
 		executable:     executable,
 		workspaceRoot:  workspaceRoot,
+		authFile:       authFile,
 		timeout:        options.Timeout,
 		maxOutputBytes: options.MaxOutputBytes,
 		concurrency:    make(chan struct{}, options.MaxConcurrent),
@@ -163,6 +170,9 @@ func (adapter *CodexCLIAdapter) Run(ctx context.Context, request CodexCLIProcess
 		return CodexCLIProcessResult{}, intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
 	}
 	if err := materializeCodexCLIRuntimeDirectories(workspace); err != nil {
+		return CodexCLIProcessResult{}, err
+	}
+	if err := materializeCodexCLIAuth(workspace, adapter.authFile); err != nil {
 		return CodexCLIProcessResult{}, err
 	}
 	if err := materializeCodexCLIInputs(workspace, request.Inputs, request.OutputSchema); err != nil {
@@ -242,6 +252,58 @@ func materializeCodexCLIRuntimeDirectories(workspace string) error {
 			return intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
 		}
 	}
+	return nil
+}
+
+// materializeCodexCLIAuth copies one explicitly approved private auth file into
+// the per-task CODEX_HOME. It is read for every task so an atomic file switch
+// becomes visible after a process rollout without inheriting the worker's own
+// CODEX_HOME or provider environment.
+func materializeCodexCLIAuth(workspace, authFile string) error {
+	authFile = strings.TrimSpace(authFile)
+	if authFile == "" {
+		return nil
+	}
+	linkInfo, err := os.Lstat(authFile)
+	if err != nil || !linkInfo.Mode().IsRegular() || linkInfo.Mode().Perm()&0o077 != 0 || linkInfo.Size() <= 0 || linkInfo.Size() > maxCodexCLIAuthBytes {
+		return intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)
+	}
+	source, err := os.Open(authFile)
+	if err != nil {
+		return intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)
+	}
+	defer source.Close()
+	openedInfo, err := source.Stat()
+	if err != nil || !openedInfo.Mode().IsRegular() || !os.SameFile(linkInfo, openedInfo) {
+		return intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)
+	}
+	contents, err := io.ReadAll(io.LimitReader(source, maxCodexCLIAuthBytes+1))
+	if err != nil || len(contents) == 0 || len(contents) > maxCodexCLIAuthBytes {
+		return intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(contents, &object); err != nil || len(object) == 0 {
+		return intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)
+	}
+	destinationPath := filepath.Join(workspace, "codex-home", "auth.json")
+	destination, err := os.OpenFile(destinationPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
+	}
+	removeDestination := true
+	defer func() {
+		_ = destination.Close()
+		if removeDestination {
+			_ = os.Remove(destinationPath)
+		}
+	}()
+	if _, err := destination.Write(contents); err != nil {
+		return intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
+	}
+	if err := destination.Close(); err != nil {
+		return intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
+	}
+	removeDestination = false
 	return nil
 }
 

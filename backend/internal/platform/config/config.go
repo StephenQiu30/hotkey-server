@@ -141,6 +141,7 @@ type AIConfig struct {
 	ONNXModelPath      string
 	ONNXTokenizerPath  string
 	ONNXManifestPath   string
+	CodexAuthFile      string
 }
 
 type AgentConfig struct {
@@ -298,6 +299,7 @@ func Load() (Config, error) {
 			ONNXModelPath:      configString(v, "onnx_model_path"),
 			ONNXTokenizerPath:  configString(v, "onnx_tokenizer_path"),
 			ONNXManifestPath:   configString(v, "onnx_manifest_path"),
+			CodexAuthFile:      configString(v, "codex_auth_file"),
 		},
 		Agent: AgentConfig{
 			URL:              configString(v, "agent_url"),
@@ -587,7 +589,7 @@ func configKeys() []string {
 		"minio_endpoint", "minio_access_key", "minio_secret_key", "minio_bucket",
 		"minio_use_ssl", "vault_path",
 		"jwt_secret", "jwt_key_id", "jwt_previous_secret", "jwt_previous_key_id", "jwt_issuer", "jwt_audience", "verification_hmac_secret", "verification_hmac_previous_secret", "redis_url", "smtp_enabled", "smtp_host", "smtp_port", "smtp_tls_mode", "smtp_username", "smtp_password", "smtp_from_email", "smtp_from_name", "cors_allowed_origins", "refresh_cookie_secure",
-		"openai_api_key", "deepseek_api_key", "ollama_enabled", "ollama_base_url", "onnx_runtime_library", "onnx_model_path", "onnx_tokenizer_path", "onnx_manifest_path",
+		"openai_api_key", "deepseek_api_key", "ollama_enabled", "ollama_base_url", "onnx_runtime_library", "onnx_model_path", "onnx_tokenizer_path", "onnx_manifest_path", "codex_auth_file",
 		"agent_url", "agent_auth_token", "agent_max_response_bytes", "agent_shadow_enabled",
 		"notification_poll_interval", "notification_heartbeat_interval", "notification_max_connections", "notification_web_origin",
 	}

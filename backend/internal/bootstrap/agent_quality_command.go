@@ -218,7 +218,7 @@ func buildAgentQualityTracks(_ context.Context, cfg config.Config, options agent
 	if options.BaselineRuntime == "codex" {
 		adapter, err := intelligenceprovider.NewCodexCLIAdapterWithOptions(intelligenceprovider.CodexCLIAdapterOptions{
 			Executable: options.CodexExecutable, WorkspaceRoot: os.TempDir(), Timeout: options.Timeout,
-			MaxOutputBytes: 1 << 20, MaxConcurrent: 1,
+			AuthFile: cfg.AI.CodexAuthFile, MaxOutputBytes: 1 << 20, MaxConcurrent: 1,
 		})
 		if err != nil {
 			return intelligenceapplication.ShadowQualityTrack{}, intelligenceapplication.ShadowQualityTrack{}, errors.New("configure trusted Codex baseline")

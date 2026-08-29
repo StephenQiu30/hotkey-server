@@ -33,8 +33,17 @@ func (failure *Failure) Unwrap() error          { return failure.Err }
 func (failure *Failure) TemporaryFailure() bool { return failure != nil && failure.Temporary }
 
 type Mailer struct {
-	config config.SMTPConfig
-	send   func(context.Context, Message) error
+	config    config.SMTPConfig
+	send      func(context.Context, Message) error
+	tlsConfig *tls.Config
+}
+
+func newMailerWithTLSConfig(cfg config.SMTPConfig, tlsConfig *tls.Config) *Mailer {
+	mailer := NewMailer(cfg)
+	if tlsConfig != nil {
+		mailer.tlsConfig = tlsConfig.Clone()
+	}
+	return mailer
 }
 
 func NewMailer(cfg config.SMTPConfig, send ...func(context.Context, Message) error) *Mailer {
@@ -75,7 +84,7 @@ func (mailer *Mailer) sendSMTP(ctx context.Context, message Message) error {
 	}
 	defer connection.Close()
 	if mailer.config.TLSMode == "tls" {
-		tlsConnection := tls.Client(connection, &tls.Config{ServerName: mailer.config.Host, MinVersion: tls.VersionTLS12})
+		tlsConnection := tls.Client(connection, mailer.connectionTLSConfig())
 		if err := tlsConnection.HandshakeContext(ctx); err != nil {
 			return &Failure{Temporary: true, Err: fmt.Errorf("smtp TLS handshake failed")}
 		}
@@ -90,7 +99,7 @@ func (mailer *Mailer) sendSMTP(ctx context.Context, message Message) error {
 		if ok, _ := client.Extension("STARTTLS"); !ok {
 			return &Failure{Temporary: false, Err: fmt.Errorf("smtp STARTTLS unavailable")}
 		}
-		if err := client.StartTLS(&tls.Config{ServerName: mailer.config.Host, MinVersion: tls.VersionTLS12}); err != nil {
+		if err := client.StartTLS(mailer.connectionTLSConfig()); err != nil {
 			return &Failure{Temporary: true, Err: fmt.Errorf("smtp STARTTLS failed")}
 		}
 	}
@@ -118,6 +127,20 @@ func (mailer *Mailer) sendSMTP(ctx context.Context, message Message) error {
 		return &Failure{Temporary: true, Err: fmt.Errorf("smtp delivery failed")}
 	}
 	return nil
+}
+
+func (mailer *Mailer) connectionTLSConfig() *tls.Config {
+	if mailer.tlsConfig != nil {
+		configured := mailer.tlsConfig.Clone()
+		if configured.ServerName == "" {
+			configured.ServerName = mailer.config.Host
+		}
+		if configured.MinVersion < tls.VersionTLS12 {
+			configured.MinVersion = tls.VersionTLS12
+		}
+		return configured
+	}
+	return &tls.Config{ServerName: mailer.config.Host, MinVersion: tls.VersionTLS12}
 }
 
 func valid(cfg config.SMTPConfig) bool {

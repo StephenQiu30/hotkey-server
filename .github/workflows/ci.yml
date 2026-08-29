@@ -151,6 +151,8 @@ jobs:
       HOTKEY_TEST_MINIO_SECRET_KEY: hotkeytest-secret
       HOTKEY_TEST_MINIO_BUCKET: hotkey-worker-recovery
       HOTKEY_RECOVERY_MINIO_CONTAINER: hotkey-worker-recovery-${{ github.run_id }}
+      HOTKEY_TEST_MINIO_ADMIN_ENDPOINT: http://hotkey-worker-recovery-${{ github.run_id }}:9000
+      HOTKEY_TEST_MINIO_DOCKER_NETWORK: hotkey-worker-recovery-${{ github.run_id }}
       HOTKEY_JOINT_RECOVERY_ENVIRONMENT: github-actions-isolated-recovery
       HOTKEY_JOINT_RECOVERY_HARDWARE: ubuntu-latest-hosted-runner
       HOTKEY_JOINT_RECOVERY_GIT_REVISION: ${{ github.sha }}
@@ -173,7 +175,9 @@ jobs:
 
       - name: Start isolated MinIO
         run: |
+          docker network create "$HOTKEY_TEST_MINIO_DOCKER_NETWORK"
           docker run --detach --rm --name "$HOTKEY_RECOVERY_MINIO_CONTAINER" \
+            --network "$HOTKEY_TEST_MINIO_DOCKER_NETWORK" \
             --publish 127.0.0.1:9000:9000 \
             --env MINIO_ROOT_USER="$HOTKEY_TEST_MINIO_ACCESS_KEY" \
             --env MINIO_ROOT_PASSWORD="$HOTKEY_TEST_MINIO_SECRET_KEY" \
@@ -189,6 +193,26 @@ jobs:
 
       - name: Four-point Worker recovery acceptance
         run: make worker-recovery-acceptance
+
+      - name: Synthetic credential rotation acceptance
+        env:
+          HOTKEY_SECRET_ROTATION_OUTPUT: ${{ runner.temp }}/secret-rotation-${{ github.run_id }}-${{ github.run_attempt }}.json
+          HOTKEY_SECRET_ROTATION_ENVIRONMENT: github-actions-isolated-credential-rotation
+          HOTKEY_SECRET_ROTATION_HARDWARE: ubuntu-latest-hosted-runner
+          HOTKEY_SECRET_ROTATION_GIT_REVISION: ${{ github.sha }}
+          HOTKEY_SECRET_ROTATION_PRODUCTION_EGRESS_DISABLED: "true"
+        run: |
+          make secret-rotation-core-acceptance
+          go run ./test/tools/secret-rotation-report
+
+      - name: Upload sanitized credential rotation evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: secret-rotation-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: ${{ runner.temp }}/secret-rotation-${{ github.run_id }}-${{ github.run_attempt }}.json
 
       - name: M4 fault and projection recovery acceptance
         env:
@@ -215,7 +239,9 @@ jobs:
 
       - name: Remove isolated MinIO
         if: always()
-        run: docker rm --force "$HOTKEY_RECOVERY_MINIO_CONTAINER" || true
+        run: |
+          docker rm --force "$HOTKEY_RECOVERY_MINIO_CONTAINER" || true
+          docker network rm "$HOTKEY_TEST_MINIO_DOCKER_NETWORK" || true
 
   frontend-acceptance:
     name: Frontend test acceptance

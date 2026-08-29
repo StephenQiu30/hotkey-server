@@ -34,8 +34,9 @@ type Message struct {
 type SendFunc func(context.Context, Message) error
 
 type Mailer struct {
-	config Config
-	send   SendFunc
+	config    Config
+	send      SendFunc
+	tlsConfig *tls.Config
 }
 
 var _ domain.Mailer = (*Mailer)(nil)
@@ -46,6 +47,14 @@ func NewMailer(config Config, send ...SendFunc) *Mailer {
 		mailer.send = send[0]
 	} else {
 		mailer.send = mailer.sendSMTP
+	}
+	return mailer
+}
+
+func newMailerWithTLSConfig(config Config, tlsConfig *tls.Config) *Mailer {
+	mailer := NewMailer(config)
+	if tlsConfig != nil {
+		mailer.tlsConfig = tlsConfig.Clone()
 	}
 	return mailer
 }
@@ -78,7 +87,7 @@ func (mailer *Mailer) sendSMTP(ctx context.Context, message Message) error {
 	}
 	defer connection.Close()
 	if mailer.config.TLSMode == "tls" {
-		tlsConnection := tls.Client(connection, &tls.Config{ServerName: mailer.config.Host, MinVersion: tls.VersionTLS12})
+		tlsConnection := tls.Client(connection, mailer.connectionTLSConfig())
 		if err := tlsConnection.HandshakeContext(ctx); err != nil {
 			return err
 		}
@@ -94,7 +103,7 @@ func (mailer *Mailer) sendSMTP(ctx context.Context, message Message) error {
 		if ok, _ := client.Extension("STARTTLS"); !ok {
 			return fmt.Errorf("SMTP server does not support STARTTLS")
 		}
-		if err := client.StartTLS(&tls.Config{ServerName: mailer.config.Host, MinVersion: tls.VersionTLS12}); err != nil {
+		if err := client.StartTLS(mailer.connectionTLSConfig()); err != nil {
 			return err
 		}
 	}
@@ -118,6 +127,20 @@ func (mailer *Mailer) sendSMTP(ctx context.Context, message Message) error {
 		return err
 	}
 	return writer.Close()
+}
+
+func (mailer *Mailer) connectionTLSConfig() *tls.Config {
+	if mailer.tlsConfig != nil {
+		configured := mailer.tlsConfig.Clone()
+		if configured.ServerName == "" {
+			configured.ServerName = mailer.config.Host
+		}
+		if configured.MinVersion < tls.VersionTLS12 {
+			configured.MinVersion = tls.VersionTLS12
+		}
+		return configured
+	}
+	return &tls.Config{ServerName: mailer.config.Host, MinVersion: tls.VersionTLS12}
 }
 
 func (config Config) valid() bool {

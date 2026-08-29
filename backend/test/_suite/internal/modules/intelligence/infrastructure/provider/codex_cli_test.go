@@ -402,6 +402,139 @@ printf '{"ok":true}'
 	assertDirectoryEmpty(t, workspaceRoot)
 }
 
+func TestCodexCLIAuthFileRotationPrechecksRollsBackAndRevokesWithoutLeakingSecrets(t *testing.T) {
+	fixtureDirectory := t.TempDir()
+	workspaceRoot := filepath.Join(fixtureDirectory, "workspaces")
+	if err := os.Mkdir(workspaceRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	oldSecret := "synthetic-codex-old-credential-0123456789"
+	newSecret := "synthetic-codex-new-credential-0123456789"
+	invalidSecret := "synthetic-codex-invalid-credential-012345"
+	writeCredential := func(name, secret string) string {
+		t.Helper()
+		path := filepath.Join(fixtureDirectory, name)
+		if err := os.WriteFile(path, []byte(`{"OPENAI_API_KEY":"`+secret+`"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	oldCredential := writeCredential("codex-old.json", oldSecret)
+	newCredential := writeCredential("codex-new.json", newSecret)
+	invalidCredential := writeCredential("codex-invalid.json", invalidSecret)
+	allowedCredentials := filepath.Join(fixtureDirectory, "allowed-credentials")
+	if err := os.WriteFile(allowedCredentials, []byte(oldSecret+"\n"+newSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fakeExecutable := writeCodexCLIFixture(t, fixtureDirectory, `#!/bin/sh
+set -eu
+fixture_directory=$(dirname "$0")
+cat >/dev/null
+test -f "$CODEX_HOME/auth.json"
+credential=$(sed -n 's/^.*"OPENAI_API_KEY":"\([^"]*\)".*$/\1/p' "$CODEX_HOME/auth.json")
+grep -Fqx "$credential" "$fixture_directory/allowed-credentials"
+printf '{"ok":true}'
+`)
+	newAdapter := func(credentialFile string) *CodexCLIAdapter {
+		t.Helper()
+		adapter, err := NewCodexCLIAdapterWithOptions(CodexCLIAdapterOptions{
+			Executable:     fakeExecutable,
+			WorkspaceRoot:  workspaceRoot,
+			AuthFile:       credentialFile,
+			Timeout:        10 * time.Second,
+			MaxOutputBytes: 1024,
+			MaxConcurrent:  1,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return adapter
+	}
+	run := func(adapter *CodexCLIAdapter) error {
+		t.Helper()
+		_, err := adapter.Run(context.Background(), CodexCLIProcessRequest{Prompt: []byte("credential preflight")})
+		return err
+	}
+
+	oldAdapter := newAdapter(oldCredential)
+	newAdapterCandidate := newAdapter(newCredential)
+	if err := run(oldAdapter); err != nil {
+		t.Fatalf("old credential baseline failed: %v", err)
+	}
+	if err := run(newAdapterCandidate); err != nil {
+		t.Fatalf("new credential preflight failed: %v", err)
+	}
+	if err := run(newAdapter(invalidCredential)); err == nil {
+		t.Fatal("invalid candidate credential unexpectedly passed preflight")
+	} else if strings.Contains(err.Error(), invalidSecret) {
+		t.Fatal("failed candidate exposed credential plaintext")
+	}
+	if err := run(oldAdapter); err != nil {
+		t.Fatalf("failed candidate changed the still-approved old credential: %v", err)
+	}
+
+	if err := run(newAdapterCandidate); err != nil {
+		t.Fatalf("rolled process did not use the preflighted new credential: %v", err)
+	}
+	if err := os.WriteFile(allowedCredentials, []byte(newSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(oldAdapter); err == nil {
+		t.Fatal("revoked old credential remained usable")
+	} else if strings.Contains(err.Error(), oldSecret) {
+		t.Fatal("old credential revocation exposed credential plaintext")
+	}
+	if err := run(newAdapterCandidate); err != nil {
+		t.Fatalf("new credential failed after old credential revocation: %v", err)
+	}
+	assertDirectoryEmpty(t, workspaceRoot)
+}
+
+func TestCodexCLIAuthFileMaterializationRequiresPrivateRegularJSONAndWritesPrivateCopy(t *testing.T) {
+	workspace := t.TempDir()
+	credentialDirectory := t.TempDir()
+	credential := filepath.Join(credentialDirectory, "auth.json")
+	if err := os.WriteFile(credential, []byte(`{"OPENAI_API_KEY":"synthetic-private-value"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(workspace, "codex-home"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := materializeCodexCLIAuth(workspace, credential); err != nil {
+		t.Fatal(err)
+	}
+	copied := filepath.Join(workspace, "codex-home", "auth.json")
+	info, err := os.Stat(copied)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("materialized auth mode = %o, want 600", info.Mode().Perm())
+	}
+
+	publicCredential := filepath.Join(credentialDirectory, "public.json")
+	if err := os.WriteFile(publicCredential, []byte(`{"OPENAI_API_KEY":"synthetic-public-value"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := materializeCodexCLIAuth(t.TempDir(), publicCredential); err == nil {
+		t.Fatal("group/world-readable Codex auth file was accepted")
+	}
+	symlinkCredential := filepath.Join(credentialDirectory, "symlink.json")
+	if err := os.Symlink(credential, symlinkCredential); err != nil {
+		t.Fatal(err)
+	}
+	if err := materializeCodexCLIAuth(t.TempDir(), symlinkCredential); err == nil {
+		t.Fatal("symlink Codex auth file was accepted")
+	}
+	invalidCredential := filepath.Join(credentialDirectory, "invalid.json")
+	if err := os.WriteFile(invalidCredential, []byte("not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := materializeCodexCLIAuth(t.TempDir(), invalidCredential); err == nil {
+		t.Fatal("invalid Codex auth JSON was accepted")
+	}
+}
+
 func writeCodexCLIFixture(t *testing.T, directory, contents string) string {
 	t.Helper()
 	path := filepath.Join(directory, "fake-codex")
