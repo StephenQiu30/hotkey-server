@@ -3596,6 +3596,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS audit_logs_idempotency_uq
     ON audit_logs(actor_type, COALESCE(actor_id, 0), action, idempotency_key)
     WHERE idempotency_key IS NOT NULL;
 
+CREATE OR REPLACE FUNCTION reject_operations_audit_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'audit_logs_append_only', MESSAGE = 'operations audit facts are append-only';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS audit_logs_append_only ON audit_logs;
+CREATE TRIGGER audit_logs_append_only
+BEFORE UPDATE OR DELETE ON audit_logs
+FOR EACH ROW EXECUTE FUNCTION reject_operations_audit_mutation();
+
 -- Evidence-lineage maintenance runs are auditable operational facts. Dry-run
 -- commands never insert these rows; only an explicitly confirmed apply run is
 -- persisted. Item rows are append-only so a resume cannot rewrite prior

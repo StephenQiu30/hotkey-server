@@ -85,6 +85,7 @@ func TestRightsManagementSchemaPersistsIdempotencyActorAndDecisionBatchFacts(t *
 		"batch attribution binding":           "source_rights_decisions_batch_binding",
 		"batch completeness deferred trigger": "source_rights_decision_batches_complete",
 		"audit idempotency uniqueness":        "audit_logs_idempotency_uq",
+		"audit append-only trigger":           "audit_logs_append_only",
 	} {
 		if !strings.Contains(schema, snippet) {
 			t.Errorf("rights management schema is missing %s: %q", name, snippet)

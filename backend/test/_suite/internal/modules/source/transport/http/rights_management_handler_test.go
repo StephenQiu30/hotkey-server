@@ -105,6 +105,7 @@ func TestRightsManagementRoutesSeparatePublicCapabilityFromAdministratorFacts(t 
 		{name: "editor public capability", role: httptransport.RoleEditor, method: stdhttp.MethodGet, path: "/api/v1/source-endpoints/42/capabilities", wantStatus: 200, wantCall: "capability"},
 		{name: "viewer policy history", role: httptransport.RoleViewer, method: stdhttp.MethodGet, path: "/api/v1/source-endpoints/42/rights-policies", wantStatus: 403},
 		{name: "editor decision history", role: httptransport.RoleEditor, method: stdhttp.MethodGet, path: "/api/v1/source-endpoints/42/rights-decision-batches", wantStatus: 403},
+		{name: "viewer policy mutation", role: httptransport.RoleViewer, method: stdhttp.MethodPost, path: "/api/v1/source-endpoints/42/rights-policies", body: `{}`, wantStatus: 403},
 		{name: "viewer exact evaluation", role: httptransport.RoleViewer, method: stdhttp.MethodPost, path: "/api/v1/source-endpoints/42/rights-evaluations", body: `{}`, wantStatus: 403},
 		{name: "admin policy history", role: httptransport.RoleAdmin, method: stdhttp.MethodGet, path: "/api/v1/source-endpoints/42/rights-policies", wantStatus: 200, wantCall: "policies"},
 		{name: "admin batch history", role: httptransport.RoleAdmin, method: stdhttp.MethodGet, path: "/api/v1/source-endpoints/42/rights-decision-batches", wantStatus: 200, wantCall: "batches"},
@@ -136,6 +137,7 @@ func TestRightsManagementRoutesSeparatePublicCapabilityFromAdministratorFacts(t 
 			calls := map[string]int{
 				"capability": service.capabilityCalls, "policies": service.policyListCalls,
 				"batches": service.batchListCalls, "decision": service.decisionCalls,
+				"create": service.createCalls, "record": service.recordCalls,
 			}
 			for name, count := range calls {
 				want := 0
@@ -147,6 +149,23 @@ func TestRightsManagementRoutesSeparatePublicCapabilityFromAdministratorFacts(t 
 				}
 			}
 		})
+	}
+}
+
+func TestRightsManagementMutationRejectsUnauthenticatedBeforeService(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &rightsManagementHTTPServiceFake{}
+	router := gin.New()
+	RegisterRightsManagementRoutes(router, service, testAuthenticator{subject: httptransport.Subject{UserID: 7, SessionID: 1, Role: httptransport.RoleAdmin}})
+
+	request := httptest.NewRequest(stdhttp.MethodPost, "/api/v1/source-endpoints/42/rights-policies", strings.NewReader(`{"scope_type":"source_endpoint"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	assertRightsError(t, response, stdhttp.StatusUnauthorized, sharederrors.CodeUnauthenticated)
+	if service.createCalls != 0 || service.recordCalls != 0 {
+		t.Fatalf("unauthenticated mutation reached service: create=%d record=%d", service.createCalls, service.recordCalls)
 	}
 }
 
@@ -264,6 +283,13 @@ func TestRightsManagementTransportMapsStableRepositoryFailures(t *testing.T) {
 	body := `{"scope_type":"source_endpoint","scope_subject":"feed-main","revision":1,"priority":300,"basis_summary":"approved","effective_from":"2026-08-09T13:00:00Z"}`
 	conflict := performRightsManagementRequest(router, stdhttp.MethodPost, "/api/v1/source-endpoints/42/rights-policies", body, map[string]string{"Idempotency-Key": "rights-policy-conflict"})
 	assertRightsError(t, conflict, stdhttp.StatusConflict, sharederrors.CodeConflict)
+
+	service.err = sharedrepository.ErrNotFound
+	decisionBody := `{"policy_id":71,"expected_policy_version":2,"subject_type":"raw_response","subject_key":"` + strings.Repeat("b", 64) + `","input_digest":"` + strings.Repeat("c", 64) + `","decisions":[{"action":"store_raw","decision":"allow","reason_codes":["terms_confirmed"],"evaluator":"rights-admin","evaluated_at":"2026-08-09T13:00:00Z","effective_from":"2026-08-09T13:00:00Z"}]}`
+	stale := performRightsManagementRequest(router, stdhttp.MethodPost, "/api/v1/source-endpoints/42/rights-decision-batches", decisionBody, map[string]string{
+		"Idempotency-Key": "rights-decision-stale", "If-Match": `"v2"`,
+	})
+	assertRightsError(t, stale, stdhttp.StatusConflict, sharederrors.CodeConflict)
 
 	service.err = sharederrors.New(sharederrors.CodeForbidden, stdhttp.StatusForbidden, "")
 	forbidden := performRightsManagementRequest(router, stdhttp.MethodGet, "/api/v1/source-endpoints/42/capabilities", "", nil)
