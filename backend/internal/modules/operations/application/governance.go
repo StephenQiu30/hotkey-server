@@ -151,8 +151,14 @@ func (service *GovernanceService) ExecuteRetention(ctx context.Context, input Re
 		return operationsdomain.CleanupResult{}, err
 	}
 	var result operationsdomain.CleanupResult
+	var attempted operationsdomain.RetentionRun
 	blocked := false
 	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+		var err error
+		attempted, err = service.retention.FindRun(transactionCtx, input.RunID)
+		if err != nil {
+			return err
+		}
 		run, err := service.retention.ExecuteApprovedRun(transactionCtx, input.RunID, input.CandidateHash, input.Subject.UserID, service.now().UTC())
 		if err != nil {
 			return err
@@ -169,12 +175,36 @@ func (service *GovernanceService) ExecuteRetention(ctx context.Context, input Re
 		return nil
 	})
 	if err != nil {
+		if attempted.Status == operationsdomain.RetentionRunApproved && attempted.CandidateHash == input.CandidateHash {
+			if auditErr := service.writeRetentionExecutionFailureAudit(ctx, input.Subject.UserID, attempted); auditErr != nil {
+				return operationsdomain.CleanupResult{}, errors.Join(err, auditErr)
+			}
+		}
 		return operationsdomain.CleanupResult{}, err
 	}
 	if blocked {
 		return operationsdomain.CleanupResult{}, sharedrepository.ErrConflict
 	}
 	return result, nil
+}
+
+func (service *GovernanceService) writeRetentionExecutionFailureAudit(ctx context.Context, actorID int64, run operationsdomain.RetentionRun) error {
+	independent, ok := service.audit.(interface {
+		WriteIndependent(context.Context, operationsdomain.AuditEntry) error
+	})
+	if !ok {
+		return fmt.Errorf("independent retention audit writer is required")
+	}
+	return independent.WriteIndependent(context.WithoutCancel(ctx), operationsdomain.AuditEntry{
+		ActorType: "user", ActorID: actorID, Action: operationsdomain.ActionRetentionExecuted,
+		ResourceType: "retention_run", ResourceID: run.ID, Result: operationsdomain.AuditResultFailure,
+		RequestID: requestcontext.RequestID(ctx), TraceID: requestcontext.TraceID(ctx),
+		After: map[string]any{
+			"batch_size": int64(run.BatchSize), "candidate_count": run.CandidateCount,
+			"policy_version": run.PolicyVersion, "candidate_hash": run.CandidateHash,
+			"reason_code": "execution_failed",
+		},
+	})
 }
 
 func (service *GovernanceService) writeRetentionAudit(ctx context.Context, actorID int64, run operationsdomain.RetentionRun, action operationsdomain.AuditAction) error {

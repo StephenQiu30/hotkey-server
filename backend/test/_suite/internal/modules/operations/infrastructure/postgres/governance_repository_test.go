@@ -367,6 +367,84 @@ func TestRetentionRunRequiresFrozenPreviewApprovalAndStopsOnCandidateDrift(t *te
 	}
 }
 
+func TestRetentionRunReentersSameApprovedRunAfterTransientDeleteFailure(t *testing.T) {
+	ctx := context.Background()
+	runtime := governanceRuntime(t)
+	defer runtime.Close()
+	requesterID := governanceUser(t, runtime)
+	approverID := governanceUser(t, runtime)
+	requester := identitydomain.Subject{UserID: requesterID, Role: identitydomain.RoleAdmin}
+	approver := identitydomain.Subject{UserID: approverID, Role: identitydomain.RoleAdmin}
+	service, err := operationsapplication.NewGovernanceService(operationsapplication.GovernanceDependencies{
+		Runtime: runtime, Store: operationspostgres.NewGovernanceRepository(runtime), Retention: operationspostgres.NewRetentionRepository(runtime), Audit: operationspostgres.NewAuditWriter(runtime),
+		Now: func() time.Time { return time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policies, err := service.RetentionPolicies(ctx, requester)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := retentionPolicy(t, policies, "content_metric_snapshots")
+	sourceID := governanceSource(t, runtime)
+	old := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	var contentID int64
+	if err := runtime.SQL.QueryRowContext(ctx, `INSERT INTO contents (source_connection_id,external_id,content_type,canonical_url,published_at,fetched_at,dedupe_key) VALUES ($1,'retention-reentry','article','https://example.test/retention-reentry',$2,$2,$3) RETURNING id`, sourceID, old, strings.Repeat("d", 64)).Scan(&contentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.ExecContext(ctx, `INSERT INTO content_metric_snapshots (content_id,captured_at) VALUES ($1,$2)`, contentID, old); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := service.PreviewRetention(ctx, operationsapplication.RetentionInput{Subject: requester, PolicyID: policy.ID, ExpectedVersion: policy.Version, BatchSize: 100})
+	if err != nil || preview.Affected != 1 {
+		t.Fatalf("preview = %#v/%v", preview, err)
+	}
+	approved, err := service.ApproveRetention(ctx, operationsapplication.RetentionRunInput{Subject: approver, RunID: preview.RunID, CandidateHash: preview.CandidateHash})
+	if err != nil || approved.Status != operationsdomain.RetentionRunApproved {
+		t.Fatalf("approved = %#v/%v", approved, err)
+	}
+	const faultSQL = `
+CREATE FUNCTION retention_delete_fault_fixture() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION USING ERRCODE='57014', MESSAGE='retention delete fault fixture';
+END;
+$$;
+CREATE TRIGGER retention_delete_fault_fixture
+BEFORE DELETE ON content_metric_snapshots
+FOR EACH STATEMENT EXECUTE FUNCTION retention_delete_fault_fixture();`
+	if _, err := runtime.SQL.ExecContext(ctx, faultSQL); err != nil {
+		t.Fatal(err)
+	}
+	cleanupFault := func() {
+		_, _ = runtime.SQL.ExecContext(context.Background(), `DROP TRIGGER IF EXISTS retention_delete_fault_fixture ON content_metric_snapshots; DROP FUNCTION IF EXISTS retention_delete_fault_fixture()`)
+	}
+	defer cleanupFault()
+	input := operationsapplication.RetentionRunInput{Subject: requester, RunID: preview.RunID, CandidateHash: preview.CandidateHash}
+	if _, err := service.ExecuteRetention(ctx, input); !errors.Is(err, sharedrepository.ErrUnavailable) {
+		t.Fatalf("faulted execution error = %v, want unavailable", err)
+	}
+	cleanupFault()
+	loaded, err := service.RetentionRun(ctx, approver, preview.RunID)
+	if err != nil || loaded.RunID != preview.RunID || loaded.Status != operationsdomain.RetentionRunApproved || loaded.CandidateHash != preview.CandidateHash || loaded.Affected != 1 {
+		t.Fatalf("reenterable run = %#v/%v", loaded, err)
+	}
+	var remaining, failedAudits int
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM content_metric_snapshots`).Scan(&remaining); err != nil || remaining != 1 {
+		t.Fatalf("remaining after transient failure = %d/%v, want 1", remaining, err)
+	}
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM audit_logs WHERE action='retention.executed' AND resource_type='retention_run' AND resource_id=$1 AND result='failure' AND after_data->>'reason_code'='execution_failed'`, preview.RunID).Scan(&failedAudits); err != nil || failedAudits != 1 {
+		t.Fatalf("failed execution audits = %d/%v, want one sanitized failure", failedAudits, err)
+	}
+	completed, err := service.ExecuteRetention(ctx, input)
+	if err != nil || completed.RunID != preview.RunID || completed.Status != operationsdomain.RetentionRunCompleted || completed.Affected != 1 {
+		t.Fatalf("reentered execution = %#v/%v", completed, err)
+	}
+	if err := runtime.SQL.QueryRowContext(ctx, `SELECT count(*) FROM content_metric_snapshots`).Scan(&remaining); err != nil || remaining != 0 {
+		t.Fatalf("remaining after reentered execution = %d/%v, want 0", remaining, err)
+	}
+}
+
 func governanceRuntime(t *testing.T) *database.Runtime {
 	t.Helper()
 	runtime, err := database.Open(context.Background(), postgresfixture.New(t))
