@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -132,14 +133,122 @@ printf '%s\n' \
 		t.Fatalf("structured argv=%q err=%v", arguments, err)
 	}
 	outputSchema, err := os.ReadFile(filepath.Join(fixtureDirectory, "output-schema"))
-	if err != nil || string(outputSchema) != string(request.Schema) {
-		t.Fatalf("output schema=%q err=%v", outputSchema, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotSchema any
+	var wantedSchema any
+	if json.Unmarshal(outputSchema, &gotSchema) != nil || json.Unmarshal(request.Schema, &wantedSchema) != nil ||
+		!reflect.DeepEqual(gotSchema, wantedSchema) {
+		t.Fatalf("output schema=%q, want semantically equal to %q", outputSchema, request.Schema)
 	}
 	standardInput, err := os.ReadFile(filepath.Join(fixtureDirectory, "stdin"))
 	if err != nil || !strings.Contains(string(standardInput), `"task_type":"term_expansion"`) ||
 		!strings.Contains(string(standardInput), `"schema_name":"term-expansion-output-v1"`) ||
 		!strings.Contains(string(standardInput), `"schema_version":"v1"`) {
 		t.Fatalf("versioned stdin contract=%q err=%v", standardInput, err)
+	}
+}
+
+func TestCodexCLIProviderAdaptsCanonicalSchemaAndRemovesOptionalNulls(t *testing.T) {
+	fixtureDirectory := t.TempDir()
+	workspaceRoot := filepath.Join(fixtureDirectory, "workspaces")
+	if err := os.Mkdir(workspaceRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fakeExecutable := writeCodexCLIFixture(t, fixtureDirectory, `#!/bin/sh
+set -eu
+fixture_directory=$(dirname "$0")
+cat inputs/output.schema.json > "$fixture_directory/output-schema"
+cat >/dev/null
+printf '%s\n' \
+  '{"type":"thread.started","thread_id":"thread-1"}' \
+  '{"type":"turn.started"}' \
+  '{"type":"item.completed","item":{"id":"item-1","type":"agent_message","text":"{\"decision\":\"accepted\",\"note\":null,\"items\":[{\"value\":1,\"label\":null}]}"}}' \
+  '{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0}}'
+`)
+	provider := newCodexCLIProviderFixture(t, fakeExecutable, workspaceRoot)
+
+	request := codexCLIStructuredRequest()
+	request.Schema = json.RawMessage(`{
+		"type":"object",
+		"additionalProperties":false,
+		"required":["decision","items"],
+		"properties":{
+			"decision":{"type":"string","enum":["accepted","rejected"]},
+			"note":{"type":"string","maxLength":20},
+			"items":{"type":"array","minItems":1,"uniqueItems":true,"items":{
+				"type":"object","additionalProperties":false,"required":["value"],
+				"properties":{"value":{"type":"integer","minimum":1},"label":{"type":"string","maxLength":20}}
+			}}
+		},
+		"allOf":[{"if":{"properties":{"decision":{"const":"accepted"}}},"then":{"required":["items"]}}]
+	}`)
+	response, err := provider.GenerateStructured(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(response.JSON) != `{"decision":"accepted","items":[{"value":1}]}` {
+		t.Fatalf("normalized response = %s", response.JSON)
+	}
+
+	outputSchema, err := os.ReadFile(filepath.Join(fixtureDirectory, "output-schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var adapted map[string]any
+	if err := json.Unmarshal(outputSchema, &adapted); err != nil {
+		t.Fatal(err)
+	}
+	wanted := map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []any{"decision", "items", "note"},
+		"properties": map[string]any{
+			"decision": map[string]any{"type": "string", "enum": []any{"accepted", "rejected"}},
+			"note": map[string]any{"anyOf": []any{
+				map[string]any{"type": "string"}, map[string]any{"type": "null"},
+			}},
+			"items": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required":             []any{"label", "value"},
+					"properties": map[string]any{
+						"value": map[string]any{"type": "integer"},
+						"label": map[string]any{"anyOf": []any{
+							map[string]any{"type": "string"}, map[string]any{"type": "null"},
+						}},
+					},
+				},
+			},
+		},
+	}
+	if !reflect.DeepEqual(adapted, wanted) {
+		t.Fatalf("adapted schema = %#v, want %#v", adapted, wanted)
+	}
+}
+
+func TestStripCodexCLIOptionalNullsPreservesUnknownAndRequiredNullsForCanonicalValidation(t *testing.T) {
+	canonical := json.RawMessage(`{
+		"type":"object",
+		"additionalProperties":false,
+		"required":["required_value"],
+		"properties":{
+			"required_value":{"type":"string"},
+			"optional_value":{"type":"string"}
+		}
+	}`)
+	normalized, ok := stripCodexCLIOptionalNulls(
+		json.RawMessage(`{"required_value":null,"optional_value":null,"unknown_value":null}`),
+		canonical,
+	)
+	if !ok {
+		t.Fatal("normalization failed")
+	}
+	if string(normalized) != `{"required_value":null,"unknown_value":null}` {
+		t.Fatalf("normalized response = %s", normalized)
 	}
 }
 
@@ -224,7 +333,7 @@ func codexCLIStructuredRequest() intelligencedomain.StructuredRequest {
 		SchemaName: "term-expansion-output-v1", SchemaVersion: "v1",
 		Instruction: "Return one structured term expansion result and do not execute tools.",
 		InputSchema: json.RawMessage(`{"type":"object"}`),
-		Schema:      json.RawMessage(`{"type":"object","additionalProperties":false,"required":["terms"],"properties":{"terms":{"type":"array"}}}`),
+		Schema:      json.RawMessage(`{"type":"object","additionalProperties":false,"required":["terms"],"properties":{"terms":{"type":"array","items":{"type":"string"}}}}`),
 		Input:       json.RawMessage(`{"objective":"hotkey"}`),
 	}
 }

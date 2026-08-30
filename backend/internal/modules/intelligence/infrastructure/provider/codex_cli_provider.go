@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"sort"
 	"strings"
 
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
@@ -37,8 +38,12 @@ func (provider *CodexCLIProvider) GenerateStructured(ctx context.Context, reques
 	if err != nil {
 		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
 	}
+	outputSchema, ok := codexCLIOutputSchema(request.Schema)
+	if !ok {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIModelProfileInvalid)
+	}
 	processResult, err := provider.adapter.Run(ctx, CodexCLIProcessRequest{
-		Prompt: prompt, Model: request.ModelName, OutputSchema: append(json.RawMessage(nil), request.Schema...),
+		Prompt: prompt, Model: request.ModelName, OutputSchema: outputSchema,
 	})
 	if err != nil {
 		return intelligencedomain.StructuredResponse{}, err
@@ -47,8 +52,164 @@ func (provider *CodexCLIProvider) GenerateStructured(ctx context.Context, reques
 	if err != nil {
 		return intelligencedomain.StructuredResponse{}, err
 	}
+	response.JSON, ok = stripCodexCLIOptionalNulls(response.JSON, request.Schema)
+	if !ok {
+		return intelligencedomain.StructuredResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIOutputInvalid)
+	}
 	response.ModelVersion = request.ModelVersion
 	return response, nil
+}
+
+// codexCLIOutputSchema keeps only the structural subset accepted by Codex
+// structured outputs. The canonical schema remains unchanged and is enforced
+// by the application validation boundary after the provider returns.
+func codexCLIOutputSchema(canonical json.RawMessage) (json.RawMessage, bool) {
+	var value any
+	if json.Unmarshal(canonical, &value) != nil {
+		return nil, false
+	}
+	adapted, ok := adaptCodexCLIOutputSchema(value)
+	if !ok {
+		return nil, false
+	}
+	encoded, err := json.Marshal(adapted)
+	return encoded, err == nil
+}
+
+func adaptCodexCLIOutputSchema(value any) (map[string]any, bool) {
+	schema, ok := value.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	schemaType, _ := schema["type"].(string)
+	switch schemaType {
+	case "object":
+		properties, ok := schema["properties"].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		requiredValues, ok := schema["required"].([]any)
+		if !ok && schema["required"] != nil {
+			return nil, false
+		}
+		required := make(map[string]struct{}, len(requiredValues))
+		for _, value := range requiredValues {
+			name, ok := value.(string)
+			if !ok {
+				return nil, false
+			}
+			if _, exists := properties[name]; !exists {
+				return nil, false
+			}
+			required[name] = struct{}{}
+		}
+		names := make([]string, 0, len(properties))
+		for name := range properties {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		adaptedProperties := make(map[string]any, len(properties))
+		for _, name := range names {
+			child, ok := adaptCodexCLIOutputSchema(properties[name])
+			if !ok {
+				return nil, false
+			}
+			if _, isRequired := required[name]; isRequired {
+				adaptedProperties[name] = child
+			} else {
+				adaptedProperties[name] = map[string]any{"anyOf": []any{child, map[string]any{"type": "null"}}}
+			}
+		}
+		return map[string]any{
+			"type": "object", "additionalProperties": false,
+			"required": names, "properties": adaptedProperties,
+		}, true
+	case "array":
+		items, ok := adaptCodexCLIOutputSchema(schema["items"])
+		if !ok {
+			return nil, false
+		}
+		return map[string]any{"type": "array", "items": items}, true
+	case "boolean", "integer", "number", "string", "null":
+		adapted := map[string]any{"type": schemaType}
+		for _, keyword := range []string{"enum", "const"} {
+			if constraint, exists := schema[keyword]; exists {
+				adapted[keyword] = constraint
+			}
+		}
+		return adapted, true
+	case "":
+		alternatives, ok := schema["anyOf"].([]any)
+		if !ok || len(alternatives) == 0 {
+			return nil, false
+		}
+		adaptedAlternatives := make([]any, 0, len(alternatives))
+		for _, alternative := range alternatives {
+			adapted, ok := adaptCodexCLIOutputSchema(alternative)
+			if !ok {
+				return nil, false
+			}
+			adaptedAlternatives = append(adaptedAlternatives, adapted)
+		}
+		return map[string]any{"anyOf": adaptedAlternatives}, true
+	default:
+		return nil, false
+	}
+}
+
+func stripCodexCLIOptionalNulls(output, canonicalSchema json.RawMessage) (json.RawMessage, bool) {
+	var value any
+	var schema any
+	if json.Unmarshal(output, &value) != nil || json.Unmarshal(canonicalSchema, &schema) != nil {
+		return nil, false
+	}
+	normalized := normalizeCodexCLIOptionalNulls(value, schema)
+	encoded, err := json.Marshal(normalized)
+	return encoded, err == nil
+}
+
+func normalizeCodexCLIOptionalNulls(value, schemaValue any) any {
+	schema, ok := schemaValue.(map[string]any)
+	if !ok {
+		return value
+	}
+	switch schema["type"] {
+	case "object":
+		object, ok := value.(map[string]any)
+		properties, propertiesOK := schema["properties"].(map[string]any)
+		requiredValues, requiredOK := schema["required"].([]any)
+		if !ok || !propertiesOK || (!requiredOK && schema["required"] != nil) {
+			return value
+		}
+		required := make(map[string]struct{}, len(requiredValues))
+		for _, requiredValue := range requiredValues {
+			if name, ok := requiredValue.(string); ok {
+				required[name] = struct{}{}
+			}
+		}
+		normalized := make(map[string]any, len(object))
+		for name, child := range object {
+			_, isRequired := required[name]
+			childSchema, isKnown := properties[name]
+			if child == nil && isKnown && !isRequired {
+				continue
+			}
+			normalized[name] = normalizeCodexCLIOptionalNulls(child, childSchema)
+		}
+		return normalized
+	case "array":
+		items, ok := value.([]any)
+		if !ok {
+			return value
+		}
+		normalized := make([]any, len(items))
+		for index, item := range items {
+			normalized[index] = normalizeCodexCLIOptionalNulls(item, schema["items"])
+		}
+		return normalized
+	default:
+		return value
+	}
 }
 
 func codexCLIStructuredPrompt(request intelligencedomain.StructuredRequest) ([]byte, error) {
