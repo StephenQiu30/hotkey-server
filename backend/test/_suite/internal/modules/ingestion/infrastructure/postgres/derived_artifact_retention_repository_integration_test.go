@@ -11,6 +11,8 @@ import (
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/postgres"
 	knowledgevault "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/vault"
+	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
+	operationspostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/infrastructure/postgres"
 )
 
 func TestDerivedArtifactRightsRevocationDeletesOnlyAutomaticVaultProjectionAndKeepsLineage(t *testing.T) {
@@ -110,6 +112,47 @@ FROM derived_artifact_deletion_audits WHERE derived_artifact_id=$1`, projected.A
 		claimedReason != ingestionapplication.DerivedArtifactDeleteRightsRevoked || succeededReason != claimedReason {
 		t.Fatalf("retained lineage = artifact:%s document:%s path:%s sha:%s size:%d reasons:%s/%s",
 			artifactState, documentState, vaultRelativePath, artifactSHA, sizeBytes, claimedReason, succeededReason)
+	}
+	backupEvidenceSHA256 := strings.Repeat("b", 64)
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO backup_runs (
+  run_sha256,manifest_sha256,git_revision,status,recovery_point_at,started_at,completed_at,asset_count
+) VALUES ($1,$2,$3,'succeeded',$4,$5,$6,5)`, backupEvidenceSHA256, strings.Repeat("c", 64),
+		strings.Repeat("d", 40), at.Add(-3*time.Minute), at.Add(-5*time.Minute), at.Add(-2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	reconciliationRepository, err := operationspostgres.NewEvidenceLineageMaintenanceRepositoryWithVault(runtime, vaultRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciliation, err := operationsapplication.NewEvidenceLineageReconciliationService(reconciliationRepository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciliationResult, err := reconciliation.Reconcile(ctx, operationsapplication.EvidenceLineageReconciliationCommand{
+		Scope: "pg-vault", BatchSize: 10, GracePeriodHours: 24, Apply: true, ConfirmNonEmpty: true,
+		OperatorID: "retention-operator", ReviewerID: "retention-reviewer",
+		BinarySHA256: strings.Repeat("1", 64), SchemaSHA256: strings.Repeat("2", 64),
+		ConfigurationSHA256: strings.Repeat("3", 64), BackupEvidenceSHA256: backupEvidenceSHA256,
+		RehearsalEvidenceSHA256: strings.Repeat("4", 64),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reconciliationResult.Run.ExaminedCount != 1 || reconciliationResult.Run.HealthyCount != 1 ||
+		reconciliationResult.Run.FindingCount != 0 || reconciliationResult.Run.RepairedCount != 0 {
+		t.Fatalf("post-deletion Vault reconciliation = %#v", reconciliationResult.Run)
+	}
+	var reconciliationFinding, reconciliationReason string
+	if err := runtime.SQL.QueryRow(`
+SELECT finding,reason_code FROM evidence_lineage_reconciliation_items
+WHERE run_id=$1 AND asset_type='derived_artifact'`, reconciliationResult.Run.RunID).Scan(
+		&reconciliationFinding, &reconciliationReason,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if reconciliationFinding != "healthy" || reconciliationReason != "approved_vault_deletion_verified" {
+		t.Fatalf("post-deletion Vault finding=%q reason=%q", reconciliationFinding, reconciliationReason)
 	}
 	replayed, err := service.Run(ctx, ingestionapplication.RunDerivedArtifactRetentionCommand{At: at.Add(time.Minute), Limit: 10})
 	if err != nil || replayed.Claimed != 0 || replayed.Deleted != 0 || replayed.Failed != 0 {

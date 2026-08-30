@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	canonicaldb "github.com/StephenQiu30/hotkey-server/backend/db"
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
@@ -108,8 +109,9 @@ func runEvidenceLineageReconciliationCommand(ctx context.Context, cfg config.Con
 	}
 	if command.Apply {
 		_, _ = fmt.Fprintf(output,
-			"evidence lineage reconciliation completed: run_id=%d scope=%s examined=%d healthy=%d findings=%d repaired=%d failed=%d last_asset_cursor=%d\n",
-			result.Run.RunID, command.Scope, result.Run.ExaminedCount, result.Run.HealthyCount,
+			"evidence lineage reconciliation completed: run_id=%d scope=%s fenced_at=%s backup_evidence_sha256=%s rehearsal_evidence_sha256=%s examined=%d healthy=%d findings=%d repaired=%d failed=%d last_asset_cursor=%d\n",
+			result.Run.RunID, command.Scope, result.Run.FencedAt.UTC().Format(time.RFC3339Nano), command.BackupEvidenceSHA256,
+			command.RehearsalEvidenceSHA256, result.Run.ExaminedCount, result.Run.HealthyCount,
 			result.Run.FindingCount, result.Run.RepairedCount, result.Run.FailedCount, result.Run.LastAssetCursor)
 	}
 	return nil
@@ -128,7 +130,7 @@ func parseEvidenceLineageReconciliationFlags(args []string) (operationsapplicati
 	runID := flags.String("run-id", "", "existing numeric reconciliation run ID")
 	operatorID := flags.String("operator-id", "", "operator record identity")
 	reviewerID := flags.String("reviewer-id", "", "independent reviewer record identity")
-	backupEvidenceSHA256 := flags.String("backup-evidence-sha256", "", "consistent backup evidence digest")
+	backupEvidenceSHA256 := flags.String("backup-evidence-sha256", "", "recorded successful backup run digest")
 	rehearsalEvidenceSHA256 := flags.String("rehearsal-evidence-sha256", "", "restored-environment rehearsal evidence digest")
 	if err := flags.Parse(args); err != nil {
 		return operationsapplication.EvidenceLineageReconciliationCommand{}, fmt.Errorf("parse evidence lineage reconciliation flags: %w", err)

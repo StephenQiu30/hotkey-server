@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 )
@@ -31,6 +32,7 @@ type EvidenceLineageReconciliationInspectionQuery struct {
 	Scope            string
 	BatchSize        int
 	GracePeriodHours int
+	FencedAt         time.Time
 }
 
 type EvidenceLineageReconciliationInspectionDTO struct {
@@ -77,6 +79,7 @@ type ResumeEvidenceLineageReconciliationCommand struct {
 type EvidenceLineageReconciliationRunDTO struct {
 	RunID           int64
 	Status          string
+	FencedAt        time.Time
 	LastAssetCursor int64
 	ExaminedCount   int64
 	HealthyCount    int64
@@ -88,6 +91,7 @@ type EvidenceLineageReconciliationRunDTO struct {
 type EvidenceLineageReconciliationBatchCommand struct {
 	RunID            int64
 	Scope            string
+	FencedAt         time.Time
 	AfterAssetCursor int64
 	BatchSize        int
 	GracePeriodHours int
@@ -142,6 +146,7 @@ func (service *EvidenceLineageReconciliationService) Reconcile(ctx context.Conte
 	}
 	inspection, err := service.repository.InspectEvidenceLineageReconciliation(ctx, EvidenceLineageReconciliationInspectionQuery{
 		Scope: command.Scope, BatchSize: command.BatchSize, GracePeriodHours: command.GracePeriodHours,
+		FencedAt: time.Now().UTC(),
 	})
 	if err != nil {
 		return EvidenceLineageReconciliationResult{}, fmt.Errorf("inspect evidence lineage reconciliation: %w", err)
@@ -159,13 +164,13 @@ func (service *EvidenceLineageReconciliationService) Reconcile(ctx context.Conte
 	if err != nil {
 		return result, err
 	}
-	if run.RunID <= 0 || run.Status != "running" || run.LastAssetCursor < 0 {
+	if run.RunID <= 0 || run.Status != "running" || run.FencedAt.IsZero() || run.LastAssetCursor < 0 {
 		return result, errors.New("evidence lineage reconciliation run receipt is invalid")
 	}
 	after := run.LastAssetCursor
 	for {
 		batch, batchErr := service.repository.ApplyEvidenceLineageReconciliationBatch(ctx, EvidenceLineageReconciliationBatchCommand{
-			RunID: run.RunID, Scope: command.Scope, AfterAssetCursor: after,
+			RunID: run.RunID, Scope: command.Scope, FencedAt: run.FencedAt, AfterAssetCursor: after,
 			BatchSize: command.BatchSize, GracePeriodHours: command.GracePeriodHours,
 		})
 		if batchErr != nil {
@@ -184,7 +189,7 @@ func (service *EvidenceLineageReconciliationService) Reconcile(ctx context.Conte
 	if err != nil {
 		return result, fmt.Errorf("complete evidence lineage reconciliation: %w", err)
 	}
-	if completed.RunID != run.RunID || completed.Status != "completed" {
+	if completed.RunID != run.RunID || completed.Status != "completed" || !completed.FencedAt.Equal(run.FencedAt) {
 		return result, errors.New("completed evidence lineage reconciliation receipt is invalid")
 	}
 	result.Run = completed

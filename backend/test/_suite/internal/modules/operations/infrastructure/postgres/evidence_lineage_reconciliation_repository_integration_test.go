@@ -11,6 +11,8 @@ import (
 	"time"
 
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
+	sourceapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/application"
+	sourcepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/infrastructure/postgres"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"github.com/StephenQiu30/hotkey-server/backend/test/postgresfixture"
 )
@@ -193,6 +195,200 @@ func TestEvidenceLineageReconciliationBlocksWhenStorageInspectorIsUnavailable(t 
 	}
 }
 
+func TestEvidenceLineageReconciliationRejectsUnrecordedBackupEvidence(t *testing.T) {
+	ctx := context.Background()
+	runtime := openEvidenceLineageReconciliationRuntime(t, ctx)
+	defer runtime.Close()
+	insertReconciliationRawSnapshotFixture(t, runtime.SQL, "unrecorded-backup")
+	if _, err := runtime.SQL.Exec(`DELETE FROM backup_runs`); err == nil {
+		t.Fatal("append-only backup fact unexpectedly deleted")
+	}
+	if _, err := runtime.SQL.Exec(`ALTER TABLE backup_runs DISABLE TRIGGER backup_runs_append_only`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SQL.Exec(`DELETE FROM backup_runs`); err != nil {
+		t.Fatal(err)
+	}
+	repository := newEvidenceLineageMaintenanceRepository(runtime, reconciliationRawObjectInspectorFake{}, reconciliationVaultInspectorFake{})
+	service, err := operationsapplication.NewEvidenceLineageReconciliationService(repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.Reconcile(ctx, validEvidenceLineageReconciliationApplyCommand("pg-minio"))
+	if err == nil || result.Run.RunID != 0 {
+		t.Fatalf("unrecorded backup result=%+v error=%v", result, err)
+	}
+	var runCount int
+	if queryErr := runtime.SQL.QueryRow(`SELECT count(*) FROM evidence_lineage_reconciliation_runs`).Scan(&runCount); queryErr != nil || runCount != 0 {
+		t.Fatalf("unrecorded backup persisted %d reconciliation runs: %v", runCount, queryErr)
+	}
+}
+
+func TestEvidenceLineageReconciliationReportsAuditedRawDeletionAsHealthy(t *testing.T) {
+	ctx := context.Background()
+	runtime := openEvidenceLineageReconciliationRuntime(t, ctx)
+	defer runtime.Close()
+	fixture := insertReconciliationRawSnapshotFixture(t, runtime.SQL, "audited-raw-deletion")
+	insertReconciliationStoreRawDeny(t, runtime.SQL, fixture)
+	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
+	rawRepository := sourcepostgres.NewRawEvidenceRetentionRepository(runtime)
+	candidates, err := rawRepository.ClaimExpired(ctx, deletedAt, 1)
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("claim raw deletion candidates=%+v error=%v", candidates, err)
+	}
+	candidate := candidates[0]
+	if err := rawRepository.CompleteDeletion(ctx, sourceapplication.CompleteRawEvidenceDeletionCommand{
+		SnapshotID: candidate.SnapshotID, AttemptNo: candidate.AttemptNo,
+		ObjectKey: candidate.ObjectKey, PayloadSHA256: candidate.PayloadSHA256,
+		DeletedAt: deletedAt, AlreadyMissing: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	repository := newEvidenceLineageMaintenanceRepository(runtime, reconciliationRawObjectInspectorFake{}, reconciliationVaultInspectorFake{})
+	service, err := operationsapplication.NewEvidenceLineageReconciliationService(repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Reconcile(ctx, validEvidenceLineageReconciliationApplyCommand("all"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Run.ExaminedCount != 1 || result.Run.HealthyCount != 1 || result.Run.FindingCount != 0 || result.Run.RepairedCount != 0 {
+		t.Fatalf("audited raw deletion run=%+v", result.Run)
+	}
+	var finding, reason string
+	if err := runtime.SQL.QueryRow(`
+SELECT finding,reason_code FROM evidence_lineage_reconciliation_items
+WHERE run_id=$1 AND asset_type='evidence_snapshot'`, result.Run.RunID).Scan(&finding, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if finding != "healthy" || reason != "approved_raw_deletion_verified" {
+		t.Fatalf("audited raw deletion finding=%q reason=%q", finding, reason)
+	}
+	objectKey := fmt.Sprintf("source-raw/v1/%d/%s/%s.raw", fixture.SourceID, fixture.SnapshotKey[:2], fixture.SnapshotKey)
+	residualRepository := newEvidenceLineageMaintenanceRepository(runtime, reconciliationRawObjectInspectorFake{
+		inspections: map[string]evidenceLineageAssetInspectionRecord{
+			objectKey: {Exists: true, SHA256: fixture.PayloadSHA256, SizeBytes: 128},
+		},
+	}, reconciliationVaultInspectorFake{})
+	residualService, err := operationsapplication.NewEvidenceLineageReconciliationService(residualRepository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	residual, err := residualService.Reconcile(ctx, validEvidenceLineageReconciliationApplyCommand("all"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if residual.Run.HealthyCount != 0 || residual.Run.FindingCount != 1 {
+		t.Fatalf("residual raw deletion run=%+v", residual.Run)
+	}
+	if err := runtime.SQL.QueryRow(`
+SELECT finding,reason_code FROM evidence_lineage_reconciliation_items
+WHERE run_id=$1 AND asset_type='evidence_snapshot'`, residual.Run.RunID).Scan(&finding, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if finding != "policy_blocked" || reason != "audited_raw_deletion_has_residual_object" {
+		t.Fatalf("residual raw deletion finding=%q reason=%q", finding, reason)
+	}
+}
+
+func TestEvidenceLineageReconciliationUsesRunTimeFenceAcrossRightsChanges(t *testing.T) {
+	ctx := context.Background()
+	runtime := openEvidenceLineageReconciliationRuntime(t, ctx)
+	defer runtime.Close()
+	fixture := insertReconciliationRawSnapshotFixture(t, runtime.SQL, "run-time-fence")
+	objectKey := fmt.Sprintf("source-raw/v1/%d/%s/%s.raw", fixture.SourceID, fixture.SnapshotKey[:2], fixture.SnapshotKey)
+	repository := newEvidenceLineageMaintenanceRepository(runtime, reconciliationRawObjectInspectorFake{
+		inspections: map[string]evidenceLineageAssetInspectionRecord{
+			objectKey: {Exists: true, SHA256: fixture.PayloadSHA256, SizeBytes: 128},
+		},
+	}, reconciliationVaultInspectorFake{})
+	command := validEvidenceLineageReconciliationApplyCommand("all")
+	run, err := repository.StartEvidenceLineageReconciliation(ctx, operationsapplication.StartEvidenceLineageReconciliationCommand{
+		Scope: command.Scope, BatchSize: command.BatchSize, GracePeriodHours: command.GracePeriodHours,
+		OperatorID: command.OperatorID, ReviewerID: command.ReviewerID,
+		BinarySHA256: command.BinarySHA256, SchemaSHA256: command.SchemaSHA256,
+		ConfigurationSHA256: command.ConfigurationSHA256, BackupEvidenceSHA256: command.BackupEvidenceSHA256,
+		RehearsalEvidenceSHA256: command.RehearsalEvidenceSHA256,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	insertReconciliationStoreRawDenyAt(t, runtime.SQL, fixture, run.FencedAt.Add(time.Microsecond))
+	batch, err := repository.ApplyEvidenceLineageReconciliationBatch(ctx, operationsapplication.EvidenceLineageReconciliationBatchCommand{
+		RunID: run.RunID, Scope: command.Scope, FencedAt: run.FencedAt,
+		AfterAssetCursor: 0, BatchSize: command.BatchSize, GracePeriodHours: command.GracePeriodHours,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if batch.ExaminedCount != 1 || batch.HealthyCount != 1 || batch.FindingCount != 0 {
+		t.Fatalf("time-fenced batch=%+v", batch)
+	}
+	var finding, reason string
+	if err := runtime.SQL.QueryRow(`
+SELECT finding,reason_code FROM evidence_lineage_reconciliation_items WHERE run_id=$1`, run.RunID).Scan(&finding, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if finding != "healthy" || reason != "asset_verified" {
+		t.Fatalf("time-fenced finding=%q reason=%q", finding, reason)
+	}
+}
+
+func TestEvidenceLineageReconciliationDoesNotTrustDeletionAuditRecordedAfterRunFence(t *testing.T) {
+	ctx := context.Background()
+	runtime := openEvidenceLineageReconciliationRuntime(t, ctx)
+	defer runtime.Close()
+	fixture := insertReconciliationRawSnapshotFixture(t, runtime.SQL, "post-fence-deletion")
+	repository := newEvidenceLineageMaintenanceRepository(runtime, reconciliationRawObjectInspectorFake{}, reconciliationVaultInspectorFake{})
+	command := validEvidenceLineageReconciliationApplyCommand("all")
+	run, err := repository.StartEvidenceLineageReconciliation(ctx, operationsapplication.StartEvidenceLineageReconciliationCommand{
+		Scope: command.Scope, BatchSize: command.BatchSize, GracePeriodHours: command.GracePeriodHours,
+		OperatorID: command.OperatorID, ReviewerID: command.ReviewerID,
+		BinarySHA256: command.BinarySHA256, SchemaSHA256: command.SchemaSHA256,
+		ConfigurationSHA256: command.ConfigurationSHA256, BackupEvidenceSHA256: command.BackupEvidenceSHA256,
+		RehearsalEvidenceSHA256: command.RehearsalEvidenceSHA256,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deletedAt := run.FencedAt.Add(time.Microsecond)
+	insertReconciliationStoreRawDenyAt(t, runtime.SQL, fixture, deletedAt)
+	rawRepository := sourcepostgres.NewRawEvidenceRetentionRepository(runtime)
+	candidates, err := rawRepository.ClaimExpired(ctx, deletedAt, 1)
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("claim post-fence deletion candidates=%+v error=%v", candidates, err)
+	}
+	candidate := candidates[0]
+	if err := rawRepository.CompleteDeletion(ctx, sourceapplication.CompleteRawEvidenceDeletionCommand{
+		SnapshotID: candidate.SnapshotID, AttemptNo: candidate.AttemptNo,
+		ObjectKey: candidate.ObjectKey, PayloadSHA256: candidate.PayloadSHA256,
+		DeletedAt: deletedAt, AlreadyMissing: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	batch, err := repository.ApplyEvidenceLineageReconciliationBatch(ctx, operationsapplication.EvidenceLineageReconciliationBatchCommand{
+		RunID: run.RunID, Scope: command.Scope, FencedAt: run.FencedAt,
+		AfterAssetCursor: 0, BatchSize: command.BatchSize, GracePeriodHours: command.GracePeriodHours,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if batch.ExaminedCount != 1 || batch.HealthyCount != 0 || batch.FindingCount != 1 {
+		t.Fatalf("post-fence deletion batch=%+v", batch)
+	}
+	var finding, reason string
+	if err := runtime.SQL.QueryRow(`
+SELECT finding,reason_code FROM evidence_lineage_reconciliation_items WHERE run_id=$1`, run.RunID).Scan(&finding, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if finding != "policy_blocked" || reason != "raw_deletion_not_verified_at_fence" {
+		t.Fatalf("post-fence deletion finding=%q reason=%q", finding, reason)
+	}
+}
+
 func TestEvidenceLineageReconciliationClassifiesUntrackedObjectsByGracePeriodWithoutDeletingThem(t *testing.T) {
 	ctx := context.Background()
 	runtime := openEvidenceLineageReconciliationRuntime(t, ctx)
@@ -334,6 +530,16 @@ func openEvidenceLineageReconciliationRuntime(t *testing.T, ctx context.Context)
 		runtime.Close()
 		t.Fatal(err)
 	}
+	now := time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO backup_runs (
+  run_sha256,manifest_sha256,git_revision,status,recovery_point_at,started_at,completed_at,asset_count
+) VALUES ($1,$2,$3,'succeeded',$4,$5,$6,5)`, reconciliationSHA256("backup"),
+		reconciliationSHA256("backup-manifest"), reconciliationSHA256("git-revision")[:40],
+		now.Add(-time.Minute), now.Add(-2*time.Minute), now); err != nil {
+		runtime.Close()
+		t.Fatal(err)
+	}
 	return runtime
 }
 
@@ -412,7 +618,12 @@ RETURNING id`, sourceID, storeDecisionID, retainDecisionID, snapshotKey, objectK
 
 func insertReconciliationStoreRawDeny(t *testing.T, databaseHandle *sql.DB, fixture reconciliationRawSnapshotFixture) {
 	t.Helper()
-	now := time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
+	insertReconciliationStoreRawDenyAt(t, databaseHandle, fixture, time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond))
+}
+
+func insertReconciliationStoreRawDenyAt(t *testing.T, databaseHandle *sql.DB, fixture reconciliationRawSnapshotFixture, effectiveAt time.Time) {
+	t.Helper()
+	effectiveAt = effectiveAt.UTC().Truncate(time.Microsecond)
 	suffix := fmt.Sprintf("deny-%d", time.Now().UnixNano())
 	var policyID int64
 	if err := databaseHandle.QueryRow(`
@@ -421,7 +632,7 @@ INSERT INTO source_rights_policies (
   scope_type,scope_subject,policy_revision,priority,basis_summary,policy_hash,effective_at
 ) VALUES ($1,$1,$2,$3,$4,'observation',$5,1,400,'reconciliation deny fixture',$6,$7) RETURNING id`,
 		fixture.AdministratorID, "policy-"+suffix, reconciliationSHA256("policy-command-"+suffix), fixture.SourceID,
-		"observation-"+suffix, reconciliationSHA256("policy-"+suffix), now.Add(-time.Hour)).Scan(&policyID); err != nil {
+		"observation-"+suffix, reconciliationSHA256("policy-"+suffix), effectiveAt).Scan(&policyID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := databaseHandle.Exec(`
@@ -438,7 +649,7 @@ INSERT INTO source_rights_decisions (
          'store_raw','deny','fixture',$9,$9 FROM decision_batch`,
 		fixture.SourceID, policyID, fixture.SnapshotKey, fixture.PayloadSHA256, fixture.AdministratorID,
 		"batch-"+suffix, reconciliationSHA256("batch-command-"+suffix), "observation-"+suffix,
-		now.Add(-time.Hour)); err != nil {
+		effectiveAt); err != nil {
 		t.Fatal(err)
 	}
 }

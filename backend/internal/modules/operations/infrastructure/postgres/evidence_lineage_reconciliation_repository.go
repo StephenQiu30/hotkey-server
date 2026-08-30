@@ -41,6 +41,7 @@ type evidenceLineageAssetManifestRecord struct {
 	StoreAllowed       bool
 	RetainAllowed      bool
 	ExceptionApproved  bool
+	DeletionSucceeded  bool
 	Active             bool
 	DocumentVersionID  *int64
 	DocumentLifecycle  *string
@@ -61,6 +62,7 @@ type evidenceLineageReconciliationRunRecord struct {
 	Version          int64
 	Scope            string
 	Status           string
+	FencedAt         time.Time
 	BatchSize        int
 	GracePeriodHours int
 	LastAssetCursor  int64
@@ -74,6 +76,9 @@ type evidenceLineageReconciliationRunRecord struct {
 func (repository *EvidenceLineageMaintenanceRepository) InspectEvidenceLineageReconciliation(ctx context.Context, query operationsapplication.EvidenceLineageReconciliationInspectionQuery) (operationsapplication.EvidenceLineageReconciliationInspectionDTO, error) {
 	if err := repository.validateReconciliationQuery(query.Scope, query.BatchSize, query.GracePeriodHours); err != nil {
 		return operationsapplication.EvidenceLineageReconciliationInspectionDTO{}, err
+	}
+	if query.FencedAt.IsZero() {
+		return operationsapplication.EvidenceLineageReconciliationInspectionDTO{}, fmt.Errorf("%w: reconciliation time fence is required", sharedrepository.ErrInvalidInput)
 	}
 	verification, err := database.Verify(ctx, repository.runtime.Pool)
 	if err != nil {
@@ -140,13 +145,24 @@ func (repository *EvidenceLineageMaintenanceRepository) StartEvidenceLineageReco
 	if active != 0 {
 		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, fmt.Errorf("%w: evidence lineage producer is active", sharedrepository.ErrConflict)
 	}
+	var backupRecorded bool
+	if err := transaction.QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1 FROM backup_runs
+  WHERE run_sha256=$1 AND status='succeeded' AND completed_at <= CURRENT_TIMESTAMP
+)`, command.BackupEvidenceSHA256).Scan(&backupRecorded); err != nil {
+		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, err
+	}
+	if !backupRecorded {
+		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, fmt.Errorf("%w: successful backup evidence is not recorded", sharedrepository.ErrConflict)
+	}
 	row := transaction.QueryRowContext(ctx, `
 INSERT INTO evidence_lineage_reconciliation_runs (
   scope,operator_id,reviewer_id,binary_sha256,schema_sha256,configuration_sha256,
   backup_evidence_sha256,rehearsal_evidence_sha256,batch_size,grace_period_hours
 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 RETURNING id,version,scope,status,batch_size,grace_period_hours,last_asset_id,examined_count,
-          healthy_count,finding_count,repaired_count,failed_count`,
+          healthy_count,finding_count,repaired_count,failed_count,started_at`,
 		command.Scope, command.OperatorID, command.ReviewerID, command.BinarySHA256, command.SchemaSHA256,
 		command.ConfigurationSHA256, command.BackupEvidenceSHA256, command.RehearsalEvidenceSHA256,
 		command.BatchSize, command.GracePeriodHours)
@@ -170,8 +186,13 @@ SET version=version+1,resume_count=resume_count+1,updated_at=now()
 WHERE id=$1 AND status='running' AND scope=$2 AND batch_size=$3 AND grace_period_hours=$4
   AND operator_id=$5 AND reviewer_id=$6 AND binary_sha256=$7 AND schema_sha256=$8
   AND configuration_sha256=$9 AND backup_evidence_sha256=$10 AND rehearsal_evidence_sha256=$11
+  AND EXISTS (
+    SELECT 1 FROM backup_runs
+    WHERE run_sha256=$10 AND status='succeeded'
+      AND completed_at <= evidence_lineage_reconciliation_runs.started_at
+  )
 RETURNING id,version,scope,status,batch_size,grace_period_hours,last_asset_id,examined_count,
-          healthy_count,finding_count,repaired_count,failed_count`,
+          healthy_count,finding_count,repaired_count,failed_count,started_at`,
 		command.RunID, command.Scope, command.BatchSize, command.GracePeriodHours,
 		command.OperatorID, command.ReviewerID, command.BinarySHA256, command.SchemaSHA256,
 		command.ConfigurationSHA256, command.BackupEvidenceSHA256, command.RehearsalEvidenceSHA256)
@@ -196,19 +217,21 @@ func (repository *EvidenceLineageMaintenanceRepository) ApplyEvidenceLineageReco
 	defer func() { _ = transaction.Rollback() }()
 	var scope, status string
 	var cursor int64
-	if err := transaction.QueryRowContext(ctx, `SELECT scope,status,last_asset_id FROM evidence_lineage_reconciliation_runs WHERE id=$1 FOR UPDATE`, command.RunID).Scan(&scope, &status, &cursor); err != nil {
+	var fencedAt time.Time
+	if err := transaction.QueryRowContext(ctx, `SELECT scope,status,last_asset_id,started_at FROM evidence_lineage_reconciliation_runs WHERE id=$1 FOR UPDATE`, command.RunID).Scan(&scope, &status, &cursor, &fencedAt); err != nil {
 		return operationsapplication.EvidenceLineageReconciliationBatchResultDTO{}, err
 	}
-	if scope != command.Scope || status != "running" || cursor != command.AfterAssetCursor {
+	if scope != command.Scope || status != "running" || cursor != command.AfterAssetCursor ||
+		command.FencedAt.IsZero() || !command.FencedAt.Equal(fencedAt) {
 		return operationsapplication.EvidenceLineageReconciliationBatchResultDTO{}, fmt.Errorf("%w: reconciliation cursor changed", sharedrepository.ErrConflict)
 	}
-	manifests, hasMore, err := repository.queryEvidenceLineageAssetManifests(ctx, transaction, command.Scope, cursor, command.BatchSize)
+	manifests, hasMore, err := repository.queryEvidenceLineageAssetManifests(ctx, transaction, command.Scope, cursor, command.BatchSize, fencedAt)
 	if err != nil {
 		return operationsapplication.EvidenceLineageReconciliationBatchResultDTO{}, err
 	}
 	result := operationsapplication.EvidenceLineageReconciliationBatchResultDTO{RunID: command.RunID, LastAssetCursor: cursor, HasMore: hasMore}
 	for _, manifest := range manifests {
-		finding, inspectErr := repository.inspectEvidenceLineageManifest(ctx, command.Scope, command.GracePeriodHours, manifest)
+		finding, inspectErr := repository.inspectEvidenceLineageManifest(ctx, command.Scope, command.GracePeriodHours, manifest, fencedAt)
 		if inspectErr != nil {
 			return operationsapplication.EvidenceLineageReconciliationBatchResultDTO{}, inspectErr
 		}
@@ -250,7 +273,7 @@ UPDATE evidence_lineage_reconciliation_runs
 SET version=version+1,status='completed',completed_at=now(),updated_at=now()
 WHERE id=$1 AND status='running' AND last_asset_id=$2
 RETURNING id,version,scope,status,batch_size,grace_period_hours,last_asset_id,examined_count,
-          healthy_count,finding_count,repaired_count,failed_count`, command.RunID, command.LastAssetCursor)
+          healthy_count,finding_count,repaired_count,failed_count,started_at`, command.RunID, command.LastAssetCursor)
 	record, err := scanEvidenceLineageReconciliationRun(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, fmt.Errorf("%w: reconciliation completion changed", sharedrepository.ErrConflict)
@@ -292,13 +315,13 @@ func (repository *EvidenceLineageMaintenanceRepository) inspectAllReconciliation
 		if err != nil {
 			return nil, err
 		}
-		manifests, hasMore, queryErr := repository.queryEvidenceLineageAssetManifests(ctx, transaction, query.Scope, after, query.BatchSize)
+		manifests, hasMore, queryErr := repository.queryEvidenceLineageAssetManifests(ctx, transaction, query.Scope, after, query.BatchSize, query.FencedAt)
 		if queryErr != nil {
 			_ = transaction.Rollback()
 			return nil, queryErr
 		}
 		for _, manifest := range manifests {
-			finding, inspectErr := repository.inspectEvidenceLineageManifest(ctx, query.Scope, query.GracePeriodHours, manifest)
+			finding, inspectErr := repository.inspectEvidenceLineageManifest(ctx, query.Scope, query.GracePeriodHours, manifest, query.FencedAt)
 			if inspectErr != nil {
 				_ = transaction.Rollback()
 				return nil, inspectErr
@@ -315,7 +338,7 @@ func (repository *EvidenceLineageMaintenanceRepository) inspectAllReconciliation
 	}
 }
 
-func (repository *EvidenceLineageMaintenanceRepository) inspectEvidenceLineageManifest(ctx context.Context, scope string, gracePeriodHours int, manifest evidenceLineageAssetManifestRecord) (evidenceLineageFindingRecord, error) {
+func (repository *EvidenceLineageMaintenanceRepository) inspectEvidenceLineageManifest(ctx context.Context, scope string, gracePeriodHours int, manifest evidenceLineageAssetManifestRecord, fencedAt time.Time) (evidenceLineageFindingRecord, error) {
 	finding := evidenceLineageFindingRecord{Manifest: manifest, Finding: string(operationsdomain.ReconciliationFindingHealthy), ReasonCode: "asset_verified"}
 	if manifest.AssetType == "raw_object_orphan" || manifest.AssetType == "vault_file_orphan" {
 		if manifest.ObservedAt == nil {
@@ -323,7 +346,7 @@ func (repository *EvidenceLineageMaintenanceRepository) inspectEvidenceLineageMa
 		}
 		noAction := "none"
 		finding.RepairAction = &noAction
-		if manifest.ObservedAt.After(time.Now().UTC().Add(-time.Duration(gracePeriodHours) * time.Hour)) {
+		if manifest.ObservedAt.After(fencedAt.Add(-time.Duration(gracePeriodHours) * time.Hour)) {
 			finding.Finding, finding.ReasonCode = string(operationsdomain.ReconciliationFindingOrphanWithinGrace), "untracked_asset_within_grace"
 			return finding, nil
 		}
@@ -334,6 +357,18 @@ func (repository *EvidenceLineageMaintenanceRepository) inspectEvidenceLineageMa
 		inspection, err := repository.rawObjects.InspectRawEvidenceObject(ctx, manifest.Locator, maximumReconciliationAssetBytes)
 		if err != nil {
 			return finding, err
+		}
+		if manifest.DeletionSucceeded {
+			if inspection.Exists {
+				finding.Finding, finding.ReasonCode = string(operationsdomain.ReconciliationFindingPolicyBlocked), "audited_raw_deletion_has_residual_object"
+				return finding, nil
+			}
+			finding.ReasonCode = "approved_raw_deletion_verified"
+			return finding, nil
+		}
+		if manifest.LifecycleState == "tombstoned" {
+			finding.Finding, finding.ReasonCode = string(operationsdomain.ReconciliationFindingPolicyBlocked), "raw_deletion_not_verified_at_fence"
+			return finding, nil
 		}
 		if !inspection.Exists {
 			finding.Finding, finding.ReasonCode = string(operationsdomain.ReconciliationFindingMissing), "raw_object_missing"
@@ -349,6 +384,18 @@ func (repository *EvidenceLineageMaintenanceRepository) inspectEvidenceLineageMa
 		inspection, err := repository.vaultFiles.InspectVaultProjection(ctx, manifest.Locator, maximumReconciliationAssetBytes)
 		if err != nil {
 			return finding, err
+		}
+		if manifest.DeletionSucceeded {
+			if inspection.Exists {
+				finding.Finding, finding.ReasonCode = string(operationsdomain.ReconciliationFindingPolicyBlocked), "audited_vault_deletion_has_residual_file"
+				return finding, nil
+			}
+			finding.ReasonCode = "approved_vault_deletion_verified"
+			return finding, nil
+		}
+		if manifest.LifecycleState == "tombstoned" {
+			finding.Finding, finding.ReasonCode = string(operationsdomain.ReconciliationFindingPolicyBlocked), "vault_deletion_not_verified_at_fence"
+			return finding, nil
 		}
 		if !inspection.Exists {
 			finding.Finding, finding.ReasonCode = string(operationsdomain.ReconciliationFindingMissing), "vault_projection_missing"
@@ -368,7 +415,7 @@ func (repository *EvidenceLineageMaintenanceRepository) inspectEvidenceLineageMa
 			}
 			return withFindingRepair(finding, "retention_blocked", "block_retention"), nil
 		}
-		retentionExpired := !manifest.RetentionUntil.After(time.Now().UTC())
+		retentionExpired := !manifest.RetentionUntil.After(fencedAt)
 		if !manifest.RetainAllowed || retentionExpired && !manifest.ExceptionApproved {
 			finding.Finding, finding.ReasonCode = string(operationsdomain.ReconciliationFindingRetentionBlocked), "current_retention_right_denied_or_expired"
 			return withFindingRepair(finding, "retention_blocked", "block_retention"), nil
@@ -475,8 +522,8 @@ func nullableMaintenanceString(value string) any {
 	return value
 }
 
-func (repository *EvidenceLineageMaintenanceRepository) queryEvidenceLineageAssetManifests(ctx context.Context, transaction *sql.Tx, scope string, after int64, batchSize int) ([]evidenceLineageAssetManifestRecord, bool, error) {
-	records, persistedHasMore, err := queryPersistedEvidenceLineageAssetManifests(ctx, transaction, scope, after, batchSize)
+func (repository *EvidenceLineageMaintenanceRepository) queryEvidenceLineageAssetManifests(ctx context.Context, transaction *sql.Tx, scope string, after int64, batchSize int, fencedAt time.Time) ([]evidenceLineageAssetManifestRecord, bool, error) {
+	records, persistedHasMore, err := queryPersistedEvidenceLineageAssetManifests(ctx, transaction, scope, after, batchSize, fencedAt)
 	if err != nil || persistedHasMore {
 		return records, persistedHasMore, err
 	}
@@ -582,7 +629,7 @@ func orphanEvidenceLineageManifests(objects []evidenceLineageStoredAssetRecord, 
 	return records, nil
 }
 
-func queryPersistedEvidenceLineageAssetManifests(ctx context.Context, transaction *sql.Tx, scope string, after int64, batchSize int) ([]evidenceLineageAssetManifestRecord, bool, error) {
+func queryPersistedEvidenceLineageAssetManifests(ctx context.Context, transaction *sql.Tx, scope string, after int64, batchSize int, fencedAt time.Time) ([]evidenceLineageAssetManifestRecord, bool, error) {
 	records := make([]evidenceLineageAssetManifestRecord, 0, batchSize+1)
 	if (reconciliationUsesMinIO(scope) || reconciliationUsesRights(scope)) && after < derivedReconciliationCursorBase && len(records) < batchSize+1 {
 		rawAfter := int64(0)
@@ -591,16 +638,26 @@ func queryPersistedEvidenceLineageAssetManifests(ctx context.Context, transactio
 		}
 		rows, err := transaction.QueryContext(ctx, `
 SELECT id,source_connection_id,object_key,payload_sha256,size_bytes,lifecycle_state,retention_until,
-       current_rights_action_is_allowed(source_connection_id,'raw_response',btrim(snapshot_key),payload_sha256,'store_raw',CURRENT_TIMESTAMP),
-       current_rights_retention_days(source_connection_id,'raw_response',btrim(snapshot_key),payload_sha256,CURRENT_TIMESTAMP) IS NOT NULL,
+       current_rights_action_is_allowed(source_connection_id,'raw_response',btrim(snapshot_key),payload_sha256,'store_raw',$3),
+       current_rights_retention_days(source_connection_id,'raw_response',btrim(snapshot_key),payload_sha256,$3) IS NOT NULL,
        EXISTS (
          SELECT 1 FROM evidence_retention_exceptions AS exception
          WHERE exception.evidence_snapshot_id=evidence_snapshots.id
            AND exception.revoked_at IS NULL
-           AND exception.approved_at <= CURRENT_TIMESTAMP
-           AND (exception.expires_at IS NULL OR exception.expires_at > CURRENT_TIMESTAMP)
+           AND exception.approved_at <= $3
+           AND (exception.expires_at IS NULL OR exception.expires_at > $3)
+       ),
+       EXISTS (
+         SELECT 1 FROM evidence_deletion_audits AS audit
+         WHERE audit.evidence_snapshot_id=evidence_snapshots.id
+           AND audit.event_type='delete_succeeded'
+           AND audit.object_key=evidence_snapshots.object_key
+           AND audit.payload_sha256=evidence_snapshots.payload_sha256
+           AND audit.occurred_at <= $3
+           AND audit.created_at <= $3
+           AND evidence_snapshots.lifecycle_state='tombstoned'
        )
-FROM evidence_snapshots WHERE id>$1 ORDER BY id LIMIT $2`, rawAfter, batchSize+1-len(records))
+FROM evidence_snapshots WHERE id>$1 ORDER BY id LIMIT $2`, rawAfter, batchSize+1-len(records), fencedAt)
 		if err != nil {
 			return nil, false, err
 		}
@@ -608,7 +665,7 @@ FROM evidence_snapshots WHERE id>$1 ORDER BY id LIMIT $2`, rawAfter, batchSize+1
 			var record evidenceLineageAssetManifestRecord
 			if err := rows.Scan(&record.AssetID, &record.SourceConnectionID, &record.Locator, &record.ExpectedSHA256,
 				&record.ExpectedSizeBytes, &record.LifecycleState, &record.RetentionUntil,
-				&record.StoreAllowed, &record.RetainAllowed, &record.ExceptionApproved); err != nil {
+				&record.StoreAllowed, &record.RetainAllowed, &record.ExceptionApproved, &record.DeletionSucceeded); err != nil {
 				rows.Close()
 				return nil, false, err
 			}
@@ -632,13 +689,24 @@ FROM evidence_snapshots WHERE id>$1 ORDER BY id LIMIT $2`, rawAfter, batchSize+1
 		rows, err := transaction.QueryContext(ctx, `
 SELECT artifact.id,artifact.source_connection_id,artifact.vault_relative_path,artifact.sha256,artifact.size_bytes,
        artifact.lifecycle_state,artifact.retention_until,
-       current_rights_action_is_allowed(artifact.source_connection_id,'document_version',artifact.document_version_id::text,version.content_sha256,'store_derived',CURRENT_TIMESTAMP),
-       current_rights_retention_days(artifact.source_connection_id,'document_version',artifact.document_version_id::text,version.content_sha256,CURRENT_TIMESTAMP) IS NOT NULL,
+       current_rights_action_is_allowed(artifact.source_connection_id,'document_version',artifact.document_version_id::text,version.content_sha256,'store_derived',$3),
+       current_rights_retention_days(artifact.source_connection_id,'document_version',artifact.document_version_id::text,version.content_sha256,$3) IS NOT NULL,
        false,
+       EXISTS (
+         SELECT 1 FROM derived_artifact_deletion_audits AS audit
+         WHERE audit.derived_artifact_id=artifact.id
+           AND audit.event_type='delete_succeeded'
+           AND audit.vault_relative_path=artifact.vault_relative_path
+           AND audit.sha256=artifact.sha256
+           AND audit.size_bytes=artifact.size_bytes
+           AND audit.occurred_at <= $3
+           AND audit.created_at <= $3
+           AND artifact.lifecycle_state='tombstoned'
+       ),
        artifact.active,artifact.document_version_id,version.lifecycle_state
 FROM derived_artifacts artifact
 JOIN document_versions version ON version.id=artifact.document_version_id
-WHERE artifact.id>$1 ORDER BY artifact.id LIMIT $2`, derivedAfter, batchSize+1-len(records))
+WHERE artifact.id>$1 ORDER BY artifact.id LIMIT $2`, derivedAfter, batchSize+1-len(records), fencedAt)
 		if err != nil {
 			return nil, false, err
 		}
@@ -648,7 +716,8 @@ WHERE artifact.id>$1 ORDER BY artifact.id LIMIT $2`, derivedAfter, batchSize+1-l
 			var documentState string
 			if err := rows.Scan(&record.AssetID, &record.SourceConnectionID, &record.Locator, &record.ExpectedSHA256,
 				&record.ExpectedSizeBytes, &record.LifecycleState, &record.RetentionUntil,
-				&record.StoreAllowed, &record.RetainAllowed, &record.ExceptionApproved, &record.Active, &documentID, &documentState); err != nil {
+				&record.StoreAllowed, &record.RetainAllowed, &record.ExceptionApproved, &record.DeletionSucceeded,
+				&record.Active, &documentID, &documentState); err != nil {
 				rows.Close()
 				return nil, false, err
 			}
@@ -690,13 +759,13 @@ func scanEvidenceLineageReconciliationRun(row interface{ Scan(...any) error }) (
 	var record evidenceLineageReconciliationRunRecord
 	err := row.Scan(&record.ID, &record.Version, &record.Scope, &record.Status, &record.BatchSize,
 		&record.GracePeriodHours, &record.LastAssetCursor, &record.ExaminedCount, &record.HealthyCount,
-		&record.FindingCount, &record.RepairedCount, &record.FailedCount)
+		&record.FindingCount, &record.RepairedCount, &record.FailedCount, &record.FencedAt)
 	return record, err
 }
 
 func evidenceLineageReconciliationRunDTO(record evidenceLineageReconciliationRunRecord) operationsapplication.EvidenceLineageReconciliationRunDTO {
 	return operationsapplication.EvidenceLineageReconciliationRunDTO{
-		RunID: record.ID, Status: record.Status, LastAssetCursor: record.LastAssetCursor,
+		RunID: record.ID, Status: record.Status, FencedAt: record.FencedAt, LastAssetCursor: record.LastAssetCursor,
 		ExaminedCount: record.ExaminedCount, HealthyCount: record.HealthyCount,
 		FindingCount: record.FindingCount, RepairedCount: record.RepairedCount, FailedCount: record.FailedCount,
 	}

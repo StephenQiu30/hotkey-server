@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
+
+var evidenceLineageReconciliationFence = time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
 
 type evidenceLineageReconciliationRepositoryFake struct {
 	inspection EvidenceLineageReconciliationInspectionDTO
@@ -19,7 +22,7 @@ func (fake *evidenceLineageReconciliationRepositoryFake) InspectEvidenceLineageR
 }
 func (fake *evidenceLineageReconciliationRepositoryFake) StartEvidenceLineageReconciliation(context.Context, StartEvidenceLineageReconciliationCommand) (EvidenceLineageReconciliationRunDTO, error) {
 	fake.started++
-	return EvidenceLineageReconciliationRunDTO{RunID: 7, Status: "running"}, nil
+	return EvidenceLineageReconciliationRunDTO{RunID: 7, Status: "running", FencedAt: evidenceLineageReconciliationFence}, nil
 }
 func (fake *evidenceLineageReconciliationRepositoryFake) ResumeEvidenceLineageReconciliation(context.Context, ResumeEvidenceLineageReconciliationCommand) (EvidenceLineageReconciliationRunDTO, error) {
 	return EvidenceLineageReconciliationRunDTO{}, errors.New("unexpected resume")
@@ -32,7 +35,7 @@ func (fake *evidenceLineageReconciliationRepositoryFake) ApplyEvidenceLineageRec
 }
 func (fake *evidenceLineageReconciliationRepositoryFake) CompleteEvidenceLineageReconciliation(context.Context, CompleteEvidenceLineageReconciliationCommand) (EvidenceLineageReconciliationRunDTO, error) {
 	fake.completed++
-	return EvidenceLineageReconciliationRunDTO{RunID: 7, Status: "completed", ExaminedCount: 2, FindingCount: 1, HealthyCount: 1}, nil
+	return EvidenceLineageReconciliationRunDTO{RunID: 7, Status: "completed", FencedAt: evidenceLineageReconciliationFence, ExaminedCount: 2, FindingCount: 1, HealthyCount: 1}, nil
 }
 
 func TestEvidenceLineageReconciliationDryRunNeverStartsRepair(t *testing.T) {
@@ -72,6 +75,10 @@ func TestEvidenceLineageReconciliationApplyUsesStableCursorAndCompletes(t *testi
 	}
 	if repository.commands[0].AfterAssetCursor != 0 || repository.commands[1].AfterAssetCursor != 1 {
 		t.Fatalf("cursors=%d,%d", repository.commands[0].AfterAssetCursor, repository.commands[1].AfterAssetCursor)
+	}
+	if !repository.commands[0].FencedAt.Equal(evidenceLineageReconciliationFence) ||
+		!repository.commands[1].FencedAt.Equal(evidenceLineageReconciliationFence) {
+		t.Fatalf("time fences=%s,%s", repository.commands[0].FencedAt, repository.commands[1].FencedAt)
 	}
 }
 
