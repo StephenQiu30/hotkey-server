@@ -80,8 +80,8 @@ func TestSourcePermissionAndFiveStateGateMatchesAC002007(t *testing.T) {
 	}
 	contentPage := readRepositoryFile(t, repository, "frontend/src/app/dashboard/contents/page.tsx")
 	for _, fragment := range []string{
-		`aria-label="正在加载热点"`,
-		`aria-label="热点访问权限不足"`,
+		`aria-label="正在加载信号"`,
+		`aria-label="信号流访问权限不足"`,
 		`@/services/hotkey/hotkey-server/hotspots`,
 	} {
 		if !strings.Contains(contentPage, fragment) {
