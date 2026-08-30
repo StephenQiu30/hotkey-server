@@ -153,6 +153,7 @@ describe("公开入口页面", () => {
       "shadow-none"
     );
     expect(formCard).toHaveClass("rounded-none", "border-0", "bg-transparent");
+    expect(formCard).toHaveAttribute("data-variant", "flat");
     expect(screen.getByRole("link", { name: "HotKey 首页" })).toHaveAttribute(
       "href",
       "/"

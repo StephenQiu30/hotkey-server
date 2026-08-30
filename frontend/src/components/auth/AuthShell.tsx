@@ -137,9 +137,9 @@ export default function AuthShell({
           <p className="relative z-10 mt-auto text-xs text-muted-foreground">© 2026 HotKey</p>
         </aside>
 
-        <main className="flex min-h-svh items-center justify-center bg-background px-5 pb-10 pt-28 sm:px-8 lg:px-12 lg:py-16 xl:py-20">
-          <div className="auth-form-surface auth-animate w-full max-w-[400px] bg-transparent shadow-none [&_[data-slot=input]]:bg-card">
-            <Card className="rounded-none border-0 bg-transparent shadow-none">
+        <main className="flex min-h-svh items-start justify-center bg-background px-5 pb-10 pt-28 sm:px-8 lg:px-12 lg:pb-12 lg:pt-24">
+          <div className="auth-form-surface auth-animate w-full max-w-[384px] bg-transparent shadow-none [&_[data-slot=input]]:bg-card">
+            <Card variant="flat" className="rounded-none border-0 bg-transparent">
               <CardHeader className="space-y-0 px-0 pb-8 pt-0">
                 <p className="inline-flex w-fit items-center gap-2 text-xs font-medium tracking-[0.02em] text-muted-foreground">
                   <span
@@ -151,7 +151,7 @@ export default function AuthShell({
                 <CardTitle className="mt-5">
                   <h1 className="text-[2rem] leading-10 tracking-normal">{title}</h1>
                 </CardTitle>
-                <CardDescription className="mt-2 leading-6">{subtitle}</CardDescription>
+                <CardDescription className="mt-2 text-[15px] leading-6">{subtitle}</CardDescription>
               </CardHeader>
               <CardContent className="px-0 pb-0">
                 {children}

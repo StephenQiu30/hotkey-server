@@ -249,6 +249,10 @@ describe("SignalOrbitScene", () => {
       "aria-hidden",
       "true"
     );
+    expect(scene.querySelector("canvas")).toHaveStyle({
+      opacity: "0",
+      visibility: "hidden",
+    });
     expect(
       scene.querySelector('img[src*="hotkey-signal-radar"]')
     ).toHaveAttribute(
@@ -268,6 +272,10 @@ describe("SignalOrbitScene", () => {
     expect(scene).toHaveAttribute("data-variant", "ambient");
     expect(scene).toHaveClass("bg-transparent", "shadow-none");
     expect(scene).not.toHaveClass("rounded-2xl", "bg-[#f2f2f2]");
+    expect(scene.querySelector("canvas")).not.toHaveClass(
+      "transition-opacity",
+      "duration-500"
+    );
   });
 
   it.each([

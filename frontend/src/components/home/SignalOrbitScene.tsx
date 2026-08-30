@@ -150,13 +150,17 @@ export function SignalOrbitScene({
 
     const showFallback = () => {
       canvas.style.opacity = "0";
+      canvas.style.visibility = "hidden";
+      fallback.style.visibility = "visible";
       fallback.style.opacity = "1";
       figure.dataset.webgl = "fallback";
     };
 
     const showScene = () => {
-      canvas.style.opacity = "1";
       fallback.style.opacity = "0";
+      fallback.style.visibility = "hidden";
+      canvas.style.visibility = "visible";
+      canvas.style.opacity = "1";
       figure.dataset.webgl = "ready";
     };
 
@@ -731,7 +735,10 @@ export function SignalOrbitScene({
       <div
         ref={fallbackRef}
         aria-hidden="true"
-        className="pointer-events-none absolute inset-[8%] opacity-100 grayscale mix-blend-multiply transition-opacity duration-500 dark:invert dark:mix-blend-screen"
+        className={cn(
+          "pointer-events-none absolute inset-[8%] opacity-100 grayscale mix-blend-multiply dark:invert dark:mix-blend-screen",
+          variant === "panel" && "transition-opacity duration-500",
+        )}
       >
         <Image
           src="/images/hotkey-signal-radar.png"
@@ -747,7 +754,10 @@ export function SignalOrbitScene({
       <canvas
         ref={canvasRef}
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full opacity-0 transition-opacity duration-500"
+        className={cn(
+          "pointer-events-none absolute inset-0 h-full w-full opacity-0",
+          variant === "panel" && "transition-opacity duration-500",
+        )}
       />
 
       <div className="signal-orbit-label signal-orbit-status pointer-events-none absolute left-5 top-5 flex items-center gap-2 rounded-full bg-white/75 px-3 py-2 text-xs font-semibold tracking-[0.08em] text-[#525252] backdrop-blur-md sm:left-7 sm:top-7 dark:bg-white/[.055] dark:text-[#bdbdbd]">
