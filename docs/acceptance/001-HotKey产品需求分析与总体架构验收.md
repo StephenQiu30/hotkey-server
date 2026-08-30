@@ -10,7 +10,7 @@ canonical_path: docs/acceptance/001-HotKey产品需求分析与总体架构验�
 design: docs/design/001-HotKey产品需求分析与总体架构设计.md
 prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 plan: docs/plans/001-HotKey产品需求分析与总体架构计划.md
-verified_revision: "52e49217972766cda1cdc1623e74d5a9365f6dd5"
+verified_revision: "96203d843d6fe363d60991af627effc8a0366f72"
 verification_date: "2026-08-30"
 ---
 
@@ -27,11 +27,11 @@ verification_date: "2026-08-30"
 | 项目 | 实际值 |
 |---|---|
 | 验证日期 | 2026-08-30（Asia/Shanghai） |
-| 代码基线 | `52e49217972766cda1cdc1623e74d5a9365f6dd5`；容量与联合恢复历史基线 `3d9acccb` |
+| 代码基线 | `96203d843d6fe363d60991af627effc8a0366f72`；容量与联合恢复历史基线 `3d9acccb` |
 | 本机环境 | macOS 26.6.2、Apple arm64、Go 1.26.5、Node.js 24.19.0、uv 0.11.32 |
 | 项目运行 | 根 `docker-compose.yml`；Go Core、Python Agent、Web、PostgreSQL、Redis、MinIO 共 6 个服务均为 `healthy`；API `/readyz` 与 Web 首页均返回 HTTP 200 |
 | 自动化环境 | 本机既有工具链与可丢弃测试库；GitHub Actions Ubuntu Runner 与隔离 PostgreSQL、Redis、MinIO、Fresh Compose Project |
-| 远端证据 | [GitHub Actions 33305402699](https://github.com/StephenQiu30/hotkey-server/actions/runs/33305402699)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose 与 Fresh-container browser 共 8 个 Job 及最终汇总全部 `success`；净化索引见 [`release-evidence-index-github-ubuntu-52e49217.json`](evidence/005/release-evidence-index-github-ubuntu-52e49217.json) |
+| 远端证据 | [GitHub Actions 33307433106](https://github.com/StephenQiu30/hotkey-server/actions/runs/33307433106)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose 与 Fresh-container browser 共 8 个 Job 及最终汇总全部 `success`；净化索引见 [`release-evidence-index-github-ubuntu-96203d84.json`](evidence/005/release-evidence-index-github-ubuntu-96203d84.json) |
 
 ## P0 主故事现状矩阵
 
@@ -302,7 +302,7 @@ verification_date: "2026-08-30"
 - 实现证据：设置页继续保留名称、监控词、来源、周期和邮件提醒这组简单产品字段，但内部通过既有生成客户端建立或替换配置草稿，用强 ETag 与 Idempotency-Key 建立意图和预览 Run，轮询到 `succeeded` 后从版本历史读取精确 draft version 再发布；编辑复用相同链路，已有失败草稿通过当前 draft/resource version 继续 CAS，不回退到 legacy 匹配；
 - 失败关闭：预览返回 `failed`、`invalidated`、未知状态或超时时停止发布并保留可重试 UI；专项测试明确断言失败预览的 `postMonitorsIdPublish` 调用次数为 0；
 - 本机证据：`dashboard-settings-page.test.tsx` 13 项通过，前端 TypeScript、全量单测、生产依赖审计和 Production Build 均通过；
-- 远端证据：[GitHub Actions 33305402699](https://github.com/StephenQiu30/hotkey-server/actions/runs/33305402699) 的真实浏览器在设置页创建 `Browser Formal Monitor 2026`，完成 Draft→Intent→Preview→Publish；数据库断言确认发布配置绑定 ready Compiled Profile、与成功 Preview 的 Profile/配置/意图版本精确一致，且关联 Source Connection 已启用。7 个页面 WCAG 违规、页面错误和失败请求均为 0；净化报告及原始 Artifact Hash 汇总见 [`release-evidence-index-github-ubuntu-52e49217.json`](evidence/005/release-evidence-index-github-ubuntu-52e49217.json)；
+- 远端证据：[GitHub Actions 33307433106](https://github.com/StephenQiu30/hotkey-server/actions/runs/33307433106) 的真实浏览器在设置页创建 `Browser Formal Monitor 2026`，完成 Draft→Intent→Preview→Publish；数据库断言确认发布配置绑定 ready Compiled Profile、与成功 Preview 的 Profile/配置/意图版本精确一致，且关联 Source Connection 已启用。7 个页面 WCAG 违规、页面错误和失败请求均为 0；净化报告及原始 Artifact Hash 汇总见 [`release-evidence-index-github-ubuntu-96203d84.json`](evidence/005/release-evidence-index-github-ubuntu-96203d84.json)；
 - 边界：创建接口在兼容层仍先产生一次 legacy published Monitor，页面随即创建 replacement draft 并完成正式发布；调度器继续拒绝该短暂中间态，绝不回退读取 legacy rules。本轮使用启用的合成 RSS 来源，仅验证正式发布和后续固定业务链，不向外部 RSS/HN/X 发起请求；四角色人工 UAT 仍按未关闭门禁执行。
 
 ## AC 结果
@@ -337,7 +337,7 @@ capacity: HOTKEY_CAPACITY_DATASET_SIZE=100000 HOTKEY_CAPACITY_CONCURRENCY=20 HOT
 joint recovery: HOTKEY_RECOVERY_TEST_DSN='postgresql test DSN' HOTKEY_RECOVERY_MINIO_ENDPOINT='isolated MinIO endpoint' HOTKEY_RECOVERY_MINIO_ACCESS_KEY='test-only key' HOTKEY_RECOVERY_MINIO_SECRET_KEY='test-only secret' HOTKEY_RECOVERY_GIT_REVISION=3d9acccbc136195ee1c26fa7d9cec69cef2d1740 HOTKEY_RECOVERY_ENVIRONMENT=macos-26.6.2-local-postgresql-18.4-minio-isolated HOTKEY_RECOVERY_HARDWARE='Apple M5; 10 CPU; 24 GiB RAM; internal APFS SSD; PostgreSQL 18.4 and MinIO loopback' HOTKEY_RECOVERY_PRODUCTION_EGRESS_DISABLED=true HOTKEY_RECOVERY_OUTPUT=../docs/acceptance/evidence/001/joint-recovery-macos-arm64-3d9acccb.json make joint-recovery-acceptance
 ```
 
-历史本机全量结果通过；前端 272 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。最新远端运行 `33305402699` 在 `52e49217` 上再次通过 8 个必需 Job 与最终汇总，并完成 Monitor 正式发布、浏览器/数据库、容量、隐私和可用性证据闭环。
+历史本机全量结果通过；前端 272 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。最新远端运行 `33307433106` 在 `96203d84` 上再次通过 8 个必需 Job 与最终汇总，并完成 Monitor 正式发布、浏览器/数据库、容量、隐私和可用性证据闭环。
 
 ## 未完成项与停止条件
 

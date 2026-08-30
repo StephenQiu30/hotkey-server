@@ -1,0 +1,353 @@
+{
+  "version": "hotkey-release-evidence-index-v1",
+  "status": "verified",
+  "approval": "automated_material_verification_not_release_approval",
+  "release_ready": false,
+  "git_revision": "96203d843d6fe363d60991af627effc8a0366f72",
+  "ci": {
+    "run_id": "33307433106",
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/33307433106",
+    "conclusion": "success",
+    "browser_job_id": "99246426746",
+    "required_execution_jobs": 8,
+    "required_execution_jobs_passed": 8,
+    "aggregate_gate": "success"
+  },
+  "artifacts": {
+    "browser_business_flow": {
+      "id": 9731163539,
+      "name": "browser-business-flow-33307433106-1",
+      "digest": "sha256:186e9ea657f8e4e25bd2176f93e8944984ad08edca4fb62fd10730306243de5a",
+      "file_hashes": {
+        "browser_acceptance": "b3c5a6a7359d4d0826b013376604706b29a43cef26ae2548827d2c585908d0a0",
+        "browser_database": "a72e32bde49d07ffd968820a496aff77ff62f80422a3d3c616e86bf218c68fa0",
+        "network_summary": "4ffb90fb4e647dd21304c8cd36b7eaf5441ef41e722934cd49032bd457978791",
+        "m4_capacity": "4261cfa235a526aa3fb0c8c508201f05978c50479720719441b90e6a6e9114ae",
+        "availability": "f0d15e345c0cb0295ff5f711a388296ab627ab35f8d2a6cd7eecde1d70077e57",
+        "sentinel_scan": "7bd3c91e3b723399fc680bec39c41b54304d196c58278e1977266e37e9e97d47",
+        "secret_surface_scan": "d4ed195e7da6a20c97c0ba0ef26428a2d1f3e0061766a765077e21dde260631a"
+      }
+    },
+    "rc_candidate": {
+      "id": 9731170614,
+      "name": "rc-candidate-assessment-33307433106-1",
+      "digest": "sha256:b347286f6a6d695b9e862eced0b25d0d64d647cba92be20b789d947b8453eafb",
+      "file_sha256": "990ed71de9d449cce17f737386d01489d83ba08a9b3ae809fa33cc3fb7addcf2"
+    },
+    "release_manifest": {
+      "id": 9731171275,
+      "name": "release-manifest-33307433106-1",
+      "digest": "sha256:eab794f4bd05f0f167189c665a037681a976889a10bd9076a6e6c2b80fa55745",
+      "manifest_sha256": "61f083c5a4e7fcfa906593b0beae18a6a82833cc705f28c54340fb0ec048e874",
+      "sbom_sha256": "c34defc3a529de25bd0d401f5a1f0c7d3f0e31dd1aa4da5c78d28c4fd37ae6e0"
+    }
+  },
+  "browser": {
+    "version": "hotkey-browser-business-flow-v1",
+    "run_id": "browser-33307433106-1",
+    "a11y_pages": 7,
+    "a11y_violations": 0,
+    "page_errors": 0,
+    "failed_requests": [],
+    "observed_requests": 6,
+    "mobile_viewport": {
+      "width": 390,
+      "height": 844,
+      "horizontal_overflow": false
+    },
+    "malicious_report_content_inert": true
+  },
+  "monitor_publication": {
+    "workflow_steps": [
+      "Real browser notification to PostgreSQL search acceptance",
+      "Verify database and Vault closure"
+    ],
+    "assertion_source": "backend/test/fixtures/browser-acceptance/assert-business-flow.sql",
+    "assertions": [
+      "created monitor is active and has no draft_config_version_id",
+      "published configuration is bound to a ready published compiled profile",
+      "published compiled profile references the exact ready preview compiled profile",
+      "preview profile shares the published configuration and intent revision",
+      "preview run succeeded",
+      "published source connection is enabled"
+    ]
+  },
+  "database_projection": {
+    "run_id": "browser-33307433106-1",
+    "report_id": 1,
+    "report_version": 5,
+    "document_id": 1,
+    "document_revision": 1,
+    "proposal_id": 1,
+    "proposal_version": 3,
+    "notifications": 2
+  },
+  "capacity": {
+    "status": "measured",
+    "approval": "required",
+    "environment": "github-actions-fresh-container",
+    "hardware": "GitHub hosted ubuntu-latest; 4 logical CPU; 16377684 KiB RAM; Docker loopback",
+    "workload": {
+      "warmups": 2,
+      "samples": 12,
+      "concurrency": 1,
+      "cache_state": "warm",
+      "inter_flow_interval_millis": 31000,
+      "flow": "daily_report_to_notification_to_vault_to_postgresql_search"
+    },
+    "stages": {
+      "report_build": {
+        "p50_micros": 6648,
+        "p95_micros": 8411,
+        "p99_micros": 8411,
+        "errors": 0
+      },
+      "notification_visibility": {
+        "p50_micros": 11218,
+        "p95_micros": 16715,
+        "p99_micros": 16715,
+        "errors": 0
+      },
+      "report_publication": {
+        "p50_micros": 9317,
+        "p95_micros": 11818,
+        "p99_micros": 11818,
+        "errors": 0
+      },
+      "vault_publication": {
+        "p50_micros": 16692,
+        "p95_micros": 19784,
+        "p99_micros": 19784,
+        "errors": 0
+      },
+      "search_visibility": {
+        "p50_micros": 8001,
+        "p95_micros": 9113,
+        "p99_micros": 9113,
+        "errors": 0
+      }
+    },
+    "correlation": {
+      "strategy": "x-request-id",
+      "observed": 127,
+      "unique": 127
+    },
+    "resource_maxima": {
+      "agent": {
+        "samples": 60,
+        "memory_limit_bytes": 536870912,
+        "max_cpu_percent": 26.28,
+        "max_memory_used_bytes": 52806287,
+        "max_memory_percent": 9.84,
+        "max_pids": 2
+      },
+      "api": {
+        "samples": 60,
+        "memory_limit_bytes": 16771847291,
+        "max_cpu_percent": 23.69,
+        "max_memory_used_bytes": 56864276,
+        "max_memory_percent": 0.34,
+        "max_pids": 11
+      },
+      "minio": {
+        "samples": 60,
+        "memory_limit_bytes": 16771847291,
+        "max_cpu_percent": 4.52,
+        "max_memory_used_bytes": 92274688,
+        "max_memory_percent": 0.55,
+        "max_pids": 10
+      },
+      "postgres": {
+        "samples": 60,
+        "memory_limit_bytes": 16771847291,
+        "max_cpu_percent": 13.81,
+        "max_memory_used_bytes": 132854579,
+        "max_memory_percent": 0.79,
+        "max_pids": 16
+      },
+      "redis": {
+        "samples": 60,
+        "memory_limit_bytes": 16771847291,
+        "max_cpu_percent": 3.97,
+        "max_memory_used_bytes": 11460936,
+        "max_memory_percent": 0.07,
+        "max_pids": 6
+      },
+      "web": {
+        "samples": 60,
+        "memory_limit_bytes": 16771847291,
+        "max_cpu_percent": 14.77,
+        "max_memory_used_bytes": 97119109,
+        "max_memory_percent": 0.58,
+        "max_pids": 18
+      }
+    },
+    "projection_backlog": {
+      "notification": {
+        "samples": 60,
+        "max_available": 0,
+        "max_running": 0,
+        "max_lag_seconds": 0,
+        "final_available": 0,
+        "final_running": 0,
+        "final_lag_seconds": 0
+      },
+      "report": {
+        "samples": 60,
+        "max_available": 0,
+        "max_running": 0,
+        "max_lag_seconds": 0,
+        "final_available": 0,
+        "final_running": 0,
+        "final_lag_seconds": 0
+      },
+      "vault": {
+        "samples": 60,
+        "max_available": 0,
+        "max_running": 0,
+        "max_lag_seconds": 0,
+        "final_available": 0,
+        "final_running": 0,
+        "final_lag_seconds": 0
+      },
+      "search": {
+        "samples": 60,
+        "max_available": 0,
+        "max_running": 0,
+        "max_lag_seconds": 0,
+        "final_available": 0,
+        "final_running": 0,
+        "final_lag_seconds": 0
+      }
+    },
+    "exclusions": [
+      "external_provider_delivery",
+      "cold_cache",
+      "production_hardware",
+      "production_traffic"
+    ],
+    "differences": [],
+    "errors": 0
+  },
+  "availability": {
+    "status": "measured",
+    "approval": "required",
+    "release_ready": false,
+    "scope": "candidate_methodology_not_production_sla",
+    "measurement": {
+      "probe": "/readyz",
+      "aggregation": "conservative_all_probes_per_observation_minute",
+      "maintenance_window": "none",
+      "observation_minute_millis": 60000,
+      "probes_per_minute": 6,
+      "excluded_minutes": 0,
+      "available_minutes": 6,
+      "unavailable_minutes": 1,
+      "availability_percent": 85.714286
+    },
+    "error_budget": {
+      "candidate_target_percent": 99.5,
+      "calendar_window_days": 30,
+      "budget_minutes": 216,
+      "injected_unavailable_minutes": 1,
+      "remaining_budget_minutes": 215,
+      "target_met_in_injected_window": false
+    },
+    "scenarios": [
+      {
+        "scenario": "baseline",
+        "expected_api_available": true,
+        "observed_api_available": true,
+        "attributed": true
+      },
+      {
+        "scenario": "postgres_unavailable",
+        "expected_api_available": false,
+        "observed_api_available": false,
+        "attributed": true
+      },
+      {
+        "scenario": "postgres_recovered",
+        "expected_api_available": true,
+        "observed_api_available": true,
+        "attributed": true
+      },
+      {
+        "scenario": "redis_unavailable",
+        "expected_api_available": true,
+        "observed_api_available": true,
+        "attributed": true
+      },
+      {
+        "scenario": "minio_unavailable",
+        "expected_api_available": true,
+        "observed_api_available": true,
+        "attributed": true
+      },
+      {
+        "scenario": "worker_unavailable",
+        "expected_api_available": true,
+        "observed_api_available": true,
+        "attributed": true
+      },
+      {
+        "scenario": "full_recovery",
+        "expected_api_available": true,
+        "observed_api_available": true,
+        "attributed": true
+      }
+    ],
+    "differences": []
+  },
+  "privacy": {
+    "failed_requests": [],
+    "sentinel_leaks": 0,
+    "secret_leaks": 0,
+    "secret_surface_files_scanned": 628,
+    "secret_surface_bytes_scanned": 11349049
+  },
+  "rc_assessment": {
+    "status": "blocked",
+    "required_gates_passed": 8,
+    "required_gates_total": 8,
+    "coverage": {
+      "full_ci": true,
+      "e2e": true,
+      "performance": true,
+      "security": true,
+      "document_integrity": true
+    },
+    "p0_scope_passed": true,
+    "blocking_acs": {
+      "001": [
+        "AC-001-001:partial",
+        "AC-001-002:partial",
+        "AC-001-004:partial"
+      ],
+      "002": [
+        "AC-002-002:partial",
+        "AC-002-008:partial"
+      ],
+      "003": [
+        "AC-003-003:partial"
+      ],
+      "004": [
+        "AC-004-008:partial"
+      ],
+      "005": [
+        "AC-005-001:partial",
+        "AC-005-008:partial"
+      ]
+    },
+    "release_ready": false,
+    "differences": []
+  },
+  "remaining_gates": [
+    "authorized_rss_hn_x_live_smoke",
+    "production_isomorphic_16vcpu_64gb_2tb_nvme_capacity",
+    "four_role_uat_and_keyboard_signoff",
+    "real_model_dual_run_two_reviewer_approval_and_rollback",
+    "g6_release_owner_and_observation"
+  ],
+  "differences": []
+}
