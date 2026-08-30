@@ -9,6 +9,7 @@ const borderlessSurfaces = [
   "app/dashboard/page.tsx",
   "app/dashboard/contents/page.tsx",
   "components/PublicHeader.tsx",
+  "components/auth/AuthShell.tsx",
   "components/dashboard/HotspotCard.tsx",
   "components/dashboard/TopNav.tsx",
   "components/home/HomeHero.tsx",

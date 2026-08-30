@@ -84,7 +84,7 @@ export default function AuthShell({
           </Link>
           <Link
             href="/"
-            className="ml-auto inline-flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs font-medium text-muted-foreground no-underline transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="ml-auto inline-flex items-center gap-2 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground no-underline transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
             返回产品首页
@@ -97,33 +97,28 @@ export default function AuthShell({
           aria-label="HotKey 品牌介绍"
           className="relative hidden min-h-svh overflow-hidden px-8 pb-8 pt-24 lg:flex lg:flex-col xl:px-12 xl:pb-10"
         >
-          <div
-            aria-hidden="true"
-            className="intelligence-grid pointer-events-none absolute inset-0 z-0 opacity-70"
-          />
-
           <div className="relative z-10 max-w-[660px]">
-            <p className="auth-kicker auth-animate inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+            <p className="auth-kicker auth-animate inline-flex items-center gap-2 text-xs font-medium tracking-[0.02em] text-muted-foreground">
               <span
                 aria-hidden="true"
                 className="h-1.5 w-1.5 rounded-full bg-foreground/60"
               />
               Editorial intelligence
             </p>
-            <h2 className="auth-title auth-animate mt-5 text-[clamp(3rem,4.2vw,4.8rem)] font-semibold leading-[0.94] tracking-[-0.05em]">
+            <h2 className="auth-title auth-animate mt-5 text-[clamp(3rem,3.4vw,3.5rem)] font-semibold leading-[1.05] tracking-normal">
               <span className="block whitespace-nowrap">重要变化，</span>
               <span className="block whitespace-nowrap">先形成判断</span>
             </h2>
             <p className="auth-copy auth-animate mt-5 max-w-[420px] text-sm leading-7 text-muted-foreground xl:text-base xl:leading-8">
               持续监测公开信号，识别真正重要的变化，让每一次判断都建立在证据之上。
             </p>
-            <dl className="mt-6 grid max-w-[400px] grid-cols-3 gap-2">
+            <dl className="mt-6 flex max-w-[440px] flex-wrap items-center gap-x-6 gap-y-3">
               {authCapabilities.map((item) => {
                 const Icon = item.icon;
                 return (
                   <div
                     key={item.label}
-                    className="auth-capability auth-animate rounded-lg bg-muted px-3 py-3 text-xs font-medium text-muted-foreground"
+                    className="auth-capability auth-animate text-xs font-medium text-muted-foreground"
                   >
                     <dt className="flex items-center gap-2">
                       <Icon aria-hidden="true" className="h-3.5 w-3.5" />
@@ -135,18 +130,18 @@ export default function AuthShell({
             </dl>
           </div>
 
-          <div className="pointer-events-none relative z-10 mt-6 h-[190px] w-[50%] self-end [&_.signal-orbit-label]:hidden [&>figure]:min-h-0 xl:h-[230px]">
-            <SignalOrbitScene className="h-full" />
+          <div className="pointer-events-none relative z-10 mt-6 h-[190px] w-[54%] self-end [&_.signal-orbit-label]:hidden [&>figure]:min-h-0 xl:h-[230px]">
+            <SignalOrbitScene variant="ambient" className="h-full" />
           </div>
 
           <p className="relative z-10 mt-auto text-xs text-muted-foreground">© 2026 HotKey</p>
         </aside>
 
-        <main className="flex min-h-svh items-center justify-center bg-secondary px-5 pb-10 pt-28 sm:px-8 lg:px-12 lg:py-16 xl:py-20">
-          <div className="auth-form-surface auth-animate w-full max-w-[440px] rounded-2xl bg-card p-6 shadow-[0_28px_72px_-44px_rgba(0,0,0,.08)] sm:p-8 lg:p-9">
+        <main className="flex min-h-svh items-center justify-center bg-background px-5 pb-10 pt-28 sm:px-8 lg:px-12 lg:py-16 xl:py-20">
+          <div className="auth-form-surface auth-animate w-full max-w-[400px] bg-transparent shadow-none [&_[data-slot=input]]:bg-card">
             <Card className="rounded-none border-0 bg-transparent shadow-none">
-              <CardHeader className="space-y-0 px-0 pb-6 pt-0">
-                <p className="inline-flex w-fit items-center gap-2 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+              <CardHeader className="space-y-0 px-0 pb-8 pt-0">
+                <p className="inline-flex w-fit items-center gap-2 text-xs font-medium tracking-[0.02em] text-muted-foreground">
                   <span
                     aria-hidden="true"
                     className="h-1.5 w-1.5 rounded-full bg-foreground/60"
@@ -154,7 +149,7 @@ export default function AuthShell({
                   HotKey Intelligence
                 </p>
                 <CardTitle className="mt-5">
-                  <h1 className="text-[2rem] leading-10 tracking-[-0.045em]">{title}</h1>
+                  <h1 className="text-[2rem] leading-10 tracking-normal">{title}</h1>
                 </CardTitle>
                 <CardDescription className="mt-2 leading-6">{subtitle}</CardDescription>
               </CardHeader>

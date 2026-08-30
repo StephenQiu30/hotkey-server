@@ -243,6 +243,7 @@ describe("SignalOrbitScene", () => {
       name: "多来源信号汇聚成热点事件的动态轨迹",
     });
     expect(scene).toHaveAttribute("data-animation", "gsap-three");
+    expect(scene).toHaveAttribute("data-variant", "panel");
     expect(scene).toHaveAttribute("data-webgl", "fallback");
     expect(scene.querySelector("canvas")).toHaveAttribute(
       "aria-hidden",
@@ -256,6 +257,17 @@ describe("SignalOrbitScene", () => {
     );
     expect(screen.getByText("多源信号汇聚")).toBeInTheDocument();
     expect(screen.getByText("事件热度上升")).toBeInTheDocument();
+  });
+
+  it("supports an ambient borderless treatment for low-density pages", () => {
+    render(<SignalOrbitScene variant="ambient" />);
+
+    const scene = screen.getByRole("img", {
+      name: "多来源信号汇聚成热点事件的动态轨迹",
+    });
+    expect(scene).toHaveAttribute("data-variant", "ambient");
+    expect(scene).toHaveClass("bg-transparent", "shadow-none");
+    expect(scene).not.toHaveClass("rounded-2xl", "bg-[#f2f2f2]");
   });
 
   it.each([

@@ -141,11 +141,16 @@ describe("公开入口页面", () => {
       })
     ).toHaveAttribute("data-animation", "gsap-three");
     expect(authCanvas).toHaveClass("bg-background");
-    expect(brandRegion.querySelector(".intelligence-grid")).toBeInTheDocument();
+    expect(brandRegion.querySelector(".intelligence-grid")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "多来源信号汇聚成热点事件的动态轨迹",
+      })
+    ).toHaveAttribute("data-variant", "ambient");
     expect(formSurface).toHaveClass(
       "auth-form-surface",
-      "rounded-2xl",
-      "bg-card"
+      "bg-transparent",
+      "shadow-none"
     );
     expect(formCard).toHaveClass("rounded-none", "border-0", "bg-transparent");
     expect(screen.getByRole("link", { name: "HotKey 首页" })).toHaveAttribute(

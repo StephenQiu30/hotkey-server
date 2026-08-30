@@ -1,43 +1,66 @@
-# Login redesign QA
+# Login design-system QA
 
-## Visual source and rendered target
+## Comparison target
 
-- Source of truth: `/var/folders/r5/lm_1_1hd321dzlfq0lctjdnw0000gn/T/codex-clipboard-51a9e69c-e2a4-4e21-9eab-c7c01967d8e2.png`
-- Rendered implementation: `/tmp/hotkey-login-production-final-v2-1280x720.png`
+- Authoritative design source: `/Users/stephenqiu/Desktop/StephenQiu/HotKey/hotkey-server/design.md`
+- Defect baseline supplied by the user: `/var/folders/r5/lm_1_1hd321dzlfq0lctjdnw0000gn/T/codex-clipboard-d44aa72c-680b-4dcc-964f-269134162e0f.png`
+- Rendered implementation: `/tmp/hotkey-login-design-system-final-1280x720.png`
 - Route: `http://localhost:8010/login`
 - State: light theme, signed out, empty login form
-- Comparison note: the source includes browser chrome and was captured at 3508×1934, while the production implementation was inspected at a 1280×720 CSS viewport. Fidelity was judged on composition, typography, hierarchy, neutral palette, spacing, imagery, and control state rather than raw pixel coordinates.
+- Viewport: 1280×720 CSS pixels, device density 1
+- Source pixels: 3508×1934, including external browser chrome at approximately 2× density
+- Implementation pixels: 1280×720
+- Normalization: the browser chrome in the supplied screenshot is excluded from product judgments. The screenshot is used as the before-state evidence; `design.md` defines the intended palette, borderless structure, typography, motion, and Three.js behavior.
+
+## Findings and comparison history
+
+### Iteration 1 — blocked
+
+- [P1] Structural surfaces created visible color blocks.
+  - Baseline evidence: the right half used a full `surface-muted` column, the form used a white elevated card, and the left half used a full grid layer.
+  - Design-system conflict: `design.md` requires low-interference neutral hierarchy and borderless structure through whitespace before adding nested surfaces.
+  - Fix: unified both columns on `background` (`#FAFAFA`), removed the form card fill and shadow, removed the left grid, and retained white only for editable controls.
+- [P1] Decorative elements behaved like additional cards.
+  - Baseline evidence: the capability items, top link, authentication kicker, registration prompt, and signal scene all had rounded gray or white backgrounds.
+  - Fix: converted them to text/icon groupings on the page canvas and added an explicit transparent `ambient` variant to `SignalOrbitScene`.
+- [P2] Chinese display typography used aggressive negative tracking and exceeded the documented 48–56px display range.
+  - Fix: capped the editorial title at 56px, changed its line height to 1.05, and restored normal Chinese letter spacing. The form title also uses normal tracking.
+
+### Iteration 2 — passed
+
+- Post-fix full-view evidence: the final screenshot presents a single continuous `#FAFAFA` canvas. Left narrative and right form are separated by whitespace and alignment rather than column fills or elevated containers.
+- Post-fix runtime evidence: `main` is `rgb(250, 250, 250)`; form, capabilities, return link, registration prompt, and ambient Three.js figure all compute to transparent backgrounds. Inputs compute to `rgb(255, 255, 255)` as the permitted editable-control surface.
+- No actionable P0, P1, or P2 issue remains in the supplied desktop state.
 
 ## Required fidelity surfaces
 
 | Surface | Result | Evidence |
 | --- | --- | --- |
-| Typography | Passed | The two-line editorial headline, compact supporting copy, and restrained form hierarchy retain the supplied Vercel-like direction. |
-| Layout and spacing | Passed | The signal scene now follows the capability row in normal document flow; measured scene top `416.375px` is below the capability bottom `392.375px`. Page scroll height equals the 720px viewport. |
-| Color and surfaces | Passed | The form is opaque white (`rgb(255, 255, 255)`) on an opaque neutral work area (`rgb(245, 245, 245)`); no layered translucency or high-chroma accent was introduced. |
-| Imagery | Passed | The existing Three.js/GSAP signal-orbit scene is preserved, fitted to its own region, and its auxiliary labels remain hidden on the authentication page. |
-| Copy and controls | Passed | Login copy, email/password controls, recovery link, account creation link, home link, and return link are present and readable. |
-| Borderless design | Passed | Structural sections and card shells remain borderless; controls use the established project control treatment. |
+| Fonts and typography | Passed | Geist stack retained; Chinese titles use normal tracking; editorial title is capped at 56px with 1.05 line height. |
+| Spacing and layout rhythm | Passed | Two-column hierarchy remains legible without a column divider; 8px-grid spacing values are used; page height equals the 720px viewport. |
+| Colors and visual tokens | Passed | One `#FAFAFA` canvas, `#262626` foreground hierarchy, transparent structural groups, and white editable controls only. No chromatic accents or large white/gray nested blocks remain. |
+| Image quality and asset fidelity | Passed | The existing Three.js/static radar asset is preserved in transparent ambient mode without a rounded card, shadow, or gradient panel. |
+| Copy and content | Passed | Login purpose, monitoring proposition, capability labels, recovery route, account-creation route, and homepage return remain unchanged. |
 
-## Iteration record
+## Focused region comparison
 
-1. First comparison found a P1 layer collision: the absolutely positioned signal scene overlapped the explanatory copy and capability row. Translucent card, main, and input surfaces also produced a washed, muddy neutral palette.
-2. The scene was moved into normal flow, its visual region was bounded, and structural surfaces were changed to opaque design tokens. Critical GSAP entrances now animate transforms only, so content color and visibility are stable from the first frame.
-3. Final comparison found no P0, P1, or P2 visual defects in the supplied desktop state.
+- Form region: the baseline showed a gray column containing a white rounded card; the final render shows a transparent form region on the page canvas. Only input controls and the disabled primary action use functional surfaces.
+- Signal region: the baseline showed the orbit scene inside a rounded gray rectangle; the final render preserves the same signal artwork directly on the canvas with no visible container edge.
+- Header and supporting labels: baseline rounded fills were removed; focus rings remain available for keyboard interaction.
 
-## Interaction and runtime checks
+## Interaction and runtime verification
 
 - Empty form starts disabled.
-- Entering an email and password enables the primary action.
-- Password visibility toggle changes the input type to `text` and reload restores the empty disabled state.
-- Navigation targets: `/`, `/register`, and `/forgot-password`.
+- Entering email and password enables the primary action.
+- Password visibility toggle changes the input type to `text`; reload restores the empty disabled state.
+- Verified navigation targets: `/`, `/register`, and `/forgot-password`.
 - Production console errors: 0.
-- Production layout: no vertical page overflow at 1280×720; no scene/content overlap.
+- Desktop page overflow: none at 1280×720.
 
 ## Automated verification
 
-- Focused unit/design tests: 23 passed.
-- Full unit suite: 56 files, 293 tests passed.
+- Focused unit and design-contract tests: 25 passed.
+- Full unit suite: 56 files, 295 tests passed.
 - TypeScript: passed.
 - Next.js production build: passed.
 - Docker production rebuild: passed.

@@ -49,7 +49,7 @@ export default function LoginPage() {
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="h-12 rounded-lg bg-background pl-10"
+              className="h-12 rounded-lg bg-card pl-10"
               placeholder="name@example.com"
             />
           </div>
@@ -69,7 +69,7 @@ export default function LoginPage() {
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="h-12 rounded-lg bg-background"
+            className="h-12 rounded-lg bg-card"
           />
         </div>
         <Button
@@ -80,7 +80,7 @@ export default function LoginPage() {
           {loading ? "登录中…" : "进入工作台"}
         </Button>
       </form>
-      <p className="mt-7 rounded-lg bg-muted px-4 py-3 text-center text-sm text-muted-foreground">
+      <p className="mt-8 text-center text-sm text-muted-foreground">
         还没有账号？{" "}
         <Link
           href="/register"

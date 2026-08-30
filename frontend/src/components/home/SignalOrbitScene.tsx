@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import Image from "next/image";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
+import { cn } from "@/lib/utils";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(useGSAP);
@@ -13,6 +14,7 @@ const SIGNAL_COLORS = [0x3f3f3f, 0x666666, 0x858585, 0xb8b8b8] as const;
 
 type SignalOrbitSceneProps = {
   className?: string;
+  variant?: "panel" | "ambient";
 };
 
 type NavigatorWithPerformanceHints = Navigator & {
@@ -71,7 +73,10 @@ function supportsWebGL2() {
  * A progressively enhanced signal map: the shipped radar artwork remains the
  * fallback while Three.js is loaded and whenever WebGL is unavailable.
  */
-export function SignalOrbitScene({ className = "" }: SignalOrbitSceneProps) {
+export function SignalOrbitScene({
+  className = "",
+  variant = "panel",
+}: SignalOrbitSceneProps) {
   const figureRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fallbackRef = useRef<HTMLDivElement>(null);
@@ -707,13 +712,22 @@ export function SignalOrbitScene({ className = "" }: SignalOrbitSceneProps) {
       role="img"
       aria-label="多来源信号汇聚成热点事件的动态轨迹"
       data-animation="gsap-three"
+      data-variant={variant}
       data-webgl="loading"
-      className={`relative isolate min-h-[360px] w-full overflow-hidden rounded-2xl bg-[#f2f2f2] [box-shadow:var(--shadow-card)] sm:min-h-[460px] dark:bg-[#171717] ${className}`}
+      className={cn(
+        "relative isolate w-full overflow-hidden",
+        variant === "panel"
+          ? "min-h-[360px] rounded-2xl bg-[#f2f2f2] [box-shadow:var(--shadow-card)] sm:min-h-[460px] dark:bg-[#171717]"
+          : "min-h-0 bg-transparent shadow-none",
+        className,
+      )}
     >
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(0,0,0,0.055),transparent_34%),radial-gradient(circle_at_14%_18%,rgba(0,0,0,0.03),transparent_30%),radial-gradient(circle_at_86%_82%,rgba(0,0,0,0.025),transparent_32%)] dark:bg-[radial-gradient(circle_at_50%_42%,rgba(255,255,255,0.065),transparent_34%),radial-gradient(circle_at_14%_18%,rgba(255,255,255,0.035),transparent_30%),radial-gradient(circle_at_86%_82%,rgba(255,255,255,0.025),transparent_32%)]"
-      />
+      {variant === "panel" ? (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(0,0,0,0.055),transparent_34%),radial-gradient(circle_at_14%_18%,rgba(0,0,0,0.03),transparent_30%),radial-gradient(circle_at_86%_82%,rgba(0,0,0,0.025),transparent_32%)] dark:bg-[radial-gradient(circle_at_50%_42%,rgba(255,255,255,0.065),transparent_34%),radial-gradient(circle_at_14%_18%,rgba(255,255,255,0.035),transparent_30%),radial-gradient(circle_at_86%_82%,rgba(255,255,255,0.025),transparent_32%)]"
+        />
+      ) : null}
       <div
         ref={fallbackRef}
         aria-hidden="true"
