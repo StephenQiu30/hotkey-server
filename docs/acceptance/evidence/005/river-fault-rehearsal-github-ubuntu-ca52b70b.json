@@ -1,0 +1,127 @@
+{
+  "version": "hotkey-river-fault-rehearsal-v1",
+  "status": "verified",
+  "approval": "automated_isolated_fixture",
+  "environment": "github-actions-isolated-river-rehearsal",
+  "hardware": "ubuntu-latest-hosted-runner",
+  "git_revision": "ca52b70b590d1d54221fe70dec4448c3b5a74a03",
+  "goos": "linux",
+  "goarch": "amd64",
+  "logical_cpus": 4,
+  "isolated": true,
+  "production_egress_disabled": true,
+  "fixture_sha256": "bc6115d3ed593ef847b2aa6dbb3d749c3ede9c679b2b18528d5a2fddce806c18",
+  "fenced_at": "2026-08-30T03:21:16.285114Z",
+  "stages": {
+    "before_claim": {
+      "final_state": "completed",
+      "attempts": 1,
+      "effects": 1,
+      "effects_before_recovery": 0,
+      "lease_expired_attempts": 0,
+      "retryable_attempts": 0,
+      "permanent_attempts": 0,
+      "cancelled_attempts": 0,
+      "crash_exit_code": 81
+    },
+    "after_claim": {
+      "final_state": "completed",
+      "attempts": 2,
+      "effects": 1,
+      "effects_before_recovery": 0,
+      "lease_expired_attempts": 1,
+      "retryable_attempts": 0,
+      "permanent_attempts": 0,
+      "cancelled_attempts": 0,
+      "crash_exit_code": 82
+    },
+    "business_transaction": {
+      "final_state": "completed",
+      "attempts": 2,
+      "effects": 1,
+      "effects_before_recovery": 0,
+      "lease_expired_attempts": 1,
+      "retryable_attempts": 0,
+      "permanent_attempts": 0,
+      "cancelled_attempts": 0,
+      "crash_exit_code": 83
+    },
+    "before_completion_marker": {
+      "final_state": "completed",
+      "attempts": 2,
+      "effects": 1,
+      "effects_before_recovery": 1,
+      "lease_expired_attempts": 1,
+      "retryable_attempts": 0,
+      "permanent_attempts": 0,
+      "cancelled_attempts": 0,
+      "crash_exit_code": 84
+    },
+    "retry": {
+      "final_state": "completed",
+      "attempts": 2,
+      "effects": 1,
+      "effects_before_recovery": 0,
+      "lease_expired_attempts": 0,
+      "retryable_attempts": 1,
+      "permanent_attempts": 0,
+      "cancelled_attempts": 0,
+      "crash_exit_code": 0
+    },
+    "cancellation": {
+      "final_state": "cancelled",
+      "attempts": 1,
+      "effects": 0,
+      "effects_before_recovery": 0,
+      "lease_expired_attempts": 0,
+      "retryable_attempts": 0,
+      "permanent_attempts": 0,
+      "cancelled_attempts": 1,
+      "crash_exit_code": 0
+    },
+    "failure_replay": {
+      "final_state": "completed",
+      "attempts": 2,
+      "effects": 1,
+      "effects_before_recovery": 0,
+      "lease_expired_attempts": 0,
+      "retryable_attempts": 0,
+      "permanent_attempts": 1,
+      "cancelled_attempts": 0,
+      "crash_exit_code": 0
+    }
+  },
+  "provider": {
+    "receipt_capable": {
+      "final_status": "succeeded",
+      "provider_sends": 1,
+      "receipt_lookups": 1,
+      "delivery_attempts": 1,
+      "succeeded_attempts": 1,
+      "unknown_attempts": 0,
+      "remaining_claims": 0,
+      "stable_dispatch_identity": true,
+      "stale_token_rejected": true,
+      "blind_replay_claimed": false,
+      "crash_exit_code": 85
+    },
+    "unsupported_ambiguous": {
+      "final_status": "unknown",
+      "provider_sends": 1,
+      "receipt_lookups": 0,
+      "delivery_attempts": 1,
+      "succeeded_attempts": 0,
+      "unknown_attempts": 1,
+      "remaining_claims": 0,
+      "stable_dispatch_identity": true,
+      "stale_token_rejected": true,
+      "blind_replay_claimed": false,
+      "crash_exit_code": 85
+    },
+    "protected_facts_before_sha256": "d67c00574f91c8341a5996f4dd638f3aa3d7a7897970579ac5689bf3fbcc3df6",
+    "protected_facts_after_sha256": "d67c00574f91c8341a5996f4dd638f3aa3d7a7897970579ac5689bf3fbcc3df6",
+    "guarantee": "bounded_at_least_once_with_fencing_idempotency_and_explicit_unknown",
+    "exactly_once_claimed": false
+  },
+  "differences": []
+}
