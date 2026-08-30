@@ -93,8 +93,9 @@ func TestAIReplacementInventoryRecordsPythonAgentMigrationBoundary(t *testing.T)
 	}
 	for _, currentFact := range []string{
 		"根目录 `agent/` 已落地 Python 数据分析服务骨架",
-		"Python Agent 默认仍以 `deterministic.v1` 降级运行时执行",
-		"`openai_compatible` 真实模型运行时只供受信环境 Golden/Shadow 验收",
+		"Python Agent 的唯一真实模型运行时是本机 `codex app-server`",
+		"`deterministic.v1` 仅保留为无模型降级与契约测试实现",
+		"不调用 Ollama 或 OpenAI-compatible 模型服务",
 		"尚未进入 Live 决策或业务事实写入",
 	} {
 		if !strings.Contains(design, currentFact) {

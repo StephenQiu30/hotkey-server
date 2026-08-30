@@ -137,7 +137,7 @@ def test_service_exposes_only_internal_analysis_and_health_routes() -> None:
             max_concurrency=2,
         )
     )
-    assert {route.path for route in application.routes} == {
+    assert {getattr(route, "path", "") for route in application.routes} == {
         "/healthz",
         "/readyz",
         "/v1/analyze",

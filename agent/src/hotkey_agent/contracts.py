@@ -54,7 +54,7 @@ class Suggestion(StrictModel):
 
 
 class RuntimeInfo(StrictModel):
-    name: Literal["deterministic", "openai_compatible"]
+    name: Literal["deterministic", "codex_app_server"]
     version: str = Field(min_length=1, max_length=32)
     degraded: bool
 

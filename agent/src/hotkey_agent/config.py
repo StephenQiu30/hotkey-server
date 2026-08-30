@@ -12,37 +12,18 @@ class Settings:
     max_request_bytes: int
     max_concurrency: int
     previous_auth_tokens: tuple[str, ...] = ()
-    model_base_url: str = ""
-    model_api_key: str = ""
-    model_name: str = ""
-    model_version: str = ""
-    model_timeout_seconds: int = 30
-    model_max_response_bytes: int = 1_048_576
-    model_max_output_tokens: int = 4_096
+    codex_app_server_url: str = "ws://127.0.0.1:4500"
 
     @classmethod
     def from_env(cls) -> Settings:
         return cls(
             auth_token=os.getenv("HOTKEY_AGENT_AUTH_TOKEN", ""),
             previous_auth_tokens=_secret_list("HOTKEY_AGENT_PREVIOUS_AUTH_TOKENS"),
-            runtime=os.getenv("HOTKEY_AGENT_RUNTIME", "deterministic"),
+            runtime="codex_app_server",
             max_request_bytes=_positive_int("HOTKEY_AGENT_MAX_REQUEST_BYTES", 262_144),
             max_concurrency=_positive_int("HOTKEY_AGENT_MAX_CONCURRENCY", 2),
-            model_base_url=os.getenv("HOTKEY_AGENT_MODEL_BASE_URL", ""),
-            model_api_key=os.getenv("HOTKEY_AGENT_MODEL_API_KEY", ""),
-            model_name=os.getenv("HOTKEY_AGENT_MODEL_NAME", ""),
-            model_version=os.getenv("HOTKEY_AGENT_MODEL_VERSION", ""),
-            model_timeout_seconds=_bounded_int(
-                "HOTKEY_AGENT_MODEL_TIMEOUT_SECONDS", 30, minimum=1, maximum=300
-            ),
-            model_max_response_bytes=_bounded_int(
-                "HOTKEY_AGENT_MODEL_MAX_RESPONSE_BYTES",
-                1_048_576,
-                minimum=1,
-                maximum=8_388_608,
-            ),
-            model_max_output_tokens=_bounded_int(
-                "HOTKEY_AGENT_MODEL_MAX_OUTPUT_TOKENS", 4_096, minimum=1, maximum=32_768
+            codex_app_server_url=os.getenv(
+                "HOTKEY_AGENT_CODEX_APP_SERVER_URL", "ws://127.0.0.1:4500"
             ),
         )
 
@@ -57,41 +38,24 @@ class Settings:
             return False
         if self.runtime == "deterministic":
             return True
-        return self.runtime == "openai_compatible" and self.model_ready
+        return self.runtime == "codex_app_server" and self.codex_app_server_ready
 
     @property
-    def model_ready(self) -> bool:
+    def codex_app_server_ready(self) -> bool:
         try:
-            parsed = urlsplit(self.model_base_url)
-            _ = parsed.port
+            parsed = urlsplit(self.codex_app_server_url)
+            port = parsed.port
         except ValueError:
             return False
-        model_identity_valid = all(
-            value == value.strip()
-            and 1 <= len(value) <= limit
-            and not any(character.isspace() for character in value)
-            for value, limit in ((self.model_name, 128), (self.model_version, 32))
-        )
-        url_valid = (
-            parsed.scheme == "https"
-            and parsed.hostname is not None
+        return (
+            parsed.scheme == "ws"
+            and parsed.hostname in {"127.0.0.1", "::1", "localhost", "host.docker.internal"}
+            and port is not None
             and parsed.username is None
             and parsed.password is None
+            and parsed.path == ""
             and parsed.query == ""
             and parsed.fragment == ""
-        )
-        api_key_valid = (
-            self.model_api_key == self.model_api_key.strip()
-            and "\r" not in self.model_api_key
-            and "\n" not in self.model_api_key
-            and len(self.model_api_key.encode()) >= 16
-        )
-        return url_valid and (
-            api_key_valid
-            and model_identity_valid
-            and 1 <= self.model_timeout_seconds <= 300
-            and 1 <= self.model_max_response_bytes <= 8_388_608
-            and 1 <= self.model_max_output_tokens <= 32_768
         )
 
 
@@ -111,14 +75,3 @@ def _secret_list(name: str) -> tuple[str, ...]:
     if raw == "":
         return ()
     return tuple(item.strip() for item in raw.split(","))
-
-
-def _bounded_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        return 0
-    return value if minimum <= value <= maximum else 0

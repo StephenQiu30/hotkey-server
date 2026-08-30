@@ -10,12 +10,13 @@ func TestPythonAgentTrustedModelRuntimeRemainsShadowOnly(t *testing.T) {
 	repository := filepath.Clean(filepath.Join(repositoryRoot(t), ".."))
 	runtime := readRepositoryFile(t, repository, "agent/src/hotkey_agent/model_runtime.py")
 	for _, fragment := range []string{
-		"class OpenAICompatibleAnalyzer",
-		"class OpenAICompatibleClient",
-		`trust_env=False`,
-		`follow_redirects=False`,
-		`"response_format"`,
-		`"json_schema"`,
+		"class CodexAppServerAnalyzer",
+		"class CodexAppServerClient",
+		`"thread/start"`,
+		`"turn/start"`,
+		`"outputSchema"`,
+		`"networkAccess": False`,
+		"_DISABLED_FEATURES",
 		"ModelOutputInvalidError",
 		"input_tokens",
 		"output_tokens",
@@ -26,8 +27,8 @@ func TestPythonAgentTrustedModelRuntimeRemainsShadowOnly(t *testing.T) {
 	}
 
 	manifest := readRepositoryFile(t, repository, "agent/pyproject.toml")
-	if !strings.Contains(manifest, `"httpx2==2.12.0"`) {
-		t.Error("Python Agent runtime must lock its outbound HTTP dependency")
+	if !strings.Contains(manifest, `"websockets==17.1"`) {
+		t.Error("Python Agent runtime must lock its Codex App Server transport dependency")
 	}
 	qualityCommand := readRepositoryFile(t, repository, "backend/internal/bootstrap/agent_quality_command.go")
 	for _, fragment := range []string{
@@ -44,18 +45,12 @@ func TestPythonAgentTrustedModelRuntimeRemainsShadowOnly(t *testing.T) {
 	for _, composePath := range []string{"docker-compose.yml", "docker-compose-prod.yml"} {
 		compose := readRepositoryFile(t, repository, composePath)
 		block := dockerComposeServiceBlock(t, compose, "hotkey-agent")
-		for _, fragment := range []string{
-			`HOTKEY_AGENT_RUNTIME: "${HOTKEY_AGENT_RUNTIME:-deterministic}"`,
-			`HOTKEY_AGENT_MODEL_BASE_URL: "${HOTKEY_AGENT_MODEL_BASE_URL:-}"`,
-			`HOTKEY_AGENT_MODEL_API_KEY: "${HOTKEY_AGENT_MODEL_API_KEY:-}"`,
-			`HOTKEY_AGENT_MODEL_NAME: "${HOTKEY_AGENT_MODEL_NAME:-}"`,
-			`HOTKEY_AGENT_MODEL_VERSION: "${HOTKEY_AGENT_MODEL_VERSION:-}"`,
-		} {
+		for _, fragment := range []string{`HOTKEY_AGENT_CODEX_APP_SERVER_URL: "${HOTKEY_AGENT_CODEX_APP_SERVER_URL:-ws://host.docker.internal:4500}"`} {
 			if !strings.Contains(block, fragment) {
 				t.Errorf("%s trusted model runtime configuration lost %q", composePath, fragment)
 			}
 		}
-		for _, forbidden := range []string{"HOTKEY_DATABASE_URL", "HOTKEY_REDIS_URL", "HOTKEY_MINIO", "HOTKEY_VAULT"} {
+		for _, forbidden := range []string{"HOTKEY_DATABASE_URL", "HOTKEY_REDIS_URL", "HOTKEY_MINIO", "HOTKEY_VAULT", "HOTKEY_AGENT_MODEL_", "HOTKEY_AGENT_RUNTIME"} {
 			if strings.Contains(block, forbidden) {
 				t.Errorf("%s gives the Python Agent forbidden business credential %s", composePath, forbidden)
 			}
@@ -64,7 +59,7 @@ func TestPythonAgentTrustedModelRuntimeRemainsShadowOnly(t *testing.T) {
 
 	bootstrap := readRepositoryFile(t, repository, "backend/internal/bootstrap/app.go")
 	providerDomain := readRepositoryFile(t, repository, "backend/internal/modules/intelligence/domain/provider.go")
-	if strings.Contains(providerDomain, "ProviderAgent") || strings.Contains(providerDomain, "ProviderOpenAICompatible") {
+	if strings.Contains(providerDomain, "ProviderAgent") || strings.Contains(providerDomain, "ProviderCodexAppServer") {
 		t.Fatal("Python Agent model runtime entered the production ProviderName before G5 approval")
 	}
 	providerRegistryStart := strings.Index(bootstrap, "func newAIProviderRegistry")
@@ -76,8 +71,9 @@ func TestPythonAgentTrustedModelRuntimeRemainsShadowOnly(t *testing.T) {
 
 	design := readRepositoryFile(t, repository, "docs/design/001-HotKey产品需求分析与总体架构设计.md")
 	for _, fragment := range []string{
-		"Python Agent 默认仍以 `deterministic.v1` 降级运行时执行",
-		"`openai_compatible` 真实模型运行时只供受信环境 Golden/Shadow 验收",
+		"Python Agent 的唯一真实模型运行时是本机 `codex app-server`",
+		"`deterministic.v1` 仅保留为无模型降级与契约测试实现",
+		"不调用 Ollama 或 OpenAI-compatible 模型服务",
 		"尚未进入 Live 决策或业务事实写入",
 	} {
 		if !strings.Contains(design, fragment) {

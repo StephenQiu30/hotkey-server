@@ -12,7 +12,7 @@ import sys
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx2 as httpx
 
@@ -109,7 +109,7 @@ def _run_isolated_case(
         text=True,
         timeout=120,
     )
-    return json.loads(completed.stdout)
+    return cast(dict[str, Any], json.loads(completed.stdout))
 
 
 async def _measure_case(
