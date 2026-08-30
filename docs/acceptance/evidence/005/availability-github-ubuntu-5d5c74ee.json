@@ -1,0 +1,464 @@
+{
+  "version": "hotkey-single-host-availability-rehearsal-v1",
+  "status": "measured",
+  "approval": "required",
+  "release_ready": false,
+  "git_revision": "5d5c74ee1b4731ff8ea7a80fc62a717910e4dbe7",
+  "environment": "github-actions-isolated-availability",
+  "hardware": "GitHub hosted ubuntu-latest; 4 logical CPU; 16372440 KiB RAM; isolated Docker loopback",
+  "run_id": "availability-33293737954-1",
+  "production_egress_disabled": true,
+  "scope": "candidate_methodology_not_production_sla",
+  "compose": {
+    "project": "hotkey-ci",
+    "file": "docker-compose.yml",
+    "topology": "single_host_split_api_worker_no_ha"
+  },
+  "measurement": {
+    "probe": "/readyz",
+    "aggregation": "conservative_all_probes_per_observation_minute",
+    "maintenance_window": "none",
+    "observation_minute_millis": 60000,
+    "probes_per_minute": 6,
+    "excluded_minutes": 0,
+    "available_minutes": 6,
+    "unavailable_minutes": 1,
+    "availability_percent": 85.714286
+  },
+  "error_budget": {
+    "candidate_target_percent": 99.5,
+    "calendar_window_days": 30,
+    "budget_minutes": 216,
+    "injected_unavailable_minutes": 1,
+    "remaining_budget_minutes": 215,
+    "target_met_in_injected_window": false
+  },
+  "exclusions": [
+    "production_traffic",
+    "external_provider_delivery",
+    "high_availability_failover"
+  ],
+  "samples": [
+    {
+      "scenario": "baseline",
+      "dependency": "none",
+      "observation_minutes": 1,
+      "started_at": "2026-08-30T05:10:54.980Z",
+      "ended_at": "2026-08-30T05:11:55.014Z",
+      "expected_api_available": true,
+      "observed_api_available": true,
+      "attributed": true,
+      "probes": [
+        {
+          "sequence": 1,
+          "observed_at": "2026-08-30T05:11:04.989Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 2.813,
+          "available": true
+        },
+        {
+          "sequence": 2,
+          "observed_at": "2026-08-30T05:11:14.996Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 2.549,
+          "available": true
+        },
+        {
+          "sequence": 3,
+          "observed_at": "2026-08-30T05:11:25.000Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 2.559,
+          "available": true
+        },
+        {
+          "sequence": 4,
+          "observed_at": "2026-08-30T05:11:35.002Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 2.475,
+          "available": true
+        },
+        {
+          "sequence": 5,
+          "observed_at": "2026-08-30T05:11:45.006Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 2.207,
+          "available": true
+        },
+        {
+          "sequence": 6,
+          "observed_at": "2026-08-30T05:11:55.014Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 2.75,
+          "available": true
+        }
+      ]
+    },
+    {
+      "scenario": "postgres_unavailable",
+      "dependency": "postgresql",
+      "observation_minutes": 1,
+      "started_at": "2026-08-30T05:11:55.166Z",
+      "ended_at": "2026-08-30T05:12:55.242Z",
+      "expected_api_available": false,
+      "observed_api_available": false,
+      "attributed": true,
+      "probes": [
+        {
+          "sequence": 1,
+          "observed_at": "2026-08-30T05:12:05.183Z",
+          "http_status": 503,
+          "business_code": 90001,
+          "duration_millis": 17.265,
+          "available": false
+        },
+        {
+          "sequence": 2,
+          "observed_at": "2026-08-30T05:12:15.198Z",
+          "http_status": 503,
+          "business_code": 90001,
+          "duration_millis": 14.908,
+          "available": false
+        },
+        {
+          "sequence": 3,
+          "observed_at": "2026-08-30T05:12:25.209Z",
+          "http_status": 503,
+          "business_code": 90001,
+          "duration_millis": 6.446,
+          "available": false
+        },
+        {
+          "sequence": 4,
+          "observed_at": "2026-08-30T05:12:35.221Z",
+          "http_status": 503,
+          "business_code": 90001,
+          "duration_millis": 7.155,
+          "available": false
+        },
+        {
+          "sequence": 5,
+          "observed_at": "2026-08-30T05:12:45.231Z",
+          "http_status": 503,
+          "business_code": 90001,
+          "duration_millis": 11.271,
+          "available": false
+        },
+        {
+          "sequence": 6,
+          "observed_at": "2026-08-30T05:12:55.242Z",
+          "http_status": 503,
+          "business_code": 90001,
+          "duration_millis": 8.207,
+          "available": false
+        }
+      ]
+    },
+    {
+      "scenario": "postgres_recovered",
+      "dependency": "postgresql",
+      "observation_minutes": 1,
+      "started_at": "2026-08-30T05:13:00.801Z",
+      "ended_at": "2026-08-30T05:14:00.831Z",
+      "expected_api_available": true,
+      "observed_api_available": true,
+      "attributed": true,
+      "probes": [
+        {
+          "sequence": 1,
+          "observed_at": "2026-08-30T05:13:10.804Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 2.071,
+          "available": true
+        },
+        {
+          "sequence": 2,
+          "observed_at": "2026-08-30T05:13:20.810Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.815,
+          "available": true
+        },
+        {
+          "sequence": 3,
+          "observed_at": "2026-08-30T05:13:30.817Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.997,
+          "available": true
+        },
+        {
+          "sequence": 4,
+          "observed_at": "2026-08-30T05:13:40.823Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.868,
+          "available": true
+        },
+        {
+          "sequence": 5,
+          "observed_at": "2026-08-30T05:13:50.826Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.943,
+          "available": true
+        },
+        {
+          "sequence": 6,
+          "observed_at": "2026-08-30T05:14:00.831Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.854,
+          "available": true
+        }
+      ]
+    },
+    {
+      "scenario": "redis_unavailable",
+      "dependency": "redis",
+      "observation_minutes": 1,
+      "started_at": "2026-08-30T05:14:01.310Z",
+      "ended_at": "2026-08-30T05:15:01.343Z",
+      "expected_api_available": true,
+      "observed_api_available": true,
+      "attributed": true,
+      "probes": [
+        {
+          "sequence": 1,
+          "observed_at": "2026-08-30T05:14:11.317Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.913,
+          "available": true
+        },
+        {
+          "sequence": 2,
+          "observed_at": "2026-08-30T05:14:21.323Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.982,
+          "available": true
+        },
+        {
+          "sequence": 3,
+          "observed_at": "2026-08-30T05:14:31.326Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.83,
+          "available": true
+        },
+        {
+          "sequence": 4,
+          "observed_at": "2026-08-30T05:14:41.331Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.841,
+          "available": true
+        },
+        {
+          "sequence": 5,
+          "observed_at": "2026-08-30T05:14:51.336Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.963,
+          "available": true
+        },
+        {
+          "sequence": 6,
+          "observed_at": "2026-08-30T05:15:01.343Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 2.402,
+          "available": true
+        }
+      ]
+    },
+    {
+      "scenario": "minio_unavailable",
+      "dependency": "minio",
+      "observation_minutes": 1,
+      "started_at": "2026-08-30T05:15:06.735Z",
+      "ended_at": "2026-08-30T05:16:06.759Z",
+      "expected_api_available": true,
+      "observed_api_available": true,
+      "attributed": true,
+      "probes": [
+        {
+          "sequence": 1,
+          "observed_at": "2026-08-30T05:15:16.738Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.786,
+          "available": true
+        },
+        {
+          "sequence": 2,
+          "observed_at": "2026-08-30T05:15:26.744Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.853,
+          "available": true
+        },
+        {
+          "sequence": 3,
+          "observed_at": "2026-08-30T05:15:36.746Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.748,
+          "available": true
+        },
+        {
+          "sequence": 4,
+          "observed_at": "2026-08-30T05:15:46.750Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.869,
+          "available": true
+        },
+        {
+          "sequence": 5,
+          "observed_at": "2026-08-30T05:15:56.753Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.902,
+          "available": true
+        },
+        {
+          "sequence": 6,
+          "observed_at": "2026-08-30T05:16:06.759Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.948,
+          "available": true
+        }
+      ]
+    },
+    {
+      "scenario": "worker_unavailable",
+      "dependency": "worker",
+      "observation_minutes": 1,
+      "started_at": "2026-08-30T05:16:12.111Z",
+      "ended_at": "2026-08-30T05:17:12.143Z",
+      "expected_api_available": true,
+      "observed_api_available": true,
+      "attributed": true,
+      "probes": [
+        {
+          "sequence": 1,
+          "observed_at": "2026-08-30T05:16:22.118Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.697,
+          "available": true
+        },
+        {
+          "sequence": 2,
+          "observed_at": "2026-08-30T05:16:32.121Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 2.225,
+          "available": true
+        },
+        {
+          "sequence": 3,
+          "observed_at": "2026-08-30T05:16:42.125Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.891,
+          "available": true
+        },
+        {
+          "sequence": 4,
+          "observed_at": "2026-08-30T05:16:52.131Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.732,
+          "available": true
+        },
+        {
+          "sequence": 5,
+          "observed_at": "2026-08-30T05:17:02.137Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.786,
+          "available": true
+        },
+        {
+          "sequence": 6,
+          "observed_at": "2026-08-30T05:17:12.143Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.817,
+          "available": true
+        }
+      ]
+    },
+    {
+      "scenario": "full_recovery",
+      "dependency": "all",
+      "observation_minutes": 1,
+      "started_at": "2026-08-30T05:17:12.363Z",
+      "ended_at": "2026-08-30T05:18:12.392Z",
+      "expected_api_available": true,
+      "observed_api_available": true,
+      "attributed": true,
+      "probes": [
+        {
+          "sequence": 1,
+          "observed_at": "2026-08-30T05:17:22.366Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.916,
+          "available": true
+        },
+        {
+          "sequence": 2,
+          "observed_at": "2026-08-30T05:17:32.370Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 2.121,
+          "available": true
+        },
+        {
+          "sequence": 3,
+          "observed_at": "2026-08-30T05:17:42.377Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.796,
+          "available": true
+        },
+        {
+          "sequence": 4,
+          "observed_at": "2026-08-30T05:17:52.384Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.879,
+          "available": true
+        },
+        {
+          "sequence": 5,
+          "observed_at": "2026-08-30T05:18:02.387Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.852,
+          "available": true
+        },
+        {
+          "sequence": 6,
+          "observed_at": "2026-08-30T05:18:12.392Z",
+          "http_status": 200,
+          "business_code": 0,
+          "duration_millis": 1.829,
+          "available": true
+        }
+      ]
+    }
+  ],
+  "differences": []
+}

@@ -1,0 +1,178 @@
+{
+  "version": "hotkey-rc-candidate-assessment-v1",
+  "status": "blocked",
+  "approval": "automated_assessment_not_release_approval",
+  "environment": "github-actions-rc-candidate",
+  "hardware": "ubuntu-latest-hosted-runner",
+  "git_revision": "5d5c74ee1b4731ff8ea7a80fc62a717910e4dbe7",
+  "ci_run_id": "33293737954",
+  "production_egress_disabled": true,
+  "required_gates": [
+    {
+      "name": "backend_static",
+      "status": "success",
+      "passed": true
+    },
+    {
+      "name": "backend_runtime",
+      "status": "success",
+      "passed": true
+    },
+    {
+      "name": "backend_vulnerability",
+      "status": "success",
+      "passed": true
+    },
+    {
+      "name": "worker_recovery",
+      "status": "success",
+      "passed": true
+    },
+    {
+      "name": "frontend",
+      "status": "success",
+      "passed": true
+    },
+    {
+      "name": "python_agent",
+      "status": "success",
+      "passed": true
+    },
+    {
+      "name": "compose",
+      "status": "success",
+      "passed": true
+    },
+    {
+      "name": "browser_business_flow",
+      "status": "success",
+      "passed": true
+    }
+  ],
+  "coverage": {
+    "full_ci": true,
+    "e2e": true,
+    "performance": true,
+    "security": true,
+    "document_integrity": true
+  },
+  "documents": [
+    {
+      "doc_no": "001",
+      "design_status": "accepted",
+      "prd_status": "approved",
+      "plan_status": "in_progress",
+      "acceptance_status": "failed",
+      "traceability_complete": true,
+      "blocking_acs": [
+        "AC-001-001:partial",
+        "AC-001-002:partial",
+        "AC-001-004:partial"
+      ]
+    },
+    {
+      "doc_no": "002",
+      "design_status": "accepted",
+      "prd_status": "approved",
+      "plan_status": "in_progress",
+      "acceptance_status": "failed",
+      "traceability_complete": true,
+      "blocking_acs": [
+        "AC-002-002:partial",
+        "AC-002-008:partial"
+      ]
+    },
+    {
+      "doc_no": "003",
+      "design_status": "accepted",
+      "prd_status": "approved",
+      "plan_status": "in_progress",
+      "acceptance_status": "missing",
+      "traceability_complete": false,
+      "blocking_acs": []
+    },
+    {
+      "doc_no": "004",
+      "design_status": "accepted",
+      "prd_status": "approved",
+      "plan_status": "in_progress",
+      "acceptance_status": "missing",
+      "traceability_complete": false,
+      "blocking_acs": []
+    },
+    {
+      "doc_no": "005",
+      "design_status": "accepted",
+      "prd_status": "approved",
+      "plan_status": "in_progress",
+      "acceptance_status": "failed",
+      "traceability_complete": true,
+      "blocking_acs": [
+        "AC-005-001:partial",
+        "AC-005-008:partial"
+      ]
+    }
+  ],
+  "p0_scope": {
+    "passed": true,
+    "baseline": "single_host_compose_without_ha_dependency",
+    "deferred_capabilities": [
+      "comments",
+      "weekly_reports",
+      "additional_authorized_sources",
+      "expanded_email_delivery",
+      "high_availability"
+    ],
+    "forbidden_infrastructure_detected": [],
+    "used_deferred_capabilities_as_p0_evidence": false
+  },
+  "defects": [
+    {
+      "id": "RC-001-ACCEPTANCE-NOT-PASSED",
+      "severity": "P0",
+      "code": "acceptance_not_passed",
+      "document": "docs/acceptance/001-HotKey产品需求分析与总体架构验收.md",
+      "blocking_acs": [
+        "AC-001-001:partial",
+        "AC-001-002:partial",
+        "AC-001-004:partial"
+      ]
+    },
+    {
+      "id": "RC-002-ACCEPTANCE-NOT-PASSED",
+      "severity": "P0",
+      "code": "acceptance_not_passed",
+      "document": "docs/acceptance/002-监控来源采集与证据链验收.md",
+      "blocking_acs": [
+        "AC-002-002:partial",
+        "AC-002-008:partial"
+      ]
+    },
+    {
+      "id": "RC-003-ACCEPTANCE-MISSING",
+      "severity": "P0",
+      "code": "acceptance_missing",
+      "document": "docs/acceptance/003-*.md",
+      "blocking_acs": []
+    },
+    {
+      "id": "RC-004-ACCEPTANCE-MISSING",
+      "severity": "P0",
+      "code": "acceptance_missing",
+      "document": "docs/acceptance/004-*.md",
+      "blocking_acs": []
+    },
+    {
+      "id": "RC-005-ACCEPTANCE-NOT-PASSED",
+      "severity": "P0",
+      "code": "acceptance_not_passed",
+      "document": "docs/acceptance/005-安全运维质量与交付验收.md",
+      "blocking_acs": [
+        "AC-005-001:partial",
+        "AC-005-008:partial"
+      ]
+    }
+  ],
+  "release_ready": false,
+  "differences": []
+}
