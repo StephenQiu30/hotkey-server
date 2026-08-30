@@ -152,6 +152,9 @@ func TestBrowserCIExercisesFourRoleRouteAndKeyboardMatrix(t *testing.T) {
 	if got := strings.Count(workflow, `agent-browser find role menuitem click --name "退出登录" --exact`); got != 3 {
 		t.Errorf("browser CI must switch four roles through three audited logout transitions, got %d", got)
 	}
+	if got := strings.Count(workflow, `agent-browser wait --fn "document.querySelector('button[aria-label=\"账户菜单\"]') !== null"`); got != 3 {
+		t.Errorf("browser CI must wait for hydrated account controls before each logout, got %d", got)
+	}
 	if got := strings.Count(workflow, "agent-browser cookies clear"); got != 1 {
 		t.Errorf("browser CI must clear cookies only before network capture starts, got %d", got)
 	}
