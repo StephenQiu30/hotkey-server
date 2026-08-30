@@ -273,6 +273,28 @@ jobs:
           HOTKEY_JOINT_RECOVERY_OUTPUT: ${{ runner.temp }}/joint-recovery-${{ github.run_id }}.json
         run: make joint-recovery-acceptance
 
+      - name: Repeated independent Compose restore and failure-stop acceptance
+        env:
+          HOTKEY_REPEATED_RESTORE_OUTPUT: ${{ runner.temp }}/repeated-restore-${{ github.run_id }}-${{ github.run_attempt }}.json
+          HOTKEY_REPEATED_RESTORE_ENVIRONMENT: github-actions-independent-compose-restores
+          HOTKEY_REPEATED_RESTORE_HARDWARE: ubuntu-latest-hosted-runner
+          HOTKEY_REPEATED_RESTORE_GIT_REVISION: ${{ github.sha }}
+          HOTKEY_REPEATED_RESTORE_PRODUCTION_EGRESS_DISABLED: "true"
+          HOTKEY_REPEATED_RESTORE_COMPOSE_FILE: ${{ github.workspace }}/docker-compose.yml
+        run: |
+          cp .env.example .env
+          trap 'rm -f .env' EXIT
+          make repeated-restore-rehearsal-acceptance
+
+      - name: Upload sanitized repeated restore evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: repeated-restore-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ runner.temp }}/repeated-restore-${{ github.run_id }}-${{ github.run_attempt }}.json
+
       - name: Remove isolated MinIO
         if: always()
         run: |

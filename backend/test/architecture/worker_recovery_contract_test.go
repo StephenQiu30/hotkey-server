@@ -102,6 +102,48 @@ func TestG5RiverFaultRehearsalGateIsMandatory(t *testing.T) {
 	}
 }
 
+func TestG5RepeatedRestoreRehearsalGateIsMandatory(t *testing.T) {
+	repository := filepath.Clean(filepath.Join(repositoryRoot(t), ".."))
+	rehearsal := readRepositoryFile(t, repository, "backend/test/tools/repeated-restore-drill/main.go")
+	for _, fragment := range []string{
+		`hotkey-repeated-restore-rehearsal-v1`,
+		`[]string{"restore-a", "restore-b"}`,
+		`IndependentComposeProject: true`,
+		`NewVolumes: []string{"postgres_data", "minio_data", "vault_data"}`,
+		`"missing_backup"`,
+		`"corrupt_backup"`,
+		`"schema_incompatible"`,
+		`"reconciliation_mismatch"`,
+		`StoppedBeforeCutover: true`,
+		`ExistingTargetOverwritten: false`,
+		`os.O_WRONLY|os.O_CREATE|os.O_EXCL`,
+		`0o600`,
+	} {
+		if !strings.Contains(rehearsal, fragment) {
+			t.Errorf("repeated restore rehearsal lost %q", fragment)
+		}
+	}
+
+	makefile := readRepositoryFile(t, repository, "backend/Makefile")
+	if !strings.Contains(makefile, "repeated-restore-rehearsal-acceptance:") ||
+		!strings.Contains(makefile, "$(GO) run ./test/tools/repeated-restore-drill") {
+		t.Error("backend Makefile no longer exposes the repeated restore rehearsal gate")
+	}
+
+	workflow := readRepositoryFile(t, repository, ".github/workflows/ci.yml")
+	for _, fragment := range []string{
+		"Repeated independent Compose restore and failure-stop acceptance",
+		"make repeated-restore-rehearsal-acceptance",
+		"Upload sanitized repeated restore evidence",
+		"repeated-restore-${{ github.run_id }}-${{ github.run_attempt }}",
+		"if-no-files-found: error",
+	} {
+		if !strings.Contains(workflow, fragment) {
+			t.Errorf("repeated restore CI gate is missing %q", fragment)
+		}
+	}
+}
+
 func markdownChecklistRow(t *testing.T, document, id string) string {
 	t.Helper()
 	for _, line := range strings.Split(document, "\n") {
