@@ -1,13 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
-dsn=${HOTKEY_TEST_DSN:-}
-if test -z "$dsn"; then
-  printf '%s\n' 'HOTKEY_TEST_DSN is required' >&2
-  exit 1
-fi
-
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+sh "$root/test/tools/validate-test-environment.sh"
+
+dsn=${HOTKEY_TEST_DSN:-}
 
 # Keep the capacity query away from the command fixture and the isolated Go
 # test databases. URI-shaped DSNs are required so the disposable database can
@@ -24,7 +21,7 @@ case "$base_dsn" in
     exit 1
     ;;
 esac
-capacity_database="hotkey_capacity_$$"
+capacity_database="hotkey_capacity_$$_test"
 capacity_dsn="${base_dsn%/*}/${capacity_database}${query}"
 cleanup_capacity() {
   dropdb --if-exists --force --maintenance-db="$dsn" "$capacity_database" >/dev/null 2>&1 || true

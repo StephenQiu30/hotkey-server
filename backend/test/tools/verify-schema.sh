@@ -1,13 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
-dsn=${HOTKEY_TEST_DSN:-}
-if test -z "$dsn"; then
-  printf '%s\n' 'HOTKEY_TEST_DSN is required' >&2
-  exit 1
-fi
-
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+sh "$root/test/tools/validate-test-environment.sh"
+
+dsn=${HOTKEY_TEST_DSN:-}
 for run in 1 2; do
   psql "$dsn" -v ON_ERROR_STOP=1 -f "$root/db/schema.sql" >/dev/null
 done

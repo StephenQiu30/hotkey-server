@@ -1,11 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
+root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+sh "$root/test/tools/validate-test-environment.sh"
+
 dsn=${HOTKEY_TEST_DSN:-}
-if test -z "$dsn"; then
-  printf '%s\n' 'HOTKEY_TEST_DSN is required' >&2
-  exit 1
-fi
 rows=${HOTKEY_CAPACITY_ROWS:-1000}
 case "$rows" in
   ''|*[!0-9]*) printf '%s\n' 'HOTKEY_CAPACITY_ROWS must be a positive integer' >&2; exit 1 ;;

@@ -5,8 +5,7 @@ OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/
 .PHONY: test-env minio-test-env openapi openapi-check vet test ci-test worker-recovery-acceptance river-fault-rehearsal-acceptance retention-rehearsal-acceptance m4-fault-recovery-acceptance joint-recovery-acceptance repeated-restore-rehearsal-acceptance rc-candidate-assessment source-resource-limit-acceptance source-admission-matrix-acceptance source-management-audit-acceptance source-live-smoke request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-core-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 
 test-env:
-	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
-	@test -n "$(HOTKEY_TEST_REDIS_URL)" || { printf '%s\n' 'HOTKEY_TEST_REDIS_URL is required for backend acceptance' >&2; exit 1; }
+	@sh test/tools/validate-test-environment.sh
 
 minio-test-env:
 	@test -n "$(HOTKEY_TEST_MINIO_ENDPOINT)" || { printf '%s\n' 'HOTKEY_TEST_MINIO_ENDPOINT is required for Worker recovery acceptance' >&2; exit 1; }
