@@ -245,6 +245,7 @@ func TestEvidenceLineageReconciliationReportsAuditedRawDeletionAsHealthy(t *test
 	}); err != nil {
 		t.Fatal(err)
 	}
+	recordReconciliationBackupDisposition(t, runtime.SQL, deletedAt)
 
 	repository := newEvidenceLineageMaintenanceRepository(runtime, reconciliationRawObjectInspectorFake{}, reconciliationVaultInspectorFake{})
 	service, err := operationsapplication.NewEvidenceLineageReconciliationService(repository)
@@ -291,6 +292,103 @@ WHERE run_id=$1 AND asset_type='evidence_snapshot'`, residual.Run.RunID).Scan(&f
 	}
 	if finding != "policy_blocked" || reason != "audited_raw_deletion_has_residual_object" {
 		t.Fatalf("residual raw deletion finding=%q reason=%q", finding, reason)
+	}
+}
+
+func TestEvidenceLineageReconciliationRejectsUndisposedBackupCopiesAfterDeletion(t *testing.T) {
+	ctx := context.Background()
+	runtime := openEvidenceLineageReconciliationRuntime(t, ctx)
+	defer runtime.Close()
+	fixture := insertReconciliationRawSnapshotFixture(t, runtime.SQL, "undisposed-backup")
+	insertReconciliationStoreRawDeny(t, runtime.SQL, fixture)
+	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
+	rawRepository := sourcepostgres.NewRawEvidenceRetentionRepository(runtime)
+	candidates, err := rawRepository.ClaimExpired(ctx, deletedAt, 1)
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("claim raw deletion candidates=%+v error=%v", candidates, err)
+	}
+	candidate := candidates[0]
+	if err := rawRepository.CompleteDeletion(ctx, sourceapplication.CompleteRawEvidenceDeletionCommand{
+		SnapshotID: candidate.SnapshotID, AttemptNo: candidate.AttemptNo,
+		ObjectKey: candidate.ObjectKey, PayloadSHA256: candidate.PayloadSHA256,
+		DeletedAt: deletedAt, AlreadyMissing: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	repository := newEvidenceLineageMaintenanceRepository(runtime, reconciliationRawObjectInspectorFake{}, reconciliationVaultInspectorFake{})
+	service, err := operationsapplication.NewEvidenceLineageReconciliationService(repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Reconcile(ctx, validEvidenceLineageReconciliationApplyCommand("all"))
+	if err == nil || result.Run.RunID != 0 {
+		t.Fatalf("undisposed backup reconciliation=%+v error=%v", result, err)
+	}
+	var runCount int64
+	if queryErr := runtime.SQL.QueryRow(`SELECT count(*) FROM evidence_lineage_reconciliation_runs`).Scan(&runCount); queryErr != nil || runCount != 0 {
+		t.Fatalf("undisposed backup persisted runs=%d error=%v", runCount, queryErr)
+	}
+	recordReconciliationBackupDisposition(t, runtime.SQL, time.Now().UTC())
+	result, err = service.Reconcile(ctx, validEvidenceLineageReconciliationApplyCommand("all"))
+	if err != nil || result.Run.RunID <= 0 || result.Run.BackupDispositionCount != 1 ||
+		result.Run.HealthyCount != 1 || result.Run.FindingCount != 0 {
+		t.Fatalf("disposed backup reconciliation=%+v error=%v", result, err)
+	}
+}
+
+func TestEvidenceLineageReconciliationResumeIgnoresBackupRunsRecordedAfterFence(t *testing.T) {
+	ctx := context.Background()
+	runtime := openEvidenceLineageReconciliationRuntime(t, ctx)
+	defer runtime.Close()
+	fixture := insertReconciliationRawSnapshotFixture(t, runtime.SQL, "post-fence-backup")
+	insertReconciliationStoreRawDeny(t, runtime.SQL, fixture)
+	deletedAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
+	rawRepository := sourcepostgres.NewRawEvidenceRetentionRepository(runtime)
+	candidates, err := rawRepository.ClaimExpired(ctx, deletedAt, 1)
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("claim raw deletion candidates=%+v error=%v", candidates, err)
+	}
+	candidate := candidates[0]
+	if err := rawRepository.CompleteDeletion(ctx, sourceapplication.CompleteRawEvidenceDeletionCommand{
+		SnapshotID: candidate.SnapshotID, AttemptNo: candidate.AttemptNo,
+		ObjectKey: candidate.ObjectKey, PayloadSHA256: candidate.PayloadSHA256,
+		DeletedAt: deletedAt, AlreadyMissing: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	recordReconciliationBackupDisposition(t, runtime.SQL, time.Now().UTC())
+	repository := newEvidenceLineageMaintenanceRepository(runtime, reconciliationRawObjectInspectorFake{}, reconciliationVaultInspectorFake{})
+	command := validEvidenceLineageReconciliationApplyCommand("all")
+	run, err := repository.StartEvidenceLineageReconciliation(ctx, operationsapplication.StartEvidenceLineageReconciliationCommand{
+		Scope: command.Scope, BatchSize: command.BatchSize, GracePeriodHours: command.GracePeriodHours,
+		OperatorID: command.OperatorID, ReviewerID: command.ReviewerID,
+		BinarySHA256: command.BinarySHA256, SchemaSHA256: command.SchemaSHA256,
+		ConfigurationSHA256: command.ConfigurationSHA256, BackupEvidenceSHA256: command.BackupEvidenceSHA256,
+		RehearsalEvidenceSHA256: command.RehearsalEvidenceSHA256,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.BackupDispositionCount != 1 {
+		t.Fatalf("initial backup disposition count=%d", run.BackupDispositionCount)
+	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO backup_runs (
+  run_sha256,manifest_sha256,git_revision,status,recovery_point_at,started_at,completed_at,asset_count
+) VALUES ($1,$2,$3,'succeeded',$4,$5,$6,5)`, reconciliationSHA256("post-fence-backup"),
+		reconciliationSHA256("post-fence-backup-manifest"), reconciliationSHA256("post-fence-git-revision")[:40],
+		deletedAt.Add(-time.Hour), deletedAt.Add(-2*time.Hour), run.FencedAt.Add(-time.Microsecond)); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := repository.ResumeEvidenceLineageReconciliation(ctx, operationsapplication.ResumeEvidenceLineageReconciliationCommand{
+		RunID: run.RunID, Scope: command.Scope, BatchSize: command.BatchSize, GracePeriodHours: command.GracePeriodHours,
+		OperatorID: command.OperatorID, ReviewerID: command.ReviewerID,
+		BinarySHA256: command.BinarySHA256, SchemaSHA256: command.SchemaSHA256,
+		ConfigurationSHA256: command.ConfigurationSHA256, BackupEvidenceSHA256: command.BackupEvidenceSHA256,
+		RehearsalEvidenceSHA256: command.RehearsalEvidenceSHA256,
+	})
+	if err != nil || resumed.BackupDispositionCount != 1 || !resumed.FencedAt.Equal(run.FencedAt) {
+		t.Fatalf("post-fence backup changed resume receipt=%+v error=%v", resumed, err)
 	}
 }
 
@@ -541,6 +639,28 @@ INSERT INTO backup_runs (
 		t.Fatal(err)
 	}
 	return runtime
+}
+
+func recordReconciliationBackupDisposition(t *testing.T, databaseHandle *sql.DB, disposedAt time.Time) {
+	t.Helper()
+	backupSHA256 := reconciliationSHA256("backup")
+	if _, err := databaseHandle.Exec(`
+INSERT INTO backup_retention_dispositions (
+  disposition_sha256,manifest_sha256,backup_run_id,backup_run_sha256,deletion_evidence_sha256,
+  status,reason_code,operator_record_id,reviewer_record_id,disposed_at
+)
+SELECT $1,$2,id,run_sha256,$3,'disposed','rights_revoked','backup-operator','backup-reviewer',$4
+FROM backup_runs WHERE run_sha256=$5`, reconciliationSHA256("backup-disposition"),
+		reconciliationSHA256("backup-disposition-manifest"), reconciliationSHA256("deletion-evidence"),
+		disposedAt.UTC(), backupSHA256); err != nil {
+		t.Fatal(err)
+	}
+	var count int64
+	if err := databaseHandle.QueryRow(`
+SELECT count(*) FROM backup_retention_dispositions
+WHERE backup_run_sha256=$1 AND status='disposed'`, backupSHA256).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("backup disposition count=%d error=%v", count, err)
+	}
 }
 
 func insertReconciliationRawSnapshotFixture(t *testing.T, databaseHandle *sql.DB, label string) reconciliationRawSnapshotFixture {

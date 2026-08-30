@@ -121,6 +121,16 @@ INSERT INTO backup_runs (
 		strings.Repeat("d", 40), at.Add(-3*time.Minute), at.Add(-5*time.Minute), at.Add(-2*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := runtime.SQL.Exec(`
+INSERT INTO backup_retention_dispositions (
+  disposition_sha256,manifest_sha256,backup_run_id,backup_run_sha256,deletion_evidence_sha256,
+  status,reason_code,operator_record_id,reviewer_record_id,disposed_at
+)
+SELECT $1,$2,id,run_sha256,$3,'disposed','rights_revoked','backup-operator','backup-reviewer',$4
+FROM backup_runs WHERE run_sha256=$5`, strings.Repeat("e", 64), strings.Repeat("f", 64),
+		strings.Repeat("8", 64), time.Now().UTC(), backupEvidenceSHA256); err != nil {
+		t.Fatal(err)
+	}
 	reconciliationRepository, err := operationspostgres.NewEvidenceLineageMaintenanceRepositoryWithVault(runtime, vaultRoot)
 	if err != nil {
 		t.Fatal(err)

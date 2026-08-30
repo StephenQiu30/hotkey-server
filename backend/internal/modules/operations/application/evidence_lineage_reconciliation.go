@@ -77,15 +77,16 @@ type ResumeEvidenceLineageReconciliationCommand struct {
 }
 
 type EvidenceLineageReconciliationRunDTO struct {
-	RunID           int64
-	Status          string
-	FencedAt        time.Time
-	LastAssetCursor int64
-	ExaminedCount   int64
-	HealthyCount    int64
-	FindingCount    int64
-	RepairedCount   int64
-	FailedCount     int64
+	RunID                  int64
+	Status                 string
+	FencedAt               time.Time
+	BackupDispositionCount int64
+	LastAssetCursor        int64
+	ExaminedCount          int64
+	HealthyCount           int64
+	FindingCount           int64
+	RepairedCount          int64
+	FailedCount            int64
 }
 
 type EvidenceLineageReconciliationBatchCommand struct {
@@ -189,7 +190,8 @@ func (service *EvidenceLineageReconciliationService) Reconcile(ctx context.Conte
 	if err != nil {
 		return result, fmt.Errorf("complete evidence lineage reconciliation: %w", err)
 	}
-	if completed.RunID != run.RunID || completed.Status != "completed" || !completed.FencedAt.Equal(run.FencedAt) {
+	if completed.RunID != run.RunID || completed.Status != "completed" || !completed.FencedAt.Equal(run.FencedAt) ||
+		completed.BackupDispositionCount != run.BackupDispositionCount {
 		return result, errors.New("completed evidence lineage reconciliation receipt is invalid")
 	}
 	result.Run = completed

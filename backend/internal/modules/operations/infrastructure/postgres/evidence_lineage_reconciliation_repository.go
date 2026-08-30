@@ -58,19 +58,20 @@ type evidenceLineageFindingRecord struct {
 }
 
 type evidenceLineageReconciliationRunRecord struct {
-	ID               int64
-	Version          int64
-	Scope            string
-	Status           string
-	FencedAt         time.Time
-	BatchSize        int
-	GracePeriodHours int
-	LastAssetCursor  int64
-	ExaminedCount    int64
-	HealthyCount     int64
-	FindingCount     int64
-	RepairedCount    int64
-	FailedCount      int64
+	ID                     int64
+	Version                int64
+	Scope                  string
+	Status                 string
+	FencedAt               time.Time
+	BatchSize              int
+	GracePeriodHours       int
+	BackupDispositionCount int64
+	LastAssetCursor        int64
+	ExaminedCount          int64
+	HealthyCount           int64
+	FindingCount           int64
+	RepairedCount          int64
+	FailedCount            int64
 }
 
 func (repository *EvidenceLineageMaintenanceRepository) InspectEvidenceLineageReconciliation(ctx context.Context, query operationsapplication.EvidenceLineageReconciliationInspectionQuery) (operationsapplication.EvidenceLineageReconciliationInspectionDTO, error) {
@@ -145,27 +146,25 @@ func (repository *EvidenceLineageMaintenanceRepository) StartEvidenceLineageReco
 	if active != 0 {
 		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, fmt.Errorf("%w: evidence lineage producer is active", sharedrepository.ErrConflict)
 	}
-	var backupRecorded bool
-	if err := transaction.QueryRowContext(ctx, `
-SELECT EXISTS (
-  SELECT 1 FROM backup_runs
-  WHERE run_sha256=$1 AND status='succeeded' AND completed_at <= CURRENT_TIMESTAMP
-)`, command.BackupEvidenceSHA256).Scan(&backupRecorded); err != nil {
+	var fencedAt time.Time
+	if err := transaction.QueryRowContext(ctx, `SELECT CURRENT_TIMESTAMP`).Scan(&fencedAt); err != nil {
 		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, err
 	}
-	if !backupRecorded {
-		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, fmt.Errorf("%w: successful backup evidence is not recorded", sharedrepository.ErrConflict)
+	backupDispositionCount, err := validateReconciliationBackupEvidence(ctx, transaction, command.Scope, command.BackupEvidenceSHA256, fencedAt)
+	if err != nil {
+		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, err
 	}
 	row := transaction.QueryRowContext(ctx, `
 INSERT INTO evidence_lineage_reconciliation_runs (
   scope,operator_id,reviewer_id,binary_sha256,schema_sha256,configuration_sha256,
-  backup_evidence_sha256,rehearsal_evidence_sha256,batch_size,grace_period_hours
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-RETURNING id,version,scope,status,batch_size,grace_period_hours,last_asset_id,examined_count,
+  backup_evidence_sha256,rehearsal_evidence_sha256,batch_size,grace_period_hours,
+  backup_disposition_count,started_at
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+RETURNING id,version,scope,status,batch_size,grace_period_hours,backup_disposition_count,last_asset_id,examined_count,
           healthy_count,finding_count,repaired_count,failed_count,started_at`,
 		command.Scope, command.OperatorID, command.ReviewerID, command.BinarySHA256, command.SchemaSHA256,
 		command.ConfigurationSHA256, command.BackupEvidenceSHA256, command.RehearsalEvidenceSHA256,
-		command.BatchSize, command.GracePeriodHours)
+		command.BatchSize, command.GracePeriodHours, backupDispositionCount, fencedAt)
 	record, err := scanEvidenceLineageReconciliationRun(row)
 	if err != nil {
 		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, err
@@ -180,22 +179,30 @@ func (repository *EvidenceLineageMaintenanceRepository) ResumeEvidenceLineageRec
 	if command.RunID <= 0 {
 		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, fmt.Errorf("%w: invalid reconciliation run", sharedrepository.ErrInvalidInput)
 	}
+	var fencedAt time.Time
+	if err := repository.runtime.SQL.QueryRowContext(ctx, `
+SELECT started_at FROM evidence_lineage_reconciliation_runs WHERE id=$1`, command.RunID).Scan(&fencedAt); errors.Is(err, sql.ErrNoRows) {
+		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, fmt.Errorf("%w: reconciliation resume facts changed", sharedrepository.ErrConflict)
+	} else if err != nil {
+		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, err
+	}
+	backupDispositionCount, err := validateReconciliationBackupEvidence(ctx, repository.runtime.SQL, command.Scope, command.BackupEvidenceSHA256, fencedAt)
+	if err != nil {
+		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, err
+	}
 	row := repository.runtime.SQL.QueryRowContext(ctx, `
 UPDATE evidence_lineage_reconciliation_runs
 SET version=version+1,resume_count=resume_count+1,updated_at=now()
 WHERE id=$1 AND status='running' AND scope=$2 AND batch_size=$3 AND grace_period_hours=$4
   AND operator_id=$5 AND reviewer_id=$6 AND binary_sha256=$7 AND schema_sha256=$8
   AND configuration_sha256=$9 AND backup_evidence_sha256=$10 AND rehearsal_evidence_sha256=$11
-  AND EXISTS (
-    SELECT 1 FROM backup_runs
-    WHERE run_sha256=$10 AND status='succeeded'
-      AND completed_at <= evidence_lineage_reconciliation_runs.started_at
-  )
-RETURNING id,version,scope,status,batch_size,grace_period_hours,last_asset_id,examined_count,
+  AND backup_disposition_count=$12
+RETURNING id,version,scope,status,batch_size,grace_period_hours,backup_disposition_count,last_asset_id,examined_count,
           healthy_count,finding_count,repaired_count,failed_count,started_at`,
 		command.RunID, command.Scope, command.BatchSize, command.GracePeriodHours,
 		command.OperatorID, command.ReviewerID, command.BinarySHA256, command.SchemaSHA256,
-		command.ConfigurationSHA256, command.BackupEvidenceSHA256, command.RehearsalEvidenceSHA256)
+		command.ConfigurationSHA256, command.BackupEvidenceSHA256, command.RehearsalEvidenceSHA256,
+		backupDispositionCount)
 	record, err := scanEvidenceLineageReconciliationRun(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, fmt.Errorf("%w: reconciliation resume facts changed", sharedrepository.ErrConflict)
@@ -204,6 +211,53 @@ RETURNING id,version,scope,status,batch_size,grace_period_hours,last_asset_id,ex
 		return operationsapplication.EvidenceLineageReconciliationRunDTO{}, err
 	}
 	return evidenceLineageReconciliationRunDTO(record), nil
+}
+
+func validateReconciliationBackupEvidence(ctx context.Context, executor evidenceLineageSQLExecutor, scope, backupSHA256 string, fencedAt time.Time) (int64, error) {
+	var backupRecorded bool
+	if err := executor.QueryRowContext(ctx, `
+SELECT EXISTS (
+  SELECT 1 FROM backup_runs
+  WHERE run_sha256=$1 AND status='succeeded' AND completed_at <= $2 AND created_at <= $2
+)`, backupSHA256, fencedAt).Scan(&backupRecorded); err != nil {
+		return 0, err
+	}
+	if !backupRecorded {
+		return 0, fmt.Errorf("%w: successful backup evidence is not recorded", sharedrepository.ErrConflict)
+	}
+	var latestDeletionAt sql.NullTime
+	if err := executor.QueryRowContext(ctx, `
+SELECT max(deletion_at) FROM (
+  SELECT greatest(occurred_at,created_at) AS deletion_at
+  FROM evidence_deletion_audits
+  WHERE $2 AND event_type='delete_succeeded' AND occurred_at <= $1 AND created_at <= $1
+  UNION ALL
+  SELECT greatest(occurred_at,created_at) AS deletion_at
+  FROM derived_artifact_deletion_audits
+  WHERE $3 AND event_type='delete_succeeded' AND occurred_at <= $1 AND created_at <= $1
+) AS completed_deletions`, fencedAt, reconciliationUsesMinIO(scope) || reconciliationUsesRights(scope),
+		reconciliationUsesVault(scope) || reconciliationUsesRights(scope)).Scan(&latestDeletionAt); err != nil {
+		return 0, err
+	}
+	if !latestDeletionAt.Valid {
+		return 0, nil
+	}
+	var affectedBackupCount, undisposedBackupCount int64
+	if err := executor.QueryRowContext(ctx, `
+SELECT count(*),count(*) FILTER (WHERE NOT EXISTS (
+    SELECT 1 FROM backup_retention_dispositions AS disposition
+    WHERE disposition.backup_run_id=backup.id AND disposition.backup_run_sha256=backup.run_sha256
+      AND disposition.status='disposed' AND disposition.disposed_at <= $2 AND disposition.created_at <= $2
+  ))
+FROM backup_runs AS backup
+WHERE backup.status='succeeded' AND backup.completed_at <= $2 AND backup.created_at <= $2
+	  AND backup.recovery_point_at < $1`, latestDeletionAt.Time, fencedAt).Scan(&affectedBackupCount, &undisposedBackupCount); err != nil {
+		return 0, err
+	}
+	if undisposedBackupCount != 0 {
+		return 0, fmt.Errorf("%w: %d affected backup copies lack retention disposition evidence", sharedrepository.ErrConflict, undisposedBackupCount)
+	}
+	return affectedBackupCount, nil
 }
 
 func (repository *EvidenceLineageMaintenanceRepository) ApplyEvidenceLineageReconciliationBatch(ctx context.Context, command operationsapplication.EvidenceLineageReconciliationBatchCommand) (operationsapplication.EvidenceLineageReconciliationBatchResultDTO, error) {
@@ -272,7 +326,7 @@ func (repository *EvidenceLineageMaintenanceRepository) CompleteEvidenceLineageR
 UPDATE evidence_lineage_reconciliation_runs
 SET version=version+1,status='completed',completed_at=now(),updated_at=now()
 WHERE id=$1 AND status='running' AND last_asset_id=$2
-RETURNING id,version,scope,status,batch_size,grace_period_hours,last_asset_id,examined_count,
+RETURNING id,version,scope,status,batch_size,grace_period_hours,backup_disposition_count,last_asset_id,examined_count,
           healthy_count,finding_count,repaired_count,failed_count,started_at`, command.RunID, command.LastAssetCursor)
 	record, err := scanEvidenceLineageReconciliationRun(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -758,14 +812,15 @@ func validateStartEvidenceLineageReconciliationRecord(command operationsapplicat
 func scanEvidenceLineageReconciliationRun(row interface{ Scan(...any) error }) (evidenceLineageReconciliationRunRecord, error) {
 	var record evidenceLineageReconciliationRunRecord
 	err := row.Scan(&record.ID, &record.Version, &record.Scope, &record.Status, &record.BatchSize,
-		&record.GracePeriodHours, &record.LastAssetCursor, &record.ExaminedCount, &record.HealthyCount,
+		&record.GracePeriodHours, &record.BackupDispositionCount, &record.LastAssetCursor, &record.ExaminedCount, &record.HealthyCount,
 		&record.FindingCount, &record.RepairedCount, &record.FailedCount, &record.FencedAt)
 	return record, err
 }
 
 func evidenceLineageReconciliationRunDTO(record evidenceLineageReconciliationRunRecord) operationsapplication.EvidenceLineageReconciliationRunDTO {
 	return operationsapplication.EvidenceLineageReconciliationRunDTO{
-		RunID: record.ID, Status: record.Status, FencedAt: record.FencedAt, LastAssetCursor: record.LastAssetCursor,
+		RunID: record.ID, Status: record.Status, FencedAt: record.FencedAt,
+		BackupDispositionCount: record.BackupDispositionCount, LastAssetCursor: record.LastAssetCursor,
 		ExaminedCount: record.ExaminedCount, HealthyCount: record.HealthyCount,
 		FindingCount: record.FindingCount, RepairedCount: record.RepairedCount, FailedCount: record.FailedCount,
 	}

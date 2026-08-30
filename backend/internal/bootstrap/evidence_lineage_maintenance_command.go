@@ -24,7 +24,7 @@ import (
 
 func runMaintenanceCommand(ctx context.Context, cfg config.Config, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("maintenance command is required: expected backfill-evidence-lineage, reconcile-evidence-lineage, expire-raw-evidence, expire-derived-artifacts, recover-projections, record-backup, or rotate-source-credentials")
+		return errors.New("maintenance command is required: expected backfill-evidence-lineage, reconcile-evidence-lineage, expire-raw-evidence, expire-derived-artifacts, recover-projections, record-backup, record-backup-retention-disposition, or rotate-source-credentials")
 	}
 	if output == nil {
 		return errors.New("maintenance output is required")
@@ -42,6 +42,8 @@ func runMaintenanceCommand(ctx context.Context, cfg config.Config, args []string
 		return runProjectionRecoveryCommand(ctx, cfg, args[1:], output)
 	case "record-backup":
 		return runBackupRunCommand(ctx, cfg, args[1:], output)
+	case "record-backup-retention-disposition":
+		return runBackupRetentionDispositionCommand(ctx, cfg, args[1:], output)
 	case "rotate-source-credentials":
 		return runSourceCredentialRotationCommand(ctx, cfg, args[1:], output)
 	default:
@@ -109,9 +111,9 @@ func runEvidenceLineageReconciliationCommand(ctx context.Context, cfg config.Con
 	}
 	if command.Apply {
 		_, _ = fmt.Fprintf(output,
-			"evidence lineage reconciliation completed: run_id=%d scope=%s fenced_at=%s backup_evidence_sha256=%s rehearsal_evidence_sha256=%s examined=%d healthy=%d findings=%d repaired=%d failed=%d last_asset_cursor=%d\n",
+			"evidence lineage reconciliation completed: run_id=%d scope=%s fenced_at=%s backup_evidence_sha256=%s backup_dispositions_verified=%d rehearsal_evidence_sha256=%s examined=%d healthy=%d findings=%d repaired=%d failed=%d last_asset_cursor=%d\n",
 			result.Run.RunID, command.Scope, result.Run.FencedAt.UTC().Format(time.RFC3339Nano), command.BackupEvidenceSHA256,
-			command.RehearsalEvidenceSHA256, result.Run.ExaminedCount, result.Run.HealthyCount,
+			result.Run.BackupDispositionCount, command.RehearsalEvidenceSHA256, result.Run.ExaminedCount, result.Run.HealthyCount,
 			result.Run.FindingCount, result.Run.RepairedCount, result.Run.FailedCount, result.Run.LastAssetCursor)
 	}
 	return nil
