@@ -272,6 +272,7 @@ describe("MonitorsPage", () => {
     expect(request.source_connection_ids).toEqual([4]);
     expect(request.collection_interval_seconds).toBe(1800);
     expect(request.alert_email_enabled).toBe(true);
+    expect(mocks.getMonitorsIdDraft).not.toHaveBeenCalled();
     expect(mocks.putMonitorsIdDraft).toHaveBeenCalledWith(
       { id: 10 },
       expect.objectContaining({

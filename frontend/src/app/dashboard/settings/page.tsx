@@ -227,7 +227,10 @@ async function compileAndPublishSimpleMonitor(
     throw new Error("监控草稿版本无效");
   }
 
-  const currentResourceVersion = await currentIntentResourceVersion(monitorID);
+  const currentResourceVersion =
+    expectedDraftVersion == null
+      ? 0
+      : await currentIntentResourceVersion(monitorID);
   const intent = await putMonitorsIdDraftIntent(
     { id: monitorID },
     {
