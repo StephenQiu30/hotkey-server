@@ -40,6 +40,25 @@ jobs:
       - name: OpenAPI, vet, build and repository acceptance
         run: make ci-static
 
+      - name: Planned Runbook dry-run acceptance
+        env:
+          HOTKEY_RUNBOOK_DRY_RUN_REPOSITORY_ROOT: ${{ github.workspace }}
+          HOTKEY_RUNBOOK_DRY_RUN_OUTPUT: ${{ runner.temp }}/runbook-dry-run-${{ github.run_id }}-${{ github.run_attempt }}.json
+          HOTKEY_RUNBOOK_DRY_RUN_ENVIRONMENT: github-actions-isolated-contract
+          HOTKEY_RUNBOOK_DRY_RUN_HARDWARE: ubuntu-latest-hosted-runner
+          HOTKEY_RUNBOOK_DRY_RUN_GIT_REVISION: ${{ github.sha }}
+          HOTKEY_RUNBOOK_DRY_RUN_PRODUCTION_EGRESS_DISABLED: "true"
+        run: make runbook-dry-run-acceptance
+
+      - name: Upload sanitized planned Runbook dry-run evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: runbook-dry-run-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ runner.temp }}/runbook-dry-run-${{ github.run_id }}-${{ github.run_attempt }}.json
+
   backend-acceptance:
     name: Backend test acceptance
     runs-on: ubuntu-latest
