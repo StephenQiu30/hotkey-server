@@ -118,7 +118,7 @@ describe("公开入口页面", () => {
     }
   });
 
-  it("认证页的品牌介绍区域使用可识别的辅助地标", () => {
+  it("认证页沿用首页的中性信号场与无边框表面", () => {
     render(
       <AuthShell title="登录" subtitle="继续使用">
         <span>表单内容</span>
@@ -129,16 +129,33 @@ describe("公开入口页面", () => {
       name: "HotKey 品牌介绍",
     });
     const authCanvas = brandRegion.parentElement?.parentElement;
-    const formSurface = screen
+    const formCard = screen
       .getByText("表单内容")
       .closest('[data-slot="card"]');
+    const formSurface = formCard?.parentElement;
 
     expect(brandRegion).toBeInTheDocument();
-    expect(screen.getByAltText("")).toHaveClass("dark:invert");
-    expect(authCanvas).toHaveClass("bg-muted/30");
-    expect(brandRegion).not.toHaveClass("bg-muted/30");
-    expect(formSurface).toHaveClass("rounded-none", "border-0", "bg-transparent");
-    expect(formSurface).not.toHaveClass("rounded-xl", "border", "bg-card");
+    expect(
+      screen.getByRole("img", {
+        name: "多来源信号汇聚成热点事件的动态轨迹",
+      })
+    ).toHaveAttribute("data-animation", "gsap-three");
+    expect(authCanvas).toHaveClass("bg-background");
+    expect(brandRegion.querySelector(".intelligence-grid")).toBeInTheDocument();
+    expect(formSurface).toHaveClass(
+      "auth-form-surface",
+      "rounded-2xl",
+      "bg-card"
+    );
+    expect(formCard).toHaveClass("rounded-none", "border-0", "bg-transparent");
+    expect(screen.getByRole("link", { name: "HotKey 首页" })).toHaveAttribute(
+      "href",
+      "/"
+    );
+    expect(screen.getByRole("link", { name: "返回产品首页" })).toHaveAttribute(
+      "href",
+      "/"
+    );
   });
 
   it("未找到页面提供中文说明和可恢复的导航入口", () => {

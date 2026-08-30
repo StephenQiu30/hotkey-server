@@ -38,46 +38,56 @@ export default function LoginPage() {
 
   return (
     <AuthShell title="登录工作台" subtitle="继续你的热点情报工作">
-      <form onSubmit={submit} className="space-y-5">
-        <div className="space-y-2">
+      <form onSubmit={submit} className="space-y-6">
+        <div className="space-y-2.5">
           <Label htmlFor="email">邮箱</Label>
           <div className="relative">
-            <Mail aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Mail aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="email"
               type="email"
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="h-11 pl-9"
+              className="h-12 rounded-lg bg-background pl-10"
               placeholder="name@example.com"
             />
           </div>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <div className="flex items-center justify-between">
             <Label htmlFor="password">密码</Label>
-            <Link href="/forgot-password" className="text-xs text-foreground underline underline-offset-4">忘记密码？</Link>
+            <Link
+              href="/forgot-password"
+              className="rounded-sm text-xs text-muted-foreground no-underline transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              忘记密码？
+            </Link>
           </div>
           <PasswordInput
             id="password"
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="h-11"
+            className="h-12 rounded-lg bg-background"
           />
         </div>
         <Button
           type="submit"
           disabled={loading || !email || !password}
-          className="h-11 w-full disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+          className="h-12 w-full rounded-lg disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
         >
           {loading ? "登录中…" : "进入工作台"}
         </Button>
       </form>
-      <p className="mt-6 text-center text-sm text-muted-foreground">
+      <p className="mt-7 rounded-lg bg-muted px-4 py-3 text-center text-sm text-muted-foreground">
         还没有账号？{" "}
-        <Link href="/register" className="text-foreground underline underline-offset-4">创建账号</Link>
+        <Link
+          href="/register"
+          className="rounded-sm font-medium text-foreground no-underline hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          创建账号
+        </Link>
       </p>
     </AuthShell>
   );
