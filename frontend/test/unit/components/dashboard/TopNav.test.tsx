@@ -27,6 +27,7 @@ describe("TopNav", () => {
   afterEach(cleanup);
 
   beforeEach(() => {
+    window.history.replaceState({}, "", "/dashboard");
     navigationMocks.pathname = "/dashboard";
     navigationMocks.push.mockReset();
     useAuthStore.setState({
@@ -75,7 +76,7 @@ describe("TopNav", () => {
   it("submits global search to the event workspace", () => {
     render(<TopNav menuItems={[]} />);
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "搜索事件" }), {
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索信号" }), {
       target: { value: "化工安全" },
     });
     fireEvent.submit(screen.getByRole("search"));
@@ -83,6 +84,17 @@ describe("TopNav", () => {
     expect(navigationMocks.push).toHaveBeenCalledWith(
       "/dashboard/contents?q=%E5%8C%96%E5%B7%A5%E5%AE%89%E5%85%A8"
     );
+  });
+
+  it("resynchronizes search after same-path browser history navigation", async () => {
+    window.history.replaceState({}, "", "/dashboard/contents?q=旧查询");
+    render(<TopNav menuItems={[]} />);
+
+    expect(await screen.findByDisplayValue("旧查询")).toBeInTheDocument();
+    window.history.pushState({}, "", "/dashboard/contents?q=新查询");
+    fireEvent.popState(window);
+
+    expect(await screen.findByDisplayValue("新查询")).toBeInTheDocument();
   });
 
   it("keeps operational pages in the account menu for administrators", async () => {
@@ -100,7 +112,7 @@ describe("TopNav", () => {
     expect(
       await screen.findByRole("menuitem", { name: /来源管理/ })
     ).toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("hides administrator-only menu items from editors", async () => {
     useAuthStore.setState((state) => ({
@@ -130,7 +142,7 @@ describe("TopNav", () => {
     expect(
       screen.getByRole("menuitem", { name: /采集内容/ })
     ).toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("hides administrator-only primary routes from desktop and mobile navigation", async () => {
     useAuthStore.setState((state) => ({

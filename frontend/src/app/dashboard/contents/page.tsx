@@ -62,7 +62,7 @@ const sortLabels: Readonly<Record<HotspotSort, string>> = {
 function HotspotLoadingState() {
   return (
     <div
-      aria-label="正在加载热点"
+      aria-label="正在加载信号"
       aria-live="polite"
       className="flex min-h-80 items-center justify-center"
       role="status"
@@ -71,7 +71,7 @@ function HotspotLoadingState() {
         aria-hidden="true"
         className="h-5 w-5 animate-spin text-muted-foreground"
       />
-      <span className="sr-only">正在加载热点</span>
+      <span className="sr-only">正在加载信号</span>
     </div>
   );
 }
@@ -168,7 +168,7 @@ function HotspotRadar() {
       setItems([]);
       setNextCursor(undefined);
       setForbidden(reason instanceof HotKeyAPIError && reason.status === 403);
-      setError(reason instanceof Error ? reason.message : "热点加载失败");
+      setError(reason instanceof Error ? reason.message : "信号加载失败");
     } finally {
       setLoading(false);
     }
@@ -281,13 +281,13 @@ function HotspotRadar() {
             variant="outline"
           >
             <RefreshCw className={loading ? "animate-spin" : ""} />
-            刷新热点
+            刷新信号
           </Button>
         )
       }
-      description="持续查看监控扫描发现的文章、帖子和视频，并按来源、监控与热度快速定位。"
-      eyebrow="HOTSPOT RADAR"
-      title="热点雷达"
+      description="查看监控扫描发现的文章、帖子和视频，按来源、监控与热度定位形成事件的原始信号。"
+      eyebrow="SIGNAL STREAM"
+      title="信号流"
     />
   );
 
@@ -295,11 +295,11 @@ function HotspotRadar() {
     return (
       <PageShell>
         {pageHeader}
-        <Alert aria-label="热点访问权限不足" className="mt-6">
+        <Alert aria-label="信号流访问权限不足" className="mt-6">
           <ShieldAlert />
-          <AlertTitle>热点访问权限不足</AlertTitle>
+          <AlertTitle>信号流访问权限不足</AlertTitle>
           <AlertDescription>
-            当前账号无法读取热点内容。请联系管理员核对工作区角色。
+            当前账号无法读取信号内容。请联系管理员核对工作区角色。
           </AlertDescription>
         </Alert>
       </PageShell>
@@ -311,16 +311,16 @@ function HotspotRadar() {
       {pageHeader}
 
       <section
-        aria-label="热点统计"
+        aria-label="信号统计"
         className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
       >
         {[
-          ["总热点", summary.total ?? 0],
+          ["信号总数", summary.total ?? 0],
           ["今日新增", summary.today ?? 0],
-          ["紧急热点", summary.urgent ?? 0],
+          ["紧急信号", summary.urgent ?? 0],
           ["启用监控", activeMonitors],
         ].map(([label, value]) => (
-          <Card key={label}>
+          <Card key={label} variant="subtle">
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">{label}</p>
               <p className="mono mt-3 text-2xl font-medium">{value}</p>
@@ -329,10 +329,10 @@ function HotspotRadar() {
         ))}
       </section>
 
-      <Card className="mt-6 overflow-hidden" role="region" aria-label="热点筛选">
-        <CardHeader className="flex flex-col gap-4 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <Card className="mt-6 overflow-hidden" role="region" aria-label="信号筛选">
+        <CardHeader className="flex flex-col gap-4 bg-secondary/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <CardTitle className="text-sm">筛选热点</CardTitle>
+            <CardTitle className="text-sm">筛选信号</CardTitle>
             <CardDescription>
               条件会同步到地址栏，便于保留和分享当前视图。
             </CardDescription>
@@ -350,7 +350,7 @@ function HotspotRadar() {
         </CardHeader>
         <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-12">
           <div className="space-y-2 md:col-span-2 xl:col-span-3">
-            <Label htmlFor="hotspot-search">搜索热点</Label>
+            <Label htmlFor="hotspot-search">搜索信号</Label>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -374,7 +374,7 @@ function HotspotRadar() {
                 resetPage({ source: next?.toString() });
               }}
             >
-              <SelectTrigger aria-label="热点来源" id="hotspot-source">
+              <SelectTrigger aria-label="信号来源" id="hotspot-source">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -408,7 +408,7 @@ function HotspotRadar() {
                 });
               }}
             >
-              <SelectTrigger aria-label="热点监控" id="hotspot-monitor">
+              <SelectTrigger aria-label="监控任务" id="hotspot-monitor">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -436,7 +436,7 @@ function HotspotRadar() {
                 resetPage({ sort: next === "discovered" ? undefined : next });
               }}
             >
-              <SelectTrigger aria-label="热点排序" id="hotspot-sort">
+              <SelectTrigger aria-label="信号排序" id="hotspot-sort">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -485,7 +485,7 @@ function HotspotRadar() {
 
       {error ? (
         <Alert className="mt-6" variant="destructive">
-          <AlertTitle>热点加载失败</AlertTitle>
+          <AlertTitle>信号加载失败</AlertTitle>
           <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
             <span>{error}</span>
             <Button onClick={() => void load()} size="sm" variant="outline">
@@ -506,10 +506,10 @@ function HotspotRadar() {
               <EmptyMedia variant="icon">
                 <Flame />
               </EmptyMedia>
-              <EmptyTitle>暂时没有热点</EmptyTitle>
+              <EmptyTitle>暂时没有信号</EmptyTitle>
               <EmptyDescription>
                 {filtered
-                  ? "当前筛选条件没有结果，可以清除筛选后查看全部热点。"
+                  ? "当前筛选条件没有结果，可以清除筛选后查看全部信号。"
                   : "创建监控并立即扫描后，新内容会出现在这里。"}
               </EmptyDescription>
             </EmptyHeader>
@@ -535,7 +535,7 @@ function HotspotRadar() {
               }
             />
           ))}
-          <Surface className="overflow-hidden" variant="ring">
+          <Surface className="overflow-hidden" variant="flat">
             <CursorPagination
               hasNext={Boolean(nextCursor)}
               loading={loading}

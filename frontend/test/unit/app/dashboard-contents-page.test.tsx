@@ -84,13 +84,13 @@ describe("HotspotRadar", () => {
       limit: 20,
       sort: "discovered",
     });
-    expect(screen.getByText("总热点").nextElementSibling).toHaveTextContent(
+    expect(screen.getByText("信号总数").nextElementSibling).toHaveTextContent(
       "12"
     );
     expect(screen.getByText("今日新增").nextElementSibling).toHaveTextContent(
       "3"
     );
-    expect(screen.getByText("紧急热点").nextElementSibling).toHaveTextContent(
+    expect(screen.getByText("紧急信号").nextElementSibling).toHaveTextContent(
       "1"
     );
     await waitFor(() =>
@@ -98,8 +98,8 @@ describe("HotspotRadar", () => {
         "1"
       )
     );
-    expect(screen.getByText("热度 36.4")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看原文" })).toHaveAttribute(
+    expect(screen.getByLabelText("热度 36.4")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看原始信号" })).toHaveAttribute(
       "href",
       card.canonical_url
     );
@@ -110,7 +110,7 @@ describe("HotspotRadar", () => {
     render(<ContentsPage />);
 
     expect(
-      screen.getByRole("status", { name: "正在加载热点" }),
+      screen.getByRole("status", { name: "正在加载信号" }),
     ).toBeInTheDocument();
   });
 
@@ -134,7 +134,7 @@ describe("HotspotRadar", () => {
 
   it("debounces keyword search and resets pagination in the URL", async () => {
     render(<ContentsPage />);
-    const search = screen.getByRole("searchbox", { name: "搜索热点" });
+    const search = screen.getByRole("searchbox", { name: "搜索信号" });
     await userEvent.setup().type(search, "更新");
 
     await waitFor(() =>
@@ -171,11 +171,11 @@ describe("HotspotRadar", () => {
       .mockResolvedValueOnce({ data: { items: [], summary: {} } });
     render(<ContentsPage />);
 
-    expect(await screen.findByText("热点加载失败")).toBeInTheDocument();
-    expect(screen.queryByText("暂时没有热点")).not.toBeInTheDocument();
+    expect(await screen.findByText("信号加载失败")).toBeInTheDocument();
+    expect(screen.queryByText("暂时没有信号")).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(mocks.getHotspots).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText("暂时没有热点")).toBeInTheDocument();
+    expect(await screen.findByText("暂时没有信号")).toBeInTheDocument();
   });
 
   it("shows a dedicated forbidden hotspot state without a retry action", async () => {
@@ -185,7 +185,7 @@ describe("HotspotRadar", () => {
     render(<ContentsPage />);
 
     expect(
-      await screen.findByRole("alert", { name: "热点访问权限不足" }),
+      await screen.findByRole("alert", { name: "信号流访问权限不足" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
   });

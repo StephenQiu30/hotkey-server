@@ -43,7 +43,7 @@ export default function BasicLayout({
       </main>
       <footer
         aria-label="工作台页脚"
-        className="shrink-0 bg-background/95 [box-shadow:0_-1px_0_0_var(--border)]"
+        className="shrink-0 bg-card/88 backdrop-blur-xl shadow-[0_-18px_42px_-40px_rgba(0,0,0,.08)]"
         data-layout-footer
       >
         <div className="app-shell-container flex h-11 items-center justify-between gap-4 text-xs text-muted-foreground">

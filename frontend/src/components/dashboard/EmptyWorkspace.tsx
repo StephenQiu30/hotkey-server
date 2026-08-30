@@ -110,7 +110,7 @@ export function EmptyWorkspace({
       </div>
 
       <Card className="mt-5 overflow-hidden">
-        <CardHeader className="flex flex-col gap-3 space-y-0 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <CardHeader className="flex flex-col gap-3 space-y-0 bg-secondary/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <CardTitle className="text-sm" role="heading" aria-level={2}>
               监控准备状态
@@ -132,13 +132,13 @@ export function EmptyWorkspace({
         </CardHeader>
 
         {visibleMonitors.length ? (
-          <CardContent className="divide-y divide-border p-0">
+          <CardContent className="space-y-1 p-1.5">
             {visibleMonitors.slice(0, 6).map((monitor) => {
               return (
                 <Link
                   key={monitor.id}
                   href="/dashboard/settings"
-                  className="grid gap-3 px-5 py-4 text-foreground no-underline hover:bg-muted/60 sm:grid-cols-[minmax(0,1fr)_120px_110px] sm:items-center"
+                  className="grid gap-3 rounded-lg px-5 py-4 text-foreground no-underline hover:bg-muted/60 sm:grid-cols-[minmax(0,1fr)_120px_110px] sm:items-center"
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">
@@ -179,7 +179,7 @@ export function EmptyWorkspace({
       </Card>
 
       <Card className="mt-5 overflow-hidden">
-        <CardContent className="grid p-0 sm:grid-cols-2 xl:grid-cols-4 xl:divide-x xl:divide-border">
+        <CardContent className="grid gap-2 p-2 sm:grid-cols-2 xl:grid-cols-4">
           {[
             {
               step: "01",
@@ -214,14 +214,14 @@ export function EmptyWorkspace({
           ].map((stage) => (
             <div
               key={stage.step}
-              className="border-b border-border p-5 last:border-0 md:border-b-0"
+              className="rounded-lg bg-muted/30 p-5"
             >
               <div className="flex items-center gap-3">
                 <span
-                  className={`mono flex h-7 w-7 items-center justify-center rounded-full border text-[11px] ${
+                  className={`mono flex h-7 w-7 items-center justify-center rounded-full text-[11px] ${
                     stage.active
-                      ? "border-success/50 text-success"
-                      : "border-border text-muted-foreground"
+                      ? "bg-success/12 text-success"
+                      : "bg-secondary text-muted-foreground"
                   }`}
                 >
                   {stage.step}

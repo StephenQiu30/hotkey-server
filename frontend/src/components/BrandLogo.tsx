@@ -18,7 +18,7 @@ export function BrandLogo({
         role="img"
         aria-label="HotKey"
         strokeWidth={1.8}
-        className={cn("h-4 w-4 shrink-0", markClassName)}
+        className={cn("h-4 w-4 shrink-0 text-foreground", markClassName)}
       />
       <span aria-hidden="true">{title}</span>
     </span>

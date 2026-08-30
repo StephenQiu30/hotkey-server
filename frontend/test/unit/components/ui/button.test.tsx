@@ -12,16 +12,17 @@ describe("Button", () => {
     );
   });
 
-  it("gives secondary actions a borderless shadow ring", () => {
+  it("uses a low-contrast color surface for secondary outline actions", () => {
     render(<Button variant="outline">刷新热点</Button>);
 
     expect(screen.getByRole("button", { name: "刷新热点" })).toHaveClass(
-      "bg-background",
-      "[box-shadow:var(--shadow-border)]",
+      "bg-secondary/70",
+      "text-secondary-foreground",
     );
     expect(screen.getByRole("button", { name: "刷新热点" })).not.toHaveClass(
       "border",
       "border-border",
+      "[box-shadow:var(--shadow-border)]",
     );
   });
 

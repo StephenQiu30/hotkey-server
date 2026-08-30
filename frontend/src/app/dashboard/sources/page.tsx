@@ -263,7 +263,7 @@ export default function SourcesPage() {
         title={canManage ? "来源管理" : "来源目录"}
         description={
           canManage
-            ? "连接、探测并管理七类正式来源；单个来源失败不会阻塞其他来源，也不会触发隐藏回退。"
+            ? "连接、探测并管理多类正式来源；单个来源失败不会阻塞其他来源，也不会触发隐藏回退。"
             : "查看已接入来源的类型、可用状态和公开健康信息；凭据与管理配置仅管理员可见。"
         }
         action={
@@ -331,7 +331,7 @@ export default function SourcesPage() {
       ) : sources.length ? (
         <Card className="mt-6 gap-0 overflow-hidden py-0">
           <div
-            className={`hidden gap-4 border-b border-border px-5 py-3 text-xs text-muted-foreground md:grid ${
+            className={`hidden gap-4 bg-secondary/35 px-5 py-3 text-xs text-muted-foreground md:grid ${
               canManage
                 ? "grid-cols-[minmax(0,1.5fr)_120px_120px_320px]"
                 : "grid-cols-[minmax(0,1.5fr)_120px_120px]"
@@ -342,13 +342,13 @@ export default function SourcesPage() {
             <span>状态</span>
             {canManage && <span className="text-right">操作</span>}
           </div>
-          <div className="divide-y divide-border">
+          <div className="space-y-1 p-1.5">
             {sources.map((source) => {
               const status = sourceStatus(source);
               return (
                 <div
                   key={source.id}
-                  className={`grid gap-3 px-4 py-4 md:items-center md:gap-4 md:px-5 ${
+                  className={`grid gap-3 rounded-lg px-4 py-4 hover:bg-muted/35 md:items-center md:gap-4 md:px-5 ${
                     canManage
                       ? "md:grid-cols-[minmax(0,1.5fr)_120px_120px_320px]"
                       : "md:grid-cols-[minmax(0,1.5fr)_120px_120px]"

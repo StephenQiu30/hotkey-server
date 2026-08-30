@@ -38,9 +38,9 @@ const transportPresentation: Record<
 };
 
 const eventTypeLabels: Record<string, string> = {
-  "hotspot.discovered": "新热点",
-  "micro_event.created": "新微事件",
-  "micro_event.updated": "微事件更新",
+  "hotspot.discovered": "新信号",
+  "micro_event.created": "新事件",
+  "micro_event.updated": "事件更新",
   "micro_event.review_requested": "需要复核",
   "micro_event.evidence_changed": "证据覆盖更新",
   "report.approval_requested": "日报待审批",
@@ -120,7 +120,7 @@ export function NotificationInbox() {
       <PageHeader
         eyebrow="Notifications"
         title="站内通知"
-        description="实时接收监控发现的新热点；断线后会从上次游标自动补齐。"
+        description="实时接收监控发现的新信号；断线后会从上次游标自动补齐。"
         action={
           <div className="flex gap-2">
             <Badge
@@ -159,21 +159,21 @@ export function NotificationInbox() {
               </EmptyMedia>
               <EmptyTitle>暂时没有站内通知</EmptyTitle>
               <EmptyDescription>
-                监控发现与关键词相关的新热点后会显示在这里。
+                监控发现与目标相关的新信号后会显示在这里。
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
         </Card>
       ) : (
         <Card className="mt-6 gap-0 overflow-hidden py-0">
-          <div className="divide-y divide-border">
+          <div className="space-y-1 p-1.5">
             {items.map((notification) => {
               const unread = (notification.id ?? 0) > readThroughID;
               return (
                 <article
                   key={notification.id}
                   className={cn(
-                    "flex gap-4 px-4 py-4 sm:px-5",
+                    "flex gap-4 rounded-lg px-4 py-4 sm:px-5",
                     unread && "bg-muted/35"
                   )}
                 >

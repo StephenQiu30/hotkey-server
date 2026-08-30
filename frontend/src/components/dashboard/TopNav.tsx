@@ -76,7 +76,13 @@ export default function TopNav({
   );
 
   useEffect(() => {
-    setQuery(new URLSearchParams(window.location.search).get("q") ?? "");
+    const syncQuery = () => {
+      setQuery(new URLSearchParams(window.location.search).get("q") ?? "");
+    };
+
+    syncQuery();
+    window.addEventListener("popstate", syncQuery);
+    return () => window.removeEventListener("popstate", syncQuery);
   }, [pathname]);
 
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
@@ -100,7 +106,7 @@ export default function TopNav({
     <header
       data-top-nav
       data-layout-header
-      className="shrink-0 bg-background/90 backdrop-blur-xl [box-shadow:0_1px_0_0_var(--border)]"
+      className="shrink-0 bg-card/88 backdrop-blur-xl shadow-[0_18px_42px_-38px_rgba(0,0,0,.08)]"
     >
       <div className="app-shell-container flex h-16 min-w-0 items-center gap-3 lg:gap-7">
         <Link
@@ -124,13 +130,13 @@ export default function TopNav({
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "relative inline-flex h-16 items-center px-2.5 text-sm font-normal text-muted-foreground no-underline transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                        active && "font-medium text-foreground"
+                        active && "font-semibold text-primary"
                       )}
                     >
                       <span className="hidden">{item.icon}</span>
                       {item.name}
                       {active ? (
-                        <span className="absolute inset-x-2.5 bottom-0 h-px bg-foreground" />
+                        <span className="absolute inset-x-2.5 bottom-0 h-0.5 rounded-full bg-foreground/70" />
                       ) : null}
                     </Link>
                   </NavigationMenuLink>
@@ -148,11 +154,11 @@ export default function TopNav({
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
-            aria-label="搜索事件"
-            placeholder="搜索事件"
+            aria-label="搜索信号"
+            placeholder="搜索信号"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="h-9 bg-muted/70 pl-9"
+            className="h-9 bg-secondary/65 pl-9"
           />
         </form>
 
@@ -194,7 +200,7 @@ export default function TopNav({
           >
             <SheetHeader className="p-5 text-left">
               <SheetTitle>工作区导航</SheetTitle>
-              <SheetDescription>浏览热点监控与分析功能。</SheetDescription>
+              <SheetDescription>浏览信号监测与事件分析功能。</SheetDescription>
             </SheetHeader>
             <div className="p-4">
               <form
@@ -204,8 +210,8 @@ export default function TopNav({
               >
                 <Input
                   type="search"
-                  aria-label="移动端搜索事件"
-                  placeholder="搜索事件"
+                  aria-label="移动端搜索信号"
+                  placeholder="搜索信号"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                 />

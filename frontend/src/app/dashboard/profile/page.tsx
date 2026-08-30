@@ -36,7 +36,7 @@ export default function ProfilePage() {
   const [stats, setStats] = useState(emptyStats);
   const summaryRows = [
     {
-      label: "热点监控",
+      label: "监控任务",
       value: stats.monitors,
       icon: Radar,
       href: "/dashboard/settings",
@@ -107,7 +107,7 @@ export default function ProfilePage() {
               {user?.display_name || "HotKey 用户"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">{user?.email}</p>
-            <div className="mt-6 space-y-3 border-t border-border pt-5 text-xs">
+            <div className="mt-6 space-y-3 rounded-lg bg-secondary/35 p-4 text-xs">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">角色</span>
                 <span>{user?.role || "—"}</span>
@@ -147,14 +147,14 @@ export default function ProfilePage() {
             </Alert>
           ) : (
             <>
-              <Card className="gap-0 divide-y divide-border py-0">
+              <Card className="gap-1 p-1.5 py-1.5">
                 {summaryRows.map((row) => {
                   const Icon = row.icon;
                   return (
                     <Link
                       key={row.label}
                       href={row.href}
-                      className="flex items-center gap-4 px-5 py-5 text-foreground no-underline hover:bg-muted/60"
+                      className="flex items-center gap-4 rounded-lg px-5 py-5 text-foreground no-underline hover:bg-muted/60"
                     >
                       <Icon className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm">{row.label}</span>

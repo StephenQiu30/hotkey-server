@@ -24,12 +24,13 @@ const findSourceFiles = (directory: string): string[] => {
 };
 
 describe("repository test layout", () => {
-  it("persists the Vercel design contract at the project root", () => {
+  it("persists the HotKey borderless intelligence design contract at the project root", () => {
     const designContract = path.join(repositoryRoot, "..", "design.md");
     expect(fs.existsSync(designContract)).toBe(true);
-    expect(fs.readFileSync(designContract, "utf8")).toContain(
-      "# Design System: Vercel",
-    );
+    const design = fs.readFileSync(designContract, "utf8");
+    expect(design).toContain("# HotKey 设计系统：中性情报界面");
+    expect(design).toContain("### 无边框结构（硬性规则）");
+    expect(design).toContain("不得使用可见描边、内描边、ring-shadow 或装饰分隔线");
   });
 
   it("keeps all test files under the repository test directory", () => {

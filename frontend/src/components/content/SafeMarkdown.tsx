@@ -224,7 +224,7 @@ export const SafeMarkdown = memo(function SafeMarkdown({
       </ReactMarkdown>
       {truncated ? (
         <p
-          className="mt-6 border-t border-border pt-4 text-xs text-muted-foreground"
+          className="mt-6 pt-4 text-xs text-muted-foreground"
           role="status"
         >
           正文过长，仅展示前 {limit.toLocaleString("zh-CN")} 个字符。请访问原文核对其余内容。

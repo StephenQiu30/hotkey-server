@@ -53,7 +53,7 @@ function eventTitle(event: HotKeyAPI.MicroEventResponseDTO) {
   const subject = event.primary_subject_key?.trim();
   const action = event.primary_action_key?.trim();
   if (subject && action) return `${subject} · ${action}`;
-  return subject || action || `语义事件 #${event.id ?? "—"}`;
+  return subject || action || `事件 #${event.id ?? "—"}`;
 }
 
 function MicroEventCard({ event }: { event: HotKeyAPI.MicroEventResponseDTO }) {
@@ -98,7 +98,7 @@ function MicroEventCard({ event }: { event: HotKeyAPI.MicroEventResponseDTO }) {
         <div>
           <p className="text-xs text-muted-foreground">Heat v2</p>
           <p className="mt-1 inline-flex items-center gap-1 font-medium">
-            <Flame className="size-4 text-warning" />
+            <Flame className="size-4 text-muted-foreground" />
             {heat === undefined ? "预热中" : heat.toFixed(1)}
           </p>
         </div>
@@ -137,7 +137,7 @@ export default function EventsPage() {
       const response = await getMicroEvents({ limit: 50, sort: "heat" });
       setItems(response.data?.items ?? []);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "语义事件暂时无法读取");
+      setError(reason instanceof Error ? reason.message : "事件雷达暂时无法读取");
     } finally {
       setLoading(false);
     }
@@ -156,9 +156,9 @@ export default function EventsPage() {
             刷新事件
           </Button>
         }
-        description="分别查看已接受匹配的相关性、确定性 Heat 与证据状态；这些维度不会互相替代。"
-        eyebrow="Events"
-        title="语义事件"
+        description="聚合跨来源内容家族，分别查看相关性、Heat 与证据覆盖；这些维度不会互相替代。"
+        eyebrow="EVENT RADAR"
+        title="事件雷达"
       />
 
       {error ? (
@@ -174,7 +174,7 @@ export default function EventsPage() {
       {loading && items.length === 0 ? (
         <div aria-live="polite" className="flex min-h-72 items-center justify-center" role="status">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
-          <span className="sr-only">正在加载语义事件</span>
+          <span className="sr-only">正在加载聚合事件</span>
         </div>
       ) : null}
 
@@ -183,7 +183,7 @@ export default function EventsPage() {
           <Empty className="min-h-72 border-0">
             <EmptyHeader>
               <EmptyMedia variant="icon"><Activity /></EmptyMedia>
-              <EmptyTitle>暂时没有语义事件</EmptyTitle>
+              <EmptyTitle>暂时没有聚合事件</EmptyTitle>
               <EmptyDescription>已接受的文档匹配完成内容家族与事件投影后会显示在这里。</EmptyDescription>
             </EmptyHeader>
           </Empty>

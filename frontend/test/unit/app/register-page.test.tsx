@@ -47,6 +47,12 @@ describe("RegisterPage", () => {
     return user;
   }
 
+  it("用可追溯监控说明注册后的第一步", () => {
+    render(<RegisterPage />);
+
+    expect(screen.getByText("建立你的第一条可追溯监控")).toBeInTheDocument();
+  });
+
   it("邮箱冲突时明确提示已有账号并阻止重复提交", async () => {
     mocks.postRegistrations.mockRejectedValue(
       new HotKeyAPIError(409, "conflict", null, APIErrorCode.VersionConflict),

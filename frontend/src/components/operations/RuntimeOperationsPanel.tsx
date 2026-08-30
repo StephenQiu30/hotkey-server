@@ -164,7 +164,7 @@ export function RuntimeOperationsPanel() {
   return (
     <section className="mt-8" aria-labelledby="runtime-title">
       <Card className="overflow-hidden">
-        <CardHeader className="flex flex-row flex-wrap items-center gap-3 border-b">
+        <CardHeader className="flex flex-row flex-wrap items-center gap-3 bg-secondary/30">
           <div>
             <CardTitle
               id="runtime-title"
@@ -220,7 +220,7 @@ export function RuntimeOperationsPanel() {
           </CardContent>
         ) : (
           <>
-            <CardContent className="grid gap-3 border-b p-4 sm:grid-cols-2 xl:grid-cols-4">
+            <CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
               {loading
                 ? Array.from({ length: 4 }, (_, index) => (
                     <Skeleton key={index} className="h-20" />
@@ -234,7 +234,7 @@ export function RuntimeOperationsPanel() {
             </CardContent>
 
             {!loading && (overview?.alerts?.length ?? 0) > 0 ? (
-              <CardContent className="space-y-3 border-b bg-destructive/5 p-4">
+              <CardContent className="space-y-3 bg-destructive/5 p-4">
                 <div className="flex items-center gap-2">
                   <TriangleAlert className="h-4 w-4 text-destructive" aria-hidden="true" />
                   <h3 className="font-semibold">运行告警</h3>

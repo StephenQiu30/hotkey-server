@@ -86,7 +86,7 @@ const relationLabels: Record<string, string> = {
 function eventName(event: HotKeyAPI.MicroEventResponseDTO) {
   const subject = event.primary_subject_key?.trim();
   const action = event.primary_action_key?.trim();
-  return subject && action ? `${subject} · ${action}` : subject || action || `语义事件 #${event.id ?? "—"}`;
+  return subject && action ? `${subject} · ${action}` : subject || action || `事件 #${event.id ?? "—"}`;
 }
 
 function isConflict(reason: unknown) {
@@ -125,7 +125,7 @@ export default function EventGovernancePage() {
 
   const load = useCallback(async () => {
     if (!validID) {
-      setError("事件编号无效，请从语义事件列表重新进入。");
+      setError("事件编号无效，请从事件雷达重新进入。");
       setLoading(false);
       return;
     }
@@ -271,7 +271,7 @@ export default function EventGovernancePage() {
       <Alert aria-label="权限不足"><ShieldAlert /><AlertTitle>权限不足</AlertTitle>
         <AlertDescription>服务端拒绝了当前账号的事件治理访问或操作；页面不会通过隐藏按钮绕过权限。</AlertDescription>
       </Alert>
-      <Button asChild className="mt-4" variant="outline"><Link href="/dashboard/events"><ArrowLeft />返回语义事件</Link></Button>
+      <Button asChild className="mt-4" variant="outline"><Link href="/dashboard/events"><ArrowLeft />返回事件雷达</Link></Button>
     </PageShell>;
   }
 
@@ -281,7 +281,7 @@ export default function EventGovernancePage() {
         <AlertDescription className="flex flex-wrap items-center justify-between gap-3"><span>{error || "事件不存在"}</span>
           <Button onClick={() => void load()} size="sm" variant="outline">重试</Button></AlertDescription>
       </Alert>
-      <Button asChild className="mt-4" variant="outline"><Link href="/dashboard/events"><ArrowLeft />返回语义事件</Link></Button>
+      <Button asChild className="mt-4" variant="outline"><Link href="/dashboard/events"><ArrowLeft />返回事件雷达</Link></Button>
     </PageShell>;
   }
 

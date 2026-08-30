@@ -10,14 +10,14 @@ describe("dashboard menu", () => {
     expect(
       dashboardMenuItems.map(({ path, name }) => ({ path, name }))
     ).toEqual([
-      { path: "/dashboard", name: "概览" },
-      { path: "/dashboard/settings", name: "监控" },
-      { path: "/dashboard/sources", name: "来源" },
-      { path: "/dashboard/search", name: "全文检索" },
-      { path: "/dashboard/reports", name: "日报" },
-      { path: "/dashboard/knowledge", name: "知识投影" },
-      { path: "/dashboard/contents", name: "热点雷达" },
-      { path: "/dashboard/events", name: "语义事件" },
+      { path: "/dashboard", name: "今日态势" },
+      { path: "/dashboard/settings", name: "监控任务" },
+      { path: "/dashboard/sources", name: "来源与覆盖" },
+      { path: "/dashboard/search", name: "情报检索" },
+      { path: "/dashboard/reports", name: "情报简报" },
+      { path: "/dashboard/knowledge", name: "知识库" },
+      { path: "/dashboard/contents", name: "信号流" },
+      { path: "/dashboard/events", name: "事件雷达" },
     ]);
   });
 
@@ -26,7 +26,7 @@ describe("dashboard menu", () => {
       dashboardAdminMenuItems.map(({ path, name }) => ({ path, name }))
     ).toEqual([
       { path: "/dashboard/users", name: "用户与权限" },
-      { path: "/dashboard/governance", name: "配额与审计" },
+      { path: "/dashboard/governance", name: "系统治理" },
     ]);
     expect(
       dashboardAdminMenuItems.every((item) =>

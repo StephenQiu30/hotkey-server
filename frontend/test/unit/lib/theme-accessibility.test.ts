@@ -33,10 +33,22 @@ describe("dashboard theme accessibility", () => {
     expect(css).toContain("var(--font-geist-mono)");
   });
 
-  it("defines the shared shadow-as-border depth system", () => {
-    expect(css).toContain("--shadow-border:");
+  it("defines a borderless depth system and reserves outlines for controls", () => {
+    expect(css).not.toContain("--shadow-border:");
+    expect(css).toContain("--control-outline:");
+    expect(css).toContain("--shadow-control:");
     expect(css).toContain("--shadow-card:");
     expect(css).toContain("--shadow-popover:");
+  });
+
+  it("uses the restrained Vercel monochrome palette without saturated signal colors", () => {
+    expect(css).toContain("--background: #fafafa");
+    expect(css).toContain("--foreground: #262626");
+    expect(css).toContain("--primary: #262626");
+    expect(css).toContain("--signal-cyan: #808080");
+    expect(css).toContain("--signal-blue: #525252");
+    expect(css).toContain("--heat: #666666");
+    expect(css).not.toMatch(/#06b6d4|#2563eb|#f59e0b|#f0645a/i);
   });
 
   it.each([
@@ -67,7 +79,7 @@ describe("dashboard theme accessibility", () => {
     expect(css).toMatch(/min-width:\s*44px;/);
   });
 
-  it("keeps explicit card separators and exposes an accessible skip link", () => {
+  it("avoids global card separators and exposes an accessible skip link", () => {
     expect(css).not.toContain(
       '[data-slot="card"] > [data-slot="card-header"]'
     );

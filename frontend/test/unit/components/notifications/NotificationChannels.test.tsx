@@ -21,13 +21,13 @@ describe("NotificationChannels", () => {
     useNotificationStore.getState().reset();
   });
 
-  it("uses the high-contrast badge treatment for a live WebSocket connection", () => {
+  it("uses the borderless secondary badge treatment for a live WebSocket connection", () => {
     useNotificationStore.setState({ transport: "live" });
 
     render(<NotificationChannels />);
 
     const status = screen.getByText("WebSocket 已连接");
-    expect(status).toHaveClass("bg-background", "text-foreground");
+    expect(status).toHaveClass("bg-secondary/70", "text-secondary-foreground");
     expect(status).not.toHaveClass("bg-primary", "text-primary-foreground");
   });
 });

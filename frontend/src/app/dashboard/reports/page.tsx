@@ -186,7 +186,7 @@ export default function ReportsPage() {
 
           {selected ? (
             <Card aria-label={`日报 ${selected.id}`} className="min-w-0">
-              <CardHeader className="gap-3 border-b border-border">
+              <CardHeader className="gap-3 bg-secondary/30">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={(statusPresentation[selected.status ?? ""] ?? { variant: "outline" }).variant}>
                     {(statusPresentation[selected.status ?? ""] ?? { label: selected.status ?? "未知" }).label}
@@ -232,7 +232,7 @@ export default function ReportsPage() {
                       </div>
                       {item.summary ? <p className="mt-2 text-sm text-muted-foreground">{item.summary}</p> : null}
                       {(item.sentences ?? []).map((sentence) => (
-                        <div key={`${sentence.source_summary_sentence_id}-${sentence.ordinal}`} className="mt-3 border-l-2 border-border pl-3 text-sm">
+                        <div key={`${sentence.source_summary_sentence_id}-${sentence.ordinal}`} className="mt-3 rounded-lg bg-secondary/35 px-3 py-2 text-sm">
                           <p>{sentence.text}</p>
                           <p className="mt-1 text-xs text-muted-foreground">Evidence IDs：{(sentence.claim_evidence_version_ids ?? []).join(", ") || "无"}</p>
                         </div>

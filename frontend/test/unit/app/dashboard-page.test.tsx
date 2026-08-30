@@ -52,15 +52,18 @@ describe("DashboardPage", () => {
   it("renders persisted hotspot statistics and cards without the legacy event model", async () => {
     render(<DashboardPage />);
     expect(
-      await screen.findByRole("heading", { name: /这是今日值得关注的热点/ })
+      await screen.findByRole("heading", { name: /今日信号态势/ })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "热门热点" })
+      screen.getByRole("heading", { name: "正在升温" })
     ).toBeInTheDocument();
+    expect(screen.getByText("12 条信号进入观察")).toBeInTheDocument();
+    expect(screen.getByText("1 条紧急信号待复核")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Claude 发布实时 API" })
+      screen.getByRole("heading", { name: "Claude 发布实时 API", level: 3 })
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "查看全部热点" })).toHaveAttribute(
+    expect(screen.getByText("等待分析")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看全部信号" })).toHaveAttribute(
       "href",
       "/dashboard/contents"
     );
@@ -77,7 +80,7 @@ describe("DashboardPage", () => {
   it("shows an explicit empty state", async () => {
     mocks.getHotspots.mockResolvedValue({ data: { items: [], summary: {} } });
     render(<DashboardPage />);
-    expect(await screen.findByText("暂时没有热点")).toBeInTheDocument();
+    expect(await screen.findByText("还没有进入观察的信号")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "创建监控" })).toHaveAttribute(
       "href",
       "/dashboard/settings"
@@ -113,5 +116,41 @@ describe("DashboardPage", () => {
       "href",
       "/dashboard/settings"
     );
+  });
+
+  it("does not report missing analysis scores as zero", async () => {
+    mocks.getHotspots.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 8,
+            source_type: "rss",
+            title: "等待分析的信号",
+            quality_state: "unavailable",
+          },
+        ],
+        summary: { total: 1 },
+      },
+    });
+
+    render(<DashboardPage />);
+
+    expect(
+      await screen.findByRole("heading", { name: "等待分析的信号", level: 3 })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("热度待分析")).toBeInTheDocument();
+    expect(screen.getByLabelText("相关性待分析")).toBeInTheDocument();
+  });
+
+  it("keeps monitor failures distinct from an empty monitor list", async () => {
+    mocks.getMonitors.mockRejectedValueOnce(new Error("monitor unavailable"));
+
+    render(<DashboardPage />);
+
+    expect(
+      await screen.findAllByText("监控状态暂时不可用")
+    ).not.toHaveLength(0);
+    expect(screen.queryByText("0 个任务在线")).not.toBeInTheDocument();
+    expect(screen.queryByText("还没有可用监控")).not.toBeInTheDocument();
   });
 });

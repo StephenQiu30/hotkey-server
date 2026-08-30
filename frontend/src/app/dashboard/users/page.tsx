@@ -186,7 +186,7 @@ export default function UsersPage() {
       />
 
       <Card className="mt-6 overflow-hidden">
-        <CardContent className="grid gap-3 border-b p-4 md:grid-cols-[minmax(0,1fr)_180px_180px]">
+        <CardContent className="grid gap-3 bg-secondary/30 p-4 md:grid-cols-[minmax(0,1fr)_180px_180px]">
           <Input
             type="search"
             aria-label="搜索用户"

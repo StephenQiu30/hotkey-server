@@ -260,7 +260,7 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
 
   return (
     <article className="document-print-root mx-auto w-full max-w-[960px]">
-      <header className="document-header border-b border-border pb-7">
+      <header className="document-header pb-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -426,7 +426,7 @@ export function DocumentVersionWorkspace({ documentVersionID }: DocumentVersionW
         </Surface>
       ) : null}
 
-      <footer className="document-footer space-y-2 border-t border-border py-5 text-xs text-muted-foreground">
+      <footer className="document-footer space-y-2 py-5 text-xs text-muted-foreground">
         {citation.unavailable_reason ? <p>{citation.unavailable_reason}</p> : null}
         {citation.locator_availability === "unavailable" ? (
           <p>

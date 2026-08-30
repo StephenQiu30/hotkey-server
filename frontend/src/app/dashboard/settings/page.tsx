@@ -575,7 +575,7 @@ export default function MonitorsPage() {
     <PageShell>
       <PageHeader
         eyebrow="MONITORING"
-        title="热点监控"
+        title="监控任务"
         description="填写监控词并选择来源后立即启用。系统定时扫描，也可以随时手动触发一次。"
         action={
           canContribute ? (
@@ -634,7 +634,7 @@ export default function MonitorsPage() {
               <EmptyMedia variant="icon">
                 <Radar />
               </EmptyMedia>
-              <EmptyTitle>还没有热点监控</EmptyTitle>
+              <EmptyTitle>还没有监控任务</EmptyTitle>
               <EmptyDescription>
                 {canContribute
                   ? "新建一个监控，系统会按设定间隔持续发现新内容。"
@@ -868,7 +868,7 @@ export default function MonitorsPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {editTarget ? "编辑热点监控" : "新建热点监控"}
+              {editTarget ? "编辑监控任务" : "新建监控任务"}
             </DialogTitle>
             <DialogDescription>
               {editTarget
@@ -969,7 +969,7 @@ export default function MonitorsPage() {
                     高优先级邮件提醒
                   </span>
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    仅在热点达到高或紧急等级时发送到当前账号邮箱。
+                    仅在事件达到高或紧急热度时发送到当前账号邮箱。
                   </span>
                 </span>
               </label>
@@ -995,7 +995,7 @@ export default function MonitorsPage() {
       </Dialog>
 
       <ConfirmDeleteDialog
-        description="删除后不能恢复，已收集的热点记录仍会保留。"
+        description="删除后不能恢复，已收集的信号记录仍会保留。"
         loading={busyID === deleteTarget?.id}
         onConfirm={deleteMonitor}
         onOpenChange={(open) => !open && setDeleteTarget(undefined)}

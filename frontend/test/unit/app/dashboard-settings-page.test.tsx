@@ -209,7 +209,7 @@ describe("MonitorsPage", () => {
     mocks.getMonitors.mockResolvedValueOnce({ data: { items: [] } });
     render(<MonitorsPage />);
 
-    expect(await screen.findByText("还没有热点监控")).toBeInTheDocument();
+    expect(await screen.findByText("还没有监控任务")).toBeInTheDocument();
     expect(screen.getByText("当前没有可查看的监控。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "新建监控" })).not.toBeInTheDocument();
   });

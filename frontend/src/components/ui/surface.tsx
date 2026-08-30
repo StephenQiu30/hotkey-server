@@ -10,12 +10,12 @@ const surfaceVariants = cva(
     variants: {
       variant: {
         elevated: "[box-shadow:var(--shadow-card)]",
-        ring: "[box-shadow:var(--shadow-border)]",
-        subtle: "bg-muted/30 [box-shadow:var(--shadow-border)]",
+        ring: "[box-shadow:var(--shadow-card)]",
+        subtle: "bg-muted/40 shadow-none",
         interactive:
-          "[box-shadow:var(--shadow-border)] transition-[background-color,box-shadow,transform] hover:bg-muted/30 hover:[box-shadow:var(--shadow-card-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:translate-y-px",
+          "[box-shadow:var(--shadow-card)] transition-[background-color,box-shadow,transform] hover:bg-muted/40 hover:[box-shadow:var(--shadow-card-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:translate-y-px",
         danger:
-          "bg-destructive/5 text-foreground ring-1 ring-inset ring-destructive/30",
+          "bg-destructive/10 text-foreground shadow-none",
         flat: "shadow-none",
       },
     },

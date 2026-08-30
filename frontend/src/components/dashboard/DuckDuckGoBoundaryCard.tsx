@@ -33,7 +33,7 @@ export function DuckDuckGoBoundaryCard() {
   return (
     <section aria-labelledby="duckduckgo-boundary-title" className="mt-6">
       <Card className="gap-0 py-0 shadow-none">
-        <CardHeader className="gap-3 border-b border-border">
+        <CardHeader className="gap-3 bg-secondary/30">
           <div className="flex flex-wrap items-center gap-3">
             <ShieldOff className="size-5 text-muted-foreground" />
             <CardTitle id="duckduckgo-boundary-title">

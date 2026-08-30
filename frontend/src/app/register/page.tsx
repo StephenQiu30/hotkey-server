@@ -74,7 +74,7 @@ export default function RegisterPage() {
 
   return (
     <div ref={containerRef}>
-      <AuthShell title="创建账号" subtitle="开启热点创作之旅">
+      <AuthShell title="创建账号" subtitle="建立你的第一条可追溯监控">
         <div className="rg-fade">
           {step === RegistrationStep.Email && <EmailVerificationStep purpose={VerificationFlow.Registration} onConfirmed={handleConfirmed} />}
 

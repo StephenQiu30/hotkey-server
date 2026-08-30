@@ -14,7 +14,7 @@ import {
 const realtimeStatus: Record<NotificationTransport, { label: string; detail: string }> = {
   idle: { label: "等待登录", detail: "登录后自动建立实时连接" },
   connecting: { label: "正在连接", detail: "正在恢复 WebSocket 会话" },
-  live: { label: "WebSocket 已连接", detail: "新热点会即时送达当前工作台" },
+  live: { label: "WebSocket 已连接", detail: "新信号会即时送达当前工作台" },
   polling: { label: "REST 补拉中", detail: "连接恢复前按游标补齐，不会跳过消息" },
 };
 
@@ -54,7 +54,7 @@ export function NotificationChannels() {
               {realtime.label}
             </Badge>
           </div>
-          <p className="mt-5 border-t pt-4 text-xs leading-5 text-muted-foreground">
+          <p className="mt-5 pt-2 text-xs leading-5 text-muted-foreground">
             首帧完成身份认证；断线重连时从最后一条消息 ID 继续补齐。
           </p>
         </Card>
@@ -75,7 +75,7 @@ export function NotificationChannels() {
             </div>
             <Badge variant="secondary" className="shrink-0">高 / 紧急</Badge>
           </div>
-          <div className="mt-5 flex items-center justify-between gap-3 border-t pt-4">
+          <div className="mt-5 flex items-center justify-between gap-3 pt-2">
             <p className="text-xs leading-5 text-muted-foreground">
               在监控设置中开启后发送，失败会由后台任务有限重试。
             </p>

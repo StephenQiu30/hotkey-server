@@ -1,4 +1,4 @@
-import { ArrowUpRight, Flame } from "lucide-react";
+import { ArrowUpRight, Eye, Flame, MessageCircle, Share2, ThumbsUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,17 +10,20 @@ import {
 } from "@/components/ui/card";
 import { sourceTypeLabel } from "@/lib/sourceLabels";
 
-export const importanceLabels: Readonly<Record<string, string>> = {
+type Importance = NonNullable<HotKeyAPI.HotspotCardResponse["importance"]>;
+type QualityState = NonNullable<HotKeyAPI.HotspotCardResponse["quality_state"]>;
+
+export const importanceLabels: Readonly<Record<Importance, string>> = {
   low: "低",
   medium: "中",
   high: "高",
   urgent: "紧急",
 };
 
-export const qualityLabels: Readonly<Record<string, string>> = {
-  credible: "可信",
-  suspicious: "需复核",
-  unavailable: "AI 未分析",
+export const qualityLabels: Readonly<Record<QualityState, string>> = {
+  credible: "证据已覆盖",
+  suspicious: "证据待补充",
+  unavailable: "等待分析",
 };
 
 function importanceVariant(value: string | undefined) {
@@ -48,66 +51,119 @@ export function formatHotspotTime(value: string | undefined) {
 }
 
 function availableMetrics(card: HotKeyAPI.HotspotCardResponse) {
-  const metrics: Array<[string, number | undefined]> = [
-    ["浏览", card.metrics?.view_count],
-    ["点赞", card.metrics?.like_count],
-    ["评论", card.metrics?.comment_count],
-    ["分享", card.metrics?.share_count],
+  const metrics: Array<[string, number | undefined, typeof Eye]> = [
+    ["浏览", card.metrics?.view_count, Eye],
+    ["点赞", card.metrics?.like_count, ThumbsUp],
+    ["评论", card.metrics?.comment_count, MessageCircle],
+    ["分享", card.metrics?.share_count, Share2],
   ];
   return metrics.filter(
-    (item): item is [string, number] =>
+    (item): item is [string, number, typeof Eye] =>
       typeof item[1] === "number" && Number.isFinite(item[1])
   );
 }
 
-export function HotspotCard({ card }: { card: HotKeyAPI.HotspotCardResponse }) {
+function importanceAccent(value: string | undefined) {
+  if (value === "urgent") return "bg-foreground/75";
+  if (value === "high") return "bg-foreground/50";
+  return "bg-muted-foreground/30";
+}
+
+export function HotspotCard({
+  card,
+  headingLevel = "h2",
+}: {
+  card: HotKeyAPI.HotspotCardResponse;
+  headingLevel?: "h2" | "h3";
+}) {
+  const Heading = headingLevel;
+  const heat =
+    typeof card.heat_score === "number"
+      ? Math.max(0, Math.min(100, card.heat_score))
+      : undefined;
+  const relevance =
+    typeof card.relevance === "number"
+      ? Math.max(0, Math.min(100, card.relevance))
+      : undefined;
+  const heatText = heat == null ? "—" : heat.toFixed(1);
+  const relevanceText = relevance == null ? "—" : `${relevance.toFixed(0)}%`;
+
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="gap-3 p-5 pb-3 sm:p-6 sm:pb-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">
-            {card.source_name || sourceTypeLabel(card.source_type)}
-          </Badge>
-          <Badge variant={importanceVariant(card.importance)}>
-            重要性 {importanceLabels[card.importance ?? ""] ?? "未知"}
-          </Badge>
-          <Badge variant={qualityVariant(card.quality_state)}>
-            {qualityLabels[card.quality_state ?? ""] ?? "质量未知"}
-          </Badge>
-          <span className="mono inline-flex items-center gap-1 text-xs font-medium">
-            <Flame className="h-3.5 w-3.5" />
-            热度 {card.heat_score ?? 0}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            相关性 {card.relevance ?? 0}%
-          </span>
+    <Card className="hotspot-card relative overflow-hidden bg-card/90" data-slot="hotspot-card">
+      <div aria-hidden="true" className={`absolute inset-y-0 left-0 w-1 ${importanceAccent(card.importance)}`} />
+      <CardHeader className="gap-4 p-5 pb-3 pl-6 sm:p-6 sm:pb-3 sm:pl-7">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="bg-secondary/55">
+                {card.source_name || sourceTypeLabel(card.source_type)}
+              </Badge>
+              <Badge variant={importanceVariant(card.importance)}>
+                {card.importance ? importanceLabels[card.importance] : "未知"}优先级
+              </Badge>
+              <Badge variant={qualityVariant(card.quality_state)}>
+                {card.quality_state
+                  ? qualityLabels[card.quality_state]
+                  : "证据状态未知"}
+              </Badge>
+            </div>
+            <CardTitle className="mt-4 text-xl leading-7 sm:text-2xl">
+              <Heading className="text-balance">{card.title || "无标题"}</Heading>
+            </CardTitle>
+            <CardDescription className="mt-3 max-w-3xl leading-6">
+              {card.summary || "来源未提供摘要。"}
+            </CardDescription>
+          </div>
+          <div className="grid shrink-0 grid-cols-2 gap-2 sm:w-[174px]">
+            <div
+              aria-label={heat == null ? "热度待分析" : `热度 ${heatText}`}
+              className="rounded-xl bg-muted p-3 text-foreground"
+            >
+              <p className="flex items-center gap-1 text-[10px] font-semibold uppercase"><Flame className="h-3 w-3" /> Heat</p>
+              <p className="mono mt-2 text-2xl font-semibold leading-none">{heatText}</p>
+            </div>
+            <div
+              aria-label={
+                relevance == null ? "相关性待分析" : `相关性 ${relevanceText}`
+              }
+              className="rounded-xl bg-muted p-3 text-foreground"
+            >
+              <p className="text-[10px] font-semibold uppercase">相关性</p>
+              <p className="mono mt-2 text-2xl font-semibold leading-none">
+                {relevance == null ? (
+                  "—"
+                ) : (
+                  <>{relevance.toFixed(0)}<span className="text-xs">%</span></>
+                )}
+              </p>
+            </div>
+          </div>
         </div>
-        <CardTitle className="text-xl leading-7">
-          <h2 className="text-balance">{card.title || "无标题"}</h2>
-        </CardTitle>
-        <CardDescription className="leading-6">
-          {card.summary || "来源未提供摘要。"}
-        </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4 p-5 pt-0 sm:p-6 sm:pt-0">
+      <CardContent className="flex flex-col gap-4 p-5 pt-1 pl-6 sm:p-6 sm:pt-1 sm:pl-7">
         <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
           {card.author ? <span>作者 {card.author}</span> : null}
           <span>发布 {formatHotspotTime(card.published_at)}</span>
           <span>发现 {formatHotspotTime(card.discovered_at)}</span>
-          {availableMetrics(card).map(([label, value]) => (
-            <span key={label}>
-              {label} {value.toLocaleString("zh-CN")}
+          {availableMetrics(card).map(([label, value, Icon]) => (
+            <span className="inline-flex items-center gap-1" key={label}>
+              <Icon aria-hidden="true" className="h-3 w-3" />
+              <span className="sr-only">{label}</span>
+              {value.toLocaleString("zh-CN")}
             </span>
           ))}
         </div>
-        <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="max-w-3xl text-xs leading-5 text-muted-foreground">
-            {card.relevance_reason || "未提供判断理由"}
-          </p>
+        <div className="flex flex-col gap-4 pt-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-[10px] font-semibold uppercase text-muted-foreground">为什么进入观察</p>
+            <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+              {card.relevance_reason || "当前信号命中已发布监控目标，等待更多来源与证据补充。"}
+            </p>
+          </div>
           {card.canonical_url ? (
             <Button asChild size="sm" variant="outline">
               <a href={card.canonical_url} rel="noreferrer" target="_blank">
-                查看原文
+                查看原始信号
                 <ArrowUpRight className="h-4 w-4" />
               </a>
             </Button>

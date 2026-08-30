@@ -72,7 +72,7 @@ export function ContentDocumentViewer({ document, canManage = false, deleting = 
 
   return (
     <article className="document-print-root mx-auto w-full max-w-[920px]">
-      <header className="document-header border-b border-border pb-7">
+      <header className="document-header pb-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -146,7 +146,7 @@ export function ContentDocumentViewer({ document, canManage = false, deleting = 
         </Card>
       )}
 
-      <footer className="document-footer border-t border-border py-5 text-xs text-muted-foreground">
+      <footer className="document-footer py-5 text-xs text-muted-foreground">
         <span>归档时间：{formatDateTime(document.captured_at)}</span>
         {document.sha256 ? <span className="mono ml-4">SHA-256 {document.sha256.slice(0, 12)}…</span> : null}
       </footer>

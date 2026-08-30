@@ -235,7 +235,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
         <Button className="gap-2"><Plus />新增来源</Button>
       </DialogTrigger>
       <DialogContent className="grid max-h-[90vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-xl">
-        <DialogHeader className="border-b border-border px-6 py-5">
+        <DialogHeader className="bg-secondary/30 px-6 py-5">
           <DialogTitle>新增来源连接</DialogTitle>
           <DialogDescription>选择由后端维护的来源预设；官方地址、授权方式和固定策略由服务端统一配置。</DialogDescription>
         </DialogHeader>
@@ -284,7 +284,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
               <div><Label htmlFor="source-google-serving-config">ServingConfig 资源名</Label><Input id="source-google-serving-config" className="mono mt-2" value={form.googleServingConfig} onChange={(event) => updateForm({ googleServingConfig: event.target.value })} /></div>
             </>}
             {sourceType === SourceType.BingGrounding && <Alert className="sm:col-span-2"><AlertDescription><label className="flex items-start gap-2"><Checkbox aria-label="确认 Grounding 数据边界与额外条款" checked={form.groundingDataBoundaryApproved} onCheckedChange={(checked) => updateForm({ groundingDataBoundaryApproved: checked === true })} /><span>我已确认 Foundry Web Search 的数据边界、额外条款和费用。</span></label></AlertDescription></Alert>}
-            <div className="sm:col-span-2 border-t border-border pt-4">
+            <div className="pt-4 sm:col-span-2">
               <Button type="button" variant="ghost" className="h-auto w-full justify-between px-0 py-2 hover:bg-transparent" aria-expanded={advancedOpen} aria-controls="source-advanced-settings" onClick={() => setAdvancedOpen((current) => !current)}><span className="flex items-center gap-2"><SlidersHorizontal />高级设置</span><ChevronDown className={`transition-transform ${advancedOpen ? "rotate-180" : ""}`} /></Button>
               <p className="text-xs text-muted-foreground">语言、地区、保留期限和请求边界将使用默认值，可按需调整。</p>
             </div>
@@ -299,7 +299,7 @@ export function SourceConnectionDialog({ busy, onSubmit }: Props) {
               {sourceType === SourceType.X && <Surface className="bg-background p-4 sm:col-span-2" variant="ring"><label className="flex items-start gap-3 text-sm font-medium"><Checkbox aria-label="启用 X 持续指标刷新" checked={form.metricRefreshEnabled} onCheckedChange={(checked) => updateForm({ metricRefreshEnabled: checked === true })} /><span>启用 X 持续指标刷新<span className="mt-1 block text-xs font-normal text-muted-foreground">默认关闭；刷新仍受官方 API 额度限制。</span></span></label>{form.metricRefreshEnabled && <div className="mt-4 grid gap-4 sm:grid-cols-2">{(["metricRefreshIntervalMinutes", "metricRefreshObservationHours", "metricRefreshMaxPostsPerRun", "metricRefreshDailyRequestBudget"] as const).map((key) => { const labels = { metricRefreshIntervalMinutes: "刷新间隔（分钟）", metricRefreshObservationHours: "持续观察期（小时）", metricRefreshMaxPostsPerRun: "单轮最多 Post", metricRefreshDailyRequestBudget: "每日批次预算" }; return <div key={key}><Label htmlFor={`source-${key}`}>{labels[key]}</Label><Input id={`source-${key}`} className="mono mt-2" type="number" value={form[key]} onChange={(event) => updateForm({ [key]: Number(event.target.value) })} /></div>; })}</div>}</Surface>}
             </Surface>}
           </div>
-          <DialogFooter className="border-t border-border px-6 py-4"><Button type="button" variant="outline" onClick={() => changeOpen(false)}>取消</Button><Button type="submit" disabled={busy || catalogLoading || !valid}>{(busy || catalogLoading) && <Loader2 className="animate-spin" />}创建连接</Button></DialogFooter>
+          <DialogFooter className="bg-secondary/25 px-6 py-4"><Button type="button" variant="outline" onClick={() => changeOpen(false)}>取消</Button><Button type="submit" disabled={busy || catalogLoading || !valid}>{(busy || catalogLoading) && <Loader2 className="animate-spin" />}创建连接</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

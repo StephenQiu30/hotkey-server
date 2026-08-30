@@ -56,7 +56,7 @@ describe("EventsPage", () => {
     mocks.getMicroEvents.mockResolvedValueOnce({ data: { items: [] } });
     render(<EventsPage />);
 
-    expect(await screen.findByText("暂时没有语义事件")).toBeInTheDocument();
+    expect(await screen.findByText("暂时没有聚合事件")).toBeInTheDocument();
   });
 
   it("shows a retryable event error", async () => {
@@ -67,6 +67,6 @@ describe("EventsPage", () => {
 
     expect(await screen.findByText("事件加载失败")).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
-    expect(await screen.findByText("暂时没有语义事件")).toBeInTheDocument();
+    expect(await screen.findByText("暂时没有聚合事件")).toBeInTheDocument();
   });
 });
