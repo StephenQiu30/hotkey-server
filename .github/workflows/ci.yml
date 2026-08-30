@@ -194,6 +194,24 @@ jobs:
       - name: Four-point Worker recovery acceptance
         run: make worker-recovery-acceptance
 
+      - name: Unified retention and rights-revocation rehearsal acceptance
+        env:
+          HOTKEY_RETENTION_REHEARSAL_OUTPUT: ${{ runner.temp }}/retention-rights-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}.json
+          HOTKEY_RETENTION_REHEARSAL_ENVIRONMENT: github-actions-isolated-retention-rehearsal
+          HOTKEY_RETENTION_REHEARSAL_HARDWARE: ubuntu-latest-hosted-runner
+          HOTKEY_RETENTION_REHEARSAL_GIT_REVISION: ${{ github.sha }}
+          HOTKEY_RETENTION_REHEARSAL_PRODUCTION_EGRESS_DISABLED: "true"
+        run: make retention-rehearsal-acceptance
+
+      - name: Upload sanitized retention and rights-revocation evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: retention-rights-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ runner.temp }}/retention-rights-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}.json
+
       - name: Synthetic credential rotation acceptance
         env:
           HOTKEY_SECRET_ROTATION_OUTPUT: ${{ runner.temp }}/secret-rotation-${{ github.run_id }}-${{ github.run_attempt }}.json
