@@ -98,6 +98,8 @@ func TestSimpleMonitorBrowserAcceptancePublishesReadyCompiledProfile(t *testing.
 		"backend/test/fixtures/browser-acceptance/assert-business-flow.sql": {
 			"published_profile.purpose = 'published'",
 			"published_profile.status = 'ready'",
+			"preview_profile.id = published_profile.source_preview_compiled_profile_id",
+			"preview_profile.intent_revision_id = published_profile.intent_revision_id",
 			"preview_run.status = 'succeeded'",
 			"browser-created monitor is not bound to a ready published compiled profile",
 		},

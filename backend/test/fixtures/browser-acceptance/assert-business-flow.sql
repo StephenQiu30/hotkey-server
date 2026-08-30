@@ -25,9 +25,10 @@ BEGIN
     JOIN monitor_compiled_profiles AS preview_profile
       ON preview_profile.id = published_profile.source_preview_compiled_profile_id
      AND preview_profile.monitor_id = monitor.id
+     AND preview_profile.config_version_id = configuration.id
      AND preview_profile.purpose = 'preview'
      AND preview_profile.status = 'ready'
-     AND preview_profile.profile_hash = published_profile.profile_hash
+     AND preview_profile.intent_revision_id = published_profile.intent_revision_id
     JOIN monitor_intent_analysis_runs AS preview_run
       ON preview_run.id = preview_profile.preview_run_id
      AND preview_run.monitor_id = monitor.id
