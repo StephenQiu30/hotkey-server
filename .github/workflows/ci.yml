@@ -607,6 +607,12 @@ jobs:
           export HOTKEY_AVAILABILITY_HARDWARE="GitHub hosted ubuntu-latest; ${logical_cpus} logical CPU; ${memory_kib} KiB RAM; isolated Docker loopback"
           node frontend/test/operations/run-availability-rehearsal.mjs
 
+      - name: Record content-addressed release image inventory
+        env:
+          HOTKEY_RELEASE_GIT_REVISION: ${{ github.sha }}
+          HOTKEY_RELEASE_IMAGE_INVENTORY_OUTPUT: /tmp/hotkey-release-images.json
+        run: node frontend/test/operations/record-release-images.mjs
+
       - name: Verify leak-sentinel closure after every business-flow request
         run: |
           docker compose -p hotkey-ci -f docker-compose.yml logs --no-color \
@@ -634,6 +640,7 @@ jobs:
             /tmp/hotkey-browser-content-security.json \
             /tmp/hotkey-m4-capacity.json \
             /tmp/hotkey-availability.json \
+            /tmp/hotkey-release-images.json \
             /tmp/hotkey-sentinel-scan.json \
             /tmp/hotkey-a11y-*.json \
             /tmp/hotkey-acceptance-attachments/
@@ -655,6 +662,7 @@ jobs:
             /tmp/hotkey-browser-content-security.json
             /tmp/hotkey-m4-capacity.json
             /tmp/hotkey-availability.json
+            /tmp/hotkey-release-images.json
             /tmp/hotkey-sentinel-scan.json
             /tmp/hotkey-secret-surface-scan.json
             /tmp/hotkey-a11y-*.json
@@ -717,3 +725,41 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           path: ${{ runner.temp }}/rc-candidate-assessment-${{ github.run_id }}-${{ github.run_attempt }}.json
+
+      - name: Download built image inventory
+        uses: actions/download-artifact@v7
+        with:
+          name: browser-business-flow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-input
+
+      - name: Generate hash-fixed release manifest and CycloneDX SBOM
+        working-directory: backend
+        env:
+          HOTKEY_RELEASE_REPOSITORY_ROOT: ${{ github.workspace }}
+          HOTKEY_RELEASE_IMAGE_INVENTORY: ${{ runner.temp }}/release-input/hotkey-release-images.json
+          HOTKEY_RELEASE_GIT_REVISION: ${{ github.sha }}
+          HOTKEY_RELEASE_CI_RUN_ID: ${{ github.run_id }}
+          HOTKEY_RELEASE_ENVIRONMENT: github-actions-release-candidate
+          HOTKEY_RELEASE_PRODUCTION_EGRESS_DISABLED: "true"
+          HOTKEY_RELEASE_GATE_BACKEND_VULNERABILITY: ${{ needs.backend-vulnerability-acceptance.result }}
+          HOTKEY_RELEASE_GATE_FRONTEND_VULNERABILITY: ${{ needs.frontend-acceptance.result }}
+          HOTKEY_RELEASE_GATE_AGENT_VULNERABILITY: ${{ needs.agent-acceptance.result }}
+          HOTKEY_RELEASE_MANIFEST_OUTPUT: ${{ runner.temp }}/release-output/release-manifest.json
+          HOTKEY_RELEASE_SBOM_OUTPUT: ${{ runner.temp }}/release-output/release-sbom.cdx.json
+          HOTKEY_RELEASE_MANIFEST_DIGEST_OUTPUT: ${{ runner.temp }}/release-output/release-manifest.sha256
+        run: |
+          mkdir -p "${{ runner.temp }}/release-output"
+          make release-manifest-acceptance
+
+      - name: Upload hash-fixed release materials
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-manifest-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/release-input/hotkey-release-images.json
+            ${{ runner.temp }}/release-output/release-manifest.json
+            ${{ runner.temp }}/release-output/release-manifest.sha256
+            ${{ runner.temp }}/release-output/release-sbom.cdx.json
