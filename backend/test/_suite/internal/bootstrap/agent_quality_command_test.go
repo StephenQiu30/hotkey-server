@@ -2,6 +2,8 @@ package bootstrap
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"math"
 	"os"
@@ -76,6 +78,75 @@ func TestAgentQualityCommandEvaluatesFixedFiveSkillDatasetAsCandidate(t *testing
 	}
 }
 
+func TestAgentQualityCommandWritesPrivateNonOverwritingReviewBundle(t *testing.T) {
+	datasetPath := filepath.Join("..", "..", "test", "fixtures", "agent-shadow", "v1", "golden-dataset.json")
+	bundlePath := filepath.Join(t.TempDir(), "agent-quality-review.json")
+	builderCalls := 0
+	builder := func(_ context.Context, _ config.Config, options agentQualityCommandOptions) (intelligenceapplication.ShadowQualityTrack, intelligenceapplication.ShadowQualityTrack, error) {
+		builderCalls++
+		return intelligenceapplication.ShadowQualityTrack{
+				Name: intelligenceapplication.ShadowQualityTrackBaseline, RuntimeName: options.BaselineRuntime,
+				ModelName: options.BaselineModelName, ModelVersion: options.BaselineModelVersion,
+				Provider: agentQualityProviderFake{version: options.BaselineModelVersion}, UsageAvailable: true,
+			}, intelligenceapplication.ShadowQualityTrack{
+				Name: intelligenceapplication.ShadowQualityTrackAgent, RuntimeName: "hotkey-agent",
+				ModelName: options.AgentModelName, ModelVersion: options.AgentModelVersion,
+				Provider: agentQualityProviderFake{version: options.AgentModelVersion}, RuntimeDegraded: true,
+			}, nil
+	}
+	arguments := []string{
+		"evaluate", "--dataset", datasetPath, "--review-bundle", bundlePath,
+		"--baseline-runtime", "openai", "--baseline-model-name", "baseline-model", "--baseline-model-version", "baseline-v1",
+		"--agent-model-name", "hotkey-agent", "--agent-model-version", "deterministic.v1", "--timeout", "2s",
+	}
+	var output strings.Builder
+	if err := executeAgentQualityCommand(t.Context(), config.Default(), arguments, &output, builder); err != nil {
+		t.Fatalf("executeAgentQualityCommand() error = %v", err)
+	}
+	info, err := os.Stat(bundlePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("review bundle mode = %o, want 600", info.Mode().Perm())
+	}
+	encoded, err := os.ReadFile(bundlePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bundle struct {
+		DatasetVersion        string `json:"dataset_version"`
+		DatasetSHA256         string `json:"dataset_sha256"`
+		Status                string `json:"status"`
+		ReviewerCountRequired int    `json:"reviewer_count_required"`
+		Candidates            []struct {
+			SampleID      string `json:"sample_id"`
+			Track         string `json:"track"`
+			OutputSHA256  string `json:"output_sha256"`
+			InputRawJSON  string `json:"input_raw_json"`
+			OutputRawJSON string `json:"output_raw_json"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal(encoded, &bundle); err != nil {
+		t.Fatal(err)
+	}
+	if bundle.DatasetVersion != "agent-shadow-golden-v1" || len(bundle.DatasetSHA256) != 64 || bundle.Status != "pending_independent_review" ||
+		bundle.ReviewerCountRequired != 2 || len(bundle.Candidates) != 10 || bundle.Candidates[0].Track != intelligenceapplication.ShadowQualityTrackBaseline ||
+		!json.Valid([]byte(bundle.Candidates[0].InputRawJSON)) || !json.Valid([]byte(bundle.Candidates[0].OutputRawJSON)) ||
+		bundle.Candidates[0].OutputSHA256 != agentQualityDigest([]byte(bundle.Candidates[0].OutputRawJSON)) {
+		t.Fatalf("review bundle = %#v", bundle)
+	}
+	if strings.Contains(output.String(), "Synthetic launch evidence") || !strings.Contains(string(encoded), "Synthetic launch evidence") {
+		t.Fatal("raw review output must exist only in the private review bundle")
+	}
+	if err := executeAgentQualityCommand(t.Context(), config.Default(), arguments, &strings.Builder{}, builder); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("existing review bundle error = %v", err)
+	}
+	if builderCalls != 1 {
+		t.Fatalf("provider builder calls = %d, want 1", builderCalls)
+	}
+}
+
 func TestAgentQualityDatasetRejectsUnknownFieldsAndTrailingDocuments(t *testing.T) {
 	sourcePath := filepath.Join("..", "..", "test", "fixtures", "agent-shadow", "v1", "golden-dataset.json")
 	encoded, err := os.ReadFile(sourcePath)
@@ -109,6 +180,7 @@ func TestAgentQualityCommandRequiresExplicitTrustedRuntimeInputs(t *testing.T) {
 		{"evaluate", "--dataset", "fixture.json", "--baseline-runtime", "openai"},
 		{"evaluate", "--dataset", "fixture.json", "--baseline-runtime", "unknown", "--baseline-model-name", "x", "--baseline-model-version", "v1", "--agent-model-name", "agent", "--agent-model-version", "v1"},
 		{"evaluate", "--dataset", "fixture.json", "--baseline-runtime", "codex", "--baseline-model-name", "x", "--baseline-model-version", "v1", "--agent-model-name", "agent", "--agent-model-version", "v1"},
+		{"evaluate", "--dataset", "fixture.json", "--review-bundle", "relative.json", "--baseline-runtime", "openai", "--baseline-model-name", "x", "--baseline-model-version", "v1", "--agent-model-name", "agent", "--agent-model-version", "v1"},
 	} {
 		if err := executeAgentQualityCommand(t.Context(), config.Default(), arguments, &strings.Builder{}, builder); err == nil {
 			t.Fatalf("arguments %#v were accepted", arguments)
@@ -172,6 +244,11 @@ func containsAgentQualityReason(values []string, wanted string) bool {
 		}
 	}
 	return false
+}
+
+func agentQualityDigest(value []byte) string {
+	digest := sha256.Sum256(value)
+	return hex.EncodeToString(digest[:])
 }
 
 var _ intelligencedomain.Provider = agentQualityProviderFake{}

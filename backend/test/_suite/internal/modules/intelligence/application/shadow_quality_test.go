@@ -114,6 +114,52 @@ func TestShadowQualityEvaluatorRunsTracksConcurrentlyAndKeepsReportCandidate(t *
 	}
 }
 
+func TestShadowQualityEvaluatorExportsValidatedReviewCandidatesOnlyWhenRequested(t *testing.T) {
+	dataset := passingShadowQualityDataset(t)
+	registry, err := NewSchemaRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	evaluator, err := NewShadowQualityEvaluator(registry, ShadowQualityEvaluatorOptions{Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline := shadowQualityProviderFake{result: func(request domain.StructuredRequest) (domain.StructuredResponse, error) {
+		return shadowQualityResponse(request, "baseline-v1", false), nil
+	}}
+	agent := shadowQualityProviderFake{result: func(request domain.StructuredRequest) (domain.StructuredResponse, error) {
+		return shadowQualityResponse(request, "agent-v1", true), nil
+	}}
+	report, candidates, err := evaluator.EvaluateForReview(t.Context(), dataset,
+		ShadowQualityTrack{Name: ShadowQualityTrackBaseline, RuntimeName: "codex", ModelName: "baseline-model", ModelVersion: "baseline-v1", Provider: baseline},
+		ShadowQualityTrack{Name: ShadowQualityTrackAgent, RuntimeName: "hotkey-agent", ModelName: "agent-model", ModelVersion: "agent-v1", Provider: agent},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 10 || len(report.Samples) != 10 {
+		t.Fatalf("review candidates = %d, report samples = %d", len(candidates), len(report.Samples))
+	}
+	first := candidates[0]
+	if first.SampleID != dataset.Samples[0].SampleID || first.Track != ShadowQualityTrackBaseline || first.RuntimeName != "codex" ||
+		first.ModelName != "baseline-model" || first.ModelVersion != "baseline-v1" ||
+		!json.Valid(first.Input) || !json.Valid(first.Output) || first.OutputSHA256 != qualityTestDigest(first.Output) {
+		t.Fatalf("first review candidate = %#v", first)
+	}
+	first.Input[0] = '['
+	first.Output[0] = '['
+	if dataset.Samples[0].Input[0] != '{' {
+		t.Fatal("review candidate input aliases the Golden dataset")
+	}
+	encodedReport, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encodedReport), "Monitor a launch") || strings.Contains(string(encodedReport), "HotKey事件") {
+		t.Fatal("review-only input or output leaked into the sanitized report")
+	}
+}
+
 func TestShadowQualityEvaluatorRejectsIncompleteOrAmbiguousGoldenDatasets(t *testing.T) {
 	registry, err := NewSchemaRegistry()
 	if err != nil {
@@ -160,7 +206,7 @@ func TestShadowQualityEvaluatorMapsFailuresWithoutPreservingProviderText(t *test
 	agent := shadowQualityProviderFake{result: func(request domain.StructuredRequest) (domain.StructuredResponse, error) {
 		return domain.StructuredResponse{ModelVersion: "agent-v1", JSON: json.RawMessage(`{"forbidden":true}`)}, nil
 	}}
-	report, err := evaluator.Evaluate(t.Context(), dataset,
+	report, candidates, err := evaluator.EvaluateForReview(t.Context(), dataset,
 		ShadowQualityTrack{Name: ShadowQualityTrackBaseline, RuntimeName: "openai", ModelName: "baseline", ModelVersion: "baseline-v1", Provider: baseline},
 		ShadowQualityTrack{Name: ShadowQualityTrackAgent, RuntimeName: "agent", ModelName: "agent", ModelVersion: "agent-v1", Provider: agent},
 	)
@@ -169,6 +215,9 @@ func TestShadowQualityEvaluatorMapsFailuresWithoutPreservingProviderText(t *test
 	}
 	if shadowQualityMetric(t, report, ShadowQualityTrackBaseline).FailureCategories[ShadowQualityFailureTransient] != 5 || shadowQualityMetric(t, report, ShadowQualityTrackAgent).FailureCategories[ShadowQualityFailureOutputInvalid] != 5 || !containsQualityString(report.ReasonCodes, "track_failures") {
 		t.Fatalf("failure report = %#v", report)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("failed or invalid outputs entered review bundle: %#v", candidates)
 	}
 	encoded, _ := json.Marshal(report)
 	if strings.Contains(string(encoded), "do-not-store") || strings.Contains(string(encoded), "private") {

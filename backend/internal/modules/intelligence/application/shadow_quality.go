@@ -157,6 +157,22 @@ type ShadowQualityReport struct {
 	Samples                   []ShadowQualitySampleResult `json:"samples"`
 }
 
+// ShadowQualityReviewCandidate is available only through EvaluateForReview.
+// It carries the fixed input and a fully validated provider output so trusted
+// reviewers can bind independent decisions to the exact output digest.
+type ShadowQualityReviewCandidate struct {
+	SampleID      string
+	Track         string
+	TaskType      domain.TaskType
+	SchemaVersion string
+	RuntimeName   string
+	ModelName     string
+	ModelVersion  string
+	OutputSHA256  string
+	Input         json.RawMessage
+	Output        json.RawMessage
+}
+
 func NewShadowQualityEvaluator(schemas *SchemaRegistry, options ShadowQualityEvaluatorOptions) (*ShadowQualityEvaluator, error) {
 	if schemas == nil || options.Timeout <= 0 || options.Timeout > 5*time.Minute {
 		return nil, fmt.Errorf("%w: schemas and a timeout between 1ns and 5m are required", ErrInvalidShadowQualityDataset)
@@ -168,31 +184,49 @@ func NewShadowQualityEvaluator(schemas *SchemaRegistry, options ShadowQualityEva
 // It intentionally cannot return an approved report: product thresholds and a
 // trusted live review remain separate G5 decisions.
 func (evaluator *ShadowQualityEvaluator) Evaluate(ctx context.Context, dataset ShadowQualityDataset, baseline, agent ShadowQualityTrack) (ShadowQualityReport, error) {
+	report, _, err := evaluator.evaluate(ctx, dataset, baseline, agent, false)
+	return report, err
+}
+
+// EvaluateForReview returns the same sanitized candidate report plus private
+// review material. Callers must keep the candidates out of logs and evidence.
+func (evaluator *ShadowQualityEvaluator) EvaluateForReview(ctx context.Context, dataset ShadowQualityDataset, baseline, agent ShadowQualityTrack) (ShadowQualityReport, []ShadowQualityReviewCandidate, error) {
+	return evaluator.evaluate(ctx, dataset, baseline, agent, true)
+}
+
+func (evaluator *ShadowQualityEvaluator) evaluate(ctx context.Context, dataset ShadowQualityDataset, baseline, agent ShadowQualityTrack, includeReviewCandidates bool) (ShadowQualityReport, []ShadowQualityReviewCandidate, error) {
 	if evaluator == nil || evaluator.schemas == nil || ctx == nil ||
 		validateShadowQualityTrack(baseline, ShadowQualityTrackBaseline) != nil ||
 		validateShadowQualityTrack(agent, ShadowQualityTrackAgent) != nil ||
 		evaluator.validateDataset(dataset) != nil {
-		return ShadowQualityReport{}, ErrInvalidShadowQualityDataset
+		return ShadowQualityReport{}, nil, ErrInvalidShadowQualityDataset
 	}
 	tracks := []ShadowQualityTrack{baseline, agent}
 	results := make([]ShadowQualitySampleResult, 0, len(dataset.Samples)*len(tracks))
+	reviewCandidates := make([]ShadowQualityReviewCandidate, 0, len(dataset.Samples)*len(tracks))
 	for _, sample := range dataset.Samples {
 		contract, err := evaluator.schemas.Structured(sample.TaskType, sample.SchemaVersion)
 		if err != nil {
-			return ShadowQualityReport{}, ErrInvalidShadowQualityDataset
+			return ShadowQualityReport{}, nil, ErrInvalidShadowQualityDataset
 		}
 		pair := make([]ShadowQualitySampleResult, len(tracks))
+		candidatePair := make([]*ShadowQualityReviewCandidate, len(tracks))
 		var wait sync.WaitGroup
 		wait.Add(len(tracks))
 		for index := range tracks {
 			index := index
 			go func() {
 				defer wait.Done()
-				pair[index] = evaluator.execute(ctx, sample, contract, tracks[index])
+				pair[index], candidatePair[index] = evaluator.execute(ctx, sample, contract, tracks[index], includeReviewCandidates)
 			}()
 		}
 		wait.Wait()
 		results = append(results, pair...)
+		for _, candidate := range candidatePair {
+			if candidate != nil {
+				reviewCandidates = append(reviewCandidates, *candidate)
+			}
+		}
 	}
 	metrics := []ShadowQualityTrackMetric{
 		aggregateShadowQualityTrack(baseline, results),
@@ -219,10 +253,10 @@ func (evaluator *ShadowQualityEvaluator) Evaluate(ctx context.Context, dataset S
 		AnnotationProtocolVersion: dataset.AnnotationProtocolVersion, AnnotatorCount: dataset.AnnotatorCount,
 		Status: ShadowQualityStatusCandidate, ApprovalReady: false,
 		ReasonCodes: reasons, Tracks: metrics, Samples: results,
-	}, nil
+	}, reviewCandidates, nil
 }
 
-func (evaluator *ShadowQualityEvaluator) execute(ctx context.Context, sample ShadowQualitySample, contract StructuredContract, track ShadowQualityTrack) ShadowQualitySampleResult {
+func (evaluator *ShadowQualityEvaluator) execute(ctx context.Context, sample ShadowQualitySample, contract StructuredContract, track ShadowQualityTrack, includeReviewCandidate bool) (ShadowQualitySampleResult, *ShadowQualityReviewCandidate) {
 	result := ShadowQualitySampleResult{
 		SampleID: sample.SampleID, Track: track.Name, TaskType: sample.TaskType, SchemaVersion: sample.SchemaVersion,
 		ExpectedEvidenceCount: len(sample.ExpectedEvidence),
@@ -240,20 +274,20 @@ func (evaluator *ShadowQualityEvaluator) execute(ctx context.Context, sample Sha
 	result.LatencyMS = time.Since(started).Milliseconds()
 	if callContextError != nil {
 		result.FailureCategory = shadowQualityFailureCategory(callContextError, callContext)
-		return result
+		return result, nil
 	}
 	if err != nil {
 		result.FailureCategory = shadowQualityFailureCategory(err, callContext)
-		return result
+		return result, nil
 	}
 	result.InputTokens, result.OutputTokens = response.Usage.InputTokens, response.Usage.OutputTokens
 	if response.ModelVersion != track.ModelVersion {
 		result.FailureCategory = ShadowQualityFailureModelProfileInvalid
-		return result
+		return result, nil
 	}
 	if _, err := response.Usage.TotalTokens(); err != nil {
 		result.FailureCategory = ShadowQualityFailureModelProfileInvalid
-		return result
+		return result, nil
 	}
 	if len(response.JSON) != 0 {
 		result.OutputSHA256 = shadowQualityDigest(response.JSON)
@@ -261,12 +295,12 @@ func (evaluator *ShadowQualityEvaluator) execute(ctx context.Context, sample Sha
 	if evaluator.schemas.ValidateOutput(sample.TaskType, sample.SchemaVersion, response.JSON) != nil ||
 		validateStructuredOutputPolicy(sample.TaskType, sample.SchemaVersion, sample.Input, response.JSON) != nil {
 		result.FailureCategory = ShadowQualityFailureOutputInvalid
-		return result
+		return result, nil
 	}
 	predicted, err := shadowQualityOutputEvidence(sample.TaskType, sample.SchemaVersion, response.JSON)
 	if err != nil {
 		result.FailureCategory = ShadowQualityFailureOutputInvalid
-		return result
+		return result, nil
 	}
 	expected := shadowQualityExpectedEvidence(sample.ExpectedEvidence)
 	result.PredictedEvidenceCount = len(predicted)
@@ -283,7 +317,14 @@ func (evaluator *ShadowQualityEvaluator) execute(ctx context.Context, sample Sha
 			break
 		}
 	}
-	return result
+	if !includeReviewCandidate {
+		return result, nil
+	}
+	return result, &ShadowQualityReviewCandidate{
+		SampleID: sample.SampleID, Track: track.Name, TaskType: sample.TaskType, SchemaVersion: sample.SchemaVersion,
+		RuntimeName: track.RuntimeName, ModelName: track.ModelName, ModelVersion: track.ModelVersion,
+		OutputSHA256: result.OutputSHA256, Input: cloneRawJSON(sample.Input), Output: cloneRawJSON(response.JSON),
+	}
 }
 
 func (evaluator *ShadowQualityEvaluator) validateDataset(dataset ShadowQualityDataset) error {

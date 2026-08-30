@@ -27,6 +27,7 @@ const maximumAgentQualityDatasetBytes = 8 << 20
 
 type agentQualityCommandOptions struct {
 	DatasetPath                       string
+	ReviewBundlePath                  string
 	BaselineRuntime                   string
 	BaselineModelName                 string
 	BaselineModelVersion              string
@@ -71,6 +72,28 @@ type agentQualityHumanReviewRequest struct {
 	ReviewerCount int    `json:"reviewer_count"`
 }
 
+type agentQualityReviewBundle struct {
+	DatasetVersion            string                        `json:"dataset_version"`
+	DatasetSHA256             string                        `json:"dataset_sha256"`
+	AnnotationProtocolVersion string                        `json:"annotation_protocol_version"`
+	Status                    string                        `json:"status"`
+	ReviewerCountRequired     int                           `json:"reviewer_count_required"`
+	Candidates                []agentQualityReviewCandidate `json:"candidates"`
+}
+
+type agentQualityReviewCandidate struct {
+	SampleID      string                      `json:"sample_id"`
+	Track         string                      `json:"track"`
+	TaskType      intelligencedomain.TaskType `json:"task_type"`
+	SchemaVersion string                      `json:"schema_version"`
+	RuntimeName   string                      `json:"runtime_name"`
+	ModelName     string                      `json:"model_name"`
+	ModelVersion  string                      `json:"model_version"`
+	OutputSHA256  string                      `json:"output_sha256"`
+	InputRawJSON  string                      `json:"input_raw_json"`
+	OutputRawJSON string                      `json:"output_raw_json"`
+}
+
 func runAgentQualityCommand(ctx context.Context, cfg config.Config, args []string, output io.Writer) error {
 	return executeAgentQualityCommand(ctx, cfg, args, output, buildAgentQualityTracks)
 }
@@ -83,6 +106,7 @@ func executeAgentQualityCommand(ctx context.Context, cfg config.Config, args []s
 	flags.SetOutput(new(discardWriter))
 	options := agentQualityCommandOptions{}
 	flags.StringVar(&options.DatasetPath, "dataset", "", "fixed versioned Golden dataset JSON")
+	flags.StringVar(&options.ReviewBundlePath, "review-bundle", "", "optional absolute path for private human-review material")
 	flags.StringVar(&options.BaselineRuntime, "baseline-runtime", "", "openai, deepseek, ollama, or codex")
 	flags.StringVar(&options.BaselineModelName, "baseline-model-name", "", "baseline provider model name")
 	flags.StringVar(&options.BaselineModelVersion, "baseline-model-version", "", "baseline provider model version")
@@ -98,6 +122,7 @@ func executeAgentQualityCommand(ctx context.Context, cfg config.Config, args []s
 		return fmt.Errorf("parse agent-quality evaluate flags: %w", err)
 	}
 	options.DatasetPath = strings.TrimSpace(options.DatasetPath)
+	options.ReviewBundlePath = strings.TrimSpace(options.ReviewBundlePath)
 	options.BaselineRuntime = strings.TrimSpace(options.BaselineRuntime)
 	options.BaselineModelName = strings.TrimSpace(options.BaselineModelName)
 	options.BaselineModelVersion = strings.TrimSpace(options.BaselineModelVersion)
@@ -109,6 +134,9 @@ func executeAgentQualityCommand(ctx context.Context, cfg config.Config, args []s
 	}
 	dataset, err := readAgentQualityDataset(options.DatasetPath)
 	if err != nil {
+		return err
+	}
+	if err := preflightAgentQualityReviewBundle(options.ReviewBundlePath); err != nil {
 		return err
 	}
 	baseline, agent, err := builder(ctx, cfg, options)
@@ -123,7 +151,16 @@ func executeAgentQualityCommand(ctx context.Context, cfg config.Config, args []s
 	if err != nil {
 		return err
 	}
-	report, err := evaluator.Evaluate(ctx, dataset, baseline, agent)
+	var report intelligenceapplication.ShadowQualityReport
+	if options.ReviewBundlePath == "" {
+		report, err = evaluator.Evaluate(ctx, dataset, baseline, agent)
+	} else {
+		var candidates []intelligenceapplication.ShadowQualityReviewCandidate
+		report, candidates, err = evaluator.EvaluateForReview(ctx, dataset, baseline, agent)
+		if err == nil {
+			err = writeAgentQualityReviewBundle(options.ReviewBundlePath, report, candidates)
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -145,12 +182,67 @@ func validateAgentQualityCommandOptions(options agentQualityCommandOptions, posi
 	} else if options.CodexExecutable != "" {
 		return errors.New("--codex-executable is valid only for the Codex baseline")
 	}
+	if options.ReviewBundlePath != "" && !filepath.IsAbs(options.ReviewBundlePath) {
+		return errors.New("agent-quality review bundle requires an absolute path")
+	}
 	if !validAgentQualityPricing(options.BaselineInputUSDPerMillionTokens, options.BaselineOutputUSDPerMillionTokens) {
 		return errors.New("baseline pricing must provide two finite non-negative values together")
 	}
 	if !validAgentQualityPricing(options.AgentInputUSDPerMillionTokens, options.AgentOutputUSDPerMillionTokens) ||
 		options.AgentModelVersion == intelligenceagent.DeterministicRuntimeVersion && options.AgentInputUSDPerMillionTokens >= 0 {
 		return errors.New("Agent pricing requires a non-degraded runtime and two finite non-negative values together")
+	}
+	return nil
+}
+
+func preflightAgentQualityReviewBundle(path string) error {
+	if path == "" {
+		return nil
+	}
+	if _, err := os.Lstat(path); err == nil {
+		return errors.New("Agent quality review bundle already exists")
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect Agent quality review bundle: %w", err)
+	}
+	parent, err := os.Stat(filepath.Dir(path))
+	if err != nil || !parent.IsDir() {
+		return errors.New("Agent quality review bundle parent directory is unavailable")
+	}
+	return nil
+}
+
+func writeAgentQualityReviewBundle(path string, report intelligenceapplication.ShadowQualityReport, candidates []intelligenceapplication.ShadowQualityReviewCandidate) error {
+	bundle := agentQualityReviewBundle{
+		DatasetVersion: report.DatasetVersion, DatasetSHA256: report.DatasetSHA256,
+		AnnotationProtocolVersion: report.AnnotationProtocolVersion,
+		Status:                    "pending_independent_review", ReviewerCountRequired: 2,
+		Candidates: make([]agentQualityReviewCandidate, len(candidates)),
+	}
+	for index, candidate := range candidates {
+		bundle.Candidates[index] = agentQualityReviewCandidate{
+			SampleID: candidate.SampleID, Track: candidate.Track, TaskType: candidate.TaskType, SchemaVersion: candidate.SchemaVersion,
+			RuntimeName: candidate.RuntimeName, ModelName: candidate.ModelName, ModelVersion: candidate.ModelVersion,
+			OutputSHA256: candidate.OutputSHA256, InputRawJSON: string(candidate.Input), OutputRawJSON: string(candidate.Output),
+		}
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			return errors.New("Agent quality review bundle already exists")
+		}
+		return fmt.Errorf("create Agent quality review bundle: %w", err)
+	}
+	encoder := json.NewEncoder(file)
+	encoder.SetEscapeHTML(true)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(bundle); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return errors.New("encode Agent quality review bundle")
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return errors.New("close Agent quality review bundle")
 	}
 	return nil
 }
