@@ -138,7 +138,7 @@ func TestAgentQualityFrameworkCannotMasqueradeAsLiveApproval(t *testing.T) {
 	fixture := readRepositoryFile(t, root, "test/fixtures/agent-shadow/v1/golden-dataset.json")
 	plan := readRepositoryFile(t, repository, "docs/plans/003-智能研判事件热度与人工治理计划.md")
 	acceptance := readRepositoryFile(t, repository, "docs/acceptance/003-智能研判事件热度与人工治理验收.md")
-	evidencePath := "docs/acceptance/evidence/003/agent-shadow-quality-codex-app-server-macos-arm64-0e918944.json"
+	evidencePath := "docs/acceptance/evidence/003/agent-shadow-quality-codex-app-server-macos-arm64-e020a5bc.json"
 	evidence := readRepositoryFile(t, repository, evidencePath)
 
 	if !strings.Contains(bootstrap, `args[0] == "agent-quality"`) || !strings.Contains(bootstrap, "runAgentQualityCommand") {
@@ -174,8 +174,7 @@ func TestAgentQualityFrameworkCannotMasqueradeAsLiveApproval(t *testing.T) {
 		for _, required := range []string{
 			evidencePath,
 			"5/5",
-			"40%",
-			"provider_transient",
+			"100%",
 			"approval_ready=false",
 		} {
 			if !strings.Contains(document.payload, required) {
@@ -202,7 +201,7 @@ func TestAgentQualityFrameworkCannotMasqueradeAsLiveApproval(t *testing.T) {
 		t.Fatalf("decode real Agent quality candidate: %v", err)
 	}
 	evidenceDigest := fmt.Sprintf("%x", sha256.Sum256([]byte(evidence)))
-	if evidenceDigest != "410ec28a57cdfeee136b382bdb0072d6665f158fa65c5ebc2d71410af30c2199" ||
+	if evidenceDigest != "1ec98059399b1b69d6ddc583dcc830b64ff53ddbacc8643ebfa41d29adb08868" ||
 		!strings.Contains(plan, evidenceDigest) || !strings.Contains(acceptance, evidenceDigest) {
 		t.Fatalf("real Agent quality evidence digest is not fixed across evidence and docs: %s", evidenceDigest)
 	}
@@ -226,12 +225,17 @@ func TestAgentQualityFrameworkCannotMasqueradeAsLiveApproval(t *testing.T) {
 	if tracks["agent"].version != "gpt-5.6-sol" || tracks["agent"].summary != "5/5/5" || len(tracks["agent"].failures) != 0 {
 		t.Fatalf("real Agent quality track = %#v, want gpt-5.6-sol 5/5/5 without failures", tracks["agent"])
 	}
-	if tracks["baseline"].version != "gpt-5.6-sol" || tracks["baseline"].summary != "5/2/2" || tracks["baseline"].failures["provider_transient"] != 3 {
-		t.Fatalf("real baseline quality track = %#v, want gpt-5.6-sol 5/2/2 with three sanitized failures", tracks["baseline"])
+	if tracks["baseline"].version != "gpt-5.6-sol" || tracks["baseline"].summary != "5/5/5" || len(tracks["baseline"].failures) != 0 {
+		t.Fatalf("real baseline quality track = %#v, want gpt-5.6-sol 5/5/5 without failures", tracks["baseline"])
 	}
-	for _, required := range []string{"quality_thresholds_not_approved", "track_failures", "structure_invalid", "human_review_incomplete", "cost_unavailable"} {
+	for _, required := range []string{"quality_thresholds_not_approved", "human_review_incomplete", "cost_unavailable"} {
 		if !stringSliceContains(candidate.ReasonCodes, required) {
 			t.Errorf("real Agent quality candidate is missing non-approval reason %q", required)
+		}
+	}
+	for _, resolved := range []string{"track_failures", "structure_invalid"} {
+		if stringSliceContains(candidate.ReasonCodes, resolved) {
+			t.Errorf("real Agent quality candidate still reports resolved reason %q", resolved)
 		}
 	}
 	for _, forbidden := range []string{
