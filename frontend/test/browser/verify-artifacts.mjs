@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import process from "node:process";
 
 const artifactDirectory = process.env.HOTKEY_BROWSER_ARTIFACT_DIR || "/tmp";
-const a11yFiles = ["reports", "report-content-security", "knowledge", "search-desktop", "search-mobile", "notifications-empty", "knowledge-permission"].map(
+const a11yFiles = ["reports", "report-content-security", "knowledge", "search-desktop", "search-mobile", "notifications-empty", "knowledge-permission", "role-editor", "role-analyst", "role-viewer", "role-admin"].map(
   (name) => `${artifactDirectory}/hotkey-a11y-${name}.json`,
 );
 const audits = a11yFiles.map(readJSON);
@@ -10,6 +10,16 @@ const errors = readJSON(`${artifactDirectory}/hotkey-browser-errors.json`);
 const network = readJSON(`${artifactDirectory}/hotkey-browser-network.json`);
 const viewport = readJSON(`${artifactDirectory}/hotkey-browser-viewport.json`);
 const contentSecurity = readJSON(`${artifactDirectory}/hotkey-browser-content-security.json`);
+const roleFiles = {
+  viewer: `${artifactDirectory}/hotkey-role-viewer.json`,
+  analyst: `${artifactDirectory}/hotkey-role-analyst.json`,
+  editor: `${artifactDirectory}/hotkey-role-editor.json`,
+  admin: `${artifactDirectory}/hotkey-role-admin.json`,
+};
+const roleArtifacts = Object.fromEntries(
+  Object.entries(roleFiles).map(([role, path]) => [role, readJSON(path)]),
+);
+const keyboard = readJSON(`${artifactDirectory}/hotkey-keyboard-focus.json`);
 
 for (const [index, audit] of audits.entries()) {
   const violations = audit?.data?.violations ?? [];
@@ -63,6 +73,19 @@ if (!contentSecurity?.success || contentSecurity?.data?.result !== true) {
   throw new Error("malicious report content created an executable DOM surface");
 }
 
+for (const [role, artifact] of Object.entries(roleArtifacts)) {
+  const result = artifact?.data?.result;
+  const expectedBoundary = role === "admin" ? result?.admin_surface : result?.denied_surface;
+  if (!artifact?.success || result?.role !== role || result?.allowed_surface !== true || expectedBoundary !== true || result?.navigation_policy !== true) {
+    throw new Error(`browser role matrix failed for ${role}`);
+  }
+}
+
+const keyboardResult = keyboard?.data?.result;
+if (!keyboard?.success || keyboardResult?.sequence_length !== 8 || keyboardResult?.left_body !== true || keyboardResult?.distinct_targets < 6 || keyboardResult?.visible_focus !== true) {
+  throw new Error("browser keyboard focus matrix did not preserve ordered visible focus");
+}
+
 const summary = {
   version: "hotkey-browser-business-flow-v1",
   run_id: process.env.HOTKEY_BROWSER_RUN_ID,
@@ -73,6 +96,12 @@ const summary = {
   observed_requests: requiredRequests.length,
   mobile_viewport: { width: 390, height: 844, horizontal_overflow: false },
   malicious_report_content_inert: true,
+  four_role_browser_matrix: true,
+  keyboard_focus: {
+    sequence_length: keyboardResult.sequence_length,
+    distinct_targets: keyboardResult.distinct_targets,
+    visible: true,
+  },
 };
 writeFileSync(`${artifactDirectory}/hotkey-browser-acceptance.json`, `${JSON.stringify(summary, null, 2)}\n`, { flag: "wx" });
 

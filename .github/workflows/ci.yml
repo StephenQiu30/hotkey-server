@@ -435,6 +435,7 @@ jobs:
       HOTKEY_BROWSER_WEB_ORIGIN: http://127.0.0.1:8010
       HOTKEY_BROWSER_EMAIL: browser-e2e-sentinel@example.test
       HOTKEY_BROWSER_ANALYST_EMAIL: browser-empty-state@example.test
+      HOTKEY_BROWSER_VIEWER_EMAIL: browser-viewer@example.test
       HOTKEY_SECRET_ADMIN_EMAIL: browser-secret-admin@example.test
       HOTKEY_BROWSER_PASSWORD: BrowserFixture-Only-2026!
       HOTKEY_BROWSER_MONITOR_ID: 910001
@@ -539,6 +540,7 @@ jobs:
           agent-browser find role button click --name "原子发布到 Vault" --exact
           agent-browser wait --text "已应用"
           agent-browser wait --text "已同步"
+          agent-browser eval "sessionStorage.setItem('hotkeyRoleAllowed', String(document.body.innerText.includes('知识投影') && !document.body.innerText.includes('权限不足')));sessionStorage.setItem('hotkeyNavigationPolicy', String(document.querySelector('a[href=\"/dashboard/knowledge\"]')!==null&&document.querySelector('a[href=\"/dashboard/users\"]')===null))"
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-knowledge.json
 
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/search"
@@ -556,18 +558,78 @@ jobs:
           agent-browser wait 300
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-search-mobile.json
 
+          agent-browser set viewport 1280 900
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/users"
+          agent-browser wait --text "权限不足"
+          agent-browser eval --json "({role:'editor',allowed_surface:sessionStorage.getItem('hotkeyRoleAllowed')==='true',denied_surface:document.body.innerText.includes('权限不足'),navigation_policy:sessionStorage.getItem('hotkeyNavigationPolicy')==='true'})" > /tmp/hotkey-role-editor.json
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-role-editor.json
+
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser cookies clear
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
           agent-browser wait --text "进入工作台"
           agent-browser find label "邮箱" fill "$HOTKEY_BROWSER_ANALYST_EMAIL"
           agent-browser find label "密码" fill "$HOTKEY_BROWSER_PASSWORD"
           agent-browser find role button click --name "进入工作台" --exact
           agent-browser wait --url '**/dashboard*'
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/settings"
+          agent-browser wait --text "监控任务"
+          agent-browser find role button click --name "新建监控" --exact
+          agent-browser find label "监控名称" fill "Analyst Four Role UAT"
+          agent-browser find label "监控词" fill "AnalystRoleBoundary2026"
+          agent-browser find role button click --name "创建并启用" --exact
+          agent-browser wait --text "监控已创建并启用"
+          agent-browser wait --text "Analyst Four Role UAT"
+          agent-browser eval "sessionStorage.setItem('hotkeyRoleAllowed', String(document.body.innerText.includes('Analyst Four Role UAT') && !document.body.innerText.includes('权限不足')));sessionStorage.setItem('hotkeyNavigationPolicy', String(document.querySelector('a[href=\"/dashboard/settings\"]')!==null&&document.querySelector('a[href=\"/dashboard/knowledge\"]')===null&&document.querySelector('a[href=\"/dashboard/users\"]')===null))"
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/notifications"
           agent-browser wait --text "暂时没有站内通知"
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-notifications-empty.json
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/knowledge"
           agent-browser wait --text "权限不足"
+          agent-browser eval --json "({role:'analyst',allowed_surface:sessionStorage.getItem('hotkeyRoleAllowed')==='true',denied_surface:document.body.innerText.includes('权限不足'),navigation_policy:sessionStorage.getItem('hotkeyNavigationPolicy')==='true'})" > /tmp/hotkey-role-analyst.json
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-knowledge-permission.json
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-role-analyst.json
+
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser cookies clear
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser wait --text "进入工作台"
+          agent-browser find label "邮箱" fill "$HOTKEY_BROWSER_VIEWER_EMAIL"
+          agent-browser find label "密码" fill "$HOTKEY_BROWSER_PASSWORD"
+          agent-browser find role button click --name "进入工作台" --exact
+          agent-browser wait --url '**/dashboard*'
+          agent-browser eval "sessionStorage.setItem('hotkeyRoleAllowed', String(location.pathname==='/dashboard' && !document.body.innerText.includes('权限不足')));sessionStorage.setItem('hotkeyNavigationPolicy', String(document.querySelector('a[href=\"/dashboard/knowledge\"]')===null&&document.querySelector('a[href=\"/dashboard/users\"]')===null))"
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/knowledge"
+          agent-browser wait --text "权限不足"
+          agent-browser eval --json "({role:'viewer',allowed_surface:sessionStorage.getItem('hotkeyRoleAllowed')==='true',denied_surface:document.body.innerText.includes('权限不足'),navigation_policy:sessionStorage.getItem('hotkeyNavigationPolicy')==='true'})" > /tmp/hotkey-role-viewer.json
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-role-viewer.json
+
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser cookies clear
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser wait --text "进入工作台"
+          agent-browser find label "邮箱" fill "$HOTKEY_SECRET_ADMIN_EMAIL"
+          agent-browser find label "密码" fill "$HOTKEY_BROWSER_PASSWORD"
+          agent-browser find role button click --name "进入工作台" --exact
+          agent-browser wait --url '**/dashboard*'
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/users"
+          agent-browser wait --text "用户与权限"
+          agent-browser find role button click --name "账户菜单" --exact
+          agent-browser wait --text "系统治理"
+          agent-browser eval "sessionStorage.setItem('hotkeyRoleAllowed', String(document.body.innerText.includes('用户与权限') && !document.body.innerText.includes('权限不足')));sessionStorage.setItem('hotkeyNavigationPolicy', String(document.querySelector('a[href=\"/dashboard/knowledge\"]')!==null&&document.querySelector('a[href=\"/dashboard/users\"]')!==null&&document.querySelector('a[href=\"/dashboard/governance\"]')!==null))"
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/governance"
+          agent-browser wait --text "配额与审计"
+          agent-browser eval --json "({role:'admin',allowed_surface:sessionStorage.getItem('hotkeyRoleAllowed')==='true',admin_surface:document.body.innerText.includes('配额与审计')&&!document.body.innerText.includes('权限不足'),navigation_policy:sessionStorage.getItem('hotkeyNavigationPolicy')==='true'})" > /tmp/hotkey-role-admin.json
+          agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-role-admin.json
+
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard"
+          agent-browser wait --load networkidle
+          agent-browser eval "globalThis.__hotkeyKeyboardTrace=[];document.activeElement?.blur()"
+          for step in 1 2 3 4 5 6 7 8; do
+            agent-browser press Tab
+            agent-browser eval "(()=>{const element=document.activeElement;const style=getComputedStyle(element);const targets=Array.from(document.querySelectorAll('a,button,input,select,textarea,[tabindex]:not([tabindex=\"-1\"])'));globalThis.__hotkeyKeyboardTrace.push({tag:element?.tagName?.toLowerCase()||'none',target_index:targets.indexOf(element),focus_visible:(style.outlineStyle!=='none'&&style.outlineWidth!=='0px')||style.boxShadow!=='none'});return true})()" > /dev/null
+          done
+          agent-browser eval --json "(()=>{const trace=globalThis.__hotkeyKeyboardTrace||[];return {sequence_length:trace.length,left_body:trace.every((item)=>item.tag!=='body'&&item.target_index>=0),distinct_targets:new Set(trace.map((item)=>item.target_index)).size,visible_focus:trace.every((item)=>item.focus_visible)}})()" > /tmp/hotkey-keyboard-focus.json
 
           agent-browser errors --json > /tmp/hotkey-browser-errors.json
           agent-browser network requests --json > /tmp/hotkey-browser-network.json
@@ -651,6 +713,8 @@ jobs:
             /tmp/hotkey-browser-database.json \
             /tmp/hotkey-browser-network-summary.json \
             /tmp/hotkey-browser-content-security.json \
+            /tmp/hotkey-role-*.json \
+            /tmp/hotkey-keyboard-focus.json \
             /tmp/hotkey-m4-capacity.json \
             /tmp/hotkey-availability.json \
             /tmp/hotkey-release-images.json \
@@ -673,6 +737,8 @@ jobs:
             /tmp/hotkey-browser-database.json
             /tmp/hotkey-browser-network-summary.json
             /tmp/hotkey-browser-content-security.json
+            /tmp/hotkey-role-*.json
+            /tmp/hotkey-keyboard-focus.json
             /tmp/hotkey-m4-capacity.json
             /tmp/hotkey-availability.json
             /tmp/hotkey-release-images.json

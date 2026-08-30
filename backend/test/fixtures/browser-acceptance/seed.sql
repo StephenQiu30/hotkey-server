@@ -35,6 +35,17 @@ VALUES (
     'active'
 );
 
+INSERT INTO users (id,version,email,password_hash,display_name,role,status)
+VALUES (
+    910004,
+    1,
+    'browser-viewer@example.test',
+    '$2y$10$TOs7BsHx9.lu745Fu6RWUe5PWt8SL7OOUx3L/MQCd5Md.RgAOGY0G',
+    'Browser Acceptance Viewer',
+    'viewer',
+    'active'
+);
+
 INSERT INTO source_connections (
     id,version,source_type,name,endpoint,auth_type,config,enabled,health_status,created_by,updated_by
 )

@@ -122,3 +122,39 @@ func TestBrowserCIA11yAuditsWaitForVisualStateToSettle(t *testing.T) {
 		t.Fatal("mobile search a11y audit must wait for responsive layout transitions to settle")
 	}
 }
+
+func TestBrowserCIExercisesFourRoleRouteAndKeyboardMatrix(t *testing.T) {
+	backend := repositoryRoot(t)
+	repository := filepath.Clean(filepath.Join(backend, ".."))
+	workflow := readRepositoryFile(t, repository, ".github/workflows/ci.yml")
+	fixture := readRepositoryFile(t, repository, "backend/test/fixtures/browser-acceptance/seed.sql")
+	verifier := readRepositoryFile(t, repository, "frontend/test/browser/verify-artifacts.mjs")
+
+	for _, fragment := range []string{
+		"HOTKEY_BROWSER_VIEWER_EMAIL:",
+		"HOTKEY_BROWSER_ANALYST_EMAIL:",
+		"HOTKEY_BROWSER_EMAIL:",
+		"HOTKEY_SECRET_ADMIN_EMAIL:",
+		"hotkey-role-viewer.json",
+		"hotkey-role-analyst.json",
+		"hotkey-role-editor.json",
+		"hotkey-role-admin.json",
+		"hotkey-keyboard-focus.json",
+	} {
+		if !strings.Contains(workflow, fragment) {
+			t.Errorf("browser CI must retain four-role and keyboard evidence fragment %q", fragment)
+		}
+		if strings.HasPrefix(fragment, "hotkey-") && !strings.Contains(verifier, fragment) {
+			t.Errorf("browser evidence verifier must fail closed on missing fragment %q", fragment)
+		}
+	}
+
+	for _, fragment := range []string{
+		"browser-viewer@example.test",
+		"'viewer'",
+	} {
+		if !strings.Contains(fixture, fragment) {
+			t.Errorf("browser fixture must retain Viewer identity fragment %q", fragment)
+		}
+	}
+}
