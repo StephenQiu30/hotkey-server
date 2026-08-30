@@ -56,6 +56,52 @@ func TestCollectionWorkerRecoveryGateCoversFourDurableCrashBoundaries(t *testing
 	}
 }
 
+func TestG5RiverFaultRehearsalGateIsMandatory(t *testing.T) {
+	repository := filepath.Clean(filepath.Join(repositoryRoot(t), ".."))
+	rehearsal := readRepositoryFile(t, repository, "backend/test/_suite/internal/platform/queue/river_fault_rehearsal_integration_test.go")
+	for _, fragment := range []string{
+		`hotkey-river-fault-rehearsal-v1`,
+		`TestRiverFaultRehearsalCoversEveryCrashRetryAndProviderLostAckBoundary`,
+		`"before_claim"`,
+		`"after_claim"`,
+		`"business_transaction"`,
+		`"before_completion_marker"`,
+		`"provider_receipt"`,
+		`"provider_unsupported"`,
+		`bounded_at_least_once_with_fencing_idempotency_and_explicit_unknown`,
+		`os.O_WRONLY|os.O_CREATE|os.O_EXCL`,
+		`0o600`,
+	} {
+		if !strings.Contains(rehearsal, fragment) {
+			t.Errorf("River fault rehearsal lost %q", fragment)
+		}
+	}
+
+	makefile := readRepositoryFile(t, repository, "backend/Makefile")
+	for _, fragment := range []string{
+		"river-fault-rehearsal-acceptance: test-env",
+		"TestRiverFaultRehearsalCoversEveryCrashRetryAndProviderLostAckBoundary",
+		"TestRiverFaultRehearsalEvidenceWriterIsExclusivePrivateAndSanitized",
+	} {
+		if !strings.Contains(makefile, fragment) {
+			t.Errorf("River fault Make gate is missing %q", fragment)
+		}
+	}
+
+	workflow := readRepositoryFile(t, repository, ".github/workflows/ci.yml")
+	for _, fragment := range []string{
+		"Unified River fault and Provider lost-ack rehearsal acceptance",
+		"run: make river-fault-rehearsal-acceptance",
+		"Upload sanitized River fault rehearsal evidence",
+		"river-fault-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}",
+		"if-no-files-found: error",
+	} {
+		if !strings.Contains(workflow, fragment) {
+			t.Errorf("River fault CI gate is missing %q", fragment)
+		}
+	}
+}
+
 func markdownChecklistRow(t *testing.T, document, id string) string {
 	t.Helper()
 	for _, line := range strings.Split(document, "\n") {

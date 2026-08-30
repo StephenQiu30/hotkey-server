@@ -194,6 +194,24 @@ jobs:
       - name: Four-point Worker recovery acceptance
         run: make worker-recovery-acceptance
 
+      - name: Unified River fault and Provider lost-ack rehearsal acceptance
+        env:
+          HOTKEY_RIVER_REHEARSAL_OUTPUT: ${{ runner.temp }}/river-fault-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}.json
+          HOTKEY_RIVER_REHEARSAL_ENVIRONMENT: github-actions-isolated-river-rehearsal
+          HOTKEY_RIVER_REHEARSAL_HARDWARE: ubuntu-latest-hosted-runner
+          HOTKEY_RIVER_REHEARSAL_GIT_REVISION: ${{ github.sha }}
+          HOTKEY_RIVER_REHEARSAL_PRODUCTION_EGRESS_DISABLED: "true"
+        run: make river-fault-rehearsal-acceptance
+
+      - name: Upload sanitized River fault rehearsal evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: river-fault-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ runner.temp }}/river-fault-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}.json
+
       - name: Unified retention and rights-revocation rehearsal acceptance
         env:
           HOTKEY_RETENTION_REHEARSAL_OUTPUT: ${{ runner.temp }}/retention-rights-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}.json
