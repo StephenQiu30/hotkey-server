@@ -88,8 +88,12 @@ func TestSimpleMonitorBrowserAcceptancePublishesReadyCompiledProfile(t *testing.
 	evidence := map[string][]string{
 		".github/workflows/ci.yml": {
 			`agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/settings"`,
+			`agent-browser wait --text "监控任务"`,
 			`agent-browser find role button click --name "创建并启用" --exact`,
 			`agent-browser wait --text "监控已创建并启用"`,
+		},
+		"frontend/src/app/dashboard/settings/page.tsx": {
+			`title="监控任务"`,
 		},
 		"backend/test/fixtures/browser-acceptance/seed.sql": {
 			"Browser Acceptance RSS",

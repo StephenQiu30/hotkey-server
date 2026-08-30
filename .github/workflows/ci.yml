@@ -507,7 +507,7 @@ jobs:
           agent-browser wait --url '**/dashboard*'
 
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/settings"
-          agent-browser wait --text "热点监控"
+          agent-browser wait --text "监控任务"
           agent-browser find role button click --name "新建监控" --exact
           agent-browser find label "监控名称" fill "Browser Formal Monitor 2026"
           agent-browser find label "监控词" fill "BrowserMonitorIntent2026"
