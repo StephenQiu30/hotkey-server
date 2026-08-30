@@ -1,0 +1,88 @@
+{
+  "version": "hotkey-retention-rights-rehearsal-v1",
+  "status": "verified",
+  "approval": "automated_isolated_fixture",
+  "environment": "github-actions-isolated-retention-rehearsal",
+  "hardware": "ubuntu-latest-hosted-runner",
+  "git_revision": "f13080db4e47174b54e70c4068ed1c6a624a7526",
+  "goos": "linux",
+  "goarch": "amd64",
+  "logical_cpus": 4,
+  "isolated": true,
+  "production_egress_disabled": true,
+  "fixture_sha256": "6dba93d725e58b6808f28c99b8efe583bdce8ab2eb633be0053af230f95b3094",
+  "policy_version": 51,
+  "repetition_count": 2,
+  "fenced_at": "2026-08-30T02:48:46.791582Z",
+  "surfaces": {
+    "api_before_status": 200,
+    "api_after_status": 404,
+    "deep_link_before_status": 200,
+    "deep_link_after_status": 404,
+    "cache_control_before": "private, no-store",
+    "cache_control_after": "private, no-store",
+    "search_results_before": 1,
+    "search_results_after": 0,
+    "redis_ephemeral_cache_before": true,
+    "redis_ephemeral_cache_after": false,
+    "presigned_or_object_url_exposed": false
+  },
+  "storage": {
+    "minio_object_existed_before": true,
+    "minio_object_exists_after": false,
+    "minio_payload_sha256": "1ea41b4b4b1811f6060712474e8ae8390d77b709d0f3cb8d746c8ba361376824",
+    "vault_projection_existed_before": true,
+    "vault_projection_exists_after": false,
+    "vault_projection_sha256": "3042cfabbdc6eaa7196f4a2178be6c613e53221985b7a5c46206982d8471f61e",
+    "vault_manual_region_existed_before": true,
+    "vault_manual_region_exists_after": true,
+    "vault_manual_region_sha256": "aa09bef381bc4ece49161fdae84b899edc1a900eb78bd84361d8f61b0772c5ba"
+  },
+  "backup": {
+    "run_id": 1,
+    "run_sha256": "af9eb534fde69fc25ee08a368425573cae21ef398f21c258c71ea8d04400afeb",
+    "copy_sha256": "1fdcd779c49f25af3240e3abde6cac406a498f152f8cad05756b64ebcf99513f",
+    "external_executor": "isolated-filesystem-delete",
+    "copy_readable_before": true,
+    "copy_readable_after": false,
+    "disposition_id": 1,
+    "disposition_sha256": "6c4981559015558e98e36aa5b072571f59e750c11a5792966ad2a3543215f52d",
+    "independent_operators": true
+  },
+  "protected_facts": {
+    "before_ids": {
+      "outbox_event_id": 1,
+      "notification_id": 1,
+      "read_receipt_id": 1,
+      "delivery_attempt_id": 1
+    },
+    "after_ids": {
+      "outbox_event_id": 1,
+      "notification_id": 1,
+      "read_receipt_id": 1,
+      "delivery_attempt_id": 1
+    },
+    "before_fingerprint_sha256": "b9932f46f180096177a044039131c88edc6e25b6b9cf868213a07a80fc54611d",
+    "after_fingerprint_sha256": "b9932f46f180096177a044039131c88edc6e25b6b9cf868213a07a80fc54611d",
+    "vault_human_before_sha256": "aa09bef381bc4ece49161fdae84b899edc1a900eb78bd84361d8f61b0772c5ba",
+    "vault_human_after_sha256": "aa09bef381bc4ece49161fdae84b899edc1a900eb78bd84361d8f61b0772c5ba"
+  },
+  "deletion": {
+    "raw_claimed": 1,
+    "raw_deleted": 1,
+    "derived_claimed": 2,
+    "derived_deleted": 2,
+    "replay_raw_claimed": 0,
+    "replay_derived_claimed": 0
+  },
+  "reconciliation": {
+    "run_id": 1,
+    "scope": "all",
+    "examined_count": 3,
+    "healthy_count": 3,
+    "finding_count": 0,
+    "failed_count": 0,
+    "backup_dispositions_verified": 1
+  },
+  "differences": []
+}
