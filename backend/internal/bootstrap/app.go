@@ -297,7 +297,19 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 		readinessProvider := fx.Provide(func() httptransport.Readiness { return readiness })
 		if usesDatabase {
 			readinessProvider = fx.Provide(func(runtime *database.Runtime, metrics *observability.Metrics) httptransport.Readiness {
-				return newDatabaseReadiness(readiness, runtime, metrics)
+				return newRuntimeCompatibilityReadiness(
+					newDatabaseReadiness(readiness, runtime, metrics),
+					map[string]runtimeCompatibilityCheck{
+						"configuration": runtimeConfigurationCompatibilityCheck(cfg),
+						"schema": func(ctx context.Context) error {
+							_, err := database.Verify(ctx, runtime.Pool)
+							return err
+						},
+						"openapi": func(context.Context) error {
+							return verifyEmbeddedOpenAPICompatibility()
+						},
+					},
+				)
 			})
 		}
 		routerProvider := any(httptransport.NewRouter)

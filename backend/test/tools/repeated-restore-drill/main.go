@@ -12,6 +12,8 @@ import (
 	"io"
 	"io/fs"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
@@ -21,10 +23,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/StephenQiu30/hotkey-server/backend/internal/bootstrap"
 	knowledgedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/domain"
+	platformconfig "github.com/StephenQiu30/hotkey-server/backend/internal/platform/config"
 	platformdatabase "github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
+	httptransport "github.com/StephenQiu30/hotkey-server/backend/internal/platform/http"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/observability"
+	"github.com/gin-gonic/gin"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"go.uber.org/zap"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -74,19 +82,35 @@ type assetComparison struct {
 }
 
 type restoreResult struct {
-	Role                      string            `json:"role"`
-	IndependentComposeProject bool              `json:"independent_compose_project"`
-	NewVolumes                []string          `json:"new_volumes"`
-	SameBackupSHA256          string            `json:"same_backup_sha256"`
-	SchemaCompatible          bool              `json:"schema_compatible"`
-	OpenAPICompatible         bool              `json:"openapi_compatible"`
-	RPOSeconds                float64           `json:"rpo_seconds"`
-	RTOSeconds                float64           `json:"rto_seconds"`
-	CandidateRPOMet           bool              `json:"candidate_rpo_met"`
-	CandidateRTOMet           bool              `json:"candidate_rto_met"`
-	CutoverPermitted          bool              `json:"cutover_permitted"`
-	Assets                    []assetComparison `json:"assets"`
-	Differences               []string          `json:"differences"`
+	Role                      string                    `json:"role"`
+	IndependentComposeProject bool                      `json:"independent_compose_project"`
+	NewVolumes                []string                  `json:"new_volumes"`
+	SameBackupSHA256          string                    `json:"same_backup_sha256"`
+	SchemaCompatible          bool                      `json:"schema_compatible"`
+	OpenAPICompatible         bool                      `json:"openapi_compatible"`
+	RPOSeconds                float64                   `json:"rpo_seconds"`
+	RTOSeconds                float64                   `json:"rto_seconds"`
+	CandidateRPOMet           bool                      `json:"candidate_rpo_met"`
+	CandidateRTOMet           bool                      `json:"candidate_rto_met"`
+	CutoverPermitted          bool                      `json:"cutover_permitted"`
+	Assets                    []assetComparison         `json:"assets"`
+	ApplicationRollback       applicationRollbackResult `json:"application_rollback"`
+	Differences               []string                  `json:"differences"`
+}
+
+type readinessFixtureResult struct {
+	Contract                 string `json:"contract"`
+	ReadinessStatus          int    `json:"readiness_status"`
+	AdmittedBusinessRequests int    `json:"admitted_business_requests"`
+	MutationStarted          bool   `json:"mutation_started"`
+}
+
+type applicationRollbackResult struct {
+	IncompatibleInstances              []readinessFixtureResult `json:"incompatible_instances"`
+	CompatibleReadinessStatus          int                      `json:"compatible_readiness_status"`
+	CompatibleAdmittedBusinessRequests int                      `json:"compatible_admitted_business_requests"`
+	Assets                             []assetComparison        `json:"assets"`
+	Differences                        []string                 `json:"differences"`
 }
 
 type failureResult struct {
@@ -547,6 +571,15 @@ func executeRestore(ctx context.Context, cfg config, runID, role, backupRoot str
 	if len(differences) != 0 {
 		return restoreResult{}, fmt.Errorf("%s restore has unexplained differences", role)
 	}
+	rollback, err := executeApplicationRollbackDrill(
+		ctx,
+		project,
+		actual,
+		filepath.Join(filepath.Dir(backupRoot), role+"-rollback-vault-export"),
+	)
+	if err != nil {
+		return restoreResult{}, err
+	}
 	rpo := incidentCutoffAt.Sub(manifest.RecoveryPointAt)
 	rto := completedAt.Sub(startedAt)
 	return restoreResult{
@@ -554,8 +587,136 @@ func executeRestore(ctx context.Context, cfg config, runID, role, backupRoot str
 		NewVolumes: []string{"postgres_data", "minio_data", "vault_data"}, SameBackupSHA256: manifest.PackageSHA256,
 		SchemaCompatible: true, OpenAPICompatible: true, RPOSeconds: seconds(rpo), RTOSeconds: seconds(rto),
 		CandidateRPOMet: rpo <= candidateRPO, CandidateRTOMet: rto <= candidateRTO,
-		CutoverPermitted: true, Assets: assets, Differences: []string{},
+		CutoverPermitted: true, Assets: assets, ApplicationRollback: rollback, Differences: []string{},
 	}, nil
+}
+
+func executeApplicationRollbackDrill(ctx context.Context, project *composeProject, before map[string]inventory, vaultExport string) (applicationRollbackResult, error) {
+	gin.SetMode(gin.ReleaseMode)
+	runtime, err := platformdatabase.Open(ctx, project.dsn)
+	if err != nil {
+		return applicationRollbackResult{}, errors.New("open rollback readiness database")
+	}
+	defer runtime.Close()
+
+	cfg := platformconfig.Default()
+	cfg.Environment = "testing"
+	cfg.Role = "api"
+	cfg.DatabaseURL = project.dsn
+	cfg.Authentication.JWTSecret = "rollback-jwt-secret-0123456789abcdef"
+	cfg.Authentication.VerificationHMACSecret = "rollback-hmac-secret-0123456789abcdef"
+	cfg.Authentication.AllowedOrigins = []string{"http://127.0.0.1:8010"}
+	checks := map[string]bootstrap.RuntimeCompatibilityCheck{
+		"configuration": bootstrap.RuntimeConfigurationCompatibilityCheck(cfg),
+		"schema": func(ctx context.Context) error {
+			_, err := platformdatabase.Verify(ctx, runtime.Pool)
+			return err
+		},
+		"openapi": func(context.Context) error {
+			return bootstrap.VerifyEmbeddedOpenAPICompatibility()
+		},
+	}
+	fixtures := make([]readinessFixtureResult, 0, 3)
+	for _, contract := range []string{"schema", "openapi", "configuration"} {
+		incompatible := cloneRuntimeCompatibilityChecks(checks)
+		incompatible[contract] = func(context.Context) error {
+			return errors.New("compatibility sentinel must not leak")
+		}
+		status, admitted, err := probeCompatibilityAdmission(ctx, cfg, incompatible)
+		if err != nil {
+			return applicationRollbackResult{}, err
+		}
+		fixtures = append(fixtures, readinessFixtureResult{
+			Contract: contract, ReadinessStatus: status, AdmittedBusinessRequests: admitted, MutationStarted: false,
+		})
+	}
+	compatibleStatus, compatibleAdmitted, err := probeCompatibilityAdmission(ctx, cfg, checks)
+	if err != nil {
+		return applicationRollbackResult{}, err
+	}
+	after, err := collectAssets(ctx, project, vaultExport)
+	if err != nil {
+		return applicationRollbackResult{}, err
+	}
+	assets, differences := compareAssets(before, after)
+	result := applicationRollbackResult{
+		IncompatibleInstances:              fixtures,
+		CompatibleReadinessStatus:          compatibleStatus,
+		CompatibleAdmittedBusinessRequests: compatibleAdmitted,
+		Assets:                             assets,
+		Differences:                        differences,
+	}
+	if err := validateApplicationRollbackEvidence(result); err != nil {
+		return applicationRollbackResult{}, err
+	}
+	return result, nil
+}
+
+func cloneRuntimeCompatibilityChecks(source map[string]bootstrap.RuntimeCompatibilityCheck) map[string]bootstrap.RuntimeCompatibilityCheck {
+	result := make(map[string]bootstrap.RuntimeCompatibilityCheck, len(source))
+	for name, check := range source {
+		result[name] = check
+	}
+	return result
+}
+
+func probeCompatibilityAdmission(ctx context.Context, cfg platformconfig.Config, checks map[string]bootstrap.RuntimeCompatibilityCheck) (int, int, error) {
+	metrics, err := observability.NewMetrics()
+	if err != nil {
+		return 0, 0, errors.New("create rollback readiness metrics")
+	}
+	telemetry, err := observability.NewTelemetry(cfg)
+	if err != nil {
+		return 0, 0, errors.New("create rollback readiness telemetry")
+	}
+	defer telemetry.Shutdown(ctx)
+	readiness := bootstrap.NewRuntimeCompatibilityReadiness(
+		httptransport.ReadinessFunc(func(context.Context) error { return nil }),
+		checks,
+	)
+	router := httptransport.NewRouter(readiness, metrics, telemetry, zap.NewNop(), cfg)
+	readyResponse := httptest.NewRecorder()
+	router.ServeHTTP(readyResponse, httptest.NewRequest(http.MethodGet, "/readyz", nil).WithContext(ctx))
+	if strings.Contains(readyResponse.Body.String(), "compatibility sentinel") {
+		return 0, 0, errors.New("rollback readiness leaked an internal compatibility error")
+	}
+	admitted := 0
+	if readyResponse.Code == http.StatusOK {
+		businessResponse := httptest.NewRecorder()
+		router.ServeHTTP(businessResponse, httptest.NewRequest(http.MethodGet, "/api/v1/capabilities", nil).WithContext(ctx))
+		if businessResponse.Code != http.StatusOK {
+			return 0, 0, errors.New("compatible rollback business request failed")
+		}
+		admitted = 1
+	}
+	return readyResponse.Code, admitted, nil
+}
+
+func validateApplicationRollbackEvidence(result applicationRollbackResult) error {
+	wanted := map[string]bool{"schema": false, "openapi": false, "configuration": false}
+	if len(result.IncompatibleInstances) != len(wanted) {
+		return errors.New("rollback readiness fixture matrix is incomplete")
+	}
+	for _, fixture := range result.IncompatibleInstances {
+		seen, found := wanted[fixture.Contract]
+		if !found || seen || fixture.ReadinessStatus != http.StatusServiceUnavailable || fixture.AdmittedBusinessRequests != 0 || fixture.MutationStarted {
+			return errors.New("incompatible instance was not stopped before traffic")
+		}
+		wanted[fixture.Contract] = true
+	}
+	if result.CompatibleReadinessStatus != http.StatusOK || result.CompatibleAdmittedBusinessRequests != 1 || len(result.Differences) != 0 {
+		return errors.New("compatible application rollback did not recover cleanly")
+	}
+	if len(result.Assets) != len(assetNames) {
+		return errors.New("application rollback asset matrix is incomplete")
+	}
+	for index, name := range assetNames {
+		asset := result.Assets[index]
+		if asset.Name != name || asset.ExpectedCount != asset.ActualCount || asset.ExpectedSHA256 == "" || asset.ExpectedSHA256 != asset.ActualSHA256 || asset.ExpectedVersionedCount != asset.ActualVersionedCount {
+			return errors.New("application rollback changed protected assets")
+		}
+	}
+	return nil
 }
 
 func executeReconciliationFailure(ctx context.Context, cfg config, runID, backupRoot string, manifest backupManifest, schemaSHA, openAPISHA string) (failureResult, error) {

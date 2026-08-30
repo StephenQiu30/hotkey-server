@@ -142,3 +142,43 @@ func TestRepeatedRestoreEvidenceCannotOverwriteAnExistingRun(t *testing.T) {
 		t.Fatal("writeExclusiveJSON(second) overwrote immutable evidence")
 	}
 }
+
+func TestApplicationRollbackEvidenceRequiresZeroTrafficAndUnchangedAssets(t *testing.T) {
+	t.Parallel()
+
+	assets := []assetComparison{
+		{Name: "postgres_facts", ExpectedCount: 2, ActualCount: 2, ExpectedSHA256: strings.Repeat("a", 64), ActualSHA256: strings.Repeat("a", 64)},
+		{Name: "minio_evidence", ExpectedCount: 2, ActualCount: 2, ExpectedSHA256: strings.Repeat("b", 64), ActualSHA256: strings.Repeat("b", 64)},
+		{Name: "vault_all_files", ExpectedCount: 2, ActualCount: 2, ExpectedSHA256: strings.Repeat("c", 64), ActualSHA256: strings.Repeat("c", 64)},
+		{Name: "vault_manual_regions", ExpectedCount: 2, ActualCount: 2, ExpectedSHA256: strings.Repeat("d", 64), ActualSHA256: strings.Repeat("d", 64)},
+		{Name: "river_jobs_attempts", ExpectedCount: 2, ActualCount: 2, ExpectedSHA256: strings.Repeat("e", 64), ActualSHA256: strings.Repeat("e", 64)},
+	}
+	valid := applicationRollbackResult{
+		IncompatibleInstances: []readinessFixtureResult{
+			{Contract: "schema", ReadinessStatus: 503, AdmittedBusinessRequests: 0, MutationStarted: false},
+			{Contract: "openapi", ReadinessStatus: 503, AdmittedBusinessRequests: 0, MutationStarted: false},
+			{Contract: "configuration", ReadinessStatus: 503, AdmittedBusinessRequests: 0, MutationStarted: false},
+		},
+		CompatibleReadinessStatus:           200,
+		CompatibleAdmittedBusinessRequests: 1,
+		Assets:                              assets,
+		Differences:                         []string{},
+	}
+	if err := validateApplicationRollbackEvidence(valid); err != nil {
+		t.Fatalf("validateApplicationRollbackEvidence(valid) error = %v", err)
+	}
+
+	invalid := valid
+	invalid.IncompatibleInstances = append([]readinessFixtureResult(nil), valid.IncompatibleInstances...)
+	invalid.IncompatibleInstances[1].AdmittedBusinessRequests = 1
+	if err := validateApplicationRollbackEvidence(invalid); err == nil {
+		t.Fatal("validateApplicationRollbackEvidence accepted traffic for an incompatible instance")
+	}
+
+	invalid = valid
+	invalid.Assets = append([]assetComparison(nil), valid.Assets...)
+	invalid.Assets[0].ActualSHA256 = strings.Repeat("f", 64)
+	if err := validateApplicationRollbackEvidence(invalid); err == nil {
+		t.Fatal("validateApplicationRollbackEvidence accepted a destructive rollback")
+	}
+}
