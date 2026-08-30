@@ -564,9 +564,10 @@ jobs:
           agent-browser eval --json "({role:'editor',allowed_surface:sessionStorage.getItem('hotkeyRoleAllowed')==='true',denied_surface:document.body.innerText.includes('权限不足'),navigation_policy:sessionStorage.getItem('hotkeyNavigationPolicy')==='true'})" > /tmp/hotkey-role-editor.json
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-role-editor.json
 
-          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
-          agent-browser cookies clear
-          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard"
+          agent-browser find role button click --name "账户菜单" --exact
+          agent-browser find role menuitem click --name "退出登录" --exact
+          agent-browser wait --url '**/login*'
           agent-browser wait --text "进入工作台"
           agent-browser find label "邮箱" fill "$HOTKEY_BROWSER_ANALYST_EMAIL"
           agent-browser find label "密码" fill "$HOTKEY_BROWSER_PASSWORD"
@@ -590,9 +591,10 @@ jobs:
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-knowledge-permission.json
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-role-analyst.json
 
-          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
-          agent-browser cookies clear
-          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard"
+          agent-browser find role button click --name "账户菜单" --exact
+          agent-browser find role menuitem click --name "退出登录" --exact
+          agent-browser wait --url '**/login*'
           agent-browser wait --text "进入工作台"
           agent-browser find label "邮箱" fill "$HOTKEY_BROWSER_VIEWER_EMAIL"
           agent-browser find label "密码" fill "$HOTKEY_BROWSER_PASSWORD"
@@ -604,9 +606,10 @@ jobs:
           agent-browser eval --json "({role:'viewer',allowed_surface:sessionStorage.getItem('hotkeyRoleAllowed')==='true',denied_surface:document.body.innerText.includes('权限不足'),navigation_policy:sessionStorage.getItem('hotkeyNavigationPolicy')==='true'})" > /tmp/hotkey-role-viewer.json
           agent-browser a11y --tags wcag2a,wcag2aa --json > /tmp/hotkey-a11y-role-viewer.json
 
-          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
-          agent-browser cookies clear
-          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/login"
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard"
+          agent-browser find role button click --name "账户菜单" --exact
+          agent-browser find role menuitem click --name "退出登录" --exact
+          agent-browser wait --url '**/login*'
           agent-browser wait --text "进入工作台"
           agent-browser find label "邮箱" fill "$HOTKEY_SECRET_ADMIN_EMAIL"
           agent-browser find label "密码" fill "$HOTKEY_BROWSER_PASSWORD"
