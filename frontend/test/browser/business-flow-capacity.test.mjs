@@ -18,6 +18,7 @@ describe("M4 business-flow capacity evidence", () => {
       fetch: fixture.fetch,
       nowMicros: fixture.nowMicros,
       sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+      observeRuntime: runtimeObserverFixture(),
     });
 
     expect(report).toMatchObject({
@@ -27,6 +28,19 @@ describe("M4 business-flow capacity evidence", () => {
       run_id: "m4-capacity-fixture",
       workload: { warmups: 1, samples: 3, concurrency: 1, cache_state: "warm", inter_flow_interval_millis: 10_000 },
       correlation: { strategy: "x-request-id", observed: 37, unique: 37 },
+      runtime_observation: {
+        strategy: "after_each_measured_stage",
+        samples: 15,
+        resources: {
+          api: { samples: 15, memory_limit_bytes: 17179869184, max_cpu_percent: 13.5, max_memory_used_bytes: 134217728, max_memory_percent: 0.8, max_pids: 18 },
+        },
+        projection_backlog: {
+          notification: { samples: 15, max_available: 2, max_running: 1, max_lag_seconds: 3.5, final_available: 0, final_running: 0, final_lag_seconds: 0 },
+          report: { samples: 15, max_available: 0, max_running: 0, max_lag_seconds: 0, final_available: 0, final_running: 0, final_lag_seconds: 0 },
+          vault: { samples: 15, max_available: 1, max_running: 1, max_lag_seconds: 1.25, final_available: 0, final_running: 0, final_lag_seconds: 0 },
+          search: { samples: 15, max_available: 1, max_running: 0, max_lag_seconds: 0.5, final_available: 0, final_running: 0, final_lag_seconds: 0 },
+        },
+      },
       errors: 0,
     });
     expect(Object.keys(report.stages)).toEqual([
@@ -46,6 +60,12 @@ describe("M4 business-flow capacity evidence", () => {
     }
     expect(fixture.completedFlows()).toBe(4);
     expect(sleeps).toEqual([10_000, 10_000, 10_000]);
+    expect(report.runtime_observation.raw_samples).toHaveLength(15);
+    expect(report.runtime_observation.raw_samples.at(-1)).toMatchObject({
+      sequence: 15,
+      stage: "search_visibility",
+      projection_backlog: { notification: { available: 0, running: 0, lag_seconds: 0 } },
+    });
   });
 
   it("writes one exclusive sanitized artifact without persisting credentials or fixture sentinels", async () => {
@@ -56,6 +76,7 @@ describe("M4 business-flow capacity evidence", () => {
     const report = await runBusinessFlowCapacity(config, {
       fetch: fixture.fetch,
       nowMicros: fixture.nowMicros,
+      observeRuntime: runtimeObserverFixture(),
     });
     const root = mkdtempSync(join(tmpdir(), "hotkey-m4-capacity-"));
     const output = join(root, "capacity.json");
@@ -87,11 +108,30 @@ describe("M4 business-flow capacity evidence", () => {
       (config) => { config.samples = 101; },
       (config) => { config.intervalMillis = 60_001; },
       (config) => { config.runID = "unsafe run id"; },
+      (config) => { config.filesystem = ""; },
     ]) {
       const config = validConfig();
       mutate(config);
       expect(() => validateBusinessFlowCapacityConfig(config)).toThrow();
     }
+  });
+
+  it("fails closed when required resource or projection-backlog observations are unavailable", async () => {
+    const fixture = newCapacityHTTPFixture();
+    const config = validConfig();
+    config.warmups = 0;
+    config.samples = 1;
+
+    await expect(runBusinessFlowCapacity(config, {
+      fetch: fixture.fetch,
+      nowMicros: fixture.nowMicros,
+    })).rejects.toThrow(/runtime observer/i);
+
+    await expect(runBusinessFlowCapacity(config, {
+      fetch: newCapacityHTTPFixture().fetch,
+      nowMicros: newCapacityHTTPFixture().nowMicros,
+      observeRuntime: async () => ({ resources: {}, projection_backlog: {} }),
+    })).rejects.toThrow(/runtime observation/i);
   });
 });
 
@@ -104,12 +144,38 @@ function validConfig() {
     runID: "m4-capacity-fixture",
     environment: "isolated-fixture",
     hardware: "4 cpu 8 GiB local SSD",
+    filesystem: "ext4 workspace; overlay2 Docker storage",
     gitRevision: "0123456789abcdef0123456789abcdef01234567",
     confirmIsolated: true,
     productionEgressDisabled: true,
     warmups: 1,
     samples: 3,
     intervalMillis: 0,
+  };
+}
+
+function runtimeObserverFixture() {
+  let sequence = 0;
+  return async () => {
+    sequence++;
+    const final = sequence === 15;
+    return {
+      resources: {
+        api: {
+          cpu_percent: 12.5 + sequence / 15,
+          memory_used_bytes: sequence === 15 ? 134217728 : 125829120 + sequence * 500000,
+          memory_limit_bytes: 17179869184,
+          memory_percent: 0.7 + sequence / 150,
+          pids: 17 + (sequence === 8 ? 1 : 0),
+        },
+      },
+      projection_backlog: {
+        notification: { available: final ? 0 : sequence === 3 ? 2 : 1, running: final ? 0 : sequence === 4 ? 1 : 0, lag_seconds: final ? 0 : sequence === 3 ? 3.5 : 0.25 },
+        report: { available: 0, running: 0, lag_seconds: 0 },
+        vault: { available: final ? 0 : sequence === 8 ? 1 : 0, running: final ? 0 : sequence === 9 ? 1 : 0, lag_seconds: final ? 0 : sequence === 8 ? 1.25 : 0 },
+        search: { available: final ? 0 : sequence === 12 ? 1 : 0, running: 0, lag_seconds: final ? 0 : sequence === 12 ? 0.5 : 0 },
+      },
+    };
   };
 }
 

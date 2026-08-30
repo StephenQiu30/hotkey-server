@@ -3,6 +3,8 @@ import { writeFileSync } from "node:fs";
 const version = "hotkey-m4-business-flow-capacity-v1";
 const gitRevisionPattern = /^[0-9a-f]{40}$/;
 const runIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+const projectionStages = ["notification", "report", "vault", "search"];
+const resourceNamePattern = /^[a-z][a-z0-9_]{0,31}$/;
 
 export function validateBusinessFlowCapacityConfig(config) {
   if (config == null || typeof config !== "object") throw new Error("M4 capacity configuration is required");
@@ -28,6 +30,9 @@ export function validateBusinessFlowCapacityConfig(config) {
   if (typeof config.hardware !== "string" || config.hardware.trim() !== config.hardware || config.hardware.length < 3 || config.hardware.length > 256) {
     throw new Error("M4 capacity hardware description is invalid");
   }
+  if (typeof config.filesystem !== "string" || config.filesystem.trim() !== config.filesystem || config.filesystem.length < 3 || config.filesystem.length > 256) {
+    throw new Error("M4 capacity filesystem description is invalid");
+  }
   if (!gitRevisionPattern.test(config.gitRevision ?? "") || config.confirmIsolated !== true || config.productionEgressDisabled !== true) {
     throw new Error("M4 capacity requires a fixed revision and isolated egress-disabled confirmation");
   }
@@ -47,13 +52,16 @@ export async function runBusinessFlowCapacity(config, dependencies = {}) {
   const fetchImplementation = dependencies.fetch ?? globalThis.fetch;
   const nowMicros = dependencies.nowMicros ?? (() => Number(process.hrtime.bigint() / 1000n));
   const sleep = dependencies.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const observeRuntime = dependencies.observeRuntime;
   if (typeof fetchImplementation !== "function" || typeof nowMicros !== "function" || typeof sleep !== "function") {
     throw new Error("M4 capacity runtime is unavailable");
   }
+  if (typeof observeRuntime !== "function") throw new Error("M4 capacity runtime observer is required");
   const apiOrigin = config.apiOrigin.replace(/\/$/, "");
   const requestIDs = new Set();
   let requestSequence = 0;
   const durations = Object.fromEntries(stageNames().map((stage) => [stage, []]));
+  const runtimeObservations = [];
 
   const request = async (path, { method = "GET", token, body, stage, iteration }) => {
     const operation = ++requestSequence;
@@ -101,6 +109,8 @@ export async function runBusinessFlowCapacity(config, dependencies = {}) {
       const elapsed = nowMicros() - started;
       if (!Number.isSafeInteger(elapsed) || elapsed < 0) throw new Error(`M4 capacity ${stage} clock is invalid`);
       durations[stage].push(elapsed);
+      const observation = validateRuntimeObservation(await observeRuntime({ stage, iteration: iteration - config.warmups }));
+      runtimeObservations.push({ sequence: runtimeObservations.length + 1, stage, ...observation });
       return result;
     };
 
@@ -182,6 +192,7 @@ export async function runBusinessFlowCapacity(config, dependencies = {}) {
     git_revision: config.gitRevision,
     environment: config.environment,
     hardware: config.hardware,
+    filesystem: config.filesystem,
     run_id: config.runID,
     percentile_algorithm: "nearest-rank-ceiling",
     workload: {
@@ -194,12 +205,14 @@ export async function runBusinessFlowCapacity(config, dependencies = {}) {
     },
     stages: Object.fromEntries(stageNames().map((stage) => [stage, summarizeDurations(durations[stage])])),
     correlation: { strategy: "x-request-id", observed: requestIDs.size, unique: requestIDs.size },
+    runtime_observation: summarizeRuntimeObservations(runtimeObservations),
     privacy: {
-      retained_fields: ["safe_run_id", "git_revision", "bounded_workload", "duration_micros", "request_correlation_counts"],
-      excluded_fields: ["access_token", "authorization", "email", "password", "report_content", "query_text", "vault_path", "host_path"],
+      retained_fields: ["safe_run_id", "git_revision", "bounded_workload", "duration_micros", "request_correlation_counts", "bounded_resource_samples", "projection_backlog_counts"],
+      excluded_fields: ["access_token", "authorization", "email", "password", "report_content", "query_text", "vault_path", "host_path", "container_name", "raw_metrics"],
       sentinel_leaks: 0,
     },
     exclusions: ["external_provider_delivery", "cold_cache", "production_hardware", "production_traffic"],
+    differences: [],
     errors: 0,
   };
 }
@@ -238,6 +251,96 @@ function nearestRank(sorted, percentile) {
 
 function stageNames() {
   return ["report_build", "notification_visibility", "report_publication", "vault_publication", "search_visibility"];
+}
+
+function validateRuntimeObservation(value) {
+  if (value == null || typeof value !== "object" || Array.isArray(value) || value.resources == null || value.projection_backlog == null) {
+    throw new Error("M4 capacity runtime observation is invalid");
+  }
+  const resources = {};
+  for (const [name, sample] of Object.entries(value.resources)) {
+    if (!resourceNamePattern.test(name) || sample == null || typeof sample !== "object" || Array.isArray(sample)) {
+      throw new Error("M4 capacity runtime observation resource is invalid");
+    }
+    for (const field of ["cpu_percent", "memory_used_bytes", "memory_limit_bytes", "memory_percent", "pids"]) {
+      if (!Number.isFinite(sample[field]) || sample[field] < 0) throw new Error("M4 capacity runtime observation resource is invalid");
+    }
+    if (!Number.isSafeInteger(sample.memory_used_bytes) || !Number.isSafeInteger(sample.memory_limit_bytes) || sample.memory_limit_bytes <= 0 ||
+        sample.memory_used_bytes > sample.memory_limit_bytes || !Number.isSafeInteger(sample.pids)) {
+      throw new Error("M4 capacity runtime observation resource is invalid");
+    }
+    resources[name] = {
+      cpu_percent: sample.cpu_percent,
+      memory_used_bytes: sample.memory_used_bytes,
+      memory_limit_bytes: sample.memory_limit_bytes,
+      memory_percent: sample.memory_percent,
+      pids: sample.pids,
+    };
+  }
+  if (Object.keys(resources).length === 0) throw new Error("M4 capacity runtime observation requires resource samples");
+
+  const backlog = {};
+  if (Object.keys(value.projection_backlog).sort().join(",") !== [...projectionStages].sort().join(",")) {
+    throw new Error("M4 capacity runtime observation projection backlog is incomplete");
+  }
+  for (const stage of projectionStages) {
+    const sample = value.projection_backlog[stage];
+    if (sample == null || !Number.isSafeInteger(sample.available) || sample.available < 0 ||
+        !Number.isSafeInteger(sample.running) || sample.running < 0 || !Number.isFinite(sample.lag_seconds) || sample.lag_seconds < 0) {
+      throw new Error("M4 capacity runtime observation projection backlog is invalid");
+    }
+    backlog[stage] = { available: sample.available, running: sample.running, lag_seconds: sample.lag_seconds };
+  }
+  return { resources, projection_backlog: backlog };
+}
+
+function summarizeRuntimeObservations(samples) {
+  if (!Array.isArray(samples) || samples.length === 0) throw new Error("M4 capacity runtime observations are required");
+  const expectedResources = Object.keys(samples[0].resources).sort();
+  const resources = {};
+  for (const name of expectedResources) {
+    const values = samples.map((sample) => {
+      if (Object.keys(sample.resources).sort().join(",") !== expectedResources.join(",") || sample.resources[name] == null) {
+        throw new Error("M4 capacity runtime resource set changed during measurement");
+      }
+      return sample.resources[name];
+    });
+    const limits = new Set(values.map((value) => value.memory_limit_bytes));
+    if (limits.size !== 1) throw new Error("M4 capacity runtime memory limit changed during measurement");
+    resources[name] = {
+      samples: values.length,
+      memory_limit_bytes: values[0].memory_limit_bytes,
+      max_cpu_percent: boundedDecimal(Math.max(...values.map((value) => value.cpu_percent))),
+      max_memory_used_bytes: Math.max(...values.map((value) => value.memory_used_bytes)),
+      max_memory_percent: boundedDecimal(Math.max(...values.map((value) => value.memory_percent))),
+      max_pids: Math.max(...values.map((value) => value.pids)),
+    };
+  }
+  const projectionBacklog = {};
+  const final = samples.at(-1);
+  for (const stage of projectionStages) {
+    const values = samples.map((sample) => sample.projection_backlog[stage]);
+    projectionBacklog[stage] = {
+      samples: values.length,
+      max_available: Math.max(...values.map((value) => value.available)),
+      max_running: Math.max(...values.map((value) => value.running)),
+      max_lag_seconds: boundedDecimal(Math.max(...values.map((value) => value.lag_seconds))),
+      final_available: final.projection_backlog[stage].available,
+      final_running: final.projection_backlog[stage].running,
+      final_lag_seconds: boundedDecimal(final.projection_backlog[stage].lag_seconds),
+    };
+  }
+  return {
+    strategy: "after_each_measured_stage",
+    samples: samples.length,
+    resources,
+    projection_backlog: projectionBacklog,
+    raw_samples: samples,
+  };
+}
+
+function boundedDecimal(value) {
+  return Number(value.toFixed(6));
 }
 
 function positiveID(value) {

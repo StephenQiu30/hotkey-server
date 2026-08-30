@@ -3,6 +3,7 @@ import {
   runBusinessFlowCapacity,
   writeBusinessFlowCapacityReport,
 } from "./business-flow-capacity.mjs";
+import { createBusinessFlowRuntimeObserver } from "./business-flow-runtime-observation.mjs";
 
 const config = {
   apiOrigin: required("HOTKEY_BROWSER_API_ORIGIN"),
@@ -12,6 +13,7 @@ const config = {
   runID: required("HOTKEY_M4_CAPACITY_RUN_ID"),
   environment: required("HOTKEY_M4_CAPACITY_ENVIRONMENT"),
   hardware: required("HOTKEY_M4_CAPACITY_HARDWARE"),
+  filesystem: required("HOTKEY_M4_CAPACITY_FILESYSTEM"),
   gitRevision: required("HOTKEY_M4_CAPACITY_GIT_REVISION"),
   confirmIsolated: boolean("HOTKEY_M4_CAPACITY_CONFIRM_ISOLATED"),
   productionEgressDisabled: boolean("HOTKEY_M4_CAPACITY_PRODUCTION_EGRESS_DISABLED"),
@@ -19,7 +21,12 @@ const config = {
   samples: integer("HOTKEY_M4_CAPACITY_SAMPLES", 12),
   intervalMillis: integer("HOTKEY_M4_CAPACITY_INTER_FLOW_INTERVAL_MILLIS", 31_000),
 };
-const report = await runBusinessFlowCapacity(config);
+const report = await runBusinessFlowCapacity(config, {
+  observeRuntime: createBusinessFlowRuntimeObserver({
+    apiOrigin: config.apiOrigin,
+    containerPrefix: required("HOTKEY_CONTAINER_PREFIX"),
+  }),
+});
 writeBusinessFlowCapacityReport(required("HOTKEY_M4_CAPACITY_OUTPUT"), report, [
   config.email,
   config.password,
