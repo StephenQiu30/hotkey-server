@@ -643,13 +643,41 @@ jobs:
     needs: [backend-static-acceptance, backend-acceptance, backend-vulnerability-acceptance, worker-recovery-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance, browser-smoke-acceptance]
 
     steps:
-      - name: Verify every required acceptance gate
-        run: |
-          test "${{ needs.backend-static-acceptance.result }}" = "success"
-          test "${{ needs.backend-acceptance.result }}" = "success"
-          test "${{ needs.backend-vulnerability-acceptance.result }}" = "success"
-          test "${{ needs.worker-recovery-acceptance.result }}" = "success"
-          test "${{ needs.frontend-acceptance.result }}" = "success"
-          test "${{ needs.agent-acceptance.result }}" = "success"
-          test "${{ needs.compose-acceptance.result }}" = "success"
-          test "${{ needs.browser-smoke-acceptance.result }}" = "success"
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Assess RC evidence and verify every required technical gate
+        working-directory: backend
+        env:
+          HOTKEY_RC_REPOSITORY_ROOT: ${{ github.workspace }}
+          HOTKEY_RC_ASSESSMENT_OUTPUT: ${{ runner.temp }}/rc-candidate-assessment-${{ github.run_id }}-${{ github.run_attempt }}.json
+          HOTKEY_RC_ASSESSMENT_ENVIRONMENT: github-actions-rc-candidate
+          HOTKEY_RC_ASSESSMENT_HARDWARE: ubuntu-latest-hosted-runner
+          HOTKEY_RC_ASSESSMENT_GIT_REVISION: ${{ github.sha }}
+          HOTKEY_RC_ASSESSMENT_CI_RUN_ID: ${{ github.run_id }}
+          HOTKEY_RC_ASSESSMENT_PRODUCTION_EGRESS_DISABLED: "true"
+          HOTKEY_RC_GATE_BACKEND_STATIC: ${{ needs.backend-static-acceptance.result }}
+          HOTKEY_RC_GATE_BACKEND_RUNTIME: ${{ needs.backend-acceptance.result }}
+          HOTKEY_RC_GATE_BACKEND_VULNERABILITY: ${{ needs.backend-vulnerability-acceptance.result }}
+          HOTKEY_RC_GATE_WORKER_RECOVERY: ${{ needs.worker-recovery-acceptance.result }}
+          HOTKEY_RC_GATE_FRONTEND: ${{ needs.frontend-acceptance.result }}
+          HOTKEY_RC_GATE_PYTHON_AGENT: ${{ needs.agent-acceptance.result }}
+          HOTKEY_RC_GATE_COMPOSE: ${{ needs.compose-acceptance.result }}
+          HOTKEY_RC_GATE_BROWSER_BUSINESS_FLOW: ${{ needs.browser-smoke-acceptance.result }}
+        run: make rc-candidate-assessment
+
+      - name: Upload sanitized RC candidate assessment
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rc-candidate-assessment-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ runner.temp }}/rc-candidate-assessment-${{ github.run_id }}-${{ github.run_attempt }}.json

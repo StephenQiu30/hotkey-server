@@ -2,7 +2,7 @@ GO := go
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test ci-test worker-recovery-acceptance river-fault-rehearsal-acceptance retention-rehearsal-acceptance m4-fault-recovery-acceptance joint-recovery-acceptance repeated-restore-rehearsal-acceptance source-resource-limit-acceptance source-admission-matrix-acceptance source-management-audit-acceptance source-live-smoke request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-core-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
+.PHONY: test-env minio-test-env openapi openapi-check vet test ci-test worker-recovery-acceptance river-fault-rehearsal-acceptance retention-rehearsal-acceptance m4-fault-recovery-acceptance joint-recovery-acceptance repeated-restore-rehearsal-acceptance rc-candidate-assessment source-resource-limit-acceptance source-admission-matrix-acceptance source-management-audit-acceptance source-live-smoke request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-core-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
 
 test-env:
 	@test -n "$(HOTKEY_TEST_DSN)" || { printf '%s\n' 'HOTKEY_TEST_DSN is required for backend acceptance' >&2; exit 1; }
@@ -272,6 +272,9 @@ joint-recovery-acceptance: test-env minio-test-env
 
 repeated-restore-rehearsal-acceptance:
 	$(GO) run ./test/tools/repeated-restore-drill
+
+rc-candidate-assessment:
+	$(GO) run ./test/tools/rc-candidate-assessment
 
 vulnerability:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
