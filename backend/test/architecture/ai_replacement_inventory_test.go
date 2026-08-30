@@ -136,9 +136,10 @@ func TestAgentQualityFrameworkCannotMasqueradeAsLiveApproval(t *testing.T) {
 	command := readRepositoryFile(t, root, "internal/bootstrap/agent_quality_command.go")
 	evaluator := readRepositoryFile(t, root, "internal/modules/intelligence/application/shadow_quality.go")
 	fixture := readRepositoryFile(t, root, "test/fixtures/agent-shadow/v1/golden-dataset.json")
+	annotationGuide := readRepositoryFile(t, root, "test/fixtures/agent-shadow/v1/annotation-guide.md")
 	plan := readRepositoryFile(t, repository, "docs/plans/003-智能研判事件热度与人工治理计划.md")
 	acceptance := readRepositoryFile(t, repository, "docs/acceptance/003-智能研判事件热度与人工治理验收.md")
-	evidencePath := "docs/acceptance/evidence/003/agent-shadow-quality-codex-app-server-macos-arm64-e020a5bc.json"
+	evidencePath := "docs/acceptance/evidence/003/agent-shadow-quality-review-ready-codex-app-server-macos-arm64-a94fbaa6.json"
 	evidence := readRepositoryFile(t, repository, evidencePath)
 
 	if !strings.Contains(bootstrap, `args[0] == "agent-quality"`) || !strings.Contains(bootstrap, "runAgentQualityCommand") {
@@ -151,6 +152,16 @@ func TestAgentQualityFrameworkCannotMasqueradeAsLiveApproval(t *testing.T) {
 	}
 	if strings.Contains(command, `"activate"`) || strings.Contains(command, `"live"`) {
 		t.Fatal("candidate quality command unexpectedly exposes activation or Live switching")
+	}
+	for _, required := range []string{"ReviewBundlePath", "EvaluateForReview", "filepath.IsAbs", "os.O_EXCL", "0o600"} {
+		if !strings.Contains(command, required) {
+			t.Fatalf("private review bundle boundary is missing %q", required)
+		}
+	}
+	for _, required := range []string{"至少 2 名独立复核者", "output_raw_json", "不得把复核包提交到仓库"} {
+		if !strings.Contains(annotationGuide, required) {
+			t.Fatalf("private review protocol is missing %q", required)
+		}
 	}
 	for _, required := range []string{
 		"backend/test/fixtures/agent-shadow/v1/golden-dataset.json",
@@ -201,7 +212,7 @@ func TestAgentQualityFrameworkCannotMasqueradeAsLiveApproval(t *testing.T) {
 		t.Fatalf("decode real Agent quality candidate: %v", err)
 	}
 	evidenceDigest := fmt.Sprintf("%x", sha256.Sum256([]byte(evidence)))
-	if evidenceDigest != "1ec98059399b1b69d6ddc583dcc830b64ff53ddbacc8643ebfa41d29adb08868" ||
+	if evidenceDigest != "9e64c5285d3de5a7774f9580af3a8face30a96d9a9e5720681604ae6ba46e93f" ||
 		!strings.Contains(plan, evidenceDigest) || !strings.Contains(acceptance, evidenceDigest) {
 		t.Fatalf("real Agent quality evidence digest is not fixed across evidence and docs: %s", evidenceDigest)
 	}
