@@ -506,6 +506,16 @@ jobs:
           agent-browser find role button click --name "进入工作台" --exact
           agent-browser wait --url '**/dashboard*'
 
+          agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/settings"
+          agent-browser wait --text "热点监控"
+          agent-browser find role button click --name "新建监控" --exact
+          agent-browser find label "监控名称" fill "Browser Formal Monitor 2026"
+          agent-browser find label "监控词" fill "BrowserMonitorIntent2026"
+          agent-browser find role button click --name "创建并启用" --exact
+          agent-browser wait --text "监控已创建并启用"
+          agent-browser wait --text "Browser Formal Monitor 2026"
+          agent-browser wait --text "监控词：BrowserMonitorIntent2026"
+
           agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/notifications"
           agent-browser wait --text "日报等待审批"
           agent-browser find role link click --name "查看通知关联内容" --exact

@@ -7,7 +7,47 @@ DECLARE
     notification_count bigint;
     search_count bigint;
     leak_count bigint;
+    published_monitor_count bigint;
 BEGIN
+    SELECT count(*) INTO published_monitor_count
+    FROM monitors AS monitor
+    JOIN monitor_config_versions AS configuration
+      ON configuration.id = monitor.published_config_version_id
+     AND configuration.monitor_id = monitor.id
+     AND configuration.state = 'published'
+    JOIN monitor_compiled_profiles AS published_profile
+      ON published_profile.monitor_id = monitor.id
+     AND published_profile.monitor_version_id = configuration.id
+     AND published_profile.config_version_id = configuration.id
+     AND published_profile.purpose = 'published'
+     AND published_profile.status = 'ready'
+     AND published_profile.ready_at IS NOT NULL
+    JOIN monitor_compiled_profiles AS preview_profile
+      ON preview_profile.id = published_profile.source_preview_compiled_profile_id
+     AND preview_profile.monitor_id = monitor.id
+     AND preview_profile.purpose = 'preview'
+     AND preview_profile.status = 'ready'
+     AND preview_profile.profile_hash = published_profile.profile_hash
+    JOIN monitor_intent_analysis_runs AS preview_run
+      ON preview_run.id = preview_profile.preview_run_id
+     AND preview_run.monitor_id = monitor.id
+     AND preview_run.kind = 'preview'
+     AND preview_run.status = 'succeeded'
+    WHERE monitor.name = 'Browser Formal Monitor 2026'
+      AND monitor.status = 'active'
+      AND monitor.draft_config_version_id IS NULL
+      AND monitor.created_by = 910001
+      AND EXISTS (
+          SELECT 1
+          FROM monitor_sources AS source
+          WHERE source.config_version_id = configuration.id
+            AND source.source_connection_id = 910001
+            AND source.enabled
+      );
+    IF published_monitor_count <> 1 THEN
+        RAISE EXCEPTION 'browser-created monitor is not bound to a ready published compiled profile';
+    END IF;
+
     SELECT count(*) INTO report_count
     FROM reports
     WHERE monitor_id = 910001 AND status = 'published' AND published_at IS NOT NULL;

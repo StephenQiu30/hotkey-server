@@ -82,3 +82,32 @@ func TestMonitorPublicationGateMatchesAC002001(t *testing.T) {
 		}
 	}
 }
+
+func TestSimpleMonitorBrowserAcceptancePublishesReadyCompiledProfile(t *testing.T) {
+	repository := filepath.Clean(filepath.Join(repositoryRoot(t), ".."))
+	evidence := map[string][]string{
+		".github/workflows/ci.yml": {
+			`agent-browser open "$HOTKEY_BROWSER_WEB_ORIGIN/dashboard/settings"`,
+			`agent-browser find role button click --name "创建并启用" --exact`,
+			`agent-browser wait --text "监控已创建并启用"`,
+		},
+		"backend/test/fixtures/browser-acceptance/seed.sql": {
+			"Browser Acceptance RSS",
+			"https://feeds.example.test/browser-acceptance",
+		},
+		"backend/test/fixtures/browser-acceptance/assert-business-flow.sql": {
+			"published_profile.purpose = 'published'",
+			"published_profile.status = 'ready'",
+			"preview_run.status = 'succeeded'",
+			"browser-created monitor is not bound to a ready published compiled profile",
+		},
+	}
+	for path, fragments := range evidence {
+		content := readRepositoryFile(t, repository, path)
+		for _, fragment := range fragments {
+			if !strings.Contains(content, fragment) {
+				t.Errorf("simple Monitor browser acceptance %s is missing %q", path, fragment)
+			}
+		}
+	}
+}

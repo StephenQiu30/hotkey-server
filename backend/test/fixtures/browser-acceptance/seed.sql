@@ -35,6 +35,23 @@ VALUES (
     'active'
 );
 
+INSERT INTO source_connections (
+    id,version,source_type,name,endpoint,auth_type,config,enabled,health_status,created_by,updated_by
+)
+VALUES (
+    910001,
+    1,
+    'rss',
+    'Browser Acceptance RSS',
+    'https://feeds.example.test/browser-acceptance',
+    'none',
+    '{}'::jsonb,
+    true,
+    'healthy',
+    910003,
+    910003
+);
+
 INSERT INTO monitors (id,version,name,description,status,created_by,updated_by)
 VALUES (910001,1,:'fixture_run_id','Disposable browser acceptance monitor','active',910001,910001);
 
