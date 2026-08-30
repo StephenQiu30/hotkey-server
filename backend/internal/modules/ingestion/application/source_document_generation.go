@@ -279,7 +279,10 @@ func (service *SourceDocumentGenerationService) Generate(ctx context.Context, co
 		return baseResult, nil
 	}
 
-	decisionAt := service.now().UTC()
+	// PostgreSQL timestamptz stores microsecond precision. Normalize the
+	// decision boundary before both the query and receipt comparison so Linux
+	// nanosecond clocks cannot make a valid persisted receipt appear changed.
+	decisionAt := service.now().UTC().Truncate(time.Microsecond)
 	if decisionAt.IsZero() {
 		return baseResult, fmt.Errorf("%w: projection decision time is invalid", sharedrepository.ErrInvalidInput)
 	}

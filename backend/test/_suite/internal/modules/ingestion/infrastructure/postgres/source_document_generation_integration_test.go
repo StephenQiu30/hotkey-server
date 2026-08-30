@@ -151,6 +151,96 @@ WHERE document_version_id=$1 AND normalization_profile_version=$2 AND lifecycle_
 	}
 }
 
+func TestSourceDocumentGenerationProjectsNewDocumentOnFirstAttemptWithEndpointRights(t *testing.T) {
+	runtime := openDocumentVersionRuntime(t)
+	defer func() { _ = runtime.Close() }()
+	sourceID := createDocumentVersionSource(t, runtime, "source-generation-first-attempt")
+	observationID := insertSourceObservation(t, runtime, sourceID, "source-generation-first-attempt", 75)
+	policy := createDocumentRightsPolicy(t, runtime, sourceID, 1, time.Now().UTC().Add(-time.Hour))
+	storeDecisionID := insertDocumentEndpointRightsDecision(t, runtime, policy, "store_derived", "allow", nil)
+	retentionDays := 30
+	retainDecisionID := insertDocumentEndpointRightsDecision(t, runtime, policy, "retain", "allow", &retentionDays)
+	displayDecisionID := insertDocumentEndpointRightsDecision(t, runtime, policy, "display_private", "allow", nil)
+
+	plaintext := "authorized normalized document body"
+	markdown := plaintext
+	payload := []byte(`<rssItem><guid>source-generation-first-attempt</guid><encoded>authorized normalized document body</encoded></rssItem>`)
+	evidence := ingestionapplication.SelectedSourceEvidenceDTO{
+		EvidenceReferenceID: 711, SourceObservationID: observationID, EvidenceSnapshotID: 712,
+		SourceConnectionID: sourceID, ExternalWorkID: "source-generation-first-attempt",
+		UpstreamIdentity: strings.Repeat("a", 64), SourceCode: "rss", ContentType: "article", Title: "OpenAI launches in San Francisco",
+		Language: "en", SourceRecordURL: "https://feed.example.test/source-generation-first-attempt",
+		CanonicalURL: "https://publisher.example.test/articles/source-generation-first-attempt",
+		BodyOrigin:   ingestionapplication.BodyOriginFeedContent, Completeness: ingestionapplication.BodyCompletenessFull,
+		CapturedAt: documentVersionCapturedAt(75), SelectedPayload: payload,
+		SelectedPayloadSHA256: fmt.Sprintf("%x", sha256.Sum256(payload)), PayloadMIMEType: "application/rss+xml",
+		SelectorVersion: "rss2-go-xml-v1",
+	}
+	extraction := ingestionapplication.ExtractSelectedSourceBodyResult{
+		BodyOrigin: ingestionapplication.BodyOriginFeedContent, Completeness: ingestionapplication.BodyCompletenessFull,
+		Plaintext: plaintext, Markdown: markdown, Language: "en", ExtractorVersion: "rss-entry-v2",
+		ExtractorProfileVersion: "rss-profile-v3", ExtractorProfileSHA256: strings.Repeat("f", 64),
+		PlaintextTransformerProfileSHA256: strings.Repeat("1", 64),
+		MarkdownTransformerProfileSHA256:  strings.Repeat("2", 64),
+		PlaintextSHA256:                   fmt.Sprintf("%x", sha256.Sum256([]byte(plaintext))),
+	}
+	addSourceGenerationAnchorFacts(&extraction)
+	documentVersions, err := ingestionapplication.NewDocumentObservationPersistenceService(
+		ingestionpostgres.NewDocumentVersionRepository(runtime),
+	)
+	if err != nil {
+		t.Fatalf("NewDocumentObservationPersistenceService() error = %v", err)
+	}
+	artifactProjection := newDerivedArtifactSaga(
+		t, runtime, newKnowledgeProjectionPublisher(t, t.TempDir()), documentVersions,
+	)
+	recallWriter, err := ingestionpostgres.NewDocumentRecallProjectionWriter(runtime)
+	if err != nil {
+		t.Fatalf("NewDocumentRecallProjectionWriter() error = %v", err)
+	}
+	recallProjection, err := ingestionapplication.NewDocumentRecallProjectionService(recallWriter)
+	if err != nil {
+		t.Fatalf("NewDocumentRecallProjectionService() error = %v", err)
+	}
+	familyRepository, err := ingestionpostgres.NewContentFamilyRepository(runtime)
+	if err != nil {
+		t.Fatalf("NewContentFamilyRepository() error = %v", err)
+	}
+	contentFamilies, err := ingestionapplication.NewContentFamilyService(familyRepository)
+	if err != nil {
+		t.Fatalf("NewContentFamilyService() error = %v", err)
+	}
+	decisionAt := time.Now().UTC().Truncate(time.Microsecond).Add(321 * time.Nanosecond)
+	generator, err := ingestionapplication.NewSourceDocumentGenerationService(ingestionapplication.SourceDocumentGenerationDependencies{
+		Evidence: &sourceGenerationEvidenceReader{evidence: evidence}, Extractor: &sourceGenerationBodyExtractor{result: extraction},
+		DocumentVersions: documentVersions,
+		Authorizations:   ingestionpostgres.NewDocumentProjectionAuthorizationReader(runtime),
+		Projections:      artifactProjection, SearchProjections: recallProjection, ContentFamilies: contentFamilies,
+		StructureExtractor: ingestiontextstructure.NewExtractor(), DocumentEmbeddings: &sourceGenerationEmbeddingProducer{},
+		PublishedMatchEvaluations: &sourceGenerationMatchScheduler{}, Now: func() time.Time { return decisionAt },
+	})
+	if err != nil {
+		t.Fatalf("NewSourceDocumentGenerationService() error = %v", err)
+	}
+
+	generated, err := generator.Generate(context.Background(), ingestionapplication.GenerateSourceDocumentCommand{
+		EvidenceReferenceID: evidence.EvidenceReferenceID,
+	})
+	if err != nil {
+		t.Fatalf("Generate(first attempt) error = %v", err)
+	}
+	if !generated.DocumentCreated || !generated.DocumentVersionCreated ||
+		generated.PlaintextAvailability != ingestionapplication.SourceDocumentAvailable ||
+		generated.SearchAvailability != ingestionapplication.SourceDocumentAvailable ||
+		generated.MarkdownAvailability != ingestionapplication.SourceDocumentAvailable ||
+		generated.LastVerifiedDocumentLifecycleState != ingestionapplication.DocumentReadable ||
+		generated.PlaintextArtifact == nil || generated.MarkdownArtifact == nil || generated.SearchProjection == nil ||
+		generated.PlaintextArtifact.StoreDerivedRightsDecisionID != storeDecisionID ||
+		generated.PlaintextArtifact.RetainRightsDecisionID != retainDecisionID {
+		t.Fatalf("Generate(first attempt) = %#v, endpoint display decision %d", generated, displayDecisionID)
+	}
+}
+
 func addSourceGenerationAnchorFacts(extraction *ingestionapplication.ExtractSelectedSourceBodyResult) {
 	if extraction == nil || extraction.Plaintext == "" || extraction.Markdown == "" {
 		return
