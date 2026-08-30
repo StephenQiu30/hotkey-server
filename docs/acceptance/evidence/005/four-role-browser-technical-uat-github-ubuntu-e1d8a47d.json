@@ -1,0 +1,125 @@
+{
+  "version": "hotkey-four-role-browser-technical-uat-v1",
+  "generated_at": "2026-08-30T12:07:30Z",
+  "status": "technical_passed",
+  "revision": "e1d8a47dc14cc5e09442dfa3148544e1e57d1630",
+  "ci": {
+    "run_id": 33309743252,
+    "run_url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/33309743252",
+    "browser_job_id": 99252619079,
+    "required_execution_jobs": 8,
+    "successful_execution_jobs": 8,
+    "aggregate_gate": "success"
+  },
+  "artifact": {
+    "id": 9731854747,
+    "name": "browser-business-flow-33309743252-1",
+    "digest": "sha256:b30f495bcf40c4727d7fd7bc111fee7e0b2e64378de72be8503f2fc791dc5c99",
+    "expired": false
+  },
+  "rc_assessment": {
+    "artifact_id": 9731862982,
+    "artifact_name": "rc-candidate-assessment-33309743252-1",
+    "artifact_digest": "sha256:2ab2421c08c5f275cf39108f1f84d74f63d43f4d2a7de54d251e858777ba0374",
+    "file_sha256": "d79ee3b3c10fe151719904ad886f6e64d5e294004b683675592d89f830007658",
+    "status": "blocked",
+    "release_ready": false,
+    "required_gates_passed": 8,
+    "required_gates_total": 8,
+    "differences": []
+  },
+  "browser_acceptance": {
+    "run_id": "browser-33309743252-1",
+    "four_role_browser_matrix": true,
+    "roles": {
+      "viewer": {
+        "allowed_surface": true,
+        "denied_surface": true,
+        "navigation_policy": true
+      },
+      "analyst": {
+        "owned_monitor_publish": true,
+        "allowed_surface": true,
+        "denied_surface": true,
+        "navigation_policy": true
+      },
+      "editor": {
+        "allowed_surface": true,
+        "denied_surface": true,
+        "navigation_policy": true
+      },
+      "admin": {
+        "allowed_surface": true,
+        "admin_surface": true,
+        "navigation_policy": true
+      }
+    },
+    "keyboard_focus": {
+      "sequence_length": 8,
+      "distinct_targets": 8,
+      "left_body": true,
+      "visible_focus": true
+    },
+    "accessibility_pages": 11,
+    "accessibility_violations": 0,
+    "page_errors": 0,
+    "failed_requests": 0,
+    "mobile_horizontal_overflow": false,
+    "malicious_report_content_inert": true
+  },
+  "secret_scan": {
+    "version": "hotkey-secret-surface-scan-v2",
+    "surface_count": 10,
+    "canary_count": 11,
+    "files_scanned": 638,
+    "bytes_scanned": 11360381,
+    "leak_count": 0
+  },
+  "file_sha256": {
+    "hotkey-browser-acceptance.json": "1e03afd5317726e46a53fb1973c61ba3a37d74685201ead6d45bd416e90c20b7",
+    "hotkey-role-viewer.json": "4cc24c907f81275607d24630b01611b564e3ee030246a4960c083ea6324fbed3",
+    "hotkey-role-analyst.json": "1a3d926ca49cfd77558e14daf951111eafd56fa7427772bf8e0e675970f572bd",
+    "hotkey-role-editor.json": "001e38fd5fdb5ecf8156a9194f13139fd629f52047c5bcf2c759c1f27602c2b3",
+    "hotkey-role-admin.json": "ae77910d2a5a9c8553f2cf0804d10830edbe2f66e6af3c110da38790aeab520f",
+    "hotkey-keyboard-focus.json": "a54f935ac29b974a16025ad64f9ba913ec399fc80ae4a935541f0b529276097d",
+    "hotkey-browser-network-summary.json": "ba4fd8762cac2f3e518571d39862bf3c3e52447a7f1fdb73b8e7eeca6f2b989e",
+    "hotkey-secret-surface-scan.json": "0699ba495a061435d41de14d863c5b348897387268e87bf4bffe752de7716f92"
+  },
+  "local_formal_compose_mirror": {
+    "technical_walkthrough_passed": true,
+    "healthy_services": 6,
+    "project_restarted_for_test": false,
+    "temporary_browser_sessions_removed": true,
+    "temporary_auth_profiles_removed": true
+  },
+  "traceability": {
+    "tasks": [
+      "TASK-001-S01-T03",
+      "TASK-001-S02-T04",
+      "TASK-005-S01-T01"
+    ],
+    "specs": [
+      "SPEC-001-UI-001",
+      "SPEC-005-API-001",
+      "SPEC-005-UI-001"
+    ],
+    "checklists": [
+      "CHK-001-G1-001",
+      "CHK-001-G2-001",
+      "CHK-005-G4-001"
+    ],
+    "acceptance_criteria": [
+      "AC-001-002",
+      "AC-001-004",
+      "AC-005-001"
+    ]
+  },
+  "approval_boundary": {
+    "operator": "codex_technical_walkthrough_and_ci",
+    "human_product_uat_complete": false,
+    "product_owner_signoff": false,
+    "release_approval": false,
+    "statement": "This evidence closes the automated four-role and keyboard technical precondition only; it does not replace human product UAT, product-owner signoff, or G6 release approval."
+  },
+  "differences": []
+}

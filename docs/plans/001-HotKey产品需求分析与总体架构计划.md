@@ -30,7 +30,7 @@ prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 - 新基线需要把“已实现事实”“目标行为”“候选能力”分开，不能把交付包中的分布式目标写成当前能力；
 - 五个新 PRD 的 P0/P1、角色边界、候选容量和 24 周承诺需要统一冻结；
 - 现有实现仍包含多 Provider、Go Codex CLI Adapter、Embedding 与向量路径，而新目标要求根目录 Python Agent 和无向量全文检索；该差距是受控替换项目，不是文档清理时可直接删除的遗留物；
-- 四角色服务端契约、Analyst 资源所有权与兼容迁移已落地，并由真实 PostgreSQL/JWT 会话矩阵证明每次请求重读当前角色、禁用即时撤销且重新启用不复活旧会话；仍需完整四角色 UAT，不能用自动化证据冒充人工验收；
+- 四角色服务端契约、Analyst 资源所有权与兼容迁移已落地；真实 PostgreSQL/JWT 会话矩阵证明每次请求重读当前角色、禁用即时撤销且重新启用不复活旧会话，Fresh-container 浏览器进一步完成四角色允许/拒绝/导航、Analyst 自有 Monitor 发布、11 页 WCAG 与 8 个连续可见焦点目标的技术矩阵；仍需人工产品 UAT/键盘签字，不能用自动化证据冒充人工验收；
 - 当前 Schema、OpenAPI、River、Compose 和测试入口必须成为后续四个计划的硬门禁；
 - 候选性能指标已用固定测试数据集、环境、采样方法和机器可读证据完成一次隔离基线；结果只作为候选参考，不能宣称为已满足生产 SLO。
 
@@ -142,9 +142,9 @@ docker-compose-prod.yml
 ## 执行检查清单（CHECKLIST）
 
 - [x] `CHK-001-G0-001`（`AC-001-001`）：已保存当前 P0 主故事的代码、Schema、API、页面、测试与真实缺口矩阵，并确认日报逐句 Evidence 与 Vault 人工区域保护的专项入口；证据：001 Acceptance `EV-001-001`。该基线完成不代表真实来源驱动的 `AC-001-001` 整体 UAT 已通过。
-- [ ] `CHK-001-G1-001`（`AC-001-002`）：四角色权限矩阵已由产品与后端共同评审，Analyst 迁移语义、所有权和审核边界显式；当前工程证据覆盖 Schema/Domain/HTTP/OpenAPI/生成客户端、自有/他人 Monitor 负向测试及 `TestFourRoleSessionLifecycleUsesCurrentRoleAndNeverResurrectsRevokedSessions` 的角色/会话生命周期矩阵，仍需完整四角色 UAT 后勾选。
+- [ ] `CHK-001-G1-001`（`AC-001-002`）：四角色权限矩阵已由产品与后端共同评审，Analyst 迁移语义、所有权和审核边界显式；工程证据除 Schema/Domain/HTTP/OpenAPI/生成客户端、自有/他人 Monitor 负向测试及真实 PostgreSQL/JWT 会话生命周期外，已由提交 `e97f6cb5`/`1e33fb4e`/`e1d8a47d`、GitHub Actions [33309743252](https://github.com/StephenQiu30/hotkey-server/actions/runs/33309743252) 和 Acceptance `EV-001-027` 固定真实浏览器四角色允许/拒绝/导航与 Analyst 自有 Monitor 发布。自动技术前置通过，仍需人工产品 UAT/签字后勾选。
 - [x] `CHK-001-G1-002`（`AC-001-003`）：Design 明确拒绝禁用基础设施，反例架构测试可捕获 Kafka、Temporal、第二 Python 后端和迁移目录误引入；代码/契约现状、Design/PRD/Plan 目标状态与 failed/partial Acceptance 未相互冒充；证据：001 Acceptance `EV-001-002`。
-- [ ] `CHK-001-G2-001`（`AC-001-004`）：PRD 覆盖工作台五态、移动端、权限不足、键盘、可见焦点、语义标签、对比度和 `prefers-reduced-motion`；预期证据：页面状态、自动可访问性和人工键盘测试矩阵。
+- [ ] `CHK-001-G2-001`（`AC-001-004`）：PRD 覆盖工作台五态、移动端、权限不足、键盘、可见焦点、语义标签、对比度和 `prefers-reduced-motion`；Acceptance `EV-001-027` 已保存 11 页零违规和 8 次连续 Tab 命中 8 个不同目标、全部离开 `body` 且焦点可见的自动技术证据。仍需人工键盘/产品签字后勾选。
 - [x] `CHK-001-G3-001`（`AC-001-005`）：Result、OpenAPI、唯一 Schema 和生成客户端的单一事实源无冲突；证据：本机 `make ci`、前端 `openapi:check`、远端全绿门禁及 001 Acceptance `EV-001-003`。
 - [x] `CHK-001-G3-002`（`AC-001-006`）：固定 100,000 行、并发 20、预热 20、样本 1,000、warm cache 和 nearest-rank-ceiling 的 keyset 容量报告已保存；同一隔离恢复副本使用真实 `pg_dump`/`pg_restore` 并实际复制 MinIO/Vault，PostgreSQL 事实、MinIO 对象/版本、Vault 全文件/人工区域和 River Job/Attempt 五类资产数量及 SHA-256 零差异，实测 RPO 165 ms、RTO 762 ms。证据：001 Acceptance `EV-001-025`、`docs/acceptance/evidence/001/contents-keyset-capacity-macos-arm64-3d9acccb.json` 与 `docs/acceptance/evidence/001/joint-recovery-macos-arm64-3d9acccb.json`；候选数值不构成生产 SLA。
 - [x] `CHK-001-G3-003`（`AC-001-009`）：Rights Policy/Decision Batch 作为正式 P0 关键写 Fixture，未认证/Viewer 请求写前阻断，固定幂等键首次/重放/异载荷冲突、旧 Policy 版本和 8 路并发在 Policy/Batch/Decision 事实计数上闭合；成功、拒绝与冲突追加净化审计，`audit_logs_append_only` 在数据库层拒绝更新/删除；证据：001 Acceptance `EV-001-024`。

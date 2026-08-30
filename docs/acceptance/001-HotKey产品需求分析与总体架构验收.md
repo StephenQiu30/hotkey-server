@@ -10,7 +10,7 @@ canonical_path: docs/acceptance/001-HotKey产品需求分析与总体架构验�
 design: docs/design/001-HotKey产品需求分析与总体架构设计.md
 prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 plan: docs/plans/001-HotKey产品需求分析与总体架构计划.md
-verified_revision: "96203d843d6fe363d60991af627effc8a0366f72"
+verified_revision: "e1d8a47dc14cc5e09442dfa3148544e1e57d1630"
 verification_date: "2026-08-30"
 ---
 
@@ -18,7 +18,7 @@ verification_date: "2026-08-30"
 
 ## 结论
 
-本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护、全部 P0 公开列表/固定参考集边界、关键写入一致性，以及容量与联合恢复二十五组可复核证据；最新真实浏览器还从设置页创建 Monitor，并完成 Draft→Intent→Preview→Publish 正式链及数据库闭环。`AC-001-006`、`AC-001-009` 与 `AC-001-010` 已完成。完整四角色 UAT 和人工键盘矩阵仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
+本轮结论为 `failed`，含义是 001 整体尚未通过，而不是本轮自动化失败。当前已保存 P0 主故事现状、架构真实性、单一契约、降级边界、非向量检索/人工知识保护、全部 P0 公开列表/固定参考集边界、关键写入一致性，以及容量与联合恢复二十五组可复核证据；最新真实浏览器还从设置页创建 Monitor，并完成 Draft→Intent→Preview→Publish 正式链及数据库闭环。Viewer、Analyst、Editor、Admin 的允许/拒绝/导航矩阵、Analyst 自有 Monitor 发布、11 页自动无障碍检查与 8 个连续可见焦点目标也已在正式 Compose 镜像和远端新鲜容器通过。`AC-001-006`、`AC-001-009` 与 `AC-001-010` 已完成。完整人工产品 UAT 和键盘签字仍未完成，因此 Plan 保持 `in_progress`，PRD 保持 `approved`。
 
 本文件只关闭证据完整的局部门禁，不将浏览器 Fixture、自动化测试或候选性能结果扩大解释为完整 P0 发布验收。
 
@@ -39,7 +39,7 @@ verification_date: "2026-08-30"
 
 | 环节 | 当前代码/事实源 | API 与页面 | 可复核测试证据 | 当前结论 |
 |---|---|---|---|---|
-| 登录与身份 | `backend/internal/modules/identity/`、`users`、`auth_sessions` | `/api/v1/auth/login`、`/api/v1/auth/me`、Dashboard Shell | `TestFourRoleSessionLifecycleUsesCurrentRoleAndNeverResurrectsRevokedSessions`；Fresh-container 真实登录 | 已实现；完整四角色 UAT 未执行 |
+| 登录与身份 | `backend/internal/modules/identity/`、`users`、`auth_sessions` | `/api/v1/auth/login`、`/api/v1/auth/me`、Dashboard Shell | `TestFourRoleSessionLifecycleUsesCurrentRoleAndNeverResurrectsRevokedSessions`；Fresh-container 四角色真实登录/登出切换 | 技术矩阵已实现并通过；人工产品 UAT/签字未执行 |
 | 用户管理列表 | `users` 与 Identity User Repository | `/api/v1/users`、`/dashboard/users` | `TestUserRepositoryListCursorIsSignedFilterBoundExpiringAndSnapshotStable`、`TestListUsersPassesPaginationAndFiltersAndReturnsSafePage`、`dashboard-users-page.test.tsx` | 管理员列表使用角色/状态/搜索绑定的短期签名高水位游标；服务端筛选替代前端全量加载和切片，并发注册不进入既有遍历 |
 | Monitor | `backend/internal/modules/monitor/`、`monitors`、不可变配置版本与 Source 所有的扫描事实 | `/api/v1/monitors`、`/api/v1/monitors/{id}/versions`、`/api/v1/monitors/{id}/scans`、`/dashboard/settings` | `make monitor-publication-acceptance`、`TestMonitorListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert`、`TestMonitorConfigHistoryCursorIsSignedViewBoundExpiringAndSnapshotStable`、`TestMonitorScanCursorIsSignedResourceBoundExpiringAndSnapshotStable` 及所有权负向测试；Fresh-container 浏览器正式发布 | Monitor、配置历史与扫描历史均使用短期签名快照游标；Versions 绑定 Monitor/草稿可见性，Scans 每页重新授权并绑定 Monitor；并发新增不污染既有遍历；浏览器已创建并正式发布合成来源 Monitor，但未执行外部 RSS/HN/X 抓取 |
 | 来源、采集与原始证据 | `backend/internal/modules/source/`、MinIO 对象、采集事实与 River Job | `/api/v1/sources`、`/api/v1/collection-runs`、`/api/v1/monitors/{id}/collect`、`/dashboard/sources` | `TestRSSHNPipelineRecovery`、四点 Worker Recovery、`TestCollectionRunListCursorIsSignedExpiringAndSnapshotStableAcrossConcurrentInsert`、`TestCapturedItemListCursorIsSignedBoundExpiringAndSnapshotStableAcrossConcurrentInsert`、对象写入失败零条目事实测试 | 已实现自动化链；来源连接、采集运行及 Source→Ingestion 采集条目工作列表使用短期签名高水位游标；本轮未执行真实 RSS/HN/X 授权冒烟 |
@@ -66,7 +66,7 @@ verification_date: "2026-08-30"
 - 映射：`CHK-001-G0-001`、`AC-001-001`；
 - 结果：通过“现状基线保存”，不代表 `AC-001-001` 整体通过；
 - 证据：上表将代码、Schema 事实、OpenAPI 路径、页面和测试入口逐段关联；日报逐句 Evidence 由 `make report-publication-acceptance` 固化，Vault 人工区域由 `TestUpdateVaultDocumentPreservesHumanRegionByteForByte` 与 `TestRecoverVaultDocumentUsesOnlyProtectedHumanRegionSources` 固化；
-- 边界：Fresh-container 浏览器已从设置页创建并正式发布合成来源 Monitor，后续通知→报告→Vault→搜索仍使用固定业务 Fixture；该故事不发起外部 RSS/HN/X 抓取，也不替代真实授权来源和完整四角色 UAT。
+- 边界：Fresh-container 浏览器已从设置页创建并正式发布合成来源 Monitor，后续通知→报告→Vault→搜索仍使用固定业务 Fixture；该故事不发起外部 RSS/HN/X 抓取。四角色与键盘自动技术前置已闭合，但不替代真实授权来源、人工产品 UAT 或签字。
 
 ### `EV-001-002`：架构与文档状态真实性
 
@@ -305,14 +305,24 @@ verification_date: "2026-08-30"
 - 远端证据：[GitHub Actions 33307433106](https://github.com/StephenQiu30/hotkey-server/actions/runs/33307433106) 的真实浏览器在设置页创建 `Browser Formal Monitor 2026`，完成 Draft→Intent→Preview→Publish；数据库断言确认发布配置绑定 ready Compiled Profile、与成功 Preview 的 Profile/配置/意图版本精确一致，且关联 Source Connection 已启用。7 个页面 WCAG 违规、页面错误和失败请求均为 0；净化报告及原始 Artifact Hash 汇总见 [`release-evidence-index-github-ubuntu-96203d84.json`](evidence/005/release-evidence-index-github-ubuntu-96203d84.json)；
 - 边界：创建接口在兼容层仍先产生一次 legacy published Monitor，页面随即创建 replacement draft 并完成正式发布；调度器继续拒绝该短暂中间态，绝不回退读取 legacy rules。本轮使用启用的合成 RSS 来源，仅验证正式发布和后续固定业务链，不向外部 RSS/HN/X 发起请求；四角色人工 UAT 仍按未关闭门禁执行。
 
+### `EV-001-027`：四角色真实浏览器技术矩阵与连续键盘焦点
+
+- 映射：`TASK-001-S01-T03`、`TASK-001-S02-T04`、`SPEC-001-UI-001`、`CHK-001-G1-001`、`CHK-001-G2-001` → `AC-001-002`、`AC-001-004`；
+- 结果：自动化技术前置通过，两个 Checklist 保持未勾选；
+- 实现证据：提交 `e97f6cb5` 以先失败的架构契约补齐 Viewer Fixture、四角色允许/拒绝/导航矩阵、Analyst 自有 Monitor 正式发布、11 页 WCAG 扫描和 8 次连续 Tab 焦点证据；`1e33fb4e` 将角色切换改为真实 UI 退出登录，避免清 Cookie 产生失败 Refresh；`e1d8a47d` 在切换前等待账户控件完成鉴权水合，保持零放宽断言；
+- 远端证据：[GitHub Actions 33309743252](https://github.com/StephenQiu30/hotkey-server/actions/runs/33309743252) 在完整 revision `e1d8a47dc14cc5e09442dfa3148544e1e57d1630` 上通过 8/8 执行 Job 和 `All acceptance gates`。四个角色均满足批准的允许面、拒绝面和菜单策略；Analyst 完成自有 Monitor 创建与发布；11 页无障碍违规、页面错误和失败 HTTP 请求均为 0；连续 8 次 Tab 命中 8 个不同可交互目标，全部离开 `body` 且可见焦点为真；
+- 不可变索引：[`four-role-browser-technical-uat-github-ubuntu-e1d8a47d.json`](evidence/005/four-role-browser-technical-uat-github-ubuntu-e1d8a47d.json) 绑定 Artifact ID `9731854747`、Digest `sha256:b30f495bcf40c4727d7fd7bc111fee7e0b2e64378de72be8503f2fc791dc5c99` 和逐文件 SHA-256，Secret 扫描覆盖 638 文件/11,360,381 字节且泄露为 0，`differences=[]`；
+- 本机镜像：正式根 Compose 六个服务保持 `healthy`，没有为测试重启；同一四角色与键盘技术走查通过后，四个临时浏览器会话和认证配置已清理；
+- 边界：操作者是技术走查与 CI，不是产品负责人。该证据只关闭自动化四角色/键盘技术前置，不替代人工产品 UAT、产品负责人签字或 G6 发布批准。
+
 ## AC 结果
 
 | AC | 结果 | 说明 |
 |---|---|---|
 | `AC-001-001` | partial | 已保存完整现状矩阵和报告/Vault 硬断言入口；见 `EV-001-026`，真实浏览器已完成简单 Monitor 新建与正式 Compiled Profile 发布，并闭合数据库断言；外部真实来源驱动和完整四角色 UAT 仍未完成 |
-| `AC-001-002` | partial | 自动化四角色、所有权和会话撤销已覆盖；完整四角色 UAT 未完成 |
+| `AC-001-002` | partial | `EV-001-027` 已覆盖真实浏览器四角色允许/拒绝/导航、Analyst 自有 Monitor 发布，以及既有所有权/会话撤销矩阵；人工产品 UAT 与签字未完成 |
 | `AC-001-003` | passed | 见 `EV-001-002` |
-| `AC-001-004` | partial | 五态、移动端、自动 WCAG 与 Tab 焦点证据存在；完整人工键盘矩阵未完成 |
+| `AC-001-004` | partial | `EV-001-027` 已覆盖 11 页自动 WCAG、移动端与连续 8 个不同目标的可见焦点技术矩阵；人工键盘/产品签字未完成 |
 | `AC-001-005` | passed | 见 `EV-001-003` |
 | `AC-001-006` | passed | 见 `EV-001-025`；固定容量样本及同一隔离副本的 PostgreSQL/MinIO/Vault/River 联合恢复、五类资产对账和真实 RPO/RTO 测量已完成，结果仍是候选基线而非 SLA |
 | `AC-001-007` | passed | 见 `EV-001-004` |
@@ -337,12 +347,12 @@ capacity: HOTKEY_CAPACITY_DATASET_SIZE=100000 HOTKEY_CAPACITY_CONCURRENCY=20 HOT
 joint recovery: HOTKEY_RECOVERY_TEST_DSN='postgresql test DSN' HOTKEY_RECOVERY_MINIO_ENDPOINT='isolated MinIO endpoint' HOTKEY_RECOVERY_MINIO_ACCESS_KEY='test-only key' HOTKEY_RECOVERY_MINIO_SECRET_KEY='test-only secret' HOTKEY_RECOVERY_GIT_REVISION=3d9acccbc136195ee1c26fa7d9cec69cef2d1740 HOTKEY_RECOVERY_ENVIRONMENT=macos-26.6.2-local-postgresql-18.4-minio-isolated HOTKEY_RECOVERY_HARDWARE='Apple M5; 10 CPU; 24 GiB RAM; internal APFS SSD; PostgreSQL 18.4 and MinIO loopback' HOTKEY_RECOVERY_PRODUCTION_EGRESS_DISABLED=true HOTKEY_RECOVERY_OUTPUT=../docs/acceptance/evidence/001/joint-recovery-macos-arm64-3d9acccb.json make joint-recovery-acceptance
 ```
 
-历史本机全量结果通过；前端 272 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。最新远端运行 `33307433106` 在 `96203d84` 上再次通过 8 个必需 Job 与最终汇总，并完成 Monitor 正式发布、浏览器/数据库、容量、隐私和可用性证据闭环。
+历史本机全量结果通过；本轮前端 56 个文件/293 项单测及 TypeScript 通过，后端 `ci-static` 通过，Python Agent 沿既有 CI 继续验证；生产依赖审计和 Go 当前调用链漏洞门禁均通过。最新远端运行 `33309743252` 在 `e1d8a47d` 上通过 8 个必需 Job 与最终汇总，并完成 Monitor 正式发布、四角色浏览器、键盘、数据库、容量、隐私和可用性证据闭环。
 
 ## 未完成项与停止条件
 
-- `CHK-001-G1-001`：等待完整四角色 UAT；
-- `CHK-001-G2-001`：等待完整人工键盘/焦点矩阵，不以自动 Tab 与 WCAG 扫描替代；
+- `CHK-001-G1-001`：自动四角色真实浏览器技术矩阵已通过，等待人工产品 UAT 与签字；
+- `CHK-001-G2-001`：自动连续 Tab/可见焦点与 WCAG 矩阵已通过，等待人工键盘/产品签字；
 
 以上任一项缺失时，本 Acceptance 不得改为 `passed`，001 Plan/PRD 不得改为 `completed/implemented`。
 
