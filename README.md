@@ -18,8 +18,6 @@ HotKey 采用单体仓库管理 Go Core、Python 数据分析 Agent 与 Web 工�
 ```bash
 git clone https://github.com/StephenQiu30/hotkey-server.git
 cd hotkey-server
-cp .env.example .env
-cp backend/.env.example backend/.env
 docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240
 ```
 
@@ -40,12 +38,12 @@ Docker Compose 是完整项目唯一运行入口。根 `docker-compose.yml` 统�
 默认容器环境：
 
 ```bash
-cp backend/.env.example backend/.env
-cp .env.example .env
 docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240
 curl --fail --silent http://127.0.0.1:8866/readyz
 curl --fail --silent http://127.0.0.1:8866/metrics | grep 'hotkey_runtime_metrics_collection_success'
 ```
+
+日常 Compose 已直接配置非生产默认值，不要求创建 `.env` 或 `backend/.env`。只有端口冲突或同机运行多套实例时才复制根 `.env.example` 覆盖端口或容器前缀；真实密钥只在生产 `.env.prod` 中配置。
 
 生产环境：
 

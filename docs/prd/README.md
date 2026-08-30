@@ -20,7 +20,7 @@ canonical_path: docs/prd/README.md
 | 001 | HotKey 产品需求分析与总体架构 | [Design](../design/001-HotKey产品需求分析与总体架构设计.md) | [PRD](001-HotKey产品需求分析与总体架构.md) | [Plan](../plans/001-HotKey产品需求分析与总体架构计划.md) | `approved` |
 | 002 | Monitor、授权来源、采集与证据链 | [Design](../design/002-监控来源采集与证据链设计.md) | [PRD](002-监控来源采集与证据链.md) | [Plan](../plans/002-监控来源采集与证据链计划.md) | `approved` |
 | 003 | Codex 智能研判、事件、Heat 与人工治理 | [Design](../design/003-智能研判事件热度与人工治理设计.md) | [PRD](003-智能研判事件热度与人工治理.md) | [Plan](../plans/003-智能研判事件热度与人工治理计划.md) | `approved` |
-| 004 | 通知、日报、Obsidian 知识投影与全文检索 | [Design](../design/004-通知报告知识投影与检索设计.md) | [PRD](004-通知报告知识投影与检索.md) | [Plan](../plans/004-通知报告知识投影与检索计划.md) | `approved` |
+| 004 | 通知、日报、Obsidian 知识投影与全文检索 | [Design](../design/004-通知报告知识投影与检索设计.md) | [PRD](004-通知报告知识投影与检索.md) | [Plan](../plans/004-通知报告知识投影与检索计划.md) | `implemented` |
 | 005 | 安全、运维、质量门禁与 24 周 P0 交付 | [Design](../design/005-安全运维质量与交付设计.md) | [PRD](005-安全运维质量与交付.md) | [Plan](../plans/005-安全运维质量与交付计划.md) | `approved` |
 
 ## 共通边界

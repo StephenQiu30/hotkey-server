@@ -72,6 +72,23 @@ describe("secret surface scanner", () => {
 });
 
 describe("synthetic secret generator", () => {
+  it("exports masked canaries without requiring a backend environment file", () => {
+    let fill = 1;
+    const generated = generateSyntheticCanaries((size) => Buffer.alloc(size, fill++));
+    const root = mkdtempSync(join(tmpdir(), "hotkey-secret-generator-"));
+    const githubEnvironment = join(root, "github.env");
+    writeFileSync(githubEnvironment, "");
+    const masked = [];
+
+    persistSyntheticCanaries(generated, githubEnvironment, undefined, (value) => masked.push(value));
+
+    expect(masked).toEqual(Object.values(generated));
+    const exported = readFileSync(githubEnvironment, "utf8");
+    for (const [name, value] of Object.entries(generated)) {
+      expect(exported).toContain(`${name}=${value}\n`);
+    }
+  });
+
   it("creates independent masked values and injects only the required backend settings", () => {
     let fill = 1;
     const generated = generateSyntheticCanaries((size) => Buffer.alloc(size, fill++));

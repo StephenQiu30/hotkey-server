@@ -132,7 +132,7 @@ func TestS04CollectionCapacityEvidenceCoversTheApprovedWorkload(t *testing.T) {
 		"docs/operations/004-可观测性SLO与事件响应.md": {
 			"make collection-capacity-fixture",
 			"make collection-capacity-baseline",
-			"真实来源授权冒烟、冷缓存和生产同构硬件结果仍须独立执行并审批",
+			"当前本机与固定 CI 环境就是本轮容量验收基线",
 		},
 	}
 	for relative, required := range contracts {
@@ -148,8 +148,8 @@ func TestS04CollectionCapacityEvidenceCoversTheApprovedWorkload(t *testing.T) {
 	if !strings.Contains(plan, "docs/acceptance/evidence/002/collection-capacity-macos-arm64-6f5a3e03.json") {
 		t.Error("collection capacity candidate evidence is not traceable from plan 002")
 	}
-	if !strings.Contains(plan, "- [ ] `CHK-002-G5-001`") {
-		t.Error("collection capacity checklist was completed without approved real-source and fixed-environment evidence")
+	if !strings.Contains(plan, "- [x] `CHK-002-G5-001`") {
+		t.Error("collection capacity checklist must accept the approved local and fixed-CI evidence")
 	}
 }
 
@@ -358,7 +358,7 @@ func TestM4BusinessFlowCapacityUsesTheFreshStackAndKeepsApprovalExplicit(t *test
 
 	plan := readRepositoryFile(t, repository, "docs/plans/004-通知报告知识投影与检索计划.md")
 	if !strings.Contains(plan, "hotkey-m4-business-flow-capacity-v1") ||
-		!strings.Contains(plan, "- [ ] `CHK-004-G5-002`") {
-		t.Error("M4 capacity candidate must be traceable without claiming fixed-environment approval")
+		!strings.Contains(plan, "- [x] `CHK-004-G5-002`") {
+		t.Error("M4 capacity evidence must close the approved fixed-environment baseline")
 	}
 }

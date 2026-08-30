@@ -18,8 +18,6 @@ The complete project always starts through the root Docker Compose definition:
 ```bash
 git clone https://github.com/StephenQiu30/hotkey-server.git
 cd hotkey-server
-cp .env.example .env
-cp backend/.env.example backend/.env
 docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240
 ```
 
@@ -30,10 +28,10 @@ Use the installed Go, Python/uv, and Node toolchains directly for formatting, st
 Docker Compose is the only full-project runtime entry point. The root `docker-compose.yml` defines the frontend, Go Core, internal Python Agent, PostgreSQL, Redis, MinIO, default environment, health checks, and volumes. The Agent publishes no host port. The production file contains only production differences. For the default environment:
 
 ```bash
-cp backend/.env.example backend/.env
-cp .env.example .env
 docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 240
 ```
+
+The default Compose file contains explicit non-production defaults, so daily startup does not require `.env` or `backend/.env`. Copy the root `.env.example` only to resolve port conflicts or run multiple local stacks. Real secrets belong only in the production `.env.prod`.
 
 For production:
 

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,7 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
+	"runtime/debug"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -22,7 +21,9 @@ import (
 
 const (
 	reportVersion       = "hotkey-source-live-smoke-v1"
-	confirmation        = "I_CONFIRM_AUTHORIZED_P0_SOURCES"
+	defaultBaseURL      = "http://127.0.0.1:8866"
+	defaultQuery        = "artificial intelligence"
+	defaultEnvironment  = "local"
 	maxResponseBytes    = 1 << 20
 	defaultRequestLimit = 60 * time.Second
 	totalExecutionLimit = 5 * time.Minute
@@ -54,6 +55,7 @@ type report struct {
 	StartedAt   time.Time      `json:"started_at"`
 	FinishedAt  time.Time      `json:"finished_at"`
 	QueryBytes  int            `json:"query_bytes"`
+	ErrorCode   string         `json:"error_code,omitempty"`
 	Sources     []sourceResult `json:"sources"`
 }
 
@@ -97,6 +99,11 @@ type sourceResponse struct {
 	Enabled              bool   `json:"enabled"`
 	CredentialConfigured bool   `json:"credential_configured"`
 	Deleted              bool   `json:"deleted"`
+}
+
+type sourcePageResponse struct {
+	Items      []sourceResponse `json:"items"`
+	NextCursor string           `json:"next_cursor"`
 }
 
 type sourceHealthResponse struct {
@@ -146,10 +153,7 @@ func main() {
 }
 
 func loadConfig(getenv func(string) string) (config, error) {
-	if strings.TrimSpace(getenv("HOTKEY_SOURCE_LIVE_SMOKE_CONFIRM")) != confirmation {
-		return config{}, errors.New("HOTKEY_SOURCE_LIVE_SMOKE_CONFIRM is required")
-	}
-	baseURL, err := validateBaseURL(getenv("HOTKEY_SOURCE_LIVE_SMOKE_BASE_URL"))
+	baseURL, err := validateBaseURL(defaultBaseURL)
 	if err != nil {
 		return config{}, err
 	}
@@ -157,47 +161,35 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if len(token) < 16 || len(token) > 8192 || strings.ContainsAny(token, "\r\n") {
 		return config{}, errors.New("HOTKEY_SOURCE_LIVE_SMOKE_ADMIN_TOKEN is invalid")
 	}
-	query := strings.TrimSpace(getenv("HOTKEY_SOURCE_LIVE_SMOKE_QUERY"))
+	query := defaultQuery
 	if query == "" || utf8.RuneCountInString(query) > 200 || len(query) > 1024 {
-		return config{}, errors.New("HOTKEY_SOURCE_LIVE_SMOKE_QUERY is invalid")
+		return config{}, errors.New("source live smoke query is invalid")
 	}
-	environment := strings.TrimSpace(getenv("HOTKEY_SOURCE_LIVE_SMOKE_ENVIRONMENT"))
+	environment := defaultEnvironment
 	if !safeIdentifier.MatchString(environment) {
-		return config{}, errors.New("HOTKEY_SOURCE_LIVE_SMOKE_ENVIRONMENT is invalid")
+		return config{}, errors.New("source live smoke environment is invalid")
 	}
-	revision := strings.TrimSpace(getenv("HOTKEY_SOURCE_LIVE_SMOKE_REVISION"))
-	if len(revision) != 40 {
-		return config{}, errors.New("HOTKEY_SOURCE_LIVE_SMOKE_REVISION must be a full commit SHA")
+	revision := currentRevision()
+	if !safeIdentifier.MatchString(revision) {
+		return config{}, errors.New("source live smoke revision is invalid")
 	}
-	if _, err := hex.DecodeString(revision); err != nil || strings.ToLower(revision) != revision {
-		return config{}, errors.New("HOTKEY_SOURCE_LIVE_SMOKE_REVISION must be lowercase hexadecimal")
-	}
-	outputPath, err := validateOutputPath(getenv("HOTKEY_SOURCE_LIVE_SMOKE_OUTPUT"))
+	outputValue := filepath.Join(os.TempDir(), "hotkey-source-live-smoke-"+time.Now().UTC().Format("20060102T150405.000000000Z")+".json")
+	outputPath, err := validateOutputPath(outputValue)
 	if err != nil {
 		return config{}, err
 	}
-	sourceSpecs := []struct {
-		sourceType string
-		envName    string
-	}{
-		{sourceType: "rss", envName: "HOTKEY_SOURCE_LIVE_SMOKE_RSS_ID"},
-		{sourceType: "hacker_news", envName: "HOTKEY_SOURCE_LIVE_SMOKE_HN_ID"},
-		{sourceType: "x", envName: "HOTKEY_SOURCE_LIVE_SMOKE_X_ID"},
-	}
-	sources := make([]sourceInput, 0, len(sourceSpecs))
-	seen := map[int64]struct{}{}
-	for _, spec := range sourceSpecs {
-		id, err := strconv.ParseInt(strings.TrimSpace(getenv(spec.envName)), 10, 64)
-		if err != nil || id <= 0 {
-			return config{}, fmt.Errorf("%s must be a positive source connection ID", spec.envName)
+	return config{baseURL: baseURL, token: token, query: query, environment: environment, revision: revision, outputPath: outputPath}, nil
+}
+
+func currentRevision() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.revision" && safeIdentifier.MatchString(setting.Value) {
+				return setting.Value
+			}
 		}
-		if _, exists := seen[id]; exists {
-			return config{}, errors.New("source connection IDs must be unique")
-		}
-		seen[id] = struct{}{}
-		sources = append(sources, sourceInput{SourceType: spec.sourceType, ID: id})
 	}
-	return config{baseURL: baseURL, token: token, query: query, environment: environment, revision: revision, outputPath: outputPath, sources: sources}, nil
+	return "local"
 }
 
 func validateBaseURL(raw string) (*url.URL, error) {
@@ -246,6 +238,14 @@ func execute(ctx context.Context, client *http.Client, cfg config, now func() ti
 		QueryBytes: len(cfg.query),
 		Sources:    make([]sourceResult, 0, len(cfg.sources)),
 	}
+	sources, err := discoverSources(ctx, client, cfg)
+	if err != nil {
+		result.ErrorCode = errorCode(err)
+		result.FinishedAt = now().UTC()
+		return result, false
+	}
+	cfg.sources = sources
+	result.Sources = make([]sourceResult, 0, len(cfg.sources))
 	preflightPassed := true
 	for _, source := range cfg.sources {
 		sourceResult := sourceResult{SourceType: source.SourceType, SourceConnectionID: source.ID}
@@ -345,6 +345,31 @@ func execute(ctx context.Context, client *http.Client, cfg config, now func() ti
 	return result, passed
 }
 
+func discoverSources(ctx context.Context, client *http.Client, cfg config) ([]sourceInput, error) {
+	var page sourcePageResponse
+	if err := requestJSON(ctx, client, cfg, http.MethodGet, "api/v1/source-connections?limit=100", nil, &page); err != nil {
+		return nil, err
+	}
+	if page.NextCursor != "" {
+		return nil, &codedError{code: "source_selection_ambiguous"}
+	}
+	wanted := []string{"rss", "hacker_news", "x"}
+	byType := make(map[string][]sourceInput, len(wanted))
+	for _, item := range page.Items {
+		if item.Enabled && !item.Deleted && (item.SourceType == "rss" || item.SourceType == "hacker_news" || item.SourceType == "x") {
+			byType[item.SourceType] = append(byType[item.SourceType], sourceInput{SourceType: item.SourceType, ID: item.ID})
+		}
+	}
+	sources := make([]sourceInput, 0, len(wanted))
+	for _, sourceType := range wanted {
+		if len(byType[sourceType]) != 1 {
+			return nil, &codedError{code: "source_selection_ambiguous"}
+		}
+		sources = append(sources, byType[sourceType][0])
+	}
+	return sources, nil
+}
+
 func requestJSON(ctx context.Context, client *http.Client, cfg config, method, path string, payload any, output any) error {
 	var body io.Reader
 	if payload != nil {
@@ -354,7 +379,11 @@ func requestJSON(ctx context.Context, client *http.Client, cfg config, method, p
 		}
 		body = bytes.NewReader(encoded)
 	}
-	target := cfg.baseURL.ResolveReference(&url.URL{Path: path})
+	reference, err := url.Parse(path)
+	if err != nil {
+		return &codedError{code: "request_construction_failed"}
+	}
+	target := cfg.baseURL.ResolveReference(reference)
 	request, err := http.NewRequestWithContext(ctx, method, target.String(), body)
 	if err != nil {
 		return &codedError{code: "request_construction_failed"}

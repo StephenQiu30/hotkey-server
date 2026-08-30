@@ -293,7 +293,7 @@ verification_date: "2026-08-30"
 - 容量证据：[`contents-keyset-capacity-macos-arm64-3d9acccb.json`](evidence/001/contents-keyset-capacity-macos-arm64-3d9acccb.json) 固定 macOS 26.6.2、Apple M5 10 CPU/24 GiB、PostgreSQL 18.4 loopback、100,000 行 Fixture、并发 20、预热 20、样本 1,000、warm cache 和 nearest-rank-ceiling 算法；实测 P50 453 µs、P95 1597 µs、P99 61923 µs、错误 0。该报告只覆盖 `contents` keyset page 查询，不代表 API、全文检索、网络或生产负载 SLA；
 - 恢复证据：[`joint-recovery-macos-arm64-3d9acccb.json`](evidence/001/joint-recovery-macos-arm64-3d9acccb.json) 记录真实 RPO 165 ms、RTO 762 ms；`postgres_facts` 2/2、`minio_evidence` 2/2（版本 2/2）、`vault_all_files` 2/2、`vault_manual_regions` 2/2、`river_jobs_attempts` 2/2 均为期望/实际数量相等且 SHA-256 相等，`differences=[]`。RPO 取备份围栏至事故截点，RTO 取演练开始至 PostgreSQL、MinIO 和 Vault 全部可读；
 - 测试与 CI 证据：本机联合恢复、容量基线、架构契约和后端 `make ci` 全部通过；远端运行 [33248525810](https://github.com/StephenQiu30/hotkey-server/actions/runs/33248525810) 的 `Joint PostgreSQL MinIO Vault and River recovery acceptance` 步骤、8 个必需 Job 与 `All acceptance gates` 汇总全部为 `success`；
-- 边界：报告排除生产流量、外部连接器、通知投递和 Redis 短期状态；它证明可重复的隔离候选基线和同一恢复副本零未解释差异，生产同构环境、正式备份介质和现场恢复演习仍属于发布运维责任，RPO 165 ms 与 RTO 762 ms 不构成 SLA 承诺。
+- 边界：报告排除生产流量、外部连接器、通知投递和 Redis 短期状态；它证明可重复的本机/固定 CI 候选基线和同一恢复副本零未解释差异。正式备份介质与现场恢复属于后续生产运维演练，不作为当前开发交付门禁；RPO 165 ms 与 RTO 762 ms 不构成 SLA 承诺。
 
 ### `EV-001-026`：简单 Monitor 创建与编辑进入正式 Compiled Profile 发布链
 

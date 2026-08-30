@@ -20,8 +20,8 @@ export function generateSyntheticCanaries(random = randomBytes) {
 }
 
 export function persistSyntheticCanaries(canaries, githubEnvironmentPath, backendEnvironmentPath, mask = () => {}) {
-  if (!githubEnvironmentPath || !backendEnvironmentPath) {
-    throw new Error("synthetic secret output paths are required");
+  if (!githubEnvironmentPath) {
+    throw new Error("synthetic secret GitHub environment output path is required");
   }
   const entries = Object.entries(canaries);
   if (entries.length !== 10 || new Set(entries.map(([, value]) => value)).size !== entries.length) {
@@ -39,16 +39,18 @@ export function persistSyntheticCanaries(canaries, githubEnvironmentPath, backen
     { mode: 0o600 },
   );
 
-  let environment = readFileSync(backendEnvironmentPath, "utf8");
-  for (const name of [
-    "HOTKEY_JWT_SECRET",
-    "HOTKEY_VERIFICATION_HMAC_SECRET",
-    "HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY",
-    "HOTKEY_SMTP_PASSWORD",
-  ]) {
-    environment = setEnvironmentValue(environment, name, canaries[name]);
+  if (backendEnvironmentPath) {
+    let environment = readFileSync(backendEnvironmentPath, "utf8");
+    for (const name of [
+      "HOTKEY_JWT_SECRET",
+      "HOTKEY_VERIFICATION_HMAC_SECRET",
+      "HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY",
+      "HOTKEY_SMTP_PASSWORD",
+    ]) {
+      environment = setEnvironmentValue(environment, name, canaries[name]);
+    }
+    writeFileSync(backendEnvironmentPath, environment, { mode: 0o600 });
   }
-  writeFileSync(backendEnvironmentPath, environment, { mode: 0o600 });
 }
 
 function setEnvironmentValue(contents, name, value) {

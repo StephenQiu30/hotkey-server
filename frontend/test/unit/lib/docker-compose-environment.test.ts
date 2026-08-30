@@ -17,6 +17,17 @@ describe("Docker Compose environment configuration", () => {
     expect(baseCompose).toMatch(/^name: hotkey$/m);
     expect(baseCompose).toContain("image: hotkey-web:env");
     expect(baseCompose).toContain("HOTKEY_DEPLOY_ENV: env");
+    expect(baseCompose).not.toContain("env_file:");
+    expect(baseCompose).not.toContain("./backend/.env");
+    expect(baseCompose).toContain(
+      'HOTKEY_JWT_SECRET: "${HOTKEY_JWT_SECRET:-development-jwt-secret-change-me-000000}"',
+    );
+    expect(baseCompose).toContain(
+      'HOTKEY_VERIFICATION_HMAC_SECRET: "${HOTKEY_VERIFICATION_HMAC_SECRET:-development-hmac-secret-change-me-0000}"',
+    );
+    expect(baseCompose).toContain(
+      'HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY: "${HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY:-ZGV2ZWxvcG1lbnQtc291cmNlLW1hc3Rlci1rZXktMDA=}"',
+    );
     expect(baseCompose).toContain("context: ./frontend");
     expect(prodCompose).toMatch(/^name: hotkey-prod$/m);
     expect(prodCompose).toContain("postgres:");
@@ -50,8 +61,8 @@ describe("Docker Compose environment configuration", () => {
       expect(compose).toContain("condition: service_healthy");
       expect(compose).toContain("fetch('http://127.0.0.1:3000/')");
       expect(compose).toContain("HOTKEY_CORS_ALLOWED_ORIGINS:");
-      expect(compose).toContain("HOTKEY_AGENT_PREVIOUS_AUTH_TOKENS:");
     }
+    expect(prodCompose).toContain("HOTKEY_AGENT_PREVIOUS_AUTH_TOKENS:");
     expect(baseCompose).toContain(
       "http://localhost:8010,http://127.0.0.1:8010",
     );
@@ -70,6 +81,7 @@ describe("Docker Compose environment configuration", () => {
 
     expect(frontendEnvExample).toContain("# HOTKEY_API_ORIGIN=http://127.0.0.1:8866");
     expect(envExample).toContain("HOTKEY_CONTAINER_PREFIX=hotkey");
+    expect(envExample).toContain("日常启动不要求创建任何环境文件");
     expect(prodExample).toContain("HOTKEY_CONTAINER_PREFIX=hotkey-prod");
     expect(envExample).toContain("# HOTKEY_HTTP_PORT=8866");
     expect(prodExample).toContain("# HOTKEY_HTTP_PORT=8866");
@@ -88,7 +100,6 @@ describe("Docker Compose environment configuration", () => {
     ]) {
       expect(prodExample).toContain(setting);
     }
-    expect(envExample).toContain("HOTKEY_AGENT_PREVIOUS_AUTH_TOKENS=");
   });
 
   it("documents the direct Docker Compose production command", () => {

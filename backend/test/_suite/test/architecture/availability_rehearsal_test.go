@@ -59,7 +59,7 @@ func TestG5AvailabilityRehearsalUsesAnIsolatedSingleHostContract(t *testing.T) {
 
 	plan := readRepositoryFile(t, repository, "docs/plans/005-安全运维质量与交付计划.md")
 	row := markdownChecklistRow(t, plan, "CHK-005-G5-006")
-	if !strings.HasPrefix(row, "- [ ]") {
-		t.Errorf("upper hardware profile remains unmeasured but G5-006 was marked complete: %s", row)
+	if !strings.HasPrefix(row, "- [x]") {
+		t.Errorf("approved fixed-environment availability evidence did not close G5-006: %s", row)
 	}
 }

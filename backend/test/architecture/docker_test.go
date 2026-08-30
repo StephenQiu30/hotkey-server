@@ -69,9 +69,11 @@ func TestDockerDeploymentContract(t *testing.T) {
 		"hotkey-agent:",
 		"hotkey-web:",
 		"HOTKEY_ENV: development",
+		`HOTKEY_JWT_SECRET: "${HOTKEY_JWT_SECRET:-development-jwt-secret-change-me-000000}"`,
+		`HOTKEY_VERIFICATION_HMAC_SECRET: "${HOTKEY_VERIFICATION_HMAC_SECRET:-development-hmac-secret-change-me-0000}"`,
+		`HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY: "${HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY:-ZGV2ZWxvcG1lbnQtc291cmNlLW1hc3Rlci1rZXktMDA=}"`,
 		`HOTKEY_AGENT_SHADOW_ENABLED: "${HOTKEY_AGENT_SHADOW_ENABLED:-true}"`,
 		"HOTKEY_DEPLOY_ENV: env",
-		"- ./backend/.env",
 		"db verify ||",
 		"db init --empty-only --confirm-empty ||",
 		"mc mb --ignore-existing",
@@ -81,6 +83,9 @@ func TestDockerDeploymentContract(t *testing.T) {
 		"minio_data:",
 		"vault_data:",
 	)
+	if strings.Contains(baseCompose, "env_file:") || strings.Contains(baseCompose, "./backend/.env") {
+		t.Error("default Compose must start without a local environment file")
+	}
 	assertDockerComposeNamingContract(t, "docker-compose.yml", baseCompose, "hotkey", "hotkey")
 	assertDockerUsesLatestUpstreamImages(t, dockerfile, baseCompose)
 

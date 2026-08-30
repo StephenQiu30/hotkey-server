@@ -26,6 +26,8 @@ func TestExecuteUsesRealAPIBoundariesAndWritesOnlySanitizedEvidence(t *testing.T
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/api/v1/source-connections":
+			writeSourceList(t, writer)
 		case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/source-connections/"):
 			id, sourceType := sourceFixture(request.URL.Path)
 			credentialConfigured := sourceType == "x"
@@ -91,18 +93,36 @@ func TestExecuteUsesRealAPIBoundariesAndWritesOnlySanitizedEvidence(t *testing.T
 func TestLoadConfigFailsClosedBeforeNetworkOrOutput(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
-	values := validEnvironment("http://127.0.0.1:8866", filepath.Join(directory, "report.json"))
-	delete(values, "HOTKEY_SOURCE_LIVE_SMOKE_CONFIRM")
-	if _, err := loadConfig(func(key string) string { return values[key] }); err == nil {
-		t.Fatal("expected missing authorization confirmation to fail closed")
+	if _, err := loadConfig(func(string) string { return "" }); err == nil {
+		t.Fatal("expected missing admin token to fail closed")
 	}
-	if _, err := os.Stat(values["HOTKEY_SOURCE_LIVE_SMOKE_OUTPUT"]); !os.IsNotExist(err) {
-		t.Fatalf("configuration rejection must not create evidence: %v", err)
+	entries, err := os.ReadDir(directory)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("configuration rejection must not create evidence: %v, entries=%d", err, len(entries))
 	}
-	values["HOTKEY_SOURCE_LIVE_SMOKE_CONFIRM"] = confirmation
-	values["HOTKEY_SOURCE_LIVE_SMOKE_BASE_URL"] = "http://external.example.com"
-	if _, err := loadConfig(func(key string) string { return values[key] }); err == nil {
-		t.Fatal("expected non-loopback HTTP API to be rejected")
+}
+
+func TestLoadConfigUsesFixedLocalValuesAndOnlyReadsAdminToken(t *testing.T) {
+	t.Parallel()
+	overrides := map[string]string{
+		"HOTKEY_SOURCE_LIVE_SMOKE_ADMIN_TOKEN": testToken,
+		"HOTKEY_SOURCE_LIVE_SMOKE_BASE_URL":    "http://external.example.com",
+		"HOTKEY_SOURCE_LIVE_SMOKE_QUERY":       "override query",
+		"HOTKEY_SOURCE_LIVE_SMOKE_ENVIRONMENT": "override-environment",
+		"HOTKEY_SOURCE_LIVE_SMOKE_REVISION":    "override-revision",
+		"HOTKEY_SOURCE_LIVE_SMOKE_OUTPUT":      filepath.Join(t.TempDir(), "override.json"),
+	}
+	cfg, err := loadConfig(func(key string) string {
+		return overrides[key]
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.baseURL.String() != "http://127.0.0.1:8866/" || cfg.query != defaultQuery || cfg.environment != defaultEnvironment {
+		t.Fatalf("unexpected local defaults: %+v", cfg)
+	}
+	if cfg.revision == "" || cfg.revision == overrides["HOTKEY_SOURCE_LIVE_SMOKE_REVISION"] || filepath.Ext(cfg.outputPath) != ".json" || cfg.outputPath == overrides["HOTKEY_SOURCE_LIVE_SMOKE_OUTPUT"] || len(cfg.sources) != 0 {
+		t.Fatalf("derived configuration is incomplete: %+v", cfg)
 	}
 }
 
@@ -121,6 +141,8 @@ func TestExecuteRedactsAPIFailuresAndDoesNotFollowRedirect(t *testing.T) {
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/api/v1/source-connections":
+			writeSourceList(t, writer)
 		case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/source-connections/"):
 			id, sourceType := sourceFixture(request.URL.Path)
 			writeEnvelope(t, writer, map[string]any{"id": id, "source_type": sourceType, "enabled": true, "deleted": false, "credential_configured": sourceType == "x"})
@@ -164,6 +186,10 @@ func TestExecuteStopsBeforeExternalProbeWhenSourceIdentityIsWrong(t *testing.T) 
 	var externalRequests atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
+		if request.Method == http.MethodGet && request.URL.Path == "/api/v1/source-connections" {
+			writeSourceList(t, writer)
+			return
+		}
 		if request.Method != http.MethodGet {
 			externalRequests.Add(1)
 			http.Error(writer, "unexpected external request", http.StatusInternalServerError)
@@ -186,6 +212,36 @@ func TestExecuteStopsBeforeExternalProbeWhenSourceIdentityIsWrong(t *testing.T) 
 	}
 	if result.Sources[1].Preflight.ErrorCode != "source_precondition_failed" || result.Sources[1].Health.ErrorCode != "preflight_not_passed" {
 		t.Fatalf("expected stable preflight rejection: %+v", result.Sources[1])
+	}
+}
+
+func TestExecuteStopsBeforeHealthWhenSourceSelectionIsAmbiguous(t *testing.T) {
+	t.Parallel()
+	var externalRequests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if request.Method == http.MethodGet && request.URL.Path == "/api/v1/source-connections" {
+			writeEnvelope(t, writer, map[string]any{
+				"items": []map[string]any{
+					{"id": 10, "source_type": "rss", "enabled": true, "deleted": false},
+					{"id": 11, "source_type": "rss", "enabled": true, "deleted": false},
+					{"id": 12, "source_type": "hacker_news", "enabled": true, "deleted": false},
+					{"id": 13, "source_type": "x", "enabled": true, "deleted": false, "credential_configured": true},
+				},
+				"next_cursor": "",
+			})
+			return
+		}
+		externalRequests.Add(1)
+		http.Error(writer, "unexpected external request", http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+	result, passed := execute(t.Context(), server.Client(), validConfig(t, server.URL), time.Now)
+	if passed || result.ErrorCode != "source_selection_ambiguous" {
+		t.Fatalf("ambiguous sources must fail with a stable code: %+v", result)
+	}
+	if externalRequests.Load() != 0 {
+		t.Fatalf("ambiguous source selection triggered %d external requests", externalRequests.Load())
 	}
 }
 
@@ -226,23 +282,19 @@ func validConfig(t *testing.T, serverURL string) config {
 		baseURL: baseURL, token: testToken, query: testQuery,
 		environment: "trusted-test", revision: strings.Repeat("a", 40),
 		outputPath: filepath.Join(t.TempDir(), "source-live-smoke.json"),
-		sources:    []sourceInput{{SourceType: "rss", ID: 11}, {SourceType: "hacker_news", ID: 12}, {SourceType: "x", ID: 13}},
 	}
 }
 
-func validEnvironment(baseURL, outputPath string) map[string]string {
-	return map[string]string{
-		"HOTKEY_SOURCE_LIVE_SMOKE_CONFIRM":     confirmation,
-		"HOTKEY_SOURCE_LIVE_SMOKE_BASE_URL":    baseURL,
-		"HOTKEY_SOURCE_LIVE_SMOKE_ADMIN_TOKEN": testToken,
-		"HOTKEY_SOURCE_LIVE_SMOKE_QUERY":       testQuery,
-		"HOTKEY_SOURCE_LIVE_SMOKE_ENVIRONMENT": "trusted-test",
-		"HOTKEY_SOURCE_LIVE_SMOKE_REVISION":    strings.Repeat("a", 40),
-		"HOTKEY_SOURCE_LIVE_SMOKE_OUTPUT":      outputPath,
-		"HOTKEY_SOURCE_LIVE_SMOKE_RSS_ID":      "11",
-		"HOTKEY_SOURCE_LIVE_SMOKE_HN_ID":       "12",
-		"HOTKEY_SOURCE_LIVE_SMOKE_X_ID":        "13",
-	}
+func writeSourceList(t *testing.T, writer http.ResponseWriter) {
+	t.Helper()
+	writeEnvelope(t, writer, map[string]any{
+		"items": []map[string]any{
+			{"id": 11, "source_type": "rss", "enabled": true, "deleted": false, "credential_configured": false},
+			{"id": 12, "source_type": "hacker_news", "enabled": true, "deleted": false, "credential_configured": false},
+			{"id": 13, "source_type": "x", "enabled": true, "deleted": false, "credential_configured": true},
+		},
+		"next_cursor": "",
+	})
 }
 
 func sourceFixture(path string) (int64, string) {

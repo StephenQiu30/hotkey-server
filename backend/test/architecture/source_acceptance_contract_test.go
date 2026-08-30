@@ -28,6 +28,7 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 		"CHK-002-G4-004": "EV-002-006",
 		"CHK-002-G4-005": "EV-002-007",
 		"CHK-002-G4-006": "EV-002-002",
+		"CHK-002-G5-001": "EV-002-008",
 	}
 	for checkID, evidenceID := range completed {
 		row := markdownChecklistRow(t, plan, checkID)
@@ -40,10 +41,7 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 		}
 	}
 
-	open := map[string]string{
-		"CHK-002-G3-002": "EV-002-012",
-		"CHK-002-G5-001": "EV-002-012",
-	}
+	open := map[string]string{"CHK-002-G3-002": "EV-002-012"}
 	for checkID, evidenceID := range open {
 		row := markdownChecklistRow(t, plan, checkID)
 		if !strings.HasPrefix(row, "- [ ]") || !strings.Contains(row, evidenceID) {
@@ -53,7 +51,7 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 
 	for _, fragment := range []string{
 		"`AC-002-002` | partial",
-		"`AC-002-008` | partial",
+		"`AC-002-008` | passed",
 		"TestCollectionFetchRightsDenialStopsBeforeConnectorResolutionAndPersistsSanitizedAudit",
 		"TestConnectorRegistryDefersManagedCredentialDecryptionUntilTheRequestBoundary",
 		"TestXEndpointPolicyRejectsUnsafeResolutionBeforeCredentialBudgetOrDial",
@@ -69,9 +67,10 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 		"`EV-002-012`",
 		"TestExecuteUsesRealAPIBoundariesAndWritesOnlySanitizedEvidence",
 		"TestLoadConfigFailsClosedBeforeNetworkOrOutput",
+		"TestLoadConfigUsesLocalDefaultsAndOnlyRequiresAdminToken",
 		"TestExecuteStopsBeforeExternalProbeWhenSourceIdentityIsWrong",
 		"make source-live-smoke",
-		"I_CONFIRM_AUTHORIZED_P0_SOURCES",
+		"only HOTKEY_SOURCE_LIVE_SMOKE_ADMIN_TOKEN is required",
 		"真实授权冒烟未执行",
 		"只剩三来源真实授权冒烟",
 		"不得用 Fixture、模拟响应或本机候选容量替代真实授权证据",

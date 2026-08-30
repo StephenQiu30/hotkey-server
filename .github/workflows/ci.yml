@@ -405,11 +405,8 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
 
-      - name: Prepare CI-only environment files
+      - name: Prepare production Compose acceptance environment
         run: |
-          cp backend/.env.example backend/.env
-          sed -i 's/^HOTKEY_JWT_SECRET=.*/HOTKEY_JWT_SECRET=ci-jwt-secret-0123456789abcdef0123456789abcdef/' backend/.env
-          sed -i 's/^HOTKEY_VERIFICATION_HMAC_SECRET=.*/HOTKEY_VERIFICATION_HMAC_SECRET=ci-verification-secret-0123456789abcdef0123456789abcdef/' backend/.env
           cp .env.prod.example .env.prod
           sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-postgres-password/' .env.prod
           sed -i 's/^MINIO_ROOT_USER=.*/MINIO_ROOT_USER=ci-minio/' .env.prod
@@ -453,9 +450,7 @@ jobs:
           node-version: 24
 
       - name: Generate masked synthetic secret canaries
-        run: |
-          cp backend/.env.example backend/.env
-          node frontend/test/security/generate-secret-canaries.mjs "$GITHUB_ENV" backend/.env
+        run: node frontend/test/security/generate-secret-canaries.mjs "$GITHUB_ENV"
 
       - name: Start a fresh container stack
         run: docker compose -p hotkey-ci -f docker-compose.yml up --build --detach --wait --wait-timeout 240
