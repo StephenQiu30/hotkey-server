@@ -1,0 +1,189 @@
+{
+  "version": "hotkey-repeated-restore-rehearsal-v1",
+  "status": "verified",
+  "approval": "automated_isolated_fixture",
+  "environment": "github-actions-independent-compose-restores",
+  "hardware": "ubuntu-latest-hosted-runner",
+  "git_revision": "7da9ab01f0064d39a9b60bd4c230ac1d59ac9675",
+  "runtime": {
+    "goos": "linux",
+    "goarch": "amd64",
+    "cpus": 4
+  },
+  "isolated": true,
+  "production_egress_disabled": true,
+  "root_compose_contract": true,
+  "same_backup_sha256": "d89e3e9ac815837715efbfc1dbb6bb3d876c4d2467b90b5f93c0b33954abe503",
+  "schema_sha256": "3bad8db5f8179de362ecef99a18bd924b4adf872a35d876085b80b0487ea4293",
+  "openapi_sha256": "a3200b4eaa2a1d557f5b8c8fcaf85a12c5898b886f4b888a7ca3ae6689aaa3ed",
+  "recovery_point_at": "2026-08-30T03:55:17.166126406Z",
+  "incident_cutoff_at": "2026-08-30T03:55:17.660487268Z",
+  "restores": [
+    {
+      "role": "restore-a",
+      "independent_compose_project": true,
+      "new_volumes": [
+        "postgres_data",
+        "minio_data",
+        "vault_data"
+      ],
+      "same_backup_sha256": "d89e3e9ac815837715efbfc1dbb6bb3d876c4d2467b90b5f93c0b33954abe503",
+      "schema_compatible": true,
+      "openapi_compatible": true,
+      "rpo_seconds": 0.494,
+      "rto_seconds": 10.119,
+      "candidate_rpo_met": true,
+      "candidate_rto_met": true,
+      "cutover_permitted": true,
+      "assets": [
+        {
+          "name": "postgres_facts",
+          "expected_count": 2,
+          "actual_count": 2,
+          "expected_sha256": "36c735204aabde548c58ab10b4b14e2eafd277c1f7011b641d94202d12b469d7",
+          "actual_sha256": "36c735204aabde548c58ab10b4b14e2eafd277c1f7011b641d94202d12b469d7"
+        },
+        {
+          "name": "minio_evidence",
+          "expected_count": 2,
+          "actual_count": 2,
+          "expected_sha256": "42da0ecfd449adea57aae1367269a2b43ac6d502b650448a33ed2dca4dcfd91e",
+          "actual_sha256": "42da0ecfd449adea57aae1367269a2b43ac6d502b650448a33ed2dca4dcfd91e"
+        },
+        {
+          "name": "vault_all_files",
+          "expected_count": 2,
+          "actual_count": 2,
+          "expected_sha256": "24bfb4fb24ee8c0af5a7c5c6b61fd88e70876000a6e58bf867ce249b7ccca587",
+          "actual_sha256": "24bfb4fb24ee8c0af5a7c5c6b61fd88e70876000a6e58bf867ce249b7ccca587"
+        },
+        {
+          "name": "vault_manual_regions",
+          "expected_count": 2,
+          "actual_count": 2,
+          "expected_sha256": "48164354f77dd4c5d67edb5b326e029011166ae6ea2183ca9502297e862efaca",
+          "actual_sha256": "48164354f77dd4c5d67edb5b326e029011166ae6ea2183ca9502297e862efaca"
+        },
+        {
+          "name": "river_jobs_attempts",
+          "expected_count": 2,
+          "actual_count": 2,
+          "expected_sha256": "3b57910d174cb062e637fe1a67aaa89ec55bd78a228177a90ee9ba0195bbb1d8",
+          "actual_sha256": "3b57910d174cb062e637fe1a67aaa89ec55bd78a228177a90ee9ba0195bbb1d8"
+        }
+      ],
+      "differences": []
+    },
+    {
+      "role": "restore-b",
+      "independent_compose_project": true,
+      "new_volumes": [
+        "postgres_data",
+        "minio_data",
+        "vault_data"
+      ],
+      "same_backup_sha256": "d89e3e9ac815837715efbfc1dbb6bb3d876c4d2467b90b5f93c0b33954abe503",
+      "schema_compatible": true,
+      "openapi_compatible": true,
+      "rpo_seconds": 0.494,
+      "rto_seconds": 8.629,
+      "candidate_rpo_met": true,
+      "candidate_rto_met": true,
+      "cutover_permitted": true,
+      "assets": [
+        {
+          "name": "postgres_facts",
+          "expected_count": 2,
+          "actual_count": 2,
+          "expected_sha256": "36c735204aabde548c58ab10b4b14e2eafd277c1f7011b641d94202d12b469d7",
+          "actual_sha256": "36c735204aabde548c58ab10b4b14e2eafd277c1f7011b641d94202d12b469d7"
+        },
+        {
+          "name": "minio_evidence",
+          "expected_count": 2,
+          "actual_count": 2,
+          "expected_sha256": "42da0ecfd449adea57aae1367269a2b43ac6d502b650448a33ed2dca4dcfd91e",
+          "actual_sha256": "42da0ecfd449adea57aae1367269a2b43ac6d502b650448a33ed2dca4dcfd91e"
+        },
+        {
+          "name": "vault_all_files",
+          "expected_count": 2,
+          "actual_count": 2,
+          "expected_sha256": "24bfb4fb24ee8c0af5a7c5c6b61fd88e70876000a6e58bf867ce249b7ccca587",
+          "actual_sha256": "24bfb4fb24ee8c0af5a7c5c6b61fd88e70876000a6e58bf867ce249b7ccca587"
+        },
+        {
+          "name": "vault_manual_regions",
+          "expected_count": 2,
+          "actual_count": 2,
+          "expected_sha256": "48164354f77dd4c5d67edb5b326e029011166ae6ea2183ca9502297e862efaca",
+          "actual_sha256": "48164354f77dd4c5d67edb5b326e029011166ae6ea2183ca9502297e862efaca"
+        },
+        {
+          "name": "river_jobs_attempts",
+          "expected_count": 2,
+          "actual_count": 2,
+          "expected_sha256": "3b57910d174cb062e637fe1a67aaa89ec55bd78a228177a90ee9ba0195bbb1d8",
+          "actual_sha256": "3b57910d174cb062e637fe1a67aaa89ec55bd78a228177a90ee9ba0195bbb1d8"
+        }
+      ],
+      "differences": []
+    }
+  ],
+  "failure_stops": [
+    {
+      "case": "missing_backup",
+      "failure_code": "backup_missing",
+      "target_created": false,
+      "mutation_started": false,
+      "stopped_before_mutation": true,
+      "stopped_before_cutover": true,
+      "existing_target_overwritten": false,
+      "cutover_permitted": false,
+      "differences": []
+    },
+    {
+      "case": "corrupt_backup",
+      "failure_code": "backup_checksum_mismatch",
+      "target_created": false,
+      "mutation_started": false,
+      "stopped_before_mutation": true,
+      "stopped_before_cutover": true,
+      "existing_target_overwritten": false,
+      "cutover_permitted": false,
+      "differences": []
+    },
+    {
+      "case": "schema_incompatible",
+      "failure_code": "schema_incompatible",
+      "target_created": false,
+      "mutation_started": false,
+      "stopped_before_mutation": true,
+      "stopped_before_cutover": true,
+      "existing_target_overwritten": false,
+      "cutover_permitted": false,
+      "differences": []
+    },
+    {
+      "case": "reconciliation_mismatch",
+      "failure_code": "reconciliation_failed",
+      "target_created": true,
+      "mutation_started": true,
+      "stopped_before_mutation": false,
+      "stopped_before_cutover": true,
+      "existing_target_overwritten": false,
+      "cutover_permitted": false,
+      "differences": [
+        "minio_evidence:count_hash_or_version_mismatch"
+      ]
+    }
+  ],
+  "differences": [],
+  "exclusions": [
+    "production_data",
+    "production_cutover",
+    "external_connectors",
+    "notification_delivery",
+    "redis_ephemeral_state"
+  ]
+}
