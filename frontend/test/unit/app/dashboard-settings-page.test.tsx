@@ -11,6 +11,13 @@ const mocks = vi.hoisted(() => ({
   getMonitorsIdScans: vi.fn(),
   postMonitors: vi.fn(),
   putMonitorsId: vi.fn(),
+  putMonitorsIdDraft: vi.fn(),
+  getMonitorsIdVersions: vi.fn(),
+  postMonitorsIdPublish: vi.fn(),
+  getMonitorsIdDraft: vi.fn(),
+  putMonitorsIdDraftIntent: vi.fn(),
+  postMonitorsIdDraftPreviewRuns: vi.fn(),
+  getMonitorsIdDraftPreviewRunsRunId: vi.fn(),
   postMonitorsIdCollect: vi.fn(),
   postMonitorsIdPause: vi.fn(),
   postMonitorsIdResume: vi.fn(),
@@ -23,11 +30,21 @@ vi.mock("@/services/hotkey/hotkey-server/monitors", () => ({
   getMonitors: mocks.getMonitors,
   postMonitors: mocks.postMonitors,
   putMonitorsId: mocks.putMonitorsId,
+  putMonitorsIdDraft: mocks.putMonitorsIdDraft,
+  getMonitorsIdVersions: mocks.getMonitorsIdVersions,
+  postMonitorsIdPublish: mocks.postMonitorsIdPublish,
   postMonitorsIdPause: mocks.postMonitorsIdPause,
   postMonitorsIdResume: mocks.postMonitorsIdResume,
   postMonitorsIdArchive: mocks.postMonitorsIdArchive,
   postMonitorsIdRestore: mocks.postMonitorsIdRestore,
   deleteMonitorsId: mocks.deleteMonitorsId,
+}));
+vi.mock("@/services/hotkey/hotkey-server/monitorIntent", () => ({
+  getMonitorsIdDraft: mocks.getMonitorsIdDraft,
+  putMonitorsIdDraftIntent: mocks.putMonitorsIdDraftIntent,
+  postMonitorsIdDraftPreviewRuns: mocks.postMonitorsIdDraftPreviewRuns,
+  getMonitorsIdDraftPreviewRunsRunId:
+    mocks.getMonitorsIdDraftPreviewRunsRunId,
 }));
 vi.mock("@/services/hotkey/hotkey-server/collectionRuns", () => ({
   getMonitorsIdScans: mocks.getMonitorsIdScans,
@@ -113,6 +130,36 @@ describe("MonitorsPage", () => {
     });
     mocks.putMonitorsId.mockResolvedValue({
       data: { id: 9, version: 4, status: "active" },
+    });
+    mocks.putMonitorsIdDraft.mockImplementation(({ id }: { id: number }) =>
+      Promise.resolve({
+        data: { id, version: id === 10 ? 3 : 4, status: "active" },
+      })
+    );
+    mocks.getMonitorsIdVersions.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          items:
+            mocks.getMonitorsIdVersions.mock.calls.length === 1
+              ? [{ id: 40, version: 2, state: "published" }]
+              : [{ id: 41, version: 1, state: "draft" }],
+        },
+      })
+    );
+    mocks.getMonitorsIdDraft.mockRejectedValue(
+      new HotKeyAPIError(404, "监控意图尚未初始化")
+    );
+    mocks.putMonitorsIdDraftIntent.mockResolvedValue({
+      data: { monitor_id: 10, draft_id: 51, resource_version: 1 },
+    });
+    mocks.postMonitorsIdDraftPreviewRuns.mockResolvedValue({
+      data: { monitor_id: 10, draft_id: 51, resource_version: 1, run_id: 61, status: "queued" },
+    });
+    mocks.getMonitorsIdDraftPreviewRunsRunId.mockResolvedValue({
+      data: { monitor_id: 10, draft_id: 51, resource_version: 1, run_id: 61, status: "succeeded" },
+    });
+    mocks.postMonitorsIdPublish.mockResolvedValue({
+      data: { id: 10, version: 4, status: "active" },
     });
     mocks.postMonitorsIdPause.mockResolvedValue({ data: {} });
     mocks.postMonitorsIdResume.mockResolvedValue({ data: {} });
@@ -208,7 +255,7 @@ describe("MonitorsPage", () => {
     expect(screen.queryByRole("button", { name: "编辑 Other" })).not.toBeInTheDocument();
   });
 
-  it("creates and publishes a monitor in one user action with simple fields", async () => {
+  it("creates, compiles and publishes a schedulable monitor in one user action", async () => {
     const user = userEvent.setup();
     mocks.getMonitors.mockResolvedValueOnce({ data: { items: [] } });
     render(<MonitorsPage />);
@@ -225,9 +272,85 @@ describe("MonitorsPage", () => {
     expect(request.source_connection_ids).toEqual([4]);
     expect(request.collection_interval_seconds).toBe(1800);
     expect(request.alert_email_enabled).toBe(true);
+    expect(mocks.putMonitorsIdDraft).toHaveBeenCalledWith(
+      { id: 10 },
+      expect.objectContaining({
+        expected_monitor_version: 2,
+        expected_draft_version: null,
+        name: "AI 产品",
+        rules: [
+          expect.objectContaining({
+            rule_type: "keyword",
+            operator: "contains",
+            value: "Claude",
+          }),
+        ],
+        sources: [expect.objectContaining({ source_connection_id: 4 })],
+      })
+    );
+    expect(mocks.putMonitorsIdDraftIntent).toHaveBeenCalledWith(
+      { id: 10 },
+      {
+        expected_resource_version: 0,
+        objective: "Claude",
+        clauses: [{ operator: "should", field: "term", value: "Claude" }],
+        entities: [],
+        examples: [],
+      },
+      expect.objectContaining({ headers: { "If-None-Match": "*" } })
+    );
+    expect(mocks.postMonitorsIdDraftPreviewRuns).toHaveBeenCalledWith(
+      { id: 10 },
+      {
+        expected_resource_version: 1,
+        evaluator_profile: "hybrid-preview-v1",
+        sample_limit: 25,
+      },
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "If-Match": '"v1"',
+          "Idempotency-Key": expect.any(String),
+        }),
+      })
+    );
+    expect(mocks.getMonitorsIdDraftPreviewRunsRunId).toHaveBeenCalledWith({
+      id: 10,
+      run_id: 61,
+    });
+    expect(mocks.postMonitorsIdPublish).toHaveBeenCalledWith(
+      { id: 10 },
+      { expected_monitor_version: 3, expected_draft_version: 1 }
+    );
   });
 
-  it("edits the same simple fields without exposing draft configuration", async () => {
+  it("keeps the monitor unpublished when the exact intent preview fails", async () => {
+    const user = userEvent.setup();
+    mocks.getMonitors.mockResolvedValueOnce({ data: { items: [] } });
+    mocks.getMonitorsIdDraftPreviewRunsRunId.mockResolvedValueOnce({
+      data: {
+        monitor_id: 10,
+        draft_id: 51,
+        resource_version: 1,
+        run_id: 61,
+        status: "failed",
+        failure_code: "preview_evaluator_unavailable",
+      },
+    });
+    render(<MonitorsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "新建监控" }));
+    await user.type(screen.getByLabelText("监控名称"), "AI 产品");
+    await user.type(screen.getByLabelText("监控词"), "Claude");
+    await user.click(screen.getByRole("button", { name: "创建并启用" }));
+
+    await waitFor(() =>
+      expect(mocks.getMonitorsIdDraftPreviewRunsRunId).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.postMonitorsIdPublish).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "创建并启用" })).toBeEnabled();
+  });
+
+  it("recompiles an edited monitor before publishing without exposing draft configuration", async () => {
     const user = userEvent.setup();
     render(<MonitorsPage />);
 
@@ -239,17 +362,26 @@ describe("MonitorsPage", () => {
     await user.type(query, "Claude AI");
     await user.click(screen.getByRole("button", { name: "保存修改" }));
 
-    await waitFor(() => expect(mocks.putMonitorsId).toHaveBeenCalledTimes(1));
-    expect(mocks.putMonitorsId).toHaveBeenCalledWith(
+    await waitFor(() =>
+      expect(mocks.postMonitorsIdPublish).toHaveBeenCalledTimes(1)
+    );
+    expect(mocks.putMonitorsIdDraft).toHaveBeenCalledWith(
       { id: 9 },
-      {
+      expect.objectContaining({
         expected_monitor_version: 3,
         name: "Claude",
-        query: "Claude AI",
-        source_connection_ids: [4],
-        collection_interval_seconds: 1800,
-        alert_email_enabled: false,
-      }
+        rules: [expect.objectContaining({ value: "Claude AI" })],
+        sources: [expect.objectContaining({ source_connection_id: 4 })],
+      })
+    );
+    expect(mocks.putMonitorsIdDraftIntent).toHaveBeenCalledWith(
+      { id: 9 },
+      expect.objectContaining({ objective: "Claude AI" }),
+      expect.objectContaining({ headers: { "If-None-Match": "*" } })
+    );
+    expect(mocks.postMonitorsIdPublish).toHaveBeenCalledWith(
+      { id: 9 },
+      { expected_monitor_version: 4, expected_draft_version: 1 }
     );
     expect(screen.queryByText(/草稿|配置哈希/)).not.toBeInTheDocument();
   });

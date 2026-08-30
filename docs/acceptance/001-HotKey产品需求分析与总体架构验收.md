@@ -295,11 +295,20 @@ verification_date: "2026-08-29"
 - 测试与 CI 证据：本机联合恢复、容量基线、架构契约和后端 `make ci` 全部通过；远端运行 [33248525810](https://github.com/StephenQiu30/hotkey-server/actions/runs/33248525810) 的 `Joint PostgreSQL MinIO Vault and River recovery acceptance` 步骤、8 个必需 Job 与 `All acceptance gates` 汇总全部为 `success`；
 - 边界：报告排除生产流量、外部连接器、通知投递和 Redis 短期状态；它证明可重复的隔离候选基线和同一恢复副本零未解释差异，生产同构环境、正式备份介质和现场恢复演习仍属于发布运维责任，RPO 165 ms 与 RTO 762 ms 不构成 SLA 承诺。
 
+### `EV-001-026`：简单 Monitor 创建与编辑进入正式 Compiled Profile 发布链
+
+- 结果：关闭了设置页把只有 legacy 配置、没有 ready Compiled Profile 的 Monitor 显示为“已创建并启用”的实现缺口；新建和编辑现在都必须完成配置草稿 CAS、意图草稿、版本绑定预览、成功状态确认和精确版本发布后，页面才提示成功；本证据推进 `AC-001-001` 的 Monitor→采集入口，但不替代真实来源驱动的完整 P0 浏览器/UAT；
+- 失败证据：先收紧 `dashboard-settings-page.test.tsx`，要求一次简单创建实际调用 Draft、Intent、Preview Status 和 Publish 契约；修复前测试稳定显示 `putMonitorsIdDraft` 调用次数为 0，证明旧页面只调用 `POST /api/v1/monitors`，与调度器“无 ready Compiled Profile 不准入”的门禁断开；
+- 实现证据：设置页继续保留名称、监控词、来源、周期和邮件提醒这组简单产品字段，但内部通过既有生成客户端建立或替换配置草稿，用强 ETag 与 Idempotency-Key 建立意图和预览 Run，轮询到 `succeeded` 后从版本历史读取精确 draft version 再发布；编辑复用相同链路，已有失败草稿通过当前 draft/resource version 继续 CAS，不回退到 legacy 匹配；
+- 失败关闭：预览返回 `failed`、`invalidated`、未知状态或超时时停止发布并保留可重试 UI；专项测试明确断言失败预览的 `postMonitorsIdPublish` 调用次数为 0；
+- 本机证据：`dashboard-settings-page.test.tsx` 13 项通过，前端 TypeScript、全量单测、生产依赖审计和 Production Build 均通过；
+- 边界：创建接口在兼容层仍先产生一次 legacy published Monitor，页面随即创建 replacement draft 并完成正式发布；调度器继续拒绝该短暂中间态，绝不回退读取 legacy rules。真实 RSS/HN/X 来源、四角色人工 UAT、事件以后链路仍按对应未关闭门禁执行。
+
 ## AC 结果
 
 | AC | 结果 | 说明 |
 |---|---|---|
-| `AC-001-001` | partial | 已保存完整现状矩阵和报告/Vault 硬断言入口；真实来源驱动的完整 P0 浏览器/UAT 故事未完成 |
+| `AC-001-001` | partial | 已保存完整现状矩阵和报告/Vault 硬断言入口；见 `EV-001-026`，简单 Monitor 新建/编辑已进入正式 Compiled Profile 发布链；真实来源驱动的完整 P0 浏览器/UAT 故事仍未完成 |
 | `AC-001-002` | partial | 自动化四角色、所有权和会话撤销已覆盖；完整四角色 UAT 未完成 |
 | `AC-001-003` | passed | 见 `EV-001-002` |
 | `AC-001-004` | partial | 五态、移动端、自动 WCAG 与 Tab 焦点证据存在；完整人工键盘矩阵未完成 |
@@ -327,7 +336,7 @@ capacity: HOTKEY_CAPACITY_DATASET_SIZE=100000 HOTKEY_CAPACITY_CONCURRENCY=20 HOT
 joint recovery: HOTKEY_RECOVERY_TEST_DSN='postgresql test DSN' HOTKEY_RECOVERY_MINIO_ENDPOINT='isolated MinIO endpoint' HOTKEY_RECOVERY_MINIO_ACCESS_KEY='test-only key' HOTKEY_RECOVERY_MINIO_SECRET_KEY='test-only secret' HOTKEY_RECOVERY_GIT_REVISION=3d9acccbc136195ee1c26fa7d9cec69cef2d1740 HOTKEY_RECOVERY_ENVIRONMENT=macos-26.6.2-local-postgresql-18.4-minio-isolated HOTKEY_RECOVERY_HARDWARE='Apple M5; 10 CPU; 24 GiB RAM; internal APFS SSD; PostgreSQL 18.4 and MinIO loopback' HOTKEY_RECOVERY_PRODUCTION_EGRESS_DISABLED=true HOTKEY_RECOVERY_OUTPUT=../docs/acceptance/evidence/001/joint-recovery-macos-arm64-3d9acccb.json make joint-recovery-acceptance
 ```
 
-本机全量结果通过；前端 254 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33248525810` 的 8 个必需 Job 与最终汇总全部通过，其中 Worker 实际完成联合恢复。
+本机全量结果通过；前端 272 项测试通过，Python Agent 为 41 项测试通过且覆盖率 97.57%，生产依赖审计无高危漏洞；Go `govulncheck` 未发现当前调用链漏洞。远端运行 `33248525810` 的 8 个必需 Job 与最终汇总全部通过，其中 Worker 实际完成联合恢复。
 
 ## 未完成项与停止条件
 

@@ -63,14 +63,22 @@ import { HotKeyAPIError } from "@/lib/request";
 import { sourceTypeLabel } from "@/lib/sourceLabels";
 import {
   deleteMonitorsId,
+  getMonitorsIdVersions,
   getMonitors,
   postMonitors,
   postMonitorsIdArchive,
   postMonitorsIdPause,
+  postMonitorsIdPublish,
   postMonitorsIdResume,
   postMonitorsIdRestore,
-  putMonitorsId,
+  putMonitorsIdDraft,
 } from "@/services/hotkey/hotkey-server/monitors";
+import {
+  getMonitorsIdDraft,
+  getMonitorsIdDraftPreviewRunsRunId,
+  postMonitorsIdDraftPreviewRuns,
+  putMonitorsIdDraftIntent,
+} from "@/services/hotkey/hotkey-server/monitorIntent";
 import {
   getMonitorsIdScans,
   postMonitorsIdCollect,
@@ -90,6 +98,195 @@ type ScanState = {
   queued?: boolean;
   items: HotKeyAPI.MonitorScanResponse[];
 };
+
+type SimpleMonitorFields = {
+  name: string;
+  query: string;
+  source_connection_ids: number[];
+  collection_interval_seconds: number;
+  alert_email_enabled: boolean;
+};
+
+const intentPreviewProfile = "hybrid-preview-v1";
+const intentPreviewSampleLimit = 25;
+const maximumIntentPreviewPolls = 40;
+
+function intentETag(version: number) {
+  return `"v${version}"`;
+}
+
+function simpleDraftRequest(
+  fields: SimpleMonitorFields,
+  expectedMonitorVersion: number,
+  expectedDraftVersion: number | null
+) {
+  return {
+    expected_monitor_version: expectedMonitorVersion,
+    expected_draft_version: expectedDraftVersion,
+    name: fields.name,
+    description: `监控 ${fields.query}`,
+    config: {
+      timezone: "Asia/Shanghai",
+      languages: ["zh", "en"],
+      collection_interval_seconds: fields.collection_interval_seconds,
+      relevance_threshold: 60,
+      event_threshold: 0,
+      alert_min_heat: 70,
+      alert_min_momentum: 55,
+      alert_min_breadth: 25,
+      alert_warning_threshold: 75,
+      alert_critical_threshold: 90,
+      alert_cooldown_minutes: 60,
+      alert_email_enabled: fields.alert_email_enabled,
+      alert_email_min_severity: "warning",
+      retention_days: 30,
+    },
+    rules: [
+      {
+        rule_type: "keyword",
+        operator: "contains",
+        value: fields.query,
+        weight: 100,
+        priority: 1,
+        enabled: true,
+      },
+    ],
+    sources: fields.source_connection_ids.map((sourceConnectionID, index) => ({
+      source_connection_id: sourceConnectionID,
+      priority: index + 1,
+      enabled: true,
+      query_override: "",
+    })),
+  } as unknown as HotKeyAPI.ReplaceDraftRequest;
+}
+
+function intentPreviewIdempotencyKey(
+  monitorID: number,
+  intentResourceVersion: number
+) {
+  const entropy = globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `simple-monitor-preview-${monitorID}-${intentResourceVersion}-${entropy}`.slice(
+    0,
+    128
+  );
+}
+
+async function currentIntentResourceVersion(monitorID: number) {
+  try {
+    const response = await getMonitorsIdDraft({ id: monitorID });
+    const version = response.data?.resource_version;
+    if (version == null || version <= 0) {
+      throw new Error("监控意图版本无效");
+    }
+    return version;
+  } catch (reason) {
+    if (reason instanceof HotKeyAPIError && reason.status === 404) return 0;
+    throw reason;
+  }
+}
+
+async function waitForIntentPreview(monitorID: number, runID: number) {
+  for (let attempt = 0; attempt < maximumIntentPreviewPolls; attempt += 1) {
+    const response = await getMonitorsIdDraftPreviewRunsRunId({
+      id: monitorID,
+      run_id: runID,
+    });
+    const status = response.data?.status;
+    if (status === "succeeded") return;
+    if (status === "failed" || status === "invalidated") {
+      throw new Error(response.data?.failure_code || "监控意图预览失败");
+    }
+    if (status !== "queued" && status !== "running") {
+      throw new Error("监控意图预览状态无效");
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+  }
+  throw new Error("监控意图预览超时，请稍后重试");
+}
+
+async function compileAndPublishSimpleMonitor(
+  monitorID: number,
+  monitorVersion: number,
+  fields: SimpleMonitorFields
+) {
+  const existingHistory = await getMonitorsIdVersions({
+    id: monitorID,
+    limit: 100,
+  });
+  const expectedDraftVersion =
+    existingHistory.data?.items?.find(
+      (configuration) => configuration.state === "draft"
+    )?.version ?? null;
+  const drafted = await putMonitorsIdDraft(
+    { id: monitorID },
+    simpleDraftRequest(fields, monitorVersion, expectedDraftVersion)
+  );
+  const draftedMonitorVersion = drafted.data?.version;
+  if (draftedMonitorVersion == null || draftedMonitorVersion <= monitorVersion) {
+    throw new Error("监控草稿版本无效");
+  }
+
+  const currentResourceVersion = await currentIntentResourceVersion(monitorID);
+  const intent = await putMonitorsIdDraftIntent(
+    { id: monitorID },
+    {
+      expected_resource_version: currentResourceVersion,
+      objective: fields.query,
+      clauses: [{ operator: "should", field: "term", value: fields.query }],
+      entities: [],
+      examples: [],
+    },
+    {
+      headers:
+        currentResourceVersion === 0
+          ? { "If-None-Match": "*" }
+          : { "If-Match": intentETag(currentResourceVersion) },
+    }
+  );
+  const intentResourceVersion = intent.data?.resource_version;
+  if (intentResourceVersion == null || intentResourceVersion <= 0) {
+    throw new Error("监控意图保存失败");
+  }
+
+  const preview = await postMonitorsIdDraftPreviewRuns(
+    { id: monitorID },
+    {
+      expected_resource_version: intentResourceVersion,
+      evaluator_profile: intentPreviewProfile,
+      sample_limit: intentPreviewSampleLimit,
+    },
+    {
+      headers: {
+        "If-Match": intentETag(intentResourceVersion),
+        "Idempotency-Key": intentPreviewIdempotencyKey(
+          monitorID,
+          intentResourceVersion
+        ),
+      },
+    }
+  );
+  const previewRunID = preview.data?.run_id;
+  if (previewRunID == null || previewRunID <= 0) {
+    throw new Error("监控意图预览未排队");
+  }
+  await waitForIntentPreview(monitorID, previewRunID);
+
+  const history = await getMonitorsIdVersions({ id: monitorID, limit: 100 });
+  const draftVersion = history.data?.items?.find(
+    (configuration) => configuration.state === "draft"
+  )?.version;
+  if (draftVersion == null || draftVersion <= 0) {
+    throw new Error("监控发布草稿不存在");
+  }
+  await postMonitorsIdPublish(
+    { id: monitorID },
+    {
+      expected_monitor_version: draftedMonitorVersion,
+      expected_draft_version: draftVersion,
+    }
+  );
+}
 
 const emptyForm = (): SimpleMonitorForm => ({
   name: "",
@@ -270,12 +467,19 @@ export default function MonitorsPage() {
         alert_email_enabled: form.alertEmailEnabled,
       };
       if (editTarget?.id != null && editTarget.version != null) {
-        await putMonitorsId(
-          { id: editTarget.id },
-          { ...fields, expected_monitor_version: editTarget.version }
+        await compileAndPublishSimpleMonitor(
+          editTarget.id,
+          editTarget.version,
+          fields
         );
       } else {
-        await postMonitors(fields);
+        const created = await postMonitors(fields);
+        const monitorID = created.data?.id;
+        const monitorVersion = created.data?.version;
+        if (monitorID == null || monitorVersion == null) {
+          throw new Error("监控创建响应无效");
+        }
+        await compileAndPublishSimpleMonitor(monitorID, monitorVersion, fields);
       }
       setCreateOpen(false);
       setEditTarget(undefined);
