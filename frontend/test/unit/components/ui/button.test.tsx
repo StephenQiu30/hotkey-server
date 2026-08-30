@@ -34,4 +34,12 @@ describe("Button", () => {
       "disabled:opacity-100",
     );
   });
+
+  it("does not animate between accessible foreground and background color pairs", () => {
+    render(<Button disabled>搜索</Button>);
+
+    const button = screen.getByRole("button", { name: "搜索" });
+    expect(button).toHaveClass("transition-[box-shadow,opacity,transform]");
+    expect(button).not.toHaveClass("transition-[background-color,color,box-shadow,opacity,transform]");
+  });
 });
