@@ -177,7 +177,7 @@ printf '%s\n' \
 		"properties":{
 			"decision":{"type":"string","enum":["accepted","rejected"]},
 			"note":{"type":"string","maxLength":20},
-			"items":{"type":"array","minItems":1,"uniqueItems":true,"items":{
+			"items":{"type":"array","minItems":1,"maxItems":3,"uniqueItems":true,"items":{
 				"type":"object","additionalProperties":false,"required":["value"],
 				"properties":{"value":{"type":"integer","minimum":1},"label":{"type":"string","maxLength":20}}
 			}}
@@ -207,18 +207,18 @@ printf '%s\n' \
 		"properties": map[string]any{
 			"decision": map[string]any{"type": "string", "enum": []any{"accepted", "rejected"}},
 			"note": map[string]any{"anyOf": []any{
-				map[string]any{"type": "string"}, map[string]any{"type": "null"},
+				map[string]any{"type": "string", "maxLength": float64(20)}, map[string]any{"type": "null"},
 			}},
 			"items": map[string]any{
-				"type": "array",
+				"type": "array", "minItems": float64(1), "maxItems": float64(3),
 				"items": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
 					"required":             []any{"label", "value"},
 					"properties": map[string]any{
-						"value": map[string]any{"type": "integer"},
+						"value": map[string]any{"type": "integer", "minimum": float64(1)},
 						"label": map[string]any{"anyOf": []any{
-							map[string]any{"type": "string"}, map[string]any{"type": "null"},
+							map[string]any{"type": "string", "maxLength": float64(20)}, map[string]any{"type": "null"},
 						}},
 					},
 				},

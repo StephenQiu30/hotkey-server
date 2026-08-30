@@ -129,12 +129,32 @@ func adaptCodexCLIOutputSchema(value any) (map[string]any, bool) {
 		if !ok {
 			return nil, false
 		}
-		return map[string]any{"type": "array", "items": items}, true
+		adapted := map[string]any{"type": "array", "items": items}
+		for _, keyword := range []string{"minItems", "maxItems"} {
+			if constraint, exists := schema[keyword]; exists {
+				adapted[keyword] = constraint
+			}
+		}
+		return adapted, true
 	case "boolean", "integer", "number", "string", "null":
 		adapted := map[string]any{"type": schemaType}
 		for _, keyword := range []string{"enum", "const"} {
 			if constraint, exists := schema[keyword]; exists {
 				adapted[keyword] = constraint
+			}
+		}
+		switch schemaType {
+		case "string":
+			for _, keyword := range []string{"minLength", "maxLength"} {
+				if constraint, exists := schema[keyword]; exists {
+					adapted[keyword] = constraint
+				}
+			}
+		case "integer", "number":
+			for _, keyword := range []string{"minimum", "maximum"} {
+				if constraint, exists := schema[keyword]; exists {
+					adapted[keyword] = constraint
+				}
 			}
 		}
 		return adapted, true
