@@ -36,7 +36,15 @@ func TestBackendCIPreservesCanonicalCoverageAcrossParallelGates(t *testing.T) {
 		"all-acceptance:",
 		"if: ${{ always() }}",
 		"needs: [backend-static-acceptance, backend-acceptance, backend-vulnerability-acceptance, worker-recovery-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance, browser-smoke-acceptance]",
-		`test "${{ needs.browser-smoke-acceptance.result }}" = "success"`,
+		"HOTKEY_RC_GATE_BACKEND_STATIC: ${{ needs.backend-static-acceptance.result }}",
+		"HOTKEY_RC_GATE_BACKEND_RUNTIME: ${{ needs.backend-acceptance.result }}",
+		"HOTKEY_RC_GATE_BACKEND_VULNERABILITY: ${{ needs.backend-vulnerability-acceptance.result }}",
+		"HOTKEY_RC_GATE_WORKER_RECOVERY: ${{ needs.worker-recovery-acceptance.result }}",
+		"HOTKEY_RC_GATE_FRONTEND: ${{ needs.frontend-acceptance.result }}",
+		"HOTKEY_RC_GATE_PYTHON_AGENT: ${{ needs.agent-acceptance.result }}",
+		"HOTKEY_RC_GATE_COMPOSE: ${{ needs.compose-acceptance.result }}",
+		"HOTKEY_RC_GATE_BROWSER_BUSINESS_FLOW: ${{ needs.browser-smoke-acceptance.result }}",
+		"run: make rc-candidate-assessment",
 	} {
 		if !strings.Contains(workflow, fragment) {
 			t.Errorf("CI must parallelize gates without dropping final acceptance prerequisite %q", fragment)
