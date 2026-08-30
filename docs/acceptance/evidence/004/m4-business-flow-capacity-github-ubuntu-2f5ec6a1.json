@@ -1,0 +1,4457 @@
+{
+  "version": "hotkey-m4-business-flow-capacity-v1",
+  "status": "measured",
+  "approval": "required",
+  "git_revision": "2f5ec6a183ff1e061b8ddf5f6c43a139e1b84683",
+  "environment": "github-actions-fresh-container",
+  "hardware": "GitHub hosted ubuntu-latest; 4 logical CPU; 16373456 KiB RAM; Docker loopback",
+  "filesystem": "ext2/ext3 workspace; overlay2 Docker storage",
+  "run_id": "m4-capacity-33298033739-1",
+  "percentile_algorithm": "nearest-rank-ceiling",
+  "workload": {
+    "warmups": 2,
+    "samples": 12,
+    "concurrency": 1,
+    "cache_state": "warm",
+    "inter_flow_interval_millis": 31000,
+    "flow": "daily_report_to_notification_to_vault_to_postgresql_search"
+  },
+  "stages": {
+    "report_build": {
+      "samples": 12,
+      "duration_micros": [
+        5363,
+        5367,
+        5405,
+        5658,
+        5706,
+        5727,
+        5856,
+        5889,
+        6036,
+        6131,
+        9296,
+        145213
+      ],
+      "p50_micros": 5727,
+      "p95_micros": 145213,
+      "p99_micros": 145213,
+      "errors": 0
+    },
+    "notification_visibility": {
+      "samples": 12,
+      "duration_micros": [
+        7067,
+        7232,
+        8605,
+        9009,
+        9552,
+        9642,
+        9703,
+        10697,
+        10806,
+        11787,
+        14317,
+        179547
+      ],
+      "p50_micros": 9642,
+      "p95_micros": 179547,
+      "p99_micros": 179547,
+      "errors": 0
+    },
+    "report_publication": {
+      "samples": 12,
+      "duration_micros": [
+        4992,
+        5108,
+        5113,
+        7885,
+        7943,
+        7994,
+        8027,
+        8724,
+        9330,
+        9779,
+        10086,
+        81619
+      ],
+      "p50_micros": 7994,
+      "p95_micros": 81619,
+      "p99_micros": 81619,
+      "errors": 0
+    },
+    "vault_publication": {
+      "samples": 12,
+      "duration_micros": [
+        12862,
+        13460,
+        13892,
+        14638,
+        15859,
+        16567,
+        16966,
+        27804,
+        55173,
+        83038,
+        86199,
+        246062
+      ],
+      "p50_micros": 16567,
+      "p95_micros": 246062,
+      "p99_micros": 246062,
+      "errors": 0
+    },
+    "search_visibility": {
+      "samples": 12,
+      "duration_micros": [
+        4855,
+        4942,
+        5555,
+        5624,
+        5763,
+        6248,
+        6262,
+        6372,
+        6857,
+        7017,
+        7274,
+        7354
+      ],
+      "p50_micros": 6248,
+      "p95_micros": 7354,
+      "p99_micros": 7354,
+      "errors": 0
+    }
+  },
+  "correlation": {
+    "strategy": "x-request-id",
+    "observed": 127,
+    "unique": 127
+  },
+  "runtime_observation": {
+    "strategy": "after_each_measured_stage",
+    "samples": 60,
+    "resources": {
+      "agent": {
+        "samples": 60,
+        "memory_limit_bytes": 536870912,
+        "max_cpu_percent": 21.73,
+        "max_memory_used_bytes": 55605985,
+        "max_memory_percent": 10.36,
+        "max_pids": 2
+      },
+      "api": {
+        "samples": 60,
+        "memory_limit_bytes": 16761109873,
+        "max_cpu_percent": 2.94,
+        "max_memory_used_bytes": 49702502,
+        "max_memory_percent": 0.3,
+        "max_pids": 10
+      },
+      "minio": {
+        "samples": 60,
+        "memory_limit_bytes": 16761109873,
+        "max_cpu_percent": 2.75,
+        "max_memory_used_bytes": 111253914,
+        "max_memory_percent": 0.66,
+        "max_pids": 10
+      },
+      "postgres": {
+        "samples": 60,
+        "memory_limit_bytes": 16761109873,
+        "max_cpu_percent": 5.22,
+        "max_memory_used_bytes": 113875354,
+        "max_memory_percent": 0.68,
+        "max_pids": 16
+      },
+      "redis": {
+        "samples": 60,
+        "memory_limit_bytes": 16761109873,
+        "max_cpu_percent": 3.06,
+        "max_memory_used_bytes": 11492393,
+        "max_memory_percent": 0.07,
+        "max_pids": 6
+      },
+      "web": {
+        "samples": 60,
+        "memory_limit_bytes": 16761109873,
+        "max_cpu_percent": 12.17,
+        "max_memory_used_bytes": 80142664,
+        "max_memory_percent": 0.48,
+        "max_pids": 11
+      }
+    },
+    "projection_backlog": {
+      "notification": {
+        "samples": 60,
+        "max_available": 0,
+        "max_running": 0,
+        "max_lag_seconds": 0,
+        "final_available": 0,
+        "final_running": 0,
+        "final_lag_seconds": 0
+      },
+      "report": {
+        "samples": 60,
+        "max_available": 0,
+        "max_running": 0,
+        "max_lag_seconds": 0,
+        "final_available": 0,
+        "final_running": 0,
+        "final_lag_seconds": 0
+      },
+      "vault": {
+        "samples": 60,
+        "max_available": 0,
+        "max_running": 0,
+        "max_lag_seconds": 0,
+        "final_available": 0,
+        "final_running": 0,
+        "final_lag_seconds": 0
+      },
+      "search": {
+        "samples": 60,
+        "max_available": 0,
+        "max_running": 0,
+        "max_lag_seconds": 0,
+        "final_available": 0,
+        "final_running": 0,
+        "final_lag_seconds": 0
+      }
+    },
+    "raw_samples": [
+      {
+        "sequence": 1,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41450209,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.39,
+            "memory_used_bytes": 38430310,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.23,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.57,
+            "memory_used_bytes": 109681050,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.2,
+            "memory_used_bytes": 90292879,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.54,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 2.68,
+            "memory_used_bytes": 11230249,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.02,
+            "memory_used_bytes": 78936801,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 2,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 21.09,
+            "memory_used_bytes": 41733325,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.77,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.47,
+            "memory_used_bytes": 39415972,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.24,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 109366477,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.36,
+            "memory_used_bytes": 91739914,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.55,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10674504,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.06,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 77814825,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.46,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 3,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41471181,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.54,
+            "memory_used_bytes": 39395000,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.23,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 109261619,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.35,
+            "memory_used_bytes": 92054487,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.55,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11198792,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.31,
+            "memory_used_bytes": 78307656,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 4,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41450209,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.42,
+            "memory_used_bytes": 39667630,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.24,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 109785907,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 4.94,
+            "memory_used_bytes": 92012544,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.55,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10747904,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.06,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 78391542,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 5,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41450209,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.38,
+            "memory_used_bytes": 39195771,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.23,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 109785907,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.21,
+            "memory_used_bytes": 92358574,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.55,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10747904,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.06,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 77940654,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.46,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 6,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41450209,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.41,
+            "memory_used_bytes": 39562772,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.24,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 109576192,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.27,
+            "memory_used_bytes": 96133448,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.57,
+            "pids": 11
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11083448,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 78443971,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 7,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41502638,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.73,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.53,
+            "memory_used_bytes": 39321600,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.23,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 109366477,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.35,
+            "memory_used_bytes": 95997133,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.57,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11083448,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 11.83,
+            "memory_used_bytes": 78926316,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 8,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41450209,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.55,
+            "memory_used_bytes": 41659924,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.25,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.6,
+            "memory_used_bytes": 109366477,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.36,
+            "memory_used_bytes": 96458506,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.58,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 2.78,
+            "memory_used_bytes": 11051991,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.09,
+            "memory_used_bytes": 78894858,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 9,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41450209,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.43,
+            "memory_used_bytes": 41450209,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.25,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 109681050,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.24,
+            "memory_used_bytes": 96489964,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.58,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10905190,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.03,
+            "memory_used_bytes": 78894858,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 10,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41450209,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.41,
+            "memory_used_bytes": 41313894,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.25,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 109681050,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.21,
+            "memory_used_bytes": 96783565,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.58,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10905190,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.01,
+            "memory_used_bytes": 78769029,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 11,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 12.14,
+            "memory_used_bytes": 51768197,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 9.64,
+            "pids": 2
+          },
+          "api": {
+            "cpu_percent": 0.4,
+            "memory_used_bytes": 48517612,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.03,
+            "memory_used_bytes": 109576192,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.21,
+            "memory_used_bytes": 96563364,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.58,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 11429478,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 78517371,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 12,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41617981,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.75,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.52,
+            "memory_used_bytes": 48517612,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 109366477,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.35,
+            "memory_used_bytes": 100956897,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.6,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11167334,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.09,
+            "memory_used_bytes": 78873887,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 13,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41513124,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.73,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 2.88,
+            "memory_used_bytes": 48087695,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 109471334,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.31,
+            "memory_used_bytes": 102267617,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.61,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10821304,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.06,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.07,
+            "memory_used_bytes": 78957773,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 14,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41513124,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.73,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.43,
+            "memory_used_bytes": 48591012,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.02,
+            "memory_used_bytes": 109471334,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.22,
+            "memory_used_bytes": 102215188,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.61,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.15,
+            "memory_used_bytes": 11083448,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 78443971,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 15,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41460695,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.41,
+            "memory_used_bytes": 47888466,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.57,
+            "memory_used_bytes": 109576192,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 5.11,
+            "memory_used_bytes": 102351503,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.61,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 2.82,
+            "memory_used_bytes": 11387535,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 78443971,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 16,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41460695,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.41,
+            "memory_used_bytes": 48444211,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.76,
+            "memory_used_bytes": 110834483,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.2,
+            "memory_used_bytes": 102760448,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.61,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11062477,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 11.67,
+            "memory_used_bytes": 78381056,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 17,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41460695,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.48,
+            "memory_used_bytes": 48958013,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.03,
+            "memory_used_bytes": 110624768,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 5.03,
+            "memory_used_bytes": 103158907,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11198792,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 78779515,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 18,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.12,
+            "memory_used_bytes": 41460695,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.5,
+            "memory_used_bytes": 48790241,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 110519910,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.31,
+            "memory_used_bytes": 104196997,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10936648,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 78769029,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 19,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41460695,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.72,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.42,
+            "memory_used_bytes": 48465183,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.52,
+            "memory_used_bytes": 111044198,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.22,
+            "memory_used_bytes": 104406712,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 2.7,
+            "memory_used_bytes": 11272192,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.03,
+            "memory_used_bytes": 78265713,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 20,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.39,
+            "memory_used_bytes": 48989471,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 110519910,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.23,
+            "memory_used_bytes": 104354284,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10936648,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.02,
+            "memory_used_bytes": 78265713,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 21,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41984983,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.82,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.43,
+            "memory_used_bytes": 48748298,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.63,
+            "memory_used_bytes": 110729626,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.2,
+            "memory_used_bytes": 104312340,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 2.8,
+            "memory_used_bytes": 10968105,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 11.74,
+            "memory_used_bytes": 78685143,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 22,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.12,
+            "memory_used_bytes": 41964012,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.82,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.49,
+            "memory_used_bytes": 48695869,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.05,
+            "memory_used_bytes": 110624768,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.29,
+            "memory_used_bytes": 104102625,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10936648,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 78464942,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 23,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41964012,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.82,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.52,
+            "memory_used_bytes": 48748298,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 110834483,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.33,
+            "memory_used_bytes": 104501084,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.16,
+            "memory_used_bytes": 10726932,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.06,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.07,
+            "memory_used_bytes": 78611743,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 24,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.41,
+            "memory_used_bytes": 48737812,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.03,
+            "memory_used_bytes": 110939341,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 4.98,
+            "memory_used_bytes": 104207483,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 11010048,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 78097940,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 25,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.42,
+            "memory_used_bytes": 48727327,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.05,
+            "memory_used_bytes": 110939341,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.22,
+            "memory_used_bytes": 104406712,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10989076,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 78360084,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 26,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41995469,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.82,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 2.89,
+            "memory_used_bytes": 47143977,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.28,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.52,
+            "memory_used_bytes": 110939341,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 5.02,
+            "memory_used_bytes": 104511570,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10894705,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.02,
+            "memory_used_bytes": 78202798,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 27,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 41984983,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.82,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.48,
+            "memory_used_bytes": 47133491,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.28,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.02,
+            "memory_used_bytes": 110519910,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.45,
+            "memory_used_bytes": 104501084,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10884219,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.06,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.07,
+            "memory_used_bytes": 78706115,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 28,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.48,
+            "memory_used_bytes": 47164948,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.28,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.61,
+            "memory_used_bytes": 110624768,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.38,
+            "memory_used_bytes": 104721285,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.62,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 2.81,
+            "memory_used_bytes": 10936648,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.05,
+            "memory_used_bytes": 78454456,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 29,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.37,
+            "memory_used_bytes": 47406121,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.28,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 111149056,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.3,
+            "memory_used_bytes": 105067315,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.63,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10894705,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 77940654,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.46,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 30,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 8.07,
+            "memory_used_bytes": 51789169,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 9.65,
+            "pids": 2
+          },
+          "api": {
+            "cpu_percent": 0.38,
+            "memory_used_bytes": 47332721,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.28,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 110519910,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 1.24,
+            "memory_used_bytes": 105591603,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.63,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11156849,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 12.02,
+            "memory_used_bytes": 78391542,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 31,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 42005955,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.82,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.43,
+            "memory_used_bytes": 49304044,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.01,
+            "memory_used_bytes": 111149056,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.27,
+            "memory_used_bytes": 108317901,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10936648,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 78978744,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 32,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.64,
+            "memory_used_bytes": 49356472,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.55,
+            "memory_used_bytes": 111253914,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.65,
+            "memory_used_bytes": 109051904,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 2.79,
+            "memory_used_bytes": 10968105,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.06,
+            "memory_used_bytes": 79230403,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 33,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.54,
+            "memory_used_bytes": 48842670,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 110834483,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 5.22,
+            "memory_used_bytes": 109261619,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10989076,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.07,
+            "memory_used_bytes": 79240888,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 34,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.42,
+            "memory_used_bytes": 49345987,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 111044198,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.62,
+            "memory_used_bytes": 109261619,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10989076,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 78097940,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 35,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 21.14,
+            "memory_used_bytes": 42268099,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.87,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 2.86,
+            "memory_used_bytes": 49167729,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 110624768,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.27,
+            "memory_used_bytes": 109051904,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10978591,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.03,
+            "memory_used_bytes": 78402028,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 36,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.38,
+            "memory_used_bytes": 49314529,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 110939341,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.28,
+            "memory_used_bytes": 109261619,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 11146363,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 79293317,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 37,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.12,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.47,
+            "memory_used_bytes": 49692017,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.3,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 111044198,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.32,
+            "memory_used_bytes": 109471334,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10936648,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.03,
+            "memory_used_bytes": 79408660,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 38,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.45,
+            "memory_used_bytes": 49681531,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.3,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 111044198,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.69,
+            "memory_used_bytes": 109156762,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11198792,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.06,
+            "memory_used_bytes": 79408660,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 39,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.4,
+            "memory_used_bytes": 49199186,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.45,
+            "memory_used_bytes": 110834483,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.29,
+            "memory_used_bytes": 108947046,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 2.74,
+            "memory_used_bytes": 10968105,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 9.92,
+            "memory_used_bytes": 79565947,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 40,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41901097,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.8,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.4,
+            "memory_used_bytes": 49230643,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.02,
+            "memory_used_bytes": 110624768,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 5.1,
+            "memory_used_bytes": 108842189,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10989076,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 79073116,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 41,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41953526,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.81,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.41,
+            "memory_used_bytes": 49450844,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.53,
+            "memory_used_bytes": 110624768,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.21,
+            "memory_used_bytes": 109366477,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 2.78,
+            "memory_used_bytes": 11051991,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 79377203,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 42,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.52,
+            "memory_used_bytes": 49692017,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.3,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.16,
+            "memory_used_bytes": 111149056,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 2.78,
+            "memory_used_bytes": 109366477,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10695475,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.06,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 79649833,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.48,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 43,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.48,
+            "memory_used_bytes": 49429873,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.02,
+            "memory_used_bytes": 110834483,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.32,
+            "memory_used_bytes": 109156762,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10957619,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 11.4,
+            "memory_used_bytes": 80142664,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.48,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 44,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 19.4,
+            "memory_used_bytes": 55605985,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 10.36,
+            "pids": 2
+          },
+          "api": {
+            "cpu_percent": 0.41,
+            "memory_used_bytes": 49241129,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.05,
+            "memory_used_bytes": 110834483,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.81,
+            "memory_used_bytes": 113875354,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.68,
+            "pids": 16
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 11051991,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 79828091,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.48,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 45,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.12,
+            "memory_used_bytes": 41869640,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.8,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.42,
+            "memory_used_bytes": 49461330,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.3,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.03,
+            "memory_used_bytes": 110624768,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.21,
+            "memory_used_bytes": 109681050,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11051991,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.02,
+            "memory_used_bytes": 80079749,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.48,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 46,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.4,
+            "memory_used_bytes": 49440358,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.06,
+            "memory_used_bytes": 110729626,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 4.97,
+            "memory_used_bytes": 109471334,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10968105,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.03,
+            "memory_used_bytes": 79062630,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 47,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.12,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.5,
+            "memory_used_bytes": 49440358,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 110729626,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.3,
+            "memory_used_bytes": 109261619,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10968105,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 79335260,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 48,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 2.89,
+            "memory_used_bytes": 49629102,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.3,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.03,
+            "memory_used_bytes": 110834483,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.33,
+            "memory_used_bytes": 109366477,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 10894705,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.06,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.06,
+            "memory_used_bytes": 79314289,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 49,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 21.37,
+            "memory_used_bytes": 42037412,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.83,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.4,
+            "memory_used_bytes": 49461330,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.02,
+            "memory_used_bytes": 110834483,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.22,
+            "memory_used_bytes": 109681050,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10999562,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 78800486,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 50,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 41827697,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.39,
+            "memory_used_bytes": 49450844,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.75,
+            "memory_used_bytes": 110939341,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.21,
+            "memory_used_bytes": 109051904,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 2.81,
+            "memory_used_bytes": 10989076,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 78800486,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 51,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.12,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.42,
+            "memory_used_bytes": 49450844,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 110624768,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 4.89,
+            "memory_used_bytes": 109261619,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11010048,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.02,
+            "memory_used_bytes": 78947287,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 52,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 2.94,
+            "memory_used_bytes": 49209672,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.62,
+            "memory_used_bytes": 110939341,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.42,
+            "memory_used_bytes": 109785907,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 3.06,
+            "memory_used_bytes": 11492393,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 12.17,
+            "memory_used_bytes": 78737572,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 53,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.12,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.49,
+            "memory_used_bytes": 48958013,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.01,
+            "memory_used_bytes": 110624768,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 5.04,
+            "memory_used_bytes": 109366477,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11492393,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.06,
+            "memory_used_bytes": 78569800,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 54,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41890611,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.8,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.43,
+            "memory_used_bytes": 48958013,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 110939341,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.22,
+            "memory_used_bytes": 109366477,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 11198792,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 78611743,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 55,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 41848668,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.41,
+            "memory_used_bytes": 48958013,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 111044198,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.21,
+            "memory_used_bytes": 109576192,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11051991,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.01,
+            "memory_used_bytes": 78611743,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 56,
+        "stage": "report_build",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.43,
+            "memory_used_bytes": 49702502,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.3,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 110729626,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.23,
+            "memory_used_bytes": 109785907,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10957619,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.02,
+            "memory_used_bytes": 78622228,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 57,
+        "stage": "notification_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.54,
+            "memory_used_bytes": 49209672,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0.01,
+            "memory_used_bytes": 110624768,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.33,
+            "memory_used_bytes": 109471334,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.14,
+            "memory_used_bytes": 10936648,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.09,
+            "memory_used_bytes": 78506885,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 58,
+        "stage": "report_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 21.73,
+            "memory_used_bytes": 42393928,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.9,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.49,
+            "memory_used_bytes": 49220157,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.29,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 110624768,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.35,
+            "memory_used_bytes": 109785907,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11198792,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 79020687,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 59,
+        "stage": "vault_publication",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.41,
+            "memory_used_bytes": 49482301,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.3,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 2.57,
+            "memory_used_bytes": 110939341,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 0.22,
+            "memory_used_bytes": 109785907,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.65,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 2.71,
+            "memory_used_bytes": 11209277,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 78496399,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      },
+      {
+        "sequence": 60,
+        "stage": "search_visibility",
+        "resources": {
+          "agent": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 41817211,
+            "memory_limit_bytes": 536870912,
+            "memory_percent": 7.79,
+            "pids": 1
+          },
+          "api": {
+            "cpu_percent": 0.41,
+            "memory_used_bytes": 49471816,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.3,
+            "pids": 10
+          },
+          "minio": {
+            "cpu_percent": 0,
+            "memory_used_bytes": 110834483,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "postgres": {
+            "cpu_percent": 4.96,
+            "memory_used_bytes": 109890765,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.66,
+            "pids": 10
+          },
+          "redis": {
+            "cpu_percent": 0.13,
+            "memory_used_bytes": 11156849,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.07,
+            "pids": 6
+          },
+          "web": {
+            "cpu_percent": 0.04,
+            "memory_used_bytes": 78244741,
+            "memory_limit_bytes": 16761109873,
+            "memory_percent": 0.47,
+            "pids": 11
+          }
+        },
+        "projection_backlog": {
+          "notification": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "report": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "vault": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          },
+          "search": {
+            "available": 0,
+            "running": 0,
+            "lag_seconds": 0
+          }
+        }
+      }
+    ]
+  },
+  "privacy": {
+    "retained_fields": [
+      "safe_run_id",
+      "git_revision",
+      "bounded_workload",
+      "duration_micros",
+      "request_correlation_counts",
+      "bounded_resource_samples",
+      "projection_backlog_counts"
+    ],
+    "excluded_fields": [
+      "access_token",
+      "authorization",
+      "email",
+      "password",
+      "report_content",
+      "query_text",
+      "vault_path",
+      "host_path",
+      "container_name",
+      "raw_metrics"
+    ],
+    "sentinel_leaks": 0
+  },
+  "exclusions": [
+    "external_provider_delivery",
+    "cold_cache",
+    "production_hardware",
+    "production_traffic"
+  ],
+  "differences": [],
+  "errors": 0
+}
