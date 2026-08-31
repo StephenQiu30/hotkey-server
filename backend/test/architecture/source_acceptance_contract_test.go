@@ -14,7 +14,7 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 	if status := frontmatterStatus(t, filepath.Join(repository, acceptancePath)); status != "failed" {
 		t.Fatalf("002 partial Acceptance must remain failed, got %q", status)
 	}
-	if !regexp.MustCompile(`(?m)^verified_revision: "d28642092ce6148e59272f5054d752a7aebc15c0"$`).MatchString(acceptance) {
+	if !regexp.MustCompile(`(?m)^verified_revision: "bf8fd2d046b24eb52bce59a9676b6ea080b78587"$`).MatchString(acceptance) {
 		t.Errorf("002 Acceptance must pin the exact verified implementation revision")
 	}
 
@@ -41,11 +41,16 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 		}
 	}
 
-	open := map[string]string{"CHK-002-G3-002": "EV-002-012"}
-	for checkID, evidenceID := range open {
+	open := map[string][]string{"CHK-002-G3-002": {"EV-002-012", "EV-002-013"}}
+	for checkID, evidenceIDs := range open {
 		row := markdownChecklistRow(t, plan, checkID)
-		if !strings.HasPrefix(row, "- [ ]") || !strings.Contains(row, evidenceID) {
-			t.Errorf("%s must remain open and cite partial %s: %s", checkID, evidenceID, row)
+		if !strings.HasPrefix(row, "- [ ]") {
+			t.Errorf("%s must remain open: %s", checkID, row)
+		}
+		for _, evidenceID := range evidenceIDs {
+			if !strings.Contains(row, evidenceID) {
+				t.Errorf("%s must cite partial %s: %s", checkID, evidenceID, row)
+			}
 		}
 	}
 
@@ -71,8 +76,11 @@ func Test002PartialAcceptanceRecordsPassedEvidenceAndHonestReleaseGaps(t *testin
 		"TestExecuteStopsBeforeExternalProbeWhenSourceIdentityIsWrong",
 		"make source-live-smoke",
 		"only HOTKEY_SOURCE_LIVE_SMOKE_ADMIN_TOKEN is required",
-		"真实授权冒烟未执行",
-		"只剩三来源真实授权冒烟",
+		"`EV-002-013`",
+		"SourceRightsDialog",
+		"a076c62bf9af4554bbd7948eb08d27c7d9627c56",
+		"三来源联合冒烟仍未执行",
+		"仍缺 X 授权输入与三来源联合冒烟",
 		"不得用 Fixture、模拟响应或本机候选容量替代真实授权证据",
 		"33253811195",
 		"33256271696",
