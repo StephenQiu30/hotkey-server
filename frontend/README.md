@@ -131,15 +131,17 @@ npm run openapi:check     # 校验发布契约并检查生成客户端是否同�
 ## 项目结构
 
 ```text
-src/app/                         # 页面与 App Router
-src/components/                  # 业务组件与 UI 组合组件
+src/app/                         # 路由与页面 ViewController
+src/components/                  # View：业务展示与 UI 组合组件
 src/layouts/                     # 工作台布局
-src/lib/                         # 请求、认证会话与通用工具
-src/stores/                      # Zustand 状态
-src/services/hotkey/             # OpenAPI 生成客户端
+src/lib/                         # 聚焦工作流、请求、认证会话与通用工具
+src/stores/                      # 跨页面 Model/View 状态
+src/services/hotkey/             # Model：OpenAPI 生成客户端与 DTO
 test/                            # 集中的单元测试
 ../docs/                # PRD、设计、计划、验收与运维文档
 ```
+
+前端采用适合 React 的 MVVC/MVC 职责映射：生成客户端与契约类型是 Model，`src/app/` 页面负责 Route/ViewController 编排，`src/components/` 只负责 View，Zustand 保存共享状态；复杂多步 API 流程放在 `src/lib/` 的聚焦工作流中。简单页面可以直接在路由控制器调用生成客户端，不为形式完整创建空 ViewModel；展示组件不得复制接口路径或后端 DTO。
 
 ## OpenAPI 协作流程
 

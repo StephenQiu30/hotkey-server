@@ -6,7 +6,6 @@ import (
 	"time"
 
 	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
-	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 )
 
 const (
@@ -66,7 +65,7 @@ func (service *EmbeddingService) ExecuteProjectedEmbedding(ctx context.Context, 
 		if !available {
 			continue
 		}
-		claim, err := service.runs.Claim(ctx, intelligencepostgres.ClaimInput{
+		claim, err := service.runs.Claim(ctx, intelligencedomain.RunClaim{
 			TaskType: intelligencedomain.TaskTypeEmbedding, WorkspaceKey: DefaultWorkspaceKey, SkillID: EmbeddingSkillID,
 			TargetType: input.TargetType, TargetID: input.TargetID, TargetVersion: input.TargetVersion, RuntimeVersion: StructuredRuntimeVersion,
 			ModelProfileID: profile.ID, PromptVersion: input.PromptVersion, InputSchemaVersion: input.InputSchemaVersion,
@@ -118,7 +117,7 @@ func (service *EmbeddingService) ExecuteProjectedEmbedding(ctx context.Context, 
 			ModelProfileVersion: profile.Version, ModelVersion: profile.ModelVersion,
 			AIRunID: claim.Run.ID, InputHash: input.InputHash, Vector: vector, CreatedAt: completedAt,
 		}
-		err = service.runs.CompleteProjectedEmbedding(ctx, intelligencepostgres.ProjectedEmbeddingCompletion{
+		err = service.runs.CompleteProjectedEmbedding(ctx, intelligencedomain.ProjectedEmbeddingCompletion{
 			RunID: claim.Run.ID, TargetType: input.TargetType, TargetID: input.TargetID,
 			ModelProfileID: profile.ID, ModelProfileVersion: profile.Version, ModelVersion: profile.ModelVersion,
 			InputHash: input.InputHash, Vector: vector, Usage: response.Usage,

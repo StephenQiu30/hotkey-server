@@ -23,6 +23,14 @@ type Repository struct {
 	cursorCodec *pagination.Codec
 }
 
+var (
+	_ intelligencedomain.RunExecutionRepository       = (*Repository)(nil)
+	_ intelligencedomain.RunLeaseRepository           = (*Repository)(nil)
+	_ intelligencedomain.ModelProfileRepository       = (*Repository)(nil)
+	_ intelligencedomain.EmbeddingExecutionRepository = (*Repository)(nil)
+	_ intelligencedomain.EmbeddingQueryRepository     = (*Repository)(nil)
+)
+
 func NewRepository(runtime *database.Runtime) *Repository {
 	seed := "intelligence:unavailable"
 	if runtime != nil && runtime.Pool != nil {
@@ -61,22 +69,10 @@ RETURNING id, version, created_at, updated_at`,
 	return nil
 }
 
-// ClaimInput holds only facts needed to create a deterministic AI run. Profile
-// semantics and budget limits are always re-read under the transaction lock.
-type ClaimInput struct {
-	TaskType                                                            intelligencedomain.TaskType
-	WorkspaceKey, SkillID, TargetType, RuntimeVersion                   string
-	TargetID, TargetVersion, ModelProfileID                             int64
-	OwningJobID                                                         *int64
-	PromptVersion, InputSchemaVersion, SchemaVersion, ParametersVersion string
-	InputHash, EvidenceSetHash                                          string
-	Now                                                                 time.Time
-}
-
-type ClaimResult struct {
-	Run    intelligencedomain.Run
-	Reused bool
-}
+// Compatibility aliases keep adapter-focused tests source compatible while
+// the canonical plain contracts and ports live in Domain.
+type ClaimInput = intelligencedomain.RunClaim
+type ClaimResult = intelligencedomain.ClaimedRun
 
 func (repository *Repository) Claim(ctx context.Context, input ClaimInput) (ClaimResult, error) {
 	if repository == nil || repository.runtime == nil {
@@ -409,16 +405,7 @@ RETURNING id,owning_job_id,workspace_key,skill_id,task_type,target_type,target_i
 	return settled, err
 }
 
-// StructuredCompletion contains the only safe terminal payload accepted from
-// application code. Provider-specific response objects and price data never
-// cross this boundary.
-type StructuredCompletion struct {
-	RunID      int64
-	Result     json.RawMessage
-	Usage      intelligencedomain.Usage
-	LatencyMS  int64
-	FinishedAt time.Time
-}
+type StructuredCompletion = intelligencedomain.StructuredRunCompletion
 
 // CompleteStructured atomically stores a schema-validated result and settles
 // the exact budget unit claimed for the run. The adapter intentionally does

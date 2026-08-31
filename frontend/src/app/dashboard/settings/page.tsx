@@ -7,49 +7,10 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import {
-  Archive,
-  Loader2,
-  Pause,
-  Pencil,
-  Play,
-  Plus,
-  Radar,
-  RotateCcw,
-  Search,
-  Trash2,
-} from "lucide-react";
+import { Loader2, Plus, Radar } from "lucide-react";
 import { toast } from "sonner";
-import { PageShell } from "@/layouts/PageShell";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Surface } from "@/components/ui/surface";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { MonitorCard } from "@/components/dashboard/MonitorCard";
+import { MonitorFormDialog } from "@/components/dashboard/MonitorFormDialog";
 import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
 import {
   CursorPagination,
@@ -57,28 +18,34 @@ import {
   hasNextCursor,
 } from "@/components/dashboard/CursorPagination";
 import { PageHeader } from "@/components/dashboard/PageHeader";
-import { MonitorStatus, UserRole } from "@/lib/domainEnums";
-import { monitorStatusLabel } from "@/lib/domainPresentation";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { PageShell } from "@/layouts/PageShell";
+import { UserRole } from "@/lib/domainEnums";
+import {
+  compileAndPublishSimpleMonitor,
+  emptyMonitorForm,
+  monitorQuery,
+  type MonitorScanState,
+  type SimpleMonitorForm,
+} from "@/lib/monitorWorkflow";
 import { HotKeyAPIError } from "@/lib/request";
-import { sourceTypeLabel } from "@/lib/sourceLabels";
 import {
   deleteMonitorsId,
-  getMonitorsIdVersions,
   getMonitors,
   postMonitors,
   postMonitorsIdArchive,
   postMonitorsIdPause,
-  postMonitorsIdPublish,
   postMonitorsIdResume,
   postMonitorsIdRestore,
-  putMonitorsIdDraft,
 } from "@/services/hotkey/hotkey-server/monitors";
-import {
-  getMonitorsIdDraft,
-  getMonitorsIdDraftPreviewRunsRunId,
-  postMonitorsIdDraftPreviewRuns,
-  putMonitorsIdDraftIntent,
-} from "@/services/hotkey/hotkey-server/monitorIntent";
 import {
   getMonitorsIdScans,
   postMonitorsIdCollect,
@@ -86,250 +53,7 @@ import {
 import { getSourceConnections } from "@/services/hotkey/hotkey-server/sources";
 import { useAuthStore } from "@/stores/authStore";
 
-type SimpleMonitorForm = {
-  name: string;
-  query: string;
-  interval: string;
-  alertEmailEnabled: boolean;
-  sourceIds: number[];
-};
-
-type ScanState = {
-  queued?: boolean;
-  items: HotKeyAPI.MonitorScanResponse[];
-};
-
-type SimpleMonitorFields = {
-  name: string;
-  query: string;
-  source_connection_ids: number[];
-  collection_interval_seconds: number;
-  alert_email_enabled: boolean;
-};
-
-const intentPreviewProfile = "hybrid-preview-v1";
-const intentPreviewSampleLimit = 25;
-const maximumIntentPreviewPolls = 40;
-
-function intentETag(version: number) {
-  return `"v${version}"`;
-}
-
-function simpleDraftRequest(
-  fields: SimpleMonitorFields,
-  expectedMonitorVersion: number,
-  expectedDraftVersion: number | null
-) {
-  return {
-    expected_monitor_version: expectedMonitorVersion,
-    expected_draft_version: expectedDraftVersion,
-    name: fields.name,
-    description: `监控 ${fields.query}`,
-    config: {
-      timezone: "Asia/Shanghai",
-      languages: ["zh", "en"],
-      collection_interval_seconds: fields.collection_interval_seconds,
-      relevance_threshold: 60,
-      event_threshold: 0,
-      alert_min_heat: 70,
-      alert_min_momentum: 55,
-      alert_min_breadth: 25,
-      alert_warning_threshold: 75,
-      alert_critical_threshold: 90,
-      alert_cooldown_minutes: 60,
-      alert_email_enabled: fields.alert_email_enabled,
-      alert_email_min_severity: "warning",
-      retention_days: 30,
-    },
-    rules: [
-      {
-        rule_type: "keyword",
-        operator: "contains",
-        value: fields.query,
-        weight: 100,
-        priority: 1,
-        enabled: true,
-      },
-    ],
-    sources: fields.source_connection_ids.map((sourceConnectionID, index) => ({
-      source_connection_id: sourceConnectionID,
-      priority: index + 1,
-      enabled: true,
-      query_override: "",
-    })),
-  } as unknown as HotKeyAPI.ReplaceDraftRequest;
-}
-
-function intentPreviewIdempotencyKey(
-  monitorID: number,
-  intentResourceVersion: number
-) {
-  const entropy = globalThis.crypto?.randomUUID?.() ??
-    `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `simple-monitor-preview-${monitorID}-${intentResourceVersion}-${entropy}`.slice(
-    0,
-    128
-  );
-}
-
-async function currentIntentResourceVersion(monitorID: number) {
-  try {
-    const response = await getMonitorsIdDraft({ id: monitorID });
-    const version = response.data?.resource_version;
-    if (version == null || version <= 0) {
-      throw new Error("监控意图版本无效");
-    }
-    return version;
-  } catch (reason) {
-    if (reason instanceof HotKeyAPIError && reason.status === 404) return 0;
-    throw reason;
-  }
-}
-
-async function waitForIntentPreview(monitorID: number, runID: number) {
-  for (let attempt = 0; attempt < maximumIntentPreviewPolls; attempt += 1) {
-    const response = await getMonitorsIdDraftPreviewRunsRunId({
-      id: monitorID,
-      run_id: runID,
-    });
-    const status = response.data?.status;
-    if (status === "succeeded") return;
-    if (status === "failed" || status === "invalidated") {
-      throw new Error(response.data?.failure_code || "监控意图预览失败");
-    }
-    if (status !== "queued" && status !== "running") {
-      throw new Error("监控意图预览状态无效");
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 500));
-  }
-  throw new Error("监控意图预览超时，请稍后重试");
-}
-
-async function compileAndPublishSimpleMonitor(
-  monitorID: number,
-  monitorVersion: number,
-  fields: SimpleMonitorFields
-) {
-  const existingHistory = await getMonitorsIdVersions({
-    id: monitorID,
-    limit: 100,
-  });
-  const expectedDraftVersion =
-    existingHistory.data?.items?.find(
-      (configuration) => configuration.state === "draft"
-    )?.version ?? null;
-  const drafted = await putMonitorsIdDraft(
-    { id: monitorID },
-    simpleDraftRequest(fields, monitorVersion, expectedDraftVersion)
-  );
-  const draftedMonitorVersion = drafted.data?.version;
-  if (draftedMonitorVersion == null || draftedMonitorVersion <= monitorVersion) {
-    throw new Error("监控草稿版本无效");
-  }
-
-  const currentResourceVersion =
-    expectedDraftVersion == null
-      ? 0
-      : await currentIntentResourceVersion(monitorID);
-  const intent = await putMonitorsIdDraftIntent(
-    { id: monitorID },
-    {
-      expected_resource_version: currentResourceVersion,
-      objective: fields.query,
-      clauses: [{ operator: "should", field: "term", value: fields.query }],
-      entities: [],
-      examples: [],
-    },
-    {
-      headers:
-        currentResourceVersion === 0
-          ? { "If-None-Match": "*" }
-          : { "If-Match": intentETag(currentResourceVersion) },
-    }
-  );
-  const intentResourceVersion = intent.data?.resource_version;
-  if (intentResourceVersion == null || intentResourceVersion <= 0) {
-    throw new Error("监控意图保存失败");
-  }
-
-  const preview = await postMonitorsIdDraftPreviewRuns(
-    { id: monitorID },
-    {
-      expected_resource_version: intentResourceVersion,
-      evaluator_profile: intentPreviewProfile,
-      sample_limit: intentPreviewSampleLimit,
-    },
-    {
-      headers: {
-        "If-Match": intentETag(intentResourceVersion),
-        "Idempotency-Key": intentPreviewIdempotencyKey(
-          monitorID,
-          intentResourceVersion
-        ),
-      },
-    }
-  );
-  const previewRunID = preview.data?.run_id;
-  if (previewRunID == null || previewRunID <= 0) {
-    throw new Error("监控意图预览未排队");
-  }
-  await waitForIntentPreview(monitorID, previewRunID);
-
-  const history = await getMonitorsIdVersions({ id: monitorID, limit: 100 });
-  const draftVersion = history.data?.items?.find(
-    (configuration) => configuration.state === "draft"
-  )?.version;
-  if (draftVersion == null || draftVersion <= 0) {
-    throw new Error("监控发布草稿不存在");
-  }
-  await postMonitorsIdPublish(
-    { id: monitorID },
-    {
-      expected_monitor_version: draftedMonitorVersion,
-      expected_draft_version: draftVersion,
-    }
-  );
-}
-
-const emptyForm = (): SimpleMonitorForm => ({
-  name: "",
-  query: "",
-  interval: "1800",
-  alertEmailEnabled: true,
-  sourceIds: [],
-});
-
-const scanStatusLabels: Readonly<Record<string, string>> = {
-  queued: "已排队",
-  running: "扫描中",
-  succeeded: "成功",
-  partial: "部分成功",
-  failed: "失败",
-  cancelled: "已取消",
-};
-
-function queryOf(monitor: HotKeyAPI.MonitorResponse) {
-  return monitor.query ?? monitor.name ?? "";
-}
-
-function intervalLabel(seconds: number | undefined) {
-  if (!seconds) return "—";
-  if (seconds % 3600 === 0) return `${seconds / 3600} 小时`;
-  return `${seconds / 60} 分钟`;
-}
-
-function formatTime(value: string | undefined) {
-  if (!value) return "尚未运行";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "尚未运行";
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(date);
-}
+type MonitorLifecycleAction = "pause" | "resume" | "archive" | "restore";
 
 export default function MonitorsPage() {
   const user = useAuthStore((state) => state.user);
@@ -340,7 +64,7 @@ export default function MonitorsPage() {
   const canAdmin = user?.role === UserRole.Admin;
   const [monitors, setMonitors] = useState<HotKeyAPI.MonitorResponse[]>([]);
   const [sources, setSources] = useState<HotKeyAPI.SourceReadResponse[]>([]);
-  const [scans, setScans] = useState<Record<number, ScanState>>({});
+  const [scans, setScans] = useState<Record<number, MonitorScanState>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>();
   const [forbidden, setForbidden] = useState(false);
@@ -348,7 +72,7 @@ export default function MonitorsPage() {
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<HotKeyAPI.MonitorResponse>();
-  const [form, setForm] = useState<SimpleMonitorForm>(emptyForm);
+  const [form, setForm] = useState<SimpleMonitorForm>(emptyMonitorForm);
   const [deleteTarget, setDeleteTarget] = useState<HotKeyAPI.MonitorResponse>();
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [page, setPage] = useState(1);
@@ -421,7 +145,7 @@ export default function MonitorsPage() {
   function openCreate() {
     setEditTarget(undefined);
     setForm({
-      ...emptyForm(),
+      ...emptyMonitorForm(),
       sourceIds: enabledSources.flatMap((source) =>
         source.id == null ? [] : [source.id]
       ),
@@ -433,23 +157,16 @@ export default function MonitorsPage() {
     setEditTarget(monitor);
     setForm({
       name: monitor.name ?? "",
-      query: queryOf(monitor),
+      query: monitorQuery(monitor),
       interval: String(monitor.collection_interval_seconds ?? 1800),
       alertEmailEnabled: monitor.alert_email_enabled ?? false,
       sourceIds: (monitor.sources ?? []).flatMap((source) =>
-        source.source_connection_id == null ? [] : [source.source_connection_id]
+        source.source_connection_id == null
+          ? []
+          : [source.source_connection_id]
       ),
     });
     setCreateOpen(true);
-  }
-
-  function toggleSource(sourceID: number) {
-    setForm((current) => ({
-      ...current,
-      sourceIds: current.sourceIds.includes(sourceID)
-        ? current.sourceIds.filter((value) => value !== sourceID)
-        : [...current.sourceIds, sourceID].slice(0, 10),
-    }));
   }
 
   async function saveMonitor(event: FormEvent<HTMLFormElement>) {
@@ -508,7 +225,7 @@ export default function MonitorsPage() {
         },
       }));
       toast.success("扫描任务已提交；重复点击会复用当前五分钟任务");
-      window.setTimeout(() => void loadScan(monitor.id as number), 1_500);
+      globalThis.setTimeout(() => void loadScan(monitor.id as number), 1_500);
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : "扫描提交失败");
     } finally {
@@ -518,9 +235,14 @@ export default function MonitorsPage() {
 
   async function lifecycle(
     monitor: HotKeyAPI.MonitorResponse,
-    action: "pause" | "resume" | "archive" | "restore"
+    action: MonitorLifecycleAction
   ) {
-    if (!canContributeTo(monitor) || monitor.id == null || monitor.version == null) return;
+    if (
+      !canContributeTo(monitor) ||
+      monitor.id == null ||
+      monitor.version == null
+    )
+      return;
     setBusyID(monitor.id);
     const body = { expected_monitor_version: monitor.version };
     try {
@@ -602,21 +324,14 @@ export default function MonitorsPage() {
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       ) : forbidden ? (
-        <Card
-          role="alert"
-          aria-label="权限不足"
-          className="p-8 text-center"
-        >
+        <Card role="alert" aria-label="权限不足" className="p-8 text-center">
           <p className="font-medium">权限不足</p>
           <p className="mt-2 text-sm text-muted-foreground">
             当前账号没有查看监控与扫描记录的权限，请联系管理员。
           </p>
         </Card>
       ) : loadError ? (
-        <Card
-          role="alert"
-          className="p-8 text-center"
-        >
+        <Card role="alert" className="p-8 text-center">
           <p className="font-medium">监控加载失败</p>
           <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>
           <Button
@@ -647,203 +362,19 @@ export default function MonitorsPage() {
         <div className="space-y-4">
           {monitors.map((monitor) => {
             const monitorID = monitor.id ?? 0;
-            const query = queryOf(monitor);
-            const scan = scans[monitorID];
-            const latest = scan?.items[0];
-            const busy = busyID === monitorID;
-            const canManageMonitor = canContributeTo(monitor);
             return (
-              <Card key={monitorID}>
-                <CardHeader className="gap-4 p-5 pb-3 sm:p-6 sm:pb-3">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <CardTitle className="text-xl">
-                          <h2>{monitor.name}</h2>
-                        </CardTitle>
-                        <Badge variant="outline">
-                          {monitorStatusLabel(monitor.status)}
-                        </Badge>
-                      </div>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        监控词：{query}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        每 {intervalLabel(monitor.collection_interval_seconds)}
-                        扫描 · {monitor.sources?.length ?? 0} 个来源
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {canManageMonitor && monitor.status === MonitorStatus.Active ? (
-                        <Button
-                          aria-label={`立即扫描 ${monitor.name}`}
-                          disabled={busy}
-                          size="sm"
-                          onClick={() => void collectNow(monitor)}
-                        >
-                          {busy ? (
-                            <Loader2 className="animate-spin" />
-                          ) : (
-                            <Search />
-                          )}
-                          立即扫描
-                        </Button>
-                      ) : null}
-                      {canManageMonitor && monitor.status !== MonitorStatus.Archived ? (
-                        <Button
-                          aria-label={`编辑 ${monitor.name}`}
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => openEdit(monitor)}
-                        >
-                          <Pencil />
-                          编辑
-                        </Button>
-                      ) : null}
-                      {canManageMonitor && monitor.status === MonitorStatus.Active ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => void lifecycle(monitor, "pause")}
-                        >
-                          <Pause />
-                          暂停
-                        </Button>
-                      ) : null}
-                      {canManageMonitor && monitor.status === MonitorStatus.Paused ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => void lifecycle(monitor, "resume")}
-                        >
-                          <Play />
-                          恢复
-                        </Button>
-                      ) : null}
-                      {canManageMonitor && monitor.status !== MonitorStatus.Archived ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={busy}
-                          onClick={() => void lifecycle(monitor, "archive")}
-                        >
-                          <Archive />
-                          归档
-                        </Button>
-                      ) : null}
-                      {canManageMonitor && monitor.status === MonitorStatus.Archived ? (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => void lifecycle(monitor, "restore")}
-                          >
-                            <RotateCcw />
-                            恢复
-                          </Button>
-                          {canAdmin ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={busy}
-                              onClick={() => setDeleteTarget(monitor)}
-                            >
-                              <Trash2 />
-                              删除
-                            </Button>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-5 pt-2 sm:p-6 sm:pt-2">
-                  <h3 className="mb-3 text-sm font-medium">最近扫描</h3>
-                  {scan?.queued ? (
-                    <Surface className="mb-3 flex items-center gap-2 px-3 py-2 text-sm" variant="subtle">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      已排队，等待来源返回
-                    </Surface>
-                  ) : null}
-                  {latest ? (
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant={
-                              latest.status === "failed"
-                                ? "destructive"
-                                : "secondary"
-                            }
-                          >
-                            {scanStatusLabels[latest.status ?? ""] ??
-                              latest.status}
-                          </Badge>
-                          <span className="text-muted-foreground">
-                            接受 {latest.accepted_count ?? 0} / 候选{" "}
-                            {latest.candidate_count ?? 0}
-                          </span>
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {formatTime(
-                            latest.finished_at ||
-                              latest.started_at ||
-                              latest.scheduled_at
-                          )}
-                        </span>
-                      </div>
-                      <div className="grid gap-2 md:grid-cols-2">
-                        {(latest.sources ?? []).map((item) => (
-                          <Surface
-                            key={`${item.run_id}-${item.source_connection_id}`}
-                            className="p-3"
-                            variant="ring"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-medium">
-                                {item.source_name ||
-                                  sourceTypeLabel(item.source_type)}
-                              </p>
-                              <Badge
-                                variant={
-                                  item.status === "failed"
-                                    ? "destructive"
-                                    : "secondary"
-                                }
-                              >
-                                {scanStatusLabels[item.status ?? ""] ??
-                                  item.status}
-                              </Badge>
-                            </div>
-                            <p className="mt-2 text-xs text-muted-foreground">
-                              {item.status === "succeeded"
-                                ? `成功 · 接受 ${
-                                    item.accepted_count ?? 0
-                                  } / 候选 ${item.candidate_count ?? 0}`
-                                : item.error_code || "等待来源返回"}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {formatTime(
-                                item.finished_at ||
-                                  item.started_at ||
-                                  item.scheduled_at
-                              )}
-                            </p>
-                          </Surface>
-                        ))}
-                      </div>
-                    </div>
-                  ) : !scan?.queued ? (
-                    <p className="text-sm text-muted-foreground">
-                      尚无扫描记录。
-                    </p>
-                  ) : null}
-                </CardContent>
-              </Card>
+              <MonitorCard
+                key={monitorID}
+                monitor={monitor}
+                scan={scans[monitorID]}
+                busy={busyID === monitorID}
+                canManage={canContributeTo(monitor)}
+                canAdmin={canAdmin}
+                onCollect={(target) => void collectNow(target)}
+                onEdit={openEdit}
+                onLifecycle={(target, action) => void lifecycle(target, action)}
+                onDelete={setDeleteTarget}
+              />
             );
           })}
           <CursorPagination
@@ -858,141 +389,19 @@ export default function MonitorsPage() {
         </div>
       )}
 
-      <Dialog
+      <MonitorFormDialog
         open={createOpen}
+        editTarget={editTarget}
+        form={form}
+        sources={enabledSources}
+        saving={saving}
         onOpenChange={(open) => {
           setCreateOpen(open);
           if (!open) setEditTarget(undefined);
         }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {editTarget ? "编辑监控任务" : "新建监控任务"}
-            </DialogTitle>
-            <DialogDescription>
-              {editTarget
-                ? "修改简单字段后立即生效；暂停中的监控仍保持暂停。"
-                : "只需填写监控词和来源；创建后立即启用。"}
-            </DialogDescription>
-          </DialogHeader>
-          <form className="space-y-5" onSubmit={saveMonitor}>
-            <div>
-              <Label htmlFor="monitor-name">监控名称</Label>
-              <Input
-                id="monitor-name"
-                className="mt-2"
-                value={form.name}
-                maxLength={120}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <Label htmlFor="monitor-query">监控词</Label>
-              <Input
-                id="monitor-query"
-                className="mt-2"
-                value={form.query}
-                maxLength={160}
-                placeholder="例如 Claude、OpenAI、具身智能"
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    query: event.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <Label htmlFor="monitor-interval">扫描间隔</Label>
-              <Select
-                value={form.interval}
-                onValueChange={(interval) =>
-                  setForm((current) => ({ ...current, interval }))
-                }
-              >
-                <SelectTrigger
-                  id="monitor-interval"
-                  aria-label="扫描间隔"
-                  className="mt-2"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="900">15 分钟</SelectItem>
-                  <SelectItem value="1800">30 分钟</SelectItem>
-                  <SelectItem value="3600">1 小时</SelectItem>
-                  <SelectItem value="21600">6 小时</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <fieldset>
-              <legend className="text-sm font-medium">来源</legend>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                {enabledSources.map((source) =>
-                  source.id == null ? null : (
-                    <label
-                      key={source.id}
-                      className="flex items-center gap-2 text-sm"
-                    >
-                      <Checkbox
-                        checked={form.sourceIds.includes(source.id)}
-                        onCheckedChange={() =>
-                          toggleSource(source.id as number)
-                        }
-                      />
-                      {source.name || sourceTypeLabel(source.source_type)}
-                    </label>
-                  )
-                )}
-              </div>
-            </fieldset>
-            <Surface asChild variant="ring">
-              <label className="flex items-start gap-3 p-3">
-                <Checkbox
-                  aria-label="高优先级邮件提醒"
-                  checked={form.alertEmailEnabled}
-                  onCheckedChange={(checked) =>
-                    setForm((current) => ({
-                      ...current,
-                      alertEmailEnabled: checked === true,
-                    }))
-                  }
-                />
-                <span>
-                  <span className="block text-sm font-medium">
-                    高优先级邮件提醒
-                  </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    仅在事件达到高或紧急热度时发送到当前账号邮箱。
-                  </span>
-                </span>
-              </label>
-            </Surface>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCreateOpen(false)}
-              >
-                取消
-              </Button>
-              <Button
-                type="submit"
-                disabled={saving || form.sourceIds.length === 0}
-              >
-                {saving ? <Loader2 className="animate-spin" /> : <RotateCcw />}
-                {editTarget ? "保存修改" : "创建并启用"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+        onFormChange={setForm}
+        onSubmit={saveMonitor}
+      />
 
       <ConfirmDeleteDialog
         description="删除后不能恢复，已收集的信号记录仍会保留。"

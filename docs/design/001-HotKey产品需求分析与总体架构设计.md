@@ -88,6 +88,10 @@ Python Agent 只返回经版本化契约校验的建议，不直接读写 Postgr
 
 关键写操作在 Application 边界依次完成认证、服务端授权、输入与资源版本校验，并使用业务幂等键或乐观锁阻止重复副作用和静默覆盖；成功、拒绝与版本冲突均形成不可覆盖的审计事实。列表接口使用不可变排序字段与唯一 ID 组成稳定顺序和游标，限制页大小并对无效、过期或越权游标返回稳定脱敏错误；并发新增不得回流到已经越过的游标区间，同一次连续遍历不得因并列排序产生重复或遗漏。
 
+### DEC-001-007：语言中立地落实 Alibaba 分层、POJO 与 MVVC
+
+[Alibaba Java Coding Guidelines](https://github.com/alibaba/Alibaba-Java-Coding-Guidelines) 的分层和 DO/DTO/BO/VO 语义作为工程参考，不把 Java 包名机械复制到 Go、Python 或 React。Go Domain 保存实体、值对象与持久化端口，新 Application 契约只面向内层纯类型和接口，Infrastructure 的数据库 Record 保持私有，HTTP 使用明确的 RequestDTO/ResponseDTO；架构门禁禁止 Application/Domain/Transport 指向业务具体适配器，并冻结既有 Application 对平台事务协调器的有限依赖，防止继续扩散。前端以生成 OpenAPI Client 和契约类型作为 Model，App Router 页面作为 Route/ViewController，业务与 UI 组件作为 View，Zustand 保存跨页面状态；多步请求流程进入聚焦工作流模块。该映射兼容 MVC、MVVM 及用户所称 MVVC 的职责边界，但不增加空的 `pojo/`、`viewmodel/` 或 `controller/` 包。
+
 ### 未采纳候选与附件差异
 
 根据产品负责人对交付设计的复核，Python Agent 是获批的数据分析运行面，不再作为禁用候选。Kafka、Temporal、Elasticsearch/ELK、Keycloak、版本化 migrations 和完整业务微服务拓扑仍不采用。Agent 必须保持无状态、内网可达和最小权限，不能成为第二事实源；本地优先、证据可追溯、任务可恢复和自动判断受控继续由 Go Core 与 Agent 的明确契约共同保证。

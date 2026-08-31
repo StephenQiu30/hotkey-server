@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
-	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 )
 
 // ProviderRegistry is the runtime-only provider boundary. A profile may be
@@ -37,10 +36,10 @@ func (registry *ProviderRegistry) Resolve(name domain.ProviderName) (domain.Prov
 // Credential material remains write-only at the future HTTP transport layer;
 // this service neither resolves nor returns a secret value on its own.
 type ModelProfileService struct {
-	profiles *intelligencepostgres.Repository
+	profiles domain.ModelProfileRepository
 }
 
-func NewModelProfileService(profiles *intelligencepostgres.Repository) (*ModelProfileService, error) {
+func NewModelProfileService(profiles domain.ModelProfileRepository) (*ModelProfileService, error) {
 	if profiles == nil {
 		return nil, fmt.Errorf("AI profile repository is required")
 	}

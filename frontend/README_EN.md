@@ -133,15 +133,17 @@ The integration uses the official `@umijs/openapi` `openapi2ts` CLI. Update and 
 ## Project structure
 
 ```text
-src/app/                         # Routes and pages
-src/components/                  # Product and UI components
+src/app/                         # Routes and page ViewControllers
+src/components/                  # Views: product and UI components
 src/layouts/                     # Workspace layouts
-src/lib/                         # HTTP, auth session, and utilities
-src/stores/                      # Zustand stores
-src/services/hotkey/             # Generated OpenAPI client
+src/lib/                         # Focused workflows, HTTP, auth, and utilities
+src/stores/                      # Cross-page model/view state
+src/services/hotkey/             # Model: generated OpenAPI client and DTOs
 test/                            # Centralized unit tests
 ../docs/                # Product, design, plan, acceptance, and operations docs
 ```
+
+The frontend uses a React-oriented MVVC/MVC responsibility map: generated clients and contract types are the Model, `src/app/` pages coordinate routes as ViewControllers, `src/components/` contains Views, and Zustand owns shared state. Complex multi-request flows belong in focused `src/lib/` workflow modules. Simple route controllers may call the generated client directly; no empty ViewModel layer is added merely for symmetry, and presentation components must not duplicate API paths or backend DTOs.
 
 ## Project status
 

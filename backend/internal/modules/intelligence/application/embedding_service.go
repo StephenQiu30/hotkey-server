@@ -6,11 +6,10 @@ import (
 	"strings"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
-	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 )
 
 type EmbeddingServiceDependencies struct {
-	Runs       *intelligencepostgres.Repository
+	Runs       domain.EmbeddingExecutionRepository
 	Providers  *ProviderRegistry
 	RunService *RunService
 }
@@ -18,7 +17,7 @@ type EmbeddingServiceDependencies struct {
 // EmbeddingService delegates terminal persistence to CompleteEmbedding, which
 // is the only production path that can activate a vector.
 type EmbeddingService struct {
-	runs       *intelligencepostgres.Repository
+	runs       domain.EmbeddingExecutionRepository
 	providers  *ProviderRegistry
 	runService *RunService
 }
@@ -31,7 +30,7 @@ func NewEmbeddingService(dependencies EmbeddingServiceDependencies) (*EmbeddingS
 }
 
 type EmbeddingExecutionInput struct {
-	Target                                                              intelligencepostgres.EmbeddingTarget
+	Target                                                              domain.EmbeddingTarget
 	TargetID, TargetVersion                                             int64
 	PromptVersion, InputSchemaVersion, SchemaVersion, ParametersVersion string
 	InputHash, EvidenceSetHash                                          string
@@ -60,7 +59,7 @@ func (service *EmbeddingService) Execute(ctx context.Context, input EmbeddingExe
 		if !available {
 			continue
 		}
-		claim, err := service.runs.Claim(ctx, intelligencepostgres.ClaimInput{
+		claim, err := service.runs.Claim(ctx, domain.RunClaim{
 			TaskType: domain.TaskTypeEmbedding, WorkspaceKey: DefaultWorkspaceKey, SkillID: EmbeddingSkillID,
 			TargetType: string(input.Target), TargetID: input.TargetID, TargetVersion: input.TargetVersion,
 			RuntimeVersion: StructuredRuntimeVersion, ModelProfileID: profile.ID,
@@ -105,9 +104,9 @@ func (service *EmbeddingService) Execute(ctx context.Context, input EmbeddingExe
 			return EmbeddingResult{}, err
 		}
 		completedAt := service.runService.now()
-		if _, err := service.runs.CompleteEmbedding(ctx, intelligencepostgres.EmbeddingCompletion{
+		if _, err := service.runs.CompleteEmbedding(ctx, domain.EmbeddingCompletion{
 			RunID: claim.Run.ID,
-			Write: intelligencepostgres.EmbeddingWrite{
+			Write: domain.EmbeddingWrite{
 				Target: input.Target, TargetID: input.TargetID, ModelProfileID: profile.ID, ModelProfileVersion: profile.Version,
 				ModelVersion: profile.ModelVersion, InputHash: input.InputHash, QueryText: input.QueryText, Vector: response.Vectors[0],
 			},
@@ -145,7 +144,7 @@ func (service *EmbeddingService) embed(ctx context.Context, runID int64, profile
 	}
 }
 
-func validEmbeddingTarget(target intelligencepostgres.EmbeddingTarget) bool {
-	return target == intelligencepostgres.EmbeddingTargetContent || target == intelligencepostgres.EmbeddingTargetMonitor ||
-		target == intelligencepostgres.EmbeddingTargetEvent || target == intelligencepostgres.EmbeddingTargetTopic
+func validEmbeddingTarget(target domain.EmbeddingTarget) bool {
+	return target == domain.EmbeddingTargetContent || target == domain.EmbeddingTargetMonitor ||
+		target == domain.EmbeddingTargetEvent || target == domain.EmbeddingTargetTopic
 }

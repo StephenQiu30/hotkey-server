@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
+	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	sharedclock "github.com/StephenQiu30/hotkey-server/backend/internal/shared/clock"
 	"go.uber.org/fx"
 )
@@ -14,7 +14,7 @@ import (
 // RunLeaseReclaimer only marks crashed in-flight runs terminal and releases
 // their reservation. It never invokes a provider or attempts to replay work.
 type RunLeaseReclaimer struct {
-	runs  *intelligencepostgres.Repository
+	runs  domain.RunLeaseRepository
 	clock sharedclock.Clock
 
 	mu     sync.Mutex
@@ -22,7 +22,7 @@ type RunLeaseReclaimer struct {
 	done   chan struct{}
 }
 
-func NewRunLeaseReclaimer(runs *intelligencepostgres.Repository) (*RunLeaseReclaimer, error) {
+func NewRunLeaseReclaimer(runs domain.RunLeaseRepository) (*RunLeaseReclaimer, error) {
 	if runs == nil {
 		return nil, fmt.Errorf("AI run repository is required")
 	}

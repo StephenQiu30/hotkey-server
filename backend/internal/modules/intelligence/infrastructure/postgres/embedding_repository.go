@@ -13,53 +13,19 @@ import (
 	"github.com/pgvector/pgvector-go"
 )
 
-type EmbeddingTarget string
+type EmbeddingTarget = intelligencedomain.EmbeddingTarget
+type EmbeddingWrite = intelligencedomain.EmbeddingWrite
+type EmbeddingMatch = intelligencedomain.EmbeddingMatch
+type EmbeddingCompletion = intelligencedomain.EmbeddingCompletion
+type ProjectedEmbeddingCompletion = intelligencedomain.ProjectedEmbeddingCompletion
+type ProjectedEmbeddingCommit = intelligencedomain.ProjectedEmbeddingCommit
 
 const (
-	EmbeddingTargetContent EmbeddingTarget = "content"
-	EmbeddingTargetMonitor EmbeddingTarget = "monitor"
-	EmbeddingTargetEvent   EmbeddingTarget = "event"
-	EmbeddingTargetTopic   EmbeddingTarget = "topic"
+	EmbeddingTargetContent = intelligencedomain.EmbeddingTargetContent
+	EmbeddingTargetMonitor = intelligencedomain.EmbeddingTargetMonitor
+	EmbeddingTargetEvent   = intelligencedomain.EmbeddingTargetEvent
+	EmbeddingTargetTopic   = intelligencedomain.EmbeddingTargetTopic
 )
-
-type EmbeddingWrite struct {
-	Target                                        EmbeddingTarget
-	TargetID, ModelProfileID, ModelProfileVersion int64
-	ModelVersion, InputHash, QueryText            string
-	Vector                                        []float32
-}
-
-type EmbeddingMatch struct {
-	TargetID, ModelProfileVersion int64
-	ModelVersion                  string
-	Distance                      float64
-}
-
-// EmbeddingCompletion binds an embedding to the validating run that produced
-// it. A vector has no standalone success path: provenance, budget settlement
-// and activation are all committed together.
-type EmbeddingCompletion struct {
-	RunID      int64
-	Write      EmbeddingWrite
-	Usage      intelligencedomain.Usage
-	LatencyMS  int64
-	FinishedAt time.Time
-}
-
-// ProjectedEmbeddingCompletion lets a v2 owning module persist its exact,
-// rights-bound projection inside the same PostgreSQL transaction that settles
-// the AI run. The callback receives only a transaction-bearing context; the
-// Intelligence repository never imports or writes another module's tables.
-type ProjectedEmbeddingCompletion struct {
-	RunID, TargetID, ModelProfileID, ModelProfileVersion int64
-	TargetType, ModelVersion, InputHash                  string
-	Vector                                               []float32
-	Usage                                                intelligencedomain.Usage
-	LatencyMS                                            int64
-	FinishedAt                                           time.Time
-}
-
-type ProjectedEmbeddingCommit func(context.Context) error
 
 const (
 	projectedEmbeddingTargetDocumentVersion        = "document_version"

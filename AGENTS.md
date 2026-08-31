@@ -44,6 +44,13 @@ bootstrap -> all adapters
 - `internal/shared/` 只保存基础设施中立的稳定类型和契约，不导入 Platform 或具体适配器；通用数据库适配器位于 `internal/platform/database/repository`。
 - Redis 只用于缓存、验证码、短期票据与限流，不是业务事实源。除根目录 `agent/` 的 Python 分析服务外，不得引入第二套业务后端、第二套 Schema、Kafka、其他微服务、内部事件总线、Elasticsearch、独立向量库或通用规则引擎。
 
+### 分层对象约定
+
+- Alibaba Java 开发手册只作为语言中立的分层与对象语义参考，不在 Go 中复制 `controller/service/mapper/pojo` 顶层目录。
+- Domain 保存实体、值对象和端口；Application 不得导入任一模块的 Infrastructure 或 Transport；Transport 不得导入 Infrastructure。既有 Application 对 `internal/platform/database` 事务协调器的有限引用由架构测试冻结，不得扩散；新用例使用 Domain/Shared 端口。
+- PostgreSQL 行结构属于 Infrastructure 私有 Record（Go 中使用未导出类型）；Application 的 Command、Query、Result、DTO 使用纯 Go 类型；HTTP 只暴露明确的 `RequestDTO` / `ResponseDTO`，不得把 GORM Model、数据库 Record 或第三方 SDK 对象向上透传。
+- 兼容迁移可在适配器边界保留短期类型别名，但新生产调用方必须引用内层规范类型，并由架构测试阻止新增反向依赖。
+
 ## Python Agent 规则
 
 - Agent 只负责相关性、聚类候选、摘要、实体/主题提取等数据分析与模型编排；业务授权、幂等、状态迁移、Evidence 白名单、最终写入和人工治理必须留在 Go Application/Domain。
@@ -80,6 +87,7 @@ bootstrap -> all adapters
 - 页面位于 `src/app/`，业务组件位于 `src/components/`，布局位于 `src/layouts/`，状态位于 `src/stores/`，通用请求与工具位于 `src/lib/`。
 - 所有 `*.test.ts`、`*.test.tsx` 与测试初始化位于 `frontend/test/`；不得在 `src/` 内创建测试文件。
 - 单文件通常保持在 200–500 行；超出时按职责拆分，不创建无职责包装层。
+- 前端按 React 语义实现 MVVC/MVC：生成的 OpenAPI Client 与契约类型是 Model，`src/app/` 页面负责 Route/ViewController 编排，`src/components/` 是 View，`src/stores/` 保存跨页面状态；复杂多步 API 工作流进入聚焦的 `src/lib/` 工作流模块，展示组件不得拥有该工作流。
 
 ### API 与界面
 

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
-	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 )
 
 // EmbeddingSpace pins every read to one profile revision and one model
@@ -34,18 +33,14 @@ type EmbeddingNeighbor struct {
 	Distance float64
 }
 
-type embeddingQueryRepository interface {
-	ActiveEmbedding(context.Context, intelligencepostgres.EmbeddingTarget, int64, int64, int64, string) ([]float32, bool, error)
-	NearestEmbeddings(context.Context, intelligencepostgres.EmbeddingTarget, int64, int64, string, []float32, int) ([]intelligencepostgres.EmbeddingMatch, error)
-	NearestPublishedMonitorEmbeddings(context.Context, int64, int64, string, []float32, int) ([]intelligencepostgres.EmbeddingMatch, error)
-}
-
 // EmbeddingQueryService is intelligence's sole public read-only embedding
 // facade. It deliberately exports only Content lookup and Monitor-neighbor
 // lookup needed by relevance matching; it has no write or run-control API.
-type EmbeddingQueryService struct{ repository embeddingQueryRepository }
+type EmbeddingQueryService struct {
+	repository domain.EmbeddingQueryRepository
+}
 
-func NewEmbeddingQueryService(repository *intelligencepostgres.Repository) (*EmbeddingQueryService, error) {
+func NewEmbeddingQueryService(repository domain.EmbeddingQueryRepository) (*EmbeddingQueryService, error) {
 	if repository == nil {
 		return nil, fmt.Errorf("AI embedding query repository is required")
 	}
@@ -56,7 +51,7 @@ func (service *EmbeddingQueryService) ActiveContent(ctx context.Context, content
 	if service == nil || service.repository == nil || contentID <= 0 || !space.valid() {
 		return ActiveEmbedding{}, false, domain.NewError(domain.CodeAIModelProfileInvalid)
 	}
-	vector, found, err := service.repository.ActiveEmbedding(ctx, intelligencepostgres.EmbeddingTargetContent, contentID, space.ModelProfileID, space.ModelProfileVersion, space.ModelVersion)
+	vector, found, err := service.repository.ActiveEmbedding(ctx, domain.EmbeddingTargetContent, contentID, space.ModelProfileID, space.ModelProfileVersion, space.ModelVersion)
 	if err != nil || !found {
 		return ActiveEmbedding{}, found, err
 	}

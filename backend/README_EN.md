@@ -171,6 +171,8 @@ Business code stays under `internal/` so it cannot be imported outside this modu
 
 `internal/shared` does not depend on an ORM, database driver, or `internal/platform`. GORM CRUD and PostgreSQL error mapping live in `internal/platform/database/repository`, while module infrastructure depends inward on the shared contracts.
 
+Alibaba's layering guidance is mapped by responsibility rather than by copying Java package names: HTTP Transport corresponds to Web/Controller, Application to use-case Services, Domain owns business objects, entities, value objects, and ports, unexported Infrastructure/PostgreSQL records correspond to DOs, and HTTP RequestDTO/ResponseDTO types define the presentation boundary. Application code never imports a concrete PostgreSQL repository; adapters implement Domain ports, and `TestModuleLayersKeepInwardDependencies` protects that direction. This preserves idiomatic Go packages while honoring the POJO principle that plain contracts carry no framework or persistence details.
+
 Test sources and test-only fixtures live in package-mirrored paths below `test/_suite`. During execution, `test/runner` temporarily materializes `_test.go` files and package-local `testdata`, then removes those links, keeping test-only assets out of the `internal/` production tree.
 
 This layout is an evidence-based choice rather than a copy of a purported standard template:

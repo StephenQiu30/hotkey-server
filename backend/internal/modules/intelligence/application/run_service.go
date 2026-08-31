@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
-	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 	sharedclock "github.com/StephenQiu30/hotkey-server/backend/internal/shared/clock"
 	sharedrequestcontext "github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
 )
@@ -30,7 +29,7 @@ type StructuredShadow interface {
 }
 
 type RunServiceDependencies struct {
-	Runs      *intelligencepostgres.Repository
+	Runs      domain.RunExecutionRepository
 	Providers *ProviderRegistry
 	Schemas   *SchemaRegistry
 	Clock     sharedclock.Clock
@@ -41,7 +40,7 @@ type RunServiceDependencies struct {
 // RunService owns network orchestration, but never a database transaction
 // while an adapter is called. The repository owns every terminal write.
 type RunService struct {
-	runs      *intelligencepostgres.Repository
+	runs      domain.RunExecutionRepository
 	providers *ProviderRegistry
 	schemas   *SchemaRegistry
 	clock     sharedclock.Clock
@@ -100,7 +99,7 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 		if !available {
 			continue
 		}
-		claim, err := service.runs.Claim(ctx, intelligencepostgres.ClaimInput{
+		claim, err := service.runs.Claim(ctx, domain.RunClaim{
 			TaskType: input.TaskType, WorkspaceKey: DefaultWorkspaceKey, SkillID: contract.SkillID,
 			TargetType: input.TargetType, TargetID: input.TargetID, TargetVersion: input.TargetVersion,
 			RuntimeVersion: StructuredRuntimeVersion, ModelProfileID: profile.ID,
@@ -183,7 +182,7 @@ func (service *RunService) ExecuteStructured(ctx context.Context, input Structur
 			}
 			response.Usage = usage
 		}
-		completed, err := service.runs.CompleteStructured(ctx, intelligencepostgres.StructuredCompletion{
+		completed, err := service.runs.CompleteStructured(ctx, domain.StructuredRunCompletion{
 			RunID: claim.Run.ID, Result: response.JSON, Usage: response.Usage, LatencyMS: elapsedMilliseconds(started, service.now()), FinishedAt: service.now(),
 		})
 		if err != nil {

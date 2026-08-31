@@ -213,6 +213,8 @@ tools/                     # 构建期工具依赖
 
 `internal/shared` 不依赖 ORM、数据库驱动或 `internal/platform`；GORM CRUD 和 PostgreSQL 错误映射集中在 `internal/platform/database/repository`，业务模块的基础设施层向内依赖 shared 契约。
 
+Alibaba 分层规范在本项目中按语言语义映射，而不是照搬 Java 目录：HTTP Transport 对应 Web/Controller，Application 对应用例 Service，Domain 保存 BO/实体/值对象与端口，Infrastructure/PostgreSQL 的未导出 Record 对应 DO，HTTP 的 RequestDTO/ResponseDTO 对应展示边界对象。Application 不引用具体 PostgreSQL Repository；适配器实现 Domain 端口，并由 `TestModuleLayersKeepInwardDependencies` 持续检查依赖方向。这样保留 Go 的包内聚性，同时满足 POJO“纯对象不携带框架/持久化细节”的核心要求。
+
 测试源码和纯测试 fixture 统一位于 `test/_suite`的包镜像路径；`test/runner` 在执行期间临时物化 `_test.go` 和包内 `testdata`，退出后清理，因此 `internal/` 生产树不保存纯测试资产。
 
 该结构不是照搬某个所谓“标准模板”，而是结合真实项目取舍：

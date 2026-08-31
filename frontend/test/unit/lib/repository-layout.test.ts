@@ -52,6 +52,31 @@ describe("repository test layout", () => {
     expect(fs.existsSync(path.join(repositoryRoot, "src/app/dashboard/error.tsx"))).toBe(true);
   });
 
+  it("keeps the monitor workflow, route controller, and views separated", () => {
+    const controller = fs.readFileSync(
+      path.join(repositoryRoot, "src/app/dashboard/settings/page.tsx"),
+      "utf8",
+    );
+    const workflow = fs.readFileSync(
+      path.join(repositoryRoot, "src/lib/monitorWorkflow.ts"),
+      "utf8",
+    );
+    const views = ["MonitorCard.tsx", "MonitorFormDialog.tsx"].map((file) =>
+      fs.readFileSync(
+        path.join(repositoryRoot, "src/components/dashboard", file),
+        "utf8",
+      ),
+    );
+
+    expect(controller).toContain("compileAndPublishSimpleMonitor");
+    expect(controller).not.toContain("postMonitorsIdDraftPreviewRuns");
+    expect(workflow).toContain("postMonitorsIdDraftPreviewRuns");
+    for (const view of views) {
+      expect(view).not.toContain("@/services/hotkey/hotkey-server/");
+    }
+    expect(controller.split("\n").length).toBeLessThanOrEqual(500);
+  });
+
   it("gives every shadcn table a named keyboard-scroll region", () => {
     const missingLabels = findSourceFiles(path.join(repositoryRoot, "src"))
       .flatMap((file) => {
