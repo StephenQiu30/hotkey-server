@@ -249,13 +249,13 @@ export function RuntimeOperationsPanel() {
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="destructive">{alert.severity?.toUpperCase() ?? "P1"}</Badge>
                         <code className="text-xs font-semibold">{alert.alert_id}</code>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-foreground">
                           影响 {alert.affected_count ?? 0} 个{alertImpactUnits[alert.alert_id ?? ""] ?? "任务"}
                         </span>
                       </div>
-                      <p className="mt-3 font-mono text-xs text-muted-foreground">{alert.reason_code}</p>
+                      <p className="mt-3 font-mono text-xs text-foreground">{alert.reason_code}</p>
                       {alert.owner || alertThreshold(alert) ? (
-                        <p className="mt-2 text-xs text-muted-foreground">
+                        <p className="mt-2 text-xs text-foreground">
                           {alert.owner ? `责任人 ${alert.owner}` : ""}
                           {alert.owner && alertThreshold(alert) ? " · " : ""}
                           {alertThreshold(alert) ? `阈值 ${alertThreshold(alert)}` : ""}

@@ -125,7 +125,11 @@ describe("GovernancePage", () => {
     expect(screen.getByText("45 秒")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "运行告警" })).toBeInTheDocument();
     expect(screen.getByText("策略 p0-operational-alerts-v1")).toBeInTheDocument();
-    expect(screen.getAllByText("责任人 hotkey-oncall")).toHaveLength(2);
+    const alertOwners = screen.getAllByText("责任人 hotkey-oncall");
+    expect(alertOwners).toHaveLength(2);
+    expect(alertOwners[0]).toHaveClass("text-foreground");
+    expect(screen.getByText("river_job_discarded")).toHaveClass("text-foreground");
+    expect(screen.getByText("影响 1 个任务")).toHaveClass("text-foreground");
     expect(screen.getByText("ALERT-RIVER-JOB-FAILED")).toBeInTheDocument();
     expect(screen.getByText(/任务 #31/)).toBeInTheDocument();
     expect(screen.getByText(/事件 #42/)).toBeInTheDocument();
