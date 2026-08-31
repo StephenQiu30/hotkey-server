@@ -35,9 +35,9 @@ func TestNormalizeSourcePartiesRejectsAmbiguousOrUnsafeAssertions(t *testing.T) 
 			Role: SourcePartyRolePublisher, Kind: SourcePartyKindOrganization,
 			IdentityNamespace: "publisher-registry", ExternalID: "publisher-43", DisplayName: "Other Newsroom",
 		}},
-		"duplicate": {valid, valid},
-		"unknown role": {{Role: "source_operator", Kind: SourcePartyKindOrganization, IdentityNamespace: "registry", ExternalID: "1", DisplayName: "Operator"}},
-		"unsafe homepage": {{Role: SourcePartyRolePublisher, Kind: SourcePartyKindOrganization, IdentityNamespace: "registry", ExternalID: "1", DisplayName: "Publisher", HomepageURL: "https://user:secret@publisher.example.test/"}},
+		"duplicate":        {valid, valid},
+		"unknown role":     {{Role: "source_operator", Kind: SourcePartyKindOrganization, IdentityNamespace: "registry", ExternalID: "1", DisplayName: "Operator"}},
+		"unsafe homepage":  {{Role: SourcePartyRolePublisher, Kind: SourcePartyKindOrganization, IdentityNamespace: "registry", ExternalID: "1", DisplayName: "Publisher", HomepageURL: "https://user:secret@publisher.example.test/"}},
 		"guessed identity": {{Role: SourcePartyRolePublisher, Kind: SourcePartyKindOrganization, IdentityNamespace: "", ExternalID: "", DisplayName: "publisher.example.test"}},
 	} {
 		t.Run(name, func(t *testing.T) {

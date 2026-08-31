@@ -40,7 +40,7 @@ type XMetricRefreshService struct {
 
 func NewXMetricRefreshService(dependencies XMetricRefreshDependencies) (*XMetricRefreshService, error) {
 	if dependencies.Sources == nil || dependencies.Admission == nil || dependencies.Connectors == nil || dependencies.Candidates == nil || dependencies.Metrics == nil || dependencies.Evidence == nil {
-		return nil, errors.New("X metric refresh dependencies are required")
+		return nil, errors.New("x metric refresh dependencies are required")
 	}
 	if dependencies.Now == nil {
 		dependencies.Now = func() time.Time { return time.Now().UTC() }
@@ -65,24 +65,24 @@ type XMetricRefreshResult struct {
 
 func (service *XMetricRefreshService) Refresh(ctx context.Context, command XMetricRefreshCommand) (XMetricRefreshResult, error) {
 	if service == nil || service.sources == nil || service.admission == nil || service.connectors == nil || service.candidates == nil || service.metrics == nil || service.evidence == nil || service.now == nil {
-		return XMetricRefreshResult{}, errors.New("X metric refresh service is not initialized")
+		return XMetricRefreshResult{}, errors.New("x metric refresh service is not initialized")
 	}
 	if command.SourceConnectionID <= 0 || command.ExpectedSourceVersion <= 0 {
-		return XMetricRefreshResult{}, errors.New("X metric refresh source identity is required")
+		return XMetricRefreshResult{}, errors.New("x metric refresh source identity is required")
 	}
 	connection, err := service.sources.FindByID(ctx, command.SourceConnectionID)
 	if err != nil {
 		return XMetricRefreshResult{}, err
 	}
 	if connection == nil || connection.ID != command.SourceConnectionID || connection.Version != command.ExpectedSourceVersion {
-		return XMetricRefreshResult{}, errors.New("X metric refresh source version changed")
+		return XMetricRefreshResult{}, errors.New("x metric refresh source version changed")
 	}
 	if connection.SourceType != domain.SourceTypeX || !connection.Enabled || connection.Deleted || !connection.Config.XMetricRefreshEnabled {
 		return XMetricRefreshResult{}, nil
 	}
 	now := service.now().UTC()
 	if now.IsZero() {
-		return XMetricRefreshResult{}, errors.New("X metric refresh clock returned zero time")
+		return XMetricRefreshResult{}, errors.New("x metric refresh clock returned zero time")
 	}
 	query := domain.XMetricRefreshCandidateQuery{
 		SourceConnectionID: connection.ID,
@@ -149,10 +149,10 @@ func (service *XMetricRefreshService) Refresh(ctx context.Context, command XMetr
 	for _, observation := range lookupResult.Observations {
 		candidate, found := byPostID[observation.PostID]
 		if !found || observation.CapturedAt.IsZero() {
-			return XMetricRefreshResult{}, errors.New("X metric lookup returned an unknown or invalid observation")
+			return XMetricRefreshResult{}, errors.New("x metric lookup returned an unknown or invalid observation")
 		}
 		if _, duplicate := observed[observation.PostID]; duplicate {
-			return XMetricRefreshResult{}, errors.New("X metric lookup returned duplicate observations")
+			return XMetricRefreshResult{}, errors.New("x metric lookup returned duplicate observations")
 		}
 		observed[observation.PostID] = struct{}{}
 		if err := service.metrics.AppendXMetricObservation(ctx, candidate.ContentID, observation.CapturedAt.UTC(), observation.Metrics); err != nil {

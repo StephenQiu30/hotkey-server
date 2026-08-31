@@ -29,7 +29,7 @@ func (repository *Repository) ListAfter(ctx context.Context, query domain.Notifi
 		return domain.NotificationPage{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
-		return domain.NotificationPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.NotificationPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `
 SELECT id,event_type,resource_type,resource_id,audience_role,occurred_at,payload
@@ -44,7 +44,7 @@ ORDER BY id ASC LIMIT $3`, query.AfterID, query.Role, query.Limit)
 	if err != nil {
 		return domain.NotificationPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	page := domain.NotificationPage{Items: make([]domain.NotificationEvent, 0, query.Limit), NextAfterID: query.AfterID}
 	for rows.Next() {
 		var item domain.NotificationEvent
@@ -108,7 +108,7 @@ LIMIT $4`, query.UserID, query.AfterID, query.MonitorID, query.Limit)
 	if err != nil {
 		return application.ListUserNotificationsResult{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := application.ListUserNotificationsResult{
 		Items: make([]application.UserNotificationDTO, 0, query.Limit), NextAfterID: query.AfterID,
@@ -298,7 +298,7 @@ RETURNING id,attempt_no`, command.UserNotificationID, command.Channel, command.D
 		return nil
 	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return application.RecordNotificationDeliveryAttemptResult{}, sharedrepository.ErrNotFound
 		}
 		return application.RecordNotificationDeliveryAttemptResult{}, err

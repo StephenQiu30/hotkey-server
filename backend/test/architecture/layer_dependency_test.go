@@ -31,6 +31,9 @@ func TestModuleLayersKeepInwardDependencies(t *testing.T) {
 			"github.com/minio/minio-go",
 			"gorm.io/gorm",
 		},
+		"infrastructure": {
+			backendModulePath + "/internal/modules/*/transport",
+		},
 		"transport": {
 			backendModulePath + "/internal/modules/*/infrastructure",
 		},
@@ -63,8 +66,7 @@ func TestModuleLayersKeepInwardDependencies(t *testing.T) {
 		}
 		for _, importPath := range imports {
 			for _, pattern := range forbidden {
-				if importMatchesLayerPattern(importPath, pattern) &&
-					!legacyApplicationTransactionDependency(filepath.ToSlash(relative), importPath) {
+				if importMatchesLayerPattern(importPath, pattern) {
 					violations = append(violations, filepath.ToSlash(relative)+" -> "+importPath)
 				}
 			}
@@ -77,30 +79,6 @@ func TestModuleLayersKeepInwardDependencies(t *testing.T) {
 	if len(violations) > 0 {
 		t.Errorf("module layer dependencies point outward:\n%s", strings.Join(violations, "\n"))
 	}
-}
-
-// These services predate the inward-only gate and use the shared transaction
-// coordinator directly. The finite baseline prevents the exception from
-// spreading while each service is migrated to a module-owned unit-of-work
-// port in a behavior-preserving change.
-func legacyApplicationTransactionDependency(relative, importPath string) bool {
-	if importPath != backendModulePath+"/internal/platform/database" {
-		return false
-	}
-	legacy := map[string]bool{
-		"agentaccess/application/service.go":       true,
-		"delivery/application/subscription.go":     true,
-		"identity/application/service.go":          true,
-		"ingestion/application/lifecycle.go":       true,
-		"ingestion/application/service.go":         true,
-		"monitor/application/service.go":           true,
-		"operations/application/governance.go":     true,
-		"source/application/collection_control.go": true,
-		"source/application/collection_service.go": true,
-		"source/application/metric_capability.go":  true,
-		"source/application/service.go":            true,
-	}
-	return legacy[relative]
 }
 
 func importMatchesLayerPattern(importPath, pattern string) bool {

@@ -14,21 +14,20 @@ import (
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/agentaccess/domain"
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
 )
 
 type Dependencies struct {
-	Runtime *database.Runtime
+	Runtime TransactionRunner
 	Tokens  domain.TokenRepository
 	Audit   identitydomain.AuditRepository
 	Clock   identitydomain.Clock
 }
 
 type Service struct {
-	runtime *database.Runtime
+	runtime TransactionRunner
 	tokens  domain.TokenRepository
 	audit   identitydomain.AuditRepository
 	clock   identitydomain.Clock
@@ -89,7 +88,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (CreatedT
 	if err := token.Validate(now); err != nil {
 		return CreatedToken{}, invalidRequest()
 	}
-	err = service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+	err = service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
 		count, err := service.tokens.CountActive(transactionCtx, input.Subject.UserID, now)
 		if err != nil {
 			return err
@@ -131,7 +130,7 @@ func (service *Service) Revoke(ctx context.Context, input RevokeInput) (*domain.
 	}
 	now := service.clock.Now().UTC()
 	var revoked *domain.Token
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+	err := service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
 		var err error
 		revoked, err = service.tokens.Revoke(transactionCtx, input.Subject.UserID, input.TokenID, input.ExpectedVersion, now)
 		if err != nil {

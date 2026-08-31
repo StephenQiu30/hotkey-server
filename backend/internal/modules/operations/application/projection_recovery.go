@@ -115,7 +115,7 @@ func (service *ProjectionRecoveryService) Recover(ctx context.Context, command P
 		return ProjectionRecoveryResult{}, fmt.Errorf("inspect projection recovery: %w", err)
 	}
 	if err := validateProjectionRecoveryInspection(inspection); err != nil {
-		return ProjectionRecoveryResult{}, fmt.Errorf("%w: %v", ErrProjectionRecoveryIntegrity, err)
+		return ProjectionRecoveryResult{}, fmt.Errorf("%w: %w", ErrProjectionRecoveryIntegrity, err)
 	}
 	result := ProjectionRecoveryResult{Inspection: inspection}
 	if command.DryRun {
@@ -139,7 +139,7 @@ func (service *ProjectionRecoveryService) Recover(ctx context.Context, command P
 		return result, fmt.Errorf("apply projection recovery: %w", err)
 	}
 	if err := validateProjectionRecoveryReceipt(command, inspection, receipt); err != nil {
-		return result, fmt.Errorf("%w: %v", ErrProjectionRecoveryIntegrity, err)
+		return result, fmt.Errorf("%w: %w", ErrProjectionRecoveryIntegrity, err)
 	}
 	result.Receipt = receipt
 	return result, nil

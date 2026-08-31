@@ -36,15 +36,15 @@ func (repository *EvidenceSnapshotRepository) Reserve(ctx context.Context, comma
 		return sourceapplication.PersistedEvidenceSnapshotDTO{}, sharedrepository.ErrUnavailable
 	}
 	if err := validateEvidenceReservation(command); err != nil {
-		return sourceapplication.PersistedEvidenceSnapshotDTO{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return sourceapplication.PersistedEvidenceSnapshotDTO{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	redirectChainJSON, err := encodeRedirectChain(command.RedirectChain)
 	if err != nil {
-		return sourceapplication.PersistedEvidenceSnapshotDTO{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return sourceapplication.PersistedEvidenceSnapshotDTO{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	responseHeadersJSON, err := encodeResponseHeaders(command.ResponseHeaders)
 	if err != nil {
-		return sourceapplication.PersistedEvidenceSnapshotDTO{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return sourceapplication.PersistedEvidenceSnapshotDTO{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 
 	var stored evidenceSnapshotRecord
@@ -118,7 +118,7 @@ RETURNING `+evidenceSnapshotColumns, stored.ID))
 	}
 	result, err := stored.persistenceDTO()
 	if err != nil {
-		return sourceapplication.PersistedEvidenceSnapshotDTO{}, fmt.Errorf("%w: map persisted evidence snapshot: %v", sharedrepository.ErrConstraint, err)
+		return sourceapplication.PersistedEvidenceSnapshotDTO{}, fmt.Errorf("%w: map persisted evidence snapshot: %w", sharedrepository.ErrConstraint, err)
 	}
 	return result, nil
 }
@@ -131,13 +131,13 @@ func (repository *EvidenceSnapshotRepository) Commit(ctx context.Context, comman
 		return sourceapplication.CommitEvidenceSnapshotResult{}, fmt.Errorf("%w: evidence snapshot id is required", sharedrepository.ErrInvalidInput)
 	}
 	if err := validateEvidenceStoreResult(command.StoreResult); err != nil {
-		return sourceapplication.CommitEvidenceSnapshotResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return sourceapplication.CommitEvidenceSnapshotResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	if err := (sourceapplication.ScheduleSourceDocumentGenerationCommand{
 		EvidenceReferences: []sourceapplication.CommittedEvidenceReferenceDTO{},
 		TraceID:            command.TraceID, ScheduledAt: command.DocumentGenerationScheduledAt,
 	}).Validate(); err != nil {
-		return sourceapplication.CommitEvidenceSnapshotResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return sourceapplication.CommitEvidenceSnapshotResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 
 	var committed evidenceSnapshotRecord
@@ -217,7 +217,7 @@ RETURNING `+evidenceSnapshotColumns, stored.ID))
 			return err
 		}
 		if err := sourceapplication.ValidateSourceDocumentGenerationScheduleResult(scheduleCommand, scheduleResult); err != nil {
-			return fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+			return fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 		}
 		return nil
 	})
@@ -226,7 +226,7 @@ RETURNING `+evidenceSnapshotColumns, stored.ID))
 	}
 	snapshot, err := committed.persistenceDTO()
 	if err != nil {
-		return sourceapplication.CommitEvidenceSnapshotResult{}, fmt.Errorf("%w: map committed evidence snapshot: %v", sharedrepository.ErrConstraint, err)
+		return sourceapplication.CommitEvidenceSnapshotResult{}, fmt.Errorf("%w: map committed evidence snapshot: %w", sharedrepository.ErrConstraint, err)
 	}
 	return sourceapplication.CommitEvidenceSnapshotResult{
 		Snapshot: snapshot, EvidenceReferences: copyCommittedEvidenceReferences(committedReferences),
@@ -382,7 +382,7 @@ func validateObservationCommitSet(observations []sourceapplication.SourceObserva
 	seen := make(map[observationLocatorCommitIdentity]struct{}, len(observations))
 	for _, observation := range observations {
 		if err := validateSourceObservation(observation, snapshot); err != nil {
-			return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+			return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 		}
 		if snapshot.LifecycleState == string(domain.EvidenceLifecyclePending) &&
 			(!snapshot.CollectionRunID.Valid || observation.CollectionRunID != snapshot.CollectionRunID.Int64) {

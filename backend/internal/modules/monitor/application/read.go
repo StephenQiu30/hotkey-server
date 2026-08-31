@@ -148,9 +148,10 @@ func (service *Service) List(ctx context.Context, input ListInput) (MonitorPage,
 		return MonitorPage{}, err
 	}
 	query := domain.MonitorListQuery{Cursor: input.Cursor, Limit: input.Limit}
-	if input.Subject.Role == identitydomain.RoleViewer {
+	switch input.Subject.Role {
+	case identitydomain.RoleViewer:
 		query.PublishedOnly = true
-	} else if input.Subject.Role == identitydomain.RoleAnalyst {
+	case identitydomain.RoleAnalyst:
 		query.VisibleOwnerUserID = input.Subject.UserID
 	}
 	monitors, nextCursor, err := service.monitors.List(ctx, query)

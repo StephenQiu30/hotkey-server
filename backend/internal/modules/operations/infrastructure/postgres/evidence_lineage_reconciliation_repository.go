@@ -638,7 +638,7 @@ func knownEvidenceLineageLocators(ctx context.Context, transaction *sql.Tx, quer
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	known := make(map[string]struct{})
 	for rows.Next() {
 		var locator string
@@ -720,11 +720,11 @@ FROM evidence_snapshots WHERE id>$1 ORDER BY id LIMIT $2`, rawAfter, batchSize+1
 			if err := rows.Scan(&record.AssetID, &record.SourceConnectionID, &record.Locator, &record.ExpectedSHA256,
 				&record.ExpectedSizeBytes, &record.LifecycleState, &record.RetentionUntil,
 				&record.StoreAllowed, &record.RetainAllowed, &record.ExceptionApproved, &record.DeletionSucceeded); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return nil, false, err
 			}
 			if record.AssetID > maximumReconciliationIdentity {
-				rows.Close()
+				_ = rows.Close()
 				return nil, false, errors.New("evidence snapshot ID exceeds maintenance cursor contract")
 			}
 			record.Cursor = rawEvidenceReconciliationCursorBase + record.AssetID
@@ -772,11 +772,11 @@ WHERE artifact.id>$1 ORDER BY artifact.id LIMIT $2`, derivedAfter, batchSize+1-l
 				&record.ExpectedSizeBytes, &record.LifecycleState, &record.RetentionUntil,
 				&record.StoreAllowed, &record.RetainAllowed, &record.ExceptionApproved, &record.DeletionSucceeded,
 				&record.Active, &documentID, &documentState); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return nil, false, err
 			}
 			if record.AssetID > maximumReconciliationIdentity {
-				rows.Close()
+				_ = rows.Close()
 				return nil, false, errors.New("derived artifact ID exceeds maintenance cursor contract")
 			}
 			record.Cursor = derivedReconciliationCursorBase + record.AssetID

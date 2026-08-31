@@ -169,9 +169,11 @@ tools/                     # Build-time tool dependencies
 
 Business code stays under `internal/` so it cannot be imported outside this module. There is no `pkg/` directory because the repository currently exposes no reusable public Go library. The `all`, `api`, and `worker` values remain runtime roles of the single `cmd/hotkey` entry point.
 
-`internal/shared` does not depend on an ORM, database driver, or `internal/platform`. GORM CRUD and PostgreSQL error mapping live in `internal/platform/database/repository`, while module infrastructure depends inward on the shared contracts.
+`internal/shared` does not depend on an ORM, database driver, or `internal/platform`. GORM CRUD and PostgreSQL error mapping live in `internal/platform/database/repository`. Transport and Infrastructure are outer adapters: both depend inward on Application/Domain and never directly on each other.
 
-Alibaba's layering guidance is mapped by responsibility rather than by copying Java package names: HTTP Transport corresponds to Web/Controller, Application to use-case Services, Domain owns business objects, entities, value objects, and ports, unexported Infrastructure/PostgreSQL records correspond to DOs, and HTTP RequestDTO/ResponseDTO types define the presentation boundary. Application code never imports a concrete PostgreSQL repository; adapters implement Domain ports, and `TestModuleLayersKeepInwardDependencies` protects that direction. This preserves idiomatic Go packages while honoring the POJO principle that plain contracts carry no framework or persistence details.
+Alibaba's layering guidance is used only for language-neutral model boundaries, not copied as Java packages: Application Command/Query/Result/DTO types are plain Go use-case models, Domain owns entities and value objects, Infrastructure keeps PostgreSQL records private, and HTTP exposes explicit RequestDTO/ResponseDTO types. The project rejects global `controller/service/dao/mapper/pojo` layers, `Ixxx`/`Impl` names, and grab-bag `utils/common` packages. Adapters receive consumer-defined small interfaces through explicit constructors, while architecture tests protect dependencies and names.
+
+Go code follows official idioms and the Google/Uber Go Style Guides. Errors retain their chain with `%w`, request contexts flow end to end, goroutines have cancellation and waitable ownership, service events use structured logging, and model conversions remain explicit at layer boundaries.
 
 Test sources and test-only fixtures live in package-mirrored paths below `test/_suite`. During execution, `test/runner` temporarily materializes `_test.go` files and package-local `testdata`, then removes those links, keeping test-only assets out of the `internal/` production tree.
 
@@ -186,8 +188,9 @@ The shared GoLand configuration follows the [official JetBrains Run/Debug config
 
 ```bash
 make openapi
-make vet
+make format-check lint vet
 make test
+make race
 make build
 make architecture repository
 ```
@@ -200,7 +203,7 @@ export HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15'
 make ci
 ```
 
-`make ci` is the shared backend acceptance entry point for local development and GitHub Actions. It checks OpenAPI drift, database behavior, tests, builds, schemas, architecture boundaries, and production dependency vulnerabilities.
+`make ci` is the shared backend acceptance entry point for local development and GitHub Actions. It checks formatting/imports, lint, OpenAPI drift, database behavior, the complete test suite under the Race Detector, builds, schemas, architecture boundaries, and production dependency vulnerabilities with `govulncheck`.
 
 ## Project status
 

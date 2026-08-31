@@ -173,7 +173,7 @@ FROM relevance_evaluation_slices WHERE evaluation_run_id=$1 ORDER BY dimension,v
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []relevanceEvaluationSliceRecord{}
 	for rows.Next() {
 		var record relevanceEvaluationSliceRecord

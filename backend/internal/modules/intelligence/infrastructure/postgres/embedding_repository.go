@@ -262,7 +262,7 @@ LIMIT $5`, pgvector.NewVector(vector), profileID, modelVersion, profileVersion, 
 	if err != nil {
 		return nil, fmt.Errorf("query nearest %s embeddings: %w", target, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var matches []EmbeddingMatch
 	for rows.Next() {
 		var match EmbeddingMatch
@@ -302,7 +302,7 @@ LIMIT $5`, pgvector.NewVector(vector), profileID, modelVersion, profileVersion, 
 	if err != nil {
 		return nil, fmt.Errorf("query nearest published monitor embeddings: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	matches := []EmbeddingMatch{}
 	for rows.Next() {
 		var match EmbeddingMatch

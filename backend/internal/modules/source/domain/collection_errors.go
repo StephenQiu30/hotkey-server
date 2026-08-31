@@ -89,9 +89,9 @@ func SafeCollectionErrorCause(cause error) string {
 		"parse RSS response",
 		"invalid RSS pagination link",
 		"Hacker News destination is not permitted",
-		"Hacker News compressed response is not permitted",
+		"compressed Hacker News response is not permitted",
 		"X destination is not permitted",
-		"X compressed response is not permitted",
+		"compressed X response is not permitted",
 		"Foundry destination is not permitted",
 		"source connection is unavailable",
 		"collection source capability is unavailable",
@@ -116,8 +116,8 @@ func CollectionSecurityRejectionReason(cause error) string {
 		"Foundry destination is not permitted":
 		return "ssrf_destination_not_permitted"
 	case "RSS compressed response is not permitted",
-		"Hacker News compressed response is not permitted",
-		"X compressed response is not permitted":
+		"compressed Hacker News response is not permitted",
+		"compressed X response is not permitted":
 		return "compressed_content_not_permitted"
 	case "source fetch rights are not permitted":
 		return "fetch_rights_not_permitted"

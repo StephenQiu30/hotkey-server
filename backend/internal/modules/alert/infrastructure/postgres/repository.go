@@ -81,7 +81,7 @@ func (repository *Repository) RecordOccurrence(ctx context.Context, command doma
 		return domain.RecordOccurrenceResult{}, sharedrepository.ErrUnavailable
 	}
 	if err := command.Validate(); err != nil {
-		return domain.RecordOccurrenceResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.RecordOccurrenceResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var result domain.RecordOccurrenceResult
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
@@ -294,7 +294,7 @@ func (repository *Repository) Transition(ctx context.Context, command domain.Tra
 		return domain.Thread{}, sharedrepository.ErrUnavailable
 	}
 	if err := command.Validate(); err != nil {
-		return domain.Thread{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Thread{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var changed domain.Thread
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
@@ -348,12 +348,12 @@ func (repository *Repository) List(ctx context.Context, query domain.ListQuery) 
 		return domain.ThreadPage{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
-		return domain.ThreadPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.ThreadPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	shape := listShape(query)
 	cursor, err := decodeListCursor(query.Cursor, shape, repository.cursorKey, time.Now().UTC())
 	if err != nil {
-		return domain.ThreadPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.ThreadPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	state, severity, monitorID := "", "", int64(0)
 	if query.State != nil {
@@ -374,7 +374,7 @@ LIMIT $7`, state, severity, monitorID, cursor.Present, cursor.LastTriggeredAt, c
 	if err != nil {
 		return domain.ThreadPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]domain.Thread, 0, query.Limit+1)
 	for rows.Next() {
 		thread, err := scanThread(rows)
@@ -412,7 +412,7 @@ func (repository *Repository) Get(ctx context.Context, threadID int64) (domain.T
 	if err != nil {
 		return domain.ThreadDetail{}, mapDatabaseError(err)
 	}
-	defer transaction.Rollback()
+	defer func() { _ = transaction.Rollback() }()
 	detail, err := readThreadDetail(ctx, transaction, threadID)
 	if err != nil {
 		return domain.ThreadDetail{}, err
@@ -445,16 +445,16 @@ FROM alert_occurrences WHERE alert_thread_id=$1 ORDER BY triggered_at DESC,id DE
 	for rows.Next() {
 		occurrence, err := scanOccurrence(rows)
 		if err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return domain.ThreadDetail{}, mapDatabaseError(err)
 		}
 		detail.Occurrences = append(detail.Occurrences, occurrence)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return domain.ThreadDetail{}, databaserepository.MapError(err)
 	}
-	rows.Close()
+	_ = rows.Close()
 	deliveries, err := reader.QueryContext(ctx, `
 SELECT delivery.id,delivery.occurrence_id,delivery.severity,delivery.status,
        (SELECT count(*) FROM alert_email_attempts attempt WHERE attempt.delivery_id=delivery.id AND attempt.status='started'),
@@ -471,7 +471,7 @@ ORDER BY occurrence.triggered_at DESC,delivery.id DESC`, threadID)
 		var severity string
 		var next, succeeded sql.NullTime
 		if err := deliveries.Scan(&delivery.ID, &delivery.OccurrenceID, &severity, &delivery.Status, &delivery.AttemptCount, &next, &succeeded, &delivery.LastError); err != nil {
-			deliveries.Close()
+			_ = deliveries.Close()
 			return domain.ThreadDetail{}, mapDatabaseError(err)
 		}
 		delivery.Severity = domain.Severity(severity)
@@ -479,10 +479,10 @@ ORDER BY occurrence.triggered_at DESC,delivery.id DESC`, threadID)
 		detail.EmailDeliveries = append(detail.EmailDeliveries, delivery)
 	}
 	if err := deliveries.Err(); err != nil {
-		deliveries.Close()
+		_ = deliveries.Close()
 		return domain.ThreadDetail{}, databaserepository.MapError(err)
 	}
-	deliveries.Close()
+	_ = deliveries.Close()
 
 	audits, err := reader.QueryContext(ctx, `
 SELECT id,alert_thread_id,actor_type,actor_user_id,from_state,to_state,expected_version,reason_code,created_at
@@ -490,7 +490,7 @@ FROM alert_state_audits WHERE alert_thread_id=$1 ORDER BY created_at ASC,id ASC`
 	if err != nil {
 		return domain.ThreadDetail{}, databaserepository.MapError(err)
 	}
-	defer audits.Close()
+	defer func() { _ = audits.Close() }()
 	for audits.Next() {
 		audit, err := scanAudit(audits)
 		if err != nil {

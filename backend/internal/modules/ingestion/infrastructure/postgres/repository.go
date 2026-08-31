@@ -61,7 +61,7 @@ func (repository *ContentRepository) ListXMetricRefreshCandidates(ctx context.Co
 		return nil, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	rows, err := repository.runtime.SQL.QueryContext(ctx, `
 SELECT content.id, content.external_id
@@ -102,7 +102,7 @@ LIMIT $4`, query.SourceConnectionID, query.PublishedAfter.UTC(), query.SnapshotD
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]sourcedomain.XMetricRefreshCandidate, 0, query.Limit)
 	for rows.Next() {
 		var item sourcedomain.XMetricRefreshCandidate
@@ -110,7 +110,7 @@ LIMIT $4`, query.SourceConnectionID, query.PublishedAfter.UTC(), query.SnapshotD
 			return nil, databaserepository.MapError(err)
 		}
 		if err := item.Validate(); err != nil {
-			return nil, fmt.Errorf("%w: persisted X metric candidate: %v", sharedrepository.ErrConstraint, err)
+			return nil, fmt.Errorf("%w: persisted X metric candidate: %w", sharedrepository.ErrConstraint, err)
 		}
 		items = append(items, item)
 	}
@@ -130,13 +130,13 @@ func (repository *ContentRepository) Upsert(ctx context.Context, content ingesti
 	}
 	content.ExternalID = ingestiondomain.NormalizeExternalID(content.ExternalID)
 	if err := content.Validate(); err != nil {
-		return ingestiondomain.Content{}, false, fmt.Errorf("%w: normalized content: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestiondomain.Content{}, false, fmt.Errorf("%w: normalized content: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	if err := content.Metrics.Validate(); err != nil {
-		return ingestiondomain.Content{}, false, fmt.Errorf("%w: normalized metrics: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestiondomain.Content{}, false, fmt.Errorf("%w: normalized metrics: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	if err := decision.Validate(); err != nil {
-		return ingestiondomain.Content{}, false, fmt.Errorf("%w: dedupe decision: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestiondomain.Content{}, false, fmt.Errorf("%w: dedupe decision: %w", sharedrepository.ErrInvalidInput, err)
 	}
 
 	var stored ingestiondomain.Content
@@ -208,7 +208,7 @@ func (repository *ContentRepository) AppendMetricSnapshot(ctx context.Context, c
 		return fmt.Errorf("%w: positive content id and captured time are required", sharedrepository.ErrInvalidInput)
 	}
 	if err := metrics.Validate(); err != nil {
-		return fmt.Errorf("%w: source metrics: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: source metrics: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		return appendMetricSnapshot(ctx, transaction.SQL, contentID, capturedAt, metrics, true)
@@ -220,11 +220,11 @@ func (repository *ContentRepository) CreateAsset(ctx context.Context, asset inge
 		return sharedrepository.ErrUnavailable
 	}
 	if err := validateAsset(asset); err != nil {
-		return fmt.Errorf("%w: content asset: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: content asset: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	originalURL, err := safeOriginalURL(asset.OriginalURL)
 	if err != nil {
-		return fmt.Errorf("%w: content asset original URL: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: content asset original URL: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		if _, err := transaction.SQL.ExecContext(ctx, `
@@ -308,7 +308,7 @@ ORDER BY asset.object_key ASC`, sourceConnectionID, contentID, evidencePrefixPat
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	assets := make([]ingestiondomain.ContentAsset, 0)
 	for rows.Next() {
 		asset, err := scanContentAsset(rows)
@@ -345,7 +345,7 @@ ORDER BY asset.object_key ASC`, sourceConnectionID, evidencePrefixPattern(source
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	keys := make([]string, 0)
 	for rows.Next() {
 		var objectKey string
@@ -373,7 +373,7 @@ func (repository *ContentRepository) ListActive(ctx context.Context, query inges
 	if err != nil {
 		return ingestiondomain.ContentPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	page := ingestiondomain.ContentPage{Items: make([]ingestiondomain.Content, 0, query.Limit+1)}
 	boundaries := make([]contentListBoundary, 0, query.Limit+1)
 	for rows.Next() {
@@ -395,11 +395,11 @@ func (repository *ContentRepository) ListActive(ctx context.Context, query inges
 		boundary := boundaries[query.Limit-1]
 		nextCursor, err := nextContentListCursor(cursor, page.Items[len(page.Items)-1].ID, boundary)
 		if err != nil {
-			return ingestiondomain.ContentPage{}, fmt.Errorf("%w: content cursor boundary: %v", sharedrepository.ErrConstraint, err)
+			return ingestiondomain.ContentPage{}, fmt.Errorf("%w: content cursor boundary: %w", sharedrepository.ErrConstraint, err)
 		}
 		page.NextCursor, err = repository.cursorCodec.Seal("content_list", nextCursor)
 		if err != nil {
-			return ingestiondomain.ContentPage{}, fmt.Errorf("%w: encode content cursor: %v", sharedrepository.ErrInvalidInput, err)
+			return ingestiondomain.ContentPage{}, fmt.Errorf("%w: encode content cursor: %w", sharedrepository.ErrInvalidInput, err)
 		}
 	}
 	if query.IncludeSummary {
@@ -641,7 +641,7 @@ func (repository *ContentRepository) contentListParameters(ctx context.Context, 
 	}
 	fingerprint, err := query.ShapeFingerprint()
 	if err != nil {
-		return ingestiondomain.ContentListQuery{}, contentListCursor{}, fmt.Errorf("%w: content shape: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestiondomain.ContentListQuery{}, contentListCursor{}, fmt.Errorf("%w: content shape: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	cursor := contentListCursor{Version: contentListCursorVersion, Sort: string(query.Sort), FilterFingerprint: fingerprint}
 	if query.Cursor != "" {
@@ -958,7 +958,7 @@ func validSHA256(value string) bool {
 		return false
 	}
 	for _, character := range value {
-		if !(character >= '0' && character <= '9') && !(character >= 'a' && character <= 'f') {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
 			return false
 		}
 	}

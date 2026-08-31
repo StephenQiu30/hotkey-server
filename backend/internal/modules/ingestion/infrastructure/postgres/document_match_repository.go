@@ -182,7 +182,7 @@ FROM document_match_recall_signals WHERE match_decision_id=$1 ORDER BY ordinal`,
 	if err != nil {
 		return ingestionapplication.DocumentMatchDecisionDTO{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	signals := []ingestionapplication.DocumentMatchSignalDTO{}
 	for rows.Next() {
 		var signal ingestionapplication.DocumentMatchSignalDTO

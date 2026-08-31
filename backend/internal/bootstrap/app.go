@@ -180,6 +180,8 @@ func NewAppWithReadiness(cfg config.Config, logger *zap.Logger, readiness httptr
 				sourcepostgres.NewMetricCapabilityRepository,
 				newMetricCapabilityService,
 				newIntelligenceRepository,
+				newModelProfileRepository,
+				newRunLeaseRepository,
 				intelligenceapplication.NewSchemaRegistry,
 				newAIProviderRegistry,
 				newAgentShadowRunner,
@@ -1072,14 +1074,14 @@ func Run(ctx context.Context, args []string) error {
 	startCtx, cancelStart := context.WithTimeout(ctx, cfg.ShutdownTimeout)
 	defer cancelStart()
 	if err := startApp(startCtx, app); err != nil {
-		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), cfg.ShutdownTimeout)
 		defer cancelCleanup()
 		_ = stopApp(cleanupCtx, app)
 		return err
 	}
 
 	<-ctx.Done()
-	stopCtx, cancelStop := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	stopCtx, cancelStop := context.WithTimeout(context.WithoutCancel(ctx), cfg.ShutdownTimeout)
 	defer cancelStop()
 	if err := stopApp(stopCtx, app); err != nil {
 		return err

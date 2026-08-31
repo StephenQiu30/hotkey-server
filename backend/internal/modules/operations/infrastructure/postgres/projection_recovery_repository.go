@@ -252,7 +252,7 @@ func hashProjectionRecoveryTable(ctx context.Context, queryer projectionRecovery
 	if err != nil {
 		return databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	writeRecoveryDigestPart(digest, table)
 	for rows.Next() {
 		var id int64
@@ -347,7 +347,7 @@ ORDER BY version.id`)
 	if err != nil {
 		return nil, nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	targets := make([]searchRebuildTarget, 0)
 	blockers := make([]string, 0)
 	for rows.Next() {

@@ -83,7 +83,7 @@ ORDER BY monitor.id ASC,config.id ASC,profile.id ASC`, query.DocumentVersionID, 
 	if err != nil {
 		return ingestionapplication.PublishedMatchTargetsResult{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := ingestionapplication.PublishedMatchTargetsResult{Targets: []ingestionapplication.PublishedMatchTargetDTO{}}
 	for rows.Next() {
 		var record publishedMatchTargetRecord
@@ -142,7 +142,7 @@ LIMIT 1`, query.MonitorID, query.MonitorVersionID, query.CompiledProfileID)
 	if err != nil {
 		return ingestionapplication.ReadPublishedMonitorTriggerResult{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := ingestionapplication.ReadPublishedMonitorTriggerResult{}
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {

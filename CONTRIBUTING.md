@@ -38,7 +38,8 @@ npm run dev
 
 ## 开发约束
 
-- 后端遵守模块依赖 `transport/http -> application -> domain` 与 `infrastructure -> domain`，公共 API 不提供通用表 CRUD。
+- 后端按业务模块组织，Transport/Infrastructure Adapter 只向 `application -> domain` 内层依赖；使用显式构造函数注入和消费方小接口，不复制 Java 的全局 Controller/Service/DAO 分层。
+- Go 命名、错误、Context、goroutine 与结构化日志遵循根 `AGENTS.md`；禁止 `Ixxx`/`Impl` 和无意义 `utils/common` 包，跨层模型必须显式转换。
 - PostgreSQL 是业务事实源，MinIO 保存原始证据，Vault 是人类可读投影；所有 `*_test.go` 位于 `backend/test/`。
 - 前端使用 Next.js App Router、React、TypeScript 和现有 UI 组合组件；测试位于 `frontend/test/`。
 - API 类型与请求函数只由根 [`docs/openapi/swagger.json`](docs/openapi/swagger.json) 生成，不手写后端 DTO 或接口路径。
@@ -57,10 +58,13 @@ npm run dev
 
 ```bash
 cd backend
+make format-check
 make lint
+make vet
 make test
+make race
 make build
-make validate
+make architecture repository
 
 cd ../frontend
 npm run openapi:check
@@ -72,7 +76,7 @@ cd ..
 git diff --check
 ```
 
-涉及 Go 代码、Schema、OpenAPI、依赖或 CI 时，在配置可丢弃 PostgreSQL 和 Redis 测试环境后运行 `make ci`。Pull Request 必须说明用户影响、实现边界、测试结果、Schema/OpenAPI/配置/部署影响、必要的截图或日志，以及仍未验证的风险。
+涉及 Go 代码、Schema、OpenAPI、依赖或 CI 时，在配置可丢弃 PostgreSQL 和 Redis 测试环境后运行 `make ci`；该入口包含 `gofmt`、`goimports`、`go vet`、`golangci-lint`、Race Detector 与 `govulncheck`。Pull Request 必须说明用户影响、实现边界、测试结果、Schema/OpenAPI/配置/部署影响、必要的截图或日志，以及仍未验证的风险。
 
 ## Git 提交规范
 

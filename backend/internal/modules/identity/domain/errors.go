@@ -1,3 +1,4 @@
+// Package domain owns Identity rules, entities, value objects, and errors.
 package domain
 
 import (

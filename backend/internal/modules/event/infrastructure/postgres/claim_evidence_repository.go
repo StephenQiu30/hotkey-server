@@ -251,7 +251,7 @@ ORDER BY evidence.id`, query.MicroEventID, query.CalculatedAt.UTC())
 	if err != nil {
 		return eventapplication.EvidenceStateTargetDTO{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	value.Items = []eventapplication.EvidenceStateItemDTO{}
 	for rows.Next() {
 		var item eventapplication.EvidenceStateItemDTO
@@ -594,7 +594,7 @@ func readEvidenceStateSnapshotItems(ctx context.Context, tx *sql.Tx, snapshotID 
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ids := []int64{}
 	for rows.Next() {
 		var id int64

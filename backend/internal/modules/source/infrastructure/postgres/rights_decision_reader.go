@@ -28,7 +28,7 @@ func (reader *RightsDecisionReader) ResolveCurrentFetch(ctx context.Context, que
 		return sourceapplication.CurrentCollectionFetchRightsResult{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
-		return sourceapplication.CurrentCollectionFetchRightsResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return sourceapplication.CurrentCollectionFetchRightsResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	rows, err := reader.runtime.SQL.QueryContext(ctx, `
 WITH terminal AS (
@@ -57,7 +57,7 @@ ORDER BY terminal.id`, query.SourceConnectionID, query.DecisionAt.UTC())
 	if err != nil {
 		return sourceapplication.CurrentCollectionFetchRightsResult{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := sourceapplication.CurrentCollectionFetchRightsResult{
 		Decision: domain.RightsUnknown, DecisionIDs: []int64{}, PolicyIDs: []int64{}, EvaluatedAt: query.DecisionAt.UTC(),
@@ -94,7 +94,7 @@ ORDER BY terminal.id`, query.SourceConnectionID, query.DecisionAt.UTC())
 		sort.Slice(result.PolicyIDs, func(left, right int) bool { return result.PolicyIDs[left] < result.PolicyIDs[right] })
 	}
 	if err := result.Validate(query); err != nil {
-		return sourceapplication.CurrentCollectionFetchRightsResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		return sourceapplication.CurrentCollectionFetchRightsResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 	}
 	return result, nil
 }
@@ -107,7 +107,7 @@ func (reader *RightsDecisionReader) ResolveCurrent(ctx context.Context, query so
 		return sourceapplication.CurrentRawEvidenceRightsResult{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
-		return sourceapplication.CurrentRawEvidenceRightsResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return sourceapplication.CurrentRawEvidenceRightsResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	keys := make([]string, len(query.Subjects))
 	digests := make([]string, len(query.Subjects))
@@ -189,7 +189,7 @@ ORDER BY position,action`, query.SourceConnectionID, keys, digests, query.Decisi
 	if err != nil {
 		return sourceapplication.CurrentRawEvidenceRightsResult{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := sourceapplication.CurrentRawEvidenceRightsResult{
 		StoreRawDecisions: make(map[string]sourceapplication.RawEvidenceRightsDecisionDTO, len(query.Subjects)),
@@ -202,7 +202,7 @@ ORDER BY position,action`, query.SourceConnectionID, keys, digests, query.Decisi
 		}
 		entity, err := record.entity()
 		if err != nil {
-			return sourceapplication.CurrentRawEvidenceRightsResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+			return sourceapplication.CurrentRawEvidenceRightsResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 		}
 		dto := rawEvidenceRightsDecisionDTO(entity)
 		dto.AuthorizedEvidenceKey = requestedKey

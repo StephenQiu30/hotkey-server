@@ -65,7 +65,7 @@ func marshalAuditData(data map[string]any) ([]byte, error) {
 	}
 	encoded, err := json.Marshal(redactAuditValue(data))
 	if err != nil {
-		return nil, fmt.Errorf("%w: encode audit data: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, fmt.Errorf("%w: encode audit data: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return encoded, nil
 }

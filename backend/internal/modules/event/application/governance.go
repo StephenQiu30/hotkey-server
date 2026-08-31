@@ -91,7 +91,7 @@ func (service *GovernanceService) Merge(ctx context.Context, command MergeComman
 		return domain.Event{}, fmt.Errorf("%w: event governance repository is required", sharedrepository.ErrUnavailable)
 	}
 	if err := command.Validate(); err != nil {
-		return domain.Event{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Event{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	event, err := service.repository.Merge(ctx, command)
 	if err != nil {
@@ -111,7 +111,7 @@ func (service *GovernanceService) Split(ctx context.Context, command SplitComman
 		return domain.Event{}, fmt.Errorf("%w: event governance repository is required", sharedrepository.ErrUnavailable)
 	}
 	if err := command.Validate(); err != nil {
-		return domain.Event{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Event{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	event, err := service.repository.Split(ctx, command)
 	if err != nil {
@@ -131,7 +131,7 @@ func (service *GovernanceService) SetMemberLock(ctx context.Context, command Mem
 		return domain.EventMember{}, fmt.Errorf("%w: event governance repository is required", sharedrepository.ErrUnavailable)
 	}
 	if err := command.Validate(); err != nil {
-		return domain.EventMember{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.EventMember{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	member, err := service.repository.SetMemberLock(ctx, command)
 	if err != nil {

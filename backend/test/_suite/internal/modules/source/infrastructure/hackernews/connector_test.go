@@ -38,7 +38,7 @@ func TestConnectorRejectsCompressionBombBeforeEvidence(t *testing.T) {
 	}))
 	result, err := connector.Fetch(context.Background(), testFetchRequest(1, ""))
 	if domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent ||
-		domain.SafeCollectionErrorCause(err) != "Hacker News compressed response is not permitted" {
+		domain.SafeCollectionErrorCause(err) != "compressed Hacker News response is not permitted" {
 		t.Fatalf("compression bomb error = %v / %q", err, domain.SafeCollectionErrorCause(err))
 	}
 	if len(result.Items) != 0 || len(result.Snapshots) != 0 {

@@ -271,7 +271,7 @@ func readImageInventory(path string) (imageInventory, string, error) {
 	if err != nil {
 		return imageInventory{}, "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	limited := io.LimitReader(file, 128*1024+1)
 	payload, err := io.ReadAll(limited)
 	if err != nil || len(payload) > 128*1024 {
@@ -351,7 +351,7 @@ func hashFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	digest := sha256.New()
 	if _, err := io.Copy(digest, file); err != nil {
 		return "", err

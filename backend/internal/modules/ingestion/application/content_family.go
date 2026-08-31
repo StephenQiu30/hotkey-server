@@ -131,7 +131,7 @@ func (service *ContentFamilyService) Assign(ctx context.Context, command AssignD
 	}
 	fingerprint, err := ingestiondomain.BuildContentFingerprint(command.CanonicalPlaintext, command.FingerprintProfile)
 	if err != nil {
-		return AssignDocumentContentFamilyResult{}, fmt.Errorf("%w: %v", ErrInvalidContentFamilyContract, err)
+		return AssignDocumentContentFamilyResult{}, fmt.Errorf("%w: %w", ErrInvalidContentFamilyContract, err)
 	}
 	fingerprintDTO := contentFingerprintDTO(fingerprint)
 	candidateDTOs, err := service.repository.FindContentFamilyCandidates(ctx, FindContentFamilyCandidatesQuery{
@@ -153,7 +153,7 @@ func (service *ContentFamilyService) Assign(ctx context.Context, command AssignD
 		DecisionProfileVersion: command.DecisionProfileVersion, HardConflict: command.HardConflict,
 	})
 	if err != nil {
-		return AssignDocumentContentFamilyResult{}, fmt.Errorf("%w: %v", ErrInvalidContentFamilyContract, err)
+		return AssignDocumentContentFamilyResult{}, fmt.Errorf("%w: %w", ErrInvalidContentFamilyContract, err)
 	}
 	if decision.Action == ingestiondomain.ContentFamilyActionJoin && service.qualityProfiles != nil {
 		active, readErr := service.qualityProfiles.IsDecisionQualityProfileActive(ctx, "content_family", command.DecisionProfileVersion)

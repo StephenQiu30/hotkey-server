@@ -229,7 +229,7 @@ func TestSchemaIsIdempotentWhenTestDatabaseIsConfigured(t *testing.T) {
 	dsn := postgresfixture.New(t)
 	root := repositoryRoot(t)
 	for run := 1; run <= 2; run++ {
-		command := exec.Command("psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", filepath.Join(root, "db", "schema.sql"))
+		command := exec.CommandContext(t.Context(), "psql", dsn, "-v", "ON_ERROR_STOP=1", "-f", filepath.Join(root, "db", "schema.sql"))
 		if output, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("schema run %d failed: %v\n%s", run, err, output)
 		}

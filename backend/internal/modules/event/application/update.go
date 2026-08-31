@@ -26,7 +26,7 @@ func (service *UpdateService) Record(ctx context.Context, current domain.HeatRes
 		return nil, false, fmt.Errorf("%w: event update repository is required", sharedrepository.ErrUnavailable)
 	}
 	if _, err := domain.EventUpdateIdempotencyKey(current); err != nil {
-		return nil, false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, false, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	previous, err := service.repository.PreviousHeatSnapshot(ctx, current.EventID, 24, current.WindowEnd.UTC())
 	if err != nil {
@@ -34,7 +34,7 @@ func (service *UpdateService) Record(ctx context.Context, current domain.HeatRes
 	}
 	candidate, err := domain.DetectEventUpdate(previous, current)
 	if err != nil {
-		return nil, false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, false, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	if candidate == nil {
 		return nil, false, nil

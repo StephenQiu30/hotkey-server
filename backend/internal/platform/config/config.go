@@ -160,22 +160,22 @@ func (c AgentConfig) Validate() error {
 	token := strings.TrimSpace(c.AuthToken)
 	if urlValue == "" && token == "" {
 		if c.ShadowEnabled {
-			return errors.New("Agent Shadow requires URL and auth token")
+			return errors.New("agent shadow requires URL and auth token")
 		}
 		return nil
 	}
 	if urlValue == "" || token == "" {
-		return errors.New("Agent URL and auth token must be configured together")
+		return errors.New("agent URL and auth token must be configured together")
 	}
 	if len([]byte(token)) < 32 {
-		return errors.New("Agent auth token must be at least 32 bytes")
+		return errors.New("agent auth token must be at least 32 bytes")
 	}
 	parsed, err := url.Parse(urlValue)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return errors.New("Agent URL must be an absolute HTTP(S) origin without credentials, path, query, or fragment")
+		return errors.New("agent URL must be an absolute HTTP(S) origin without credentials, path, query, or fragment")
 	}
 	if c.MaxResponseBytes <= 0 || c.MaxResponseBytes > 8<<20 {
-		return errors.New("Agent max response bytes must be between 1 and 8388608")
+		return errors.New("agent max response bytes must be between 1 and 8388608")
 	}
 	return nil
 }

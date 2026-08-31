@@ -1,3 +1,4 @@
+// Package architecture provides reusable repository architecture validators.
 package architecture
 
 import (

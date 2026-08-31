@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	ingestionapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/application"
@@ -92,7 +93,7 @@ WHERE profile.id=$1 AND profile.monitor_id=$2 AND profile.purpose=$3 AND profile
 		&record.SemanticState, &semanticReason,
 		&embeddingProfileID, &embeddingProfileVersion, &modelVersion, &vectorText,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return ingestionapplication.ReadyRecallProfileDTO{}, sharedrepository.ErrNotFound
 	}
 	if err != nil {
@@ -134,7 +135,7 @@ FROM monitor_compiled_clauses WHERE compiled_profile_id=$1 ORDER BY ordinal`, pr
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []compiledRecallClauseRecord{}
 	for rows.Next() {
 		var record compiledRecallClauseRecord

@@ -19,7 +19,7 @@ func (repository *Repository) PersistExtractedFacts(ctx context.Context, facts a
 		return application.PersistedEventFacts{}, sharedrepository.ErrUnavailable
 	}
 	if err := facts.Validate(); err != nil {
-		return application.PersistedEventFacts{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return application.PersistedEventFacts{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	stored := application.PersistedEventFacts{Entities: make([]domain.Entity, 0, len(facts.Entities)), Claims: make([]domain.Claim, 0, len(facts.Claims))}
 	err := repository.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
@@ -56,7 +56,7 @@ func (repository *Repository) SaveEntity(ctx context.Context, entity domain.Enti
 		return domain.Entity{}, sharedrepository.ErrUnavailable
 	}
 	if err := entity.Validate(); err != nil {
-		return domain.Entity{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Entity{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var stored domain.Entity
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
@@ -103,7 +103,7 @@ func (repository *Repository) SaveEntityAlias(ctx context.Context, alias domain.
 		return domain.EntityAlias{}, sharedrepository.ErrUnavailable
 	}
 	if err := alias.Validate(); err != nil {
-		return domain.EntityAlias{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.EntityAlias{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var stored domain.EntityAlias
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
@@ -150,7 +150,7 @@ func (repository *Repository) SaveEventEntity(ctx context.Context, eventEntity d
 		return domain.EventEntity{}, sharedrepository.ErrUnavailable
 	}
 	if err := eventEntity.Validate(); err != nil {
-		return domain.EventEntity{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.EventEntity{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var stored domain.EventEntity
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
@@ -197,7 +197,7 @@ func (repository *Repository) SaveEntityRelation(ctx context.Context, relation d
 		return domain.EntityRelation{}, sharedrepository.ErrUnavailable
 	}
 	if err := relation.Validate(); err != nil {
-		return domain.EntityRelation{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.EntityRelation{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var stored domain.EntityRelation
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
@@ -244,7 +244,7 @@ func (repository *Repository) SaveClaim(ctx context.Context, claim domain.Claim)
 		return domain.Claim{}, sharedrepository.ErrUnavailable
 	}
 	if err := claim.Validate(); err != nil {
-		return domain.Claim{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Claim{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var stored domain.Claim
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
@@ -334,7 +334,7 @@ func entitiesLocked(ctx context.Context, query *sql.Tx, firstID, secondID int64)
 	if err != nil {
 		return false, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	count, locked := 0, false
 	for rows.Next() {
 		var id int64

@@ -54,7 +54,7 @@ LIMIT $4`, query.MonitorID, cursor.ID, query.EffectiveDecision, query.Limit+1)
 		if err != nil {
 			return databaserepository.MapError(err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var record documentMatchDecisionRecord
 			var effectiveDecision, signalsJSON string

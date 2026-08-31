@@ -143,7 +143,7 @@ GROUP BY sentence.id ORDER BY sentence.ordinal`, record.id)
 	if err != nil {
 		return eventapplication.EvidenceSummaryDTO{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	sentences := []eventapplication.EvidenceSummarySentenceDTO{}
 	for rows.Next() {
 		var sentence eventapplication.EvidenceSummarySentenceDTO

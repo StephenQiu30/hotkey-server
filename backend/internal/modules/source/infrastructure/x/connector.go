@@ -37,7 +37,7 @@ const (
 
 var (
 	errUnsafeDestination = errors.New("unsafe X destination")
-	errRedirectLimit     = errors.New("X redirect limit exceeded")
+	errRedirectLimit     = errors.New("x redirect limit exceeded")
 	postIDPattern        = regexp.MustCompile(`^[0-9]{1,19}$`)
 	usernamePattern      = regexp.MustCompile(`^[A-Za-z0-9_]{1,30}$`)
 )
@@ -279,7 +279,7 @@ func (connector *Connector) Validate(_ context.Context, connection domain.Source
 	normalized, err := domain.NormalizeSourceConnection(connection)
 	if err != nil || normalized.SourceType != domain.SourceTypeX || normalized.Endpoint != domain.XRecentSearchEndpoint ||
 		(connector.sourceID > 0 && normalized.ID != connector.sourceID) || normalized.CredentialRef != connector.credentialRef {
-		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X source connection does not match connector"))
+		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x source connection does not match connector"))
 	}
 	return nil
 }
@@ -290,7 +290,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid X fetch request"))
 	}
 	if !connector.enabled || connector.deleted {
-		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X source connection is unavailable"))
+		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x source connection is unavailable"))
 	}
 	query, err := compileSearchQuery(request.Query, request.Languages, request.Regions)
 	if err != nil {
@@ -326,7 +326,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("decode X recent search response"))
 	}
 	if len(response.Data) > connector.resourceLimits.MaxItems {
-		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X response exceeds collection item limit"))
+		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x response exceeds collection item limit"))
 	}
 	snapshot, err := captured.snapshot(collectorProfileVersion)
 	if err != nil {
@@ -422,11 +422,11 @@ func (connector *Connector) LookupPostMetrics(ctx context.Context, request domai
 		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid X metric lookup request"))
 	}
 	if !connector.enabled || connector.deleted {
-		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X source connection is unavailable"))
+		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x source connection is unavailable"))
 	}
 	postIDs := normalizedPostIDs(request.PostIDs)
 	if len(postIDs) > connector.resourceLimits.MaxItems {
-		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X metric lookup request exceeds collection item limit"))
+		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x metric lookup request exceeds collection item limit"))
 	}
 	lookupEndpoint := *connector.endpoint
 	lookupEndpoint.Path = "/2/tweets"
@@ -454,7 +454,7 @@ func (connector *Connector) LookupPostMetrics(ctx context.Context, request domai
 		return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("decode X post lookup response"))
 	}
 	if len(response.Data) > connector.resourceLimits.MaxItems {
-		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X lookup response exceeds collection item limit"))
+		return result, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x lookup response exceeds collection item limit"))
 	}
 	snapshot, err := captured.snapshot(metricProfileVersion)
 	if err != nil {
@@ -518,24 +518,24 @@ func (connector *Connector) token(ctx context.Context) (string, error) {
 	name := strings.TrimPrefix(connector.credentialRef, "env:")
 	token, ok := connector.lookupManaged(ctx, name)
 	if !ok || strings.TrimSpace(token) == "" || strings.ContainsAny(token, "\r\n") {
-		return "", domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("X credential is unavailable"))
+		return "", domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("x credential is unavailable"))
 	}
 	return token, nil
 }
 
 func (connector *Connector) validateEndpointPolicy(ctx context.Context, endpoint *url.URL) error {
 	if connector == nil || connector.resolver == nil || !permittedOfficialEndpoint(connector.endpoint, endpoint) {
-		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X destination is not permitted"))
+		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x destination is not permitted"))
 	}
 	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.ConnectTimeout)
 	defer cancel()
 	addresses, err := connector.resolver(ctx, endpoint.Hostname())
 	if err != nil || len(addresses) == 0 {
-		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X destination is not permitted"))
+		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x destination is not permitted"))
 	}
 	for _, address := range addresses {
 		if !publicAddress(address.IP) {
-			return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X destination is not permitted"))
+			return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x destination is not permitted"))
 		}
 	}
 	return nil
@@ -551,7 +551,7 @@ func (connector *Connector) getAt(ctx context.Context, endpoint *url.URL, parame
 			var quota requestQuotaError
 			if errors.As(err, &quota) {
 				resetAt := quota.resetAt.UTC()
-				return fetchedJSONResponse{}, domain.RateLimit{Remaining: 0, ResetAt: &resetAt, RetryAfter: &resetAt}, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("X daily request quota exceeded"))
+				return fetchedJSONResponse{}, domain.RateLimit{Remaining: 0, ResetAt: &resetAt, RetryAfter: &resetAt}, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("x daily request quota exceeded"))
 			}
 			return fetchedJSONResponse{}, domain.RateLimit{}, err
 		}
@@ -560,7 +560,7 @@ func (connector *Connector) getAt(ctx context.Context, endpoint *url.URL, parame
 			return captured, rateLimit, err
 		}
 		if err := connector.retryWait(ctx, attempt+1); err != nil {
-			return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("X retry interrupted"))
+			return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("x retry interrupted"))
 		}
 	}
 }
@@ -580,7 +580,7 @@ func (connector *Connector) doRequest(ctx context.Context, endpoint *url.URL, pa
 		var quota requestQuotaError
 		if errors.As(err, &quota) {
 			resetAt := quota.resetAt.UTC()
-			return fetchedJSONResponse{}, domain.RateLimit{Remaining: 0, ResetAt: &resetAt, RetryAfter: &resetAt}, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("X daily request quota exceeded"))
+			return fetchedJSONResponse{}, domain.RateLimit{Remaining: 0, ResetAt: &resetAt, RetryAfter: &resetAt}, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("x daily request quota exceeded"))
 		}
 		return fetchedJSONResponse{}, domain.RateLimit{}, requestError(err)
 	}
@@ -589,12 +589,12 @@ func (connector *Connector) doRequest(ctx context.Context, endpoint *url.URL, pa
 	closeErr := response.Body.Close()
 	if readErr != nil || closeErr != nil {
 		if errors.Is(readErr, errResponseByteLimit) {
-			return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X response exceeds cumulative byte limit"))
+			return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x response exceeds cumulative byte limit"))
 		}
 		if errors.Is(readErr, sourcenet.ErrResponseBodyRead) || errors.Is(readErr, context.Canceled) || closeErr != nil {
 			return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read X response"))
 		}
-		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X compressed response is not permitted"))
+		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("compressed X response is not permitted"))
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		status := response.StatusCode
@@ -722,23 +722,23 @@ func (connector *Connector) mapPost(value post, users map[string]string, media m
 func compileSearchQuery(base string, languages, regions []string) (string, error) {
 	base = strings.TrimSpace(base)
 	if base == "" {
-		return "", errors.New("X search query is required")
+		return "", errors.New("x search query is required")
 	}
 	for _, character := range base {
 		if unicode.IsControl(character) {
-			return "", errors.New("X search query contains control characters")
+			return "", errors.New("x search query contains control characters")
 		}
 	}
 	languages = normalizedFilterValues(languages)
 	regions = normalizedFilterValues(regions)
 	for _, language := range languages {
 		if _, ok := supportedLanguages[language]; !ok {
-			return "", errors.New("X search language is unsupported")
+			return "", errors.New("x search language is unsupported")
 		}
 	}
 	for _, region := range regions {
 		if len(region) != 2 || region != strings.ToUpper(region) {
-			return "", errors.New("X search region is invalid")
+			return "", errors.New("x search region is invalid")
 		}
 	}
 	parts := []string{base}
@@ -753,7 +753,7 @@ func compileSearchQuery(base string, languages, regions []string) (string, error
 	}
 	query := strings.Join(parts, " ")
 	if utf8.RuneCountInString(query) > maxQueryCharacters {
-		return "", errors.New("X search query exceeds the conservative character limit")
+		return "", errors.New("x search query exceeds the conservative character limit")
 	}
 	return query, nil
 }
@@ -980,22 +980,22 @@ func cloneTime(value *time.Time) *time.Time {
 
 func requestError(err error) error {
 	if errors.Is(err, errUnsafeDestination) || errors.Is(err, errRedirectLimit) {
-		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X destination is not permitted"))
+		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x destination is not permitted"))
 	}
-	return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("X request failed"))
+	return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("x request failed"))
 }
 
 func statusError(status int) error {
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("X authentication failed"))
+		return domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("x authentication failed"))
 	case http.StatusTooManyRequests:
-		return domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("X rate limited"))
+		return domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("x rate limited"))
 	}
 	if status >= http.StatusInternalServerError {
-		return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("X upstream unavailable"))
+		return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("x upstream unavailable"))
 	}
-	return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("X upstream rejected request"))
+	return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("x upstream rejected request"))
 }
 
 func sameOfficialEndpoint(endpoint, candidate *url.URL) bool {

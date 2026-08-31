@@ -2,15 +2,15 @@ package application
 
 import "time"
 
-// IntentClauseDTO, IntentEntityDTO and IntentExampleDTO are Application-owned
-// POJOs. Transport and persistence adapters must map their own representations
-// explicitly instead of importing Monitor Domain entities.
+// IntentClauseDTO is an Application-owned intent clause. Transport and
+// persistence adapters map their own representations explicitly.
 type IntentClauseDTO struct {
 	Operator string
 	Field    string
 	Value    string
 }
 
+// IntentEntityDTO is an Application-owned entity reference.
 type IntentEntityDTO struct {
 	CanonicalID   string
 	DisplayName   string

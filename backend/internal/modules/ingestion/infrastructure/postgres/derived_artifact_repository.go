@@ -30,7 +30,7 @@ func (repository *DerivedArtifactRepository) Reserve(ctx context.Context, comman
 		return ingestionapplication.ReserveDerivedArtifactResult{}, sharedrepository.ErrUnavailable
 	}
 	if err := ingestionapplication.ValidateReserveDerivedArtifactCommand(command); err != nil {
-		return ingestionapplication.ReserveDerivedArtifactResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestionapplication.ReserveDerivedArtifactResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 
 	var result ingestionapplication.ReserveDerivedArtifactResult
@@ -165,7 +165,7 @@ func (repository *DerivedArtifactRepository) Commit(ctx context.Context, command
 		return ingestionapplication.CommitDerivedArtifactResult{}, fmt.Errorf("%w: invalid derived artifact id", sharedrepository.ErrInvalidInput)
 	}
 	if err := ingestionapplication.ValidateProjectionReceiptDTO(command.Receipt); err != nil {
-		return ingestionapplication.CommitDerivedArtifactResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestionapplication.CommitDerivedArtifactResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 
 	var result ingestionapplication.CommitDerivedArtifactResult
@@ -500,7 +500,7 @@ func persistExactDocumentAnchorBlocks(ctx context.Context, executor documentVers
 		return nil
 	}
 	if err := ingestionapplication.ValidatePersistedDocumentAnchorMap(identity, blocks); err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var existingCount int
 	if err := executor.QueryRowContext(ctx, `SELECT count(*) FROM document_anchor_blocks WHERE derived_artifact_id=$1`, row.id).Scan(&existingCount); err != nil {

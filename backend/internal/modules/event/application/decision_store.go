@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/domain"
 )
 

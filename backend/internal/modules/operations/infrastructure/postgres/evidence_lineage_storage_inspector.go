@@ -127,7 +127,7 @@ func (inspector *rawEvidenceMinIOInspector) InspectRawEvidenceObject(ctx context
 	if err != nil {
 		return evidenceLineageAssetInspectionRecord{}, fmt.Errorf("get raw evidence object: %w", err)
 	}
-	defer object.Close()
+	defer func() { _ = object.Close() }()
 	payload, err := io.ReadAll(io.LimitReader(object, maximumBytes+1))
 	if err != nil || int64(len(payload)) > maximumBytes || int64(len(payload)) != info.Size {
 		return evidenceLineageAssetInspectionRecord{}, errors.New("raw evidence object bytes changed during reconciliation")
@@ -156,7 +156,7 @@ func (inspector *rawEvidenceMinIOInspector) ListRawEvidenceObjects(ctx context.C
 
 func (inspector *vaultProjectionFileInspector) InspectVaultProjection(ctx context.Context, relativePath string, maximumBytes int64) (evidenceLineageAssetInspectionRecord, error) {
 	if inspector == nil || inspector.root == "" || !validVaultProjectionRelativePath(relativePath) || maximumBytes <= 0 || maximumBytes > maximumReconciliationAssetBytes {
-		return evidenceLineageAssetInspectionRecord{}, errors.New("Vault projection inspection input is invalid")
+		return evidenceLineageAssetInspectionRecord{}, errors.New("vault projection inspection input is invalid")
 	}
 	if err := ctx.Err(); err != nil {
 		return evidenceLineageAssetInspectionRecord{}, err
@@ -168,26 +168,26 @@ func (inspector *vaultProjectionFileInspector) InspectVaultProjection(ctx contex
 	if err != nil {
 		return evidenceLineageAssetInspectionRecord{}, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	info, err := root.Lstat(relativePath)
 	if errors.Is(err, os.ErrNotExist) {
 		return evidenceLineageAssetInspectionRecord{Exists: false}, nil
 	}
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > maximumBytes {
-		return evidenceLineageAssetInspectionRecord{}, errors.New("Vault projection path is not a bounded regular file")
+		return evidenceLineageAssetInspectionRecord{}, errors.New("vault projection path is not a bounded regular file")
 	}
 	file, err := root.Open(relativePath)
 	if err != nil {
 		return evidenceLineageAssetInspectionRecord{}, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	opened, err := file.Stat()
 	if err != nil || !os.SameFile(info, opened) {
-		return evidenceLineageAssetInspectionRecord{}, errors.New("Vault projection changed during reconciliation")
+		return evidenceLineageAssetInspectionRecord{}, errors.New("vault projection changed during reconciliation")
 	}
 	payload, err := io.ReadAll(io.LimitReader(file, maximumBytes+1))
 	if err != nil || int64(len(payload)) > maximumBytes || int64(len(payload)) != info.Size() {
-		return evidenceLineageAssetInspectionRecord{}, errors.New("Vault projection bytes changed during reconciliation")
+		return evidenceLineageAssetInspectionRecord{}, errors.New("vault projection bytes changed during reconciliation")
 	}
 	digest := sha256.Sum256(payload)
 	return evidenceLineageAssetInspectionRecord{Exists: true, SHA256: hex.EncodeToString(digest[:]), SizeBytes: int64(len(payload))}, nil
@@ -195,7 +195,7 @@ func (inspector *vaultProjectionFileInspector) InspectVaultProjection(ctx contex
 
 func (inspector *vaultProjectionFileInspector) ListVaultProjections(ctx context.Context, maximumAssets int) ([]evidenceLineageStoredAssetRecord, error) {
 	if inspector == nil || inspector.root == "" || maximumAssets < 1 || maximumAssets > maximumReconciliationListedAssets {
-		return nil, errors.New("Vault projection listing input is invalid")
+		return nil, errors.New("vault projection listing input is invalid")
 	}
 	assets := make([]evidenceLineageStoredAssetRecord, 0)
 	documentsRoot := filepath.Join(inspector.root, "documents")
@@ -223,7 +223,7 @@ func (inspector *vaultProjectionFileInspector) ListVaultProjections(ctx context.
 			return err
 		}
 		if len(assets) >= maximumAssets {
-			return errors.New("Vault projection listing exceeds reconciliation limit")
+			return errors.New("vault projection listing exceeds reconciliation limit")
 		}
 		relativePath, err := filepath.Rel(inspector.root, path)
 		if err != nil {
@@ -231,7 +231,7 @@ func (inspector *vaultProjectionFileInspector) ListVaultProjections(ctx context.
 		}
 		relativePath = filepath.ToSlash(relativePath)
 		if !validVaultProjectionRelativePath(relativePath) {
-			return errors.New("Vault projection listing encountered an invalid path")
+			return errors.New("vault projection listing encountered an invalid path")
 		}
 		assets = append(assets, evidenceLineageStoredAssetRecord{Locator: relativePath, ModifiedAt: info.ModTime().UTC()})
 		return nil

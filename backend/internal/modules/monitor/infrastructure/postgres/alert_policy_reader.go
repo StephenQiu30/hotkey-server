@@ -64,7 +64,7 @@ ORDER BY monitor.id ASC`, encodedIDs)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	policies := make([]application.PublishedAlertPolicy, 0, len(ids))
 	for rows.Next() {
 		var policy application.PublishedAlertPolicy

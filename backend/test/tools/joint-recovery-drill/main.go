@@ -121,11 +121,11 @@ func run(parent context.Context) error {
 	if err != nil {
 		return errors.New("create isolated recovery workspace")
 	}
-	defer os.RemoveAll(workRoot)
+	defer func() { _ = os.RemoveAll(workRoot) }()
 
 	recovery := &drill{cfg: cfg, workRoot: workRoot, expected: make(map[string]inventory)}
 	defer func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cleanupCancel()
 		recovery.cleanup(cleanupCtx)
 	}()
@@ -263,7 +263,7 @@ func (recovery *drill) createSourceFixture(ctx context.Context) error {
 	if err != nil {
 		return errors.New("open isolated source PostgreSQL")
 	}
-	defer runtimeDB.Close()
+	defer func() { _ = runtimeDB.Close() }()
 	if err := platformdatabase.InitializeEmpty(ctx, runtimeDB.Pool); err != nil {
 		return errors.New("initialize isolated source PostgreSQL")
 	}
@@ -393,7 +393,7 @@ func (recovery *drill) restore(ctx context.Context) error {
 	if err != nil {
 		return errors.New("open restored PostgreSQL")
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if err := database.PingContext(ctx); err != nil {
 		return errors.New("restored PostgreSQL is not readable")
 	}
@@ -411,7 +411,7 @@ func (recovery *drill) reconcile(ctx context.Context) ([]assetResult, []string, 
 	if err != nil {
 		return nil, nil, errors.New("open restored PostgreSQL for reconciliation")
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	actual := make(map[string]inventory, 5)
 	if actual["postgres_facts"], err = postgresInventory(ctx, database); err != nil {
 		return nil, nil, err
@@ -463,7 +463,7 @@ func createDatabase(ctx context.Context, maintenanceDSN, name string) error {
 	if err != nil {
 		return errors.New("open PostgreSQL maintenance connection")
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if _, err := database.ExecContext(ctx, "CREATE DATABASE "+name+" TEMPLATE template0"); err != nil {
 		return errors.New("create isolated recovery PostgreSQL database")
 	}
@@ -475,7 +475,7 @@ func dropDatabase(ctx context.Context, maintenanceDSN, name string) {
 	if err != nil {
 		return
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	_, _ = database.ExecContext(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
 }
 
@@ -575,7 +575,7 @@ func queryInventory(ctx context.Context, database *sql.DB, query string) (invent
 	if err != nil {
 		return inventory{}, errors.New("query recovery reconciliation facts")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	records := make([]string, 0)
 	for rows.Next() {
 		var record string
@@ -718,7 +718,7 @@ func vaultInventories(root string) (inventory, inventory, error) {
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() {
-			return errors.New("Vault reconciliation tree contains a non-regular file")
+			return errors.New("vault reconciliation tree contains a non-regular file")
 		}
 		relative, err := filepath.Rel(root, path)
 		if err != nil {

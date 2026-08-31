@@ -14,22 +14,10 @@ import (
 )
 
 type DocumentReader interface {
-	GetDocument(id int64) (domain.Document, error)
+	GetDocument(context.Context, int64) (domain.Document, error)
 }
-type ProposalStore interface{ SaveProposal(domain.Proposal) error }
-
-type ContextProposalCreator interface {
-	CreateProposalContext(context.Context, domain.Proposal) (domain.Proposal, error)
-}
-
-type ContextProposalStore interface {
-	SaveProposalContext(context.Context, domain.Proposal) error
-	UpdateProposalStatus(context.Context, int64, int64, domain.ProposalStatus) (domain.Proposal, error)
-	ApplyProposal(context.Context, int64, int64, domain.Document, domain.Revision) (domain.Document, error)
-}
-
-type ContextDocumentReader interface {
-	GetDocumentContext(context.Context, int64) (domain.Document, error)
+type ProposalStore interface {
+	CreateProposal(context.Context, domain.Proposal) (domain.Proposal, error)
 }
 
 type Vault interface {
@@ -63,11 +51,7 @@ func NewProposalService(documents DocumentReader, proposals ProposalStore, snaps
 	return service
 }
 
-func (service *ProposalService) Create(documentID, baseRevision int64, baseHash, frontmatter, body, reason string) (domain.Proposal, error) {
-	return service.CreateContext(context.Background(), documentID, baseRevision, baseHash, frontmatter, body, reason)
-}
-
-func (service *ProposalService) CreateContext(ctx context.Context, documentID, baseRevision int64, baseHash, frontmatter, body, reason string) (domain.Proposal, error) {
+func (service *ProposalService) Create(ctx context.Context, documentID, baseRevision int64, baseHash, frontmatter, body, reason string) (domain.Proposal, error) {
 	if service == nil || service.documents == nil || service.proposals == nil || documentID <= 0 || baseRevision < 0 || len(baseHash) != 64 {
 		return domain.Proposal{}, fmt.Errorf("invalid proposal service input")
 	}
@@ -79,30 +63,7 @@ func (service *ProposalService) CreateContext(ctx context.Context, documentID, b
 		return domain.Proposal{}, fmt.Errorf("knowledge document has changed")
 	}
 	proposal := domain.Proposal{Version: 1, DocumentID: documentID, BaseRevisionNo: baseRevision, BaseHash: baseHash, ProposedFrontmatter: frontmatter, ProposedBody: body, Reason: reason, Status: domain.ProposalPending}
-	if creator, ok := service.proposals.(ContextProposalCreator); ok {
-		created, err := creator.CreateProposalContext(ctx, proposal)
-		if err != nil {
-			return domain.Proposal{}, err
-		}
-		return created, nil
-	} else if contextStore, ok := service.proposals.(interface {
-		SaveProposalContext(context.Context, domain.Proposal) error
-	}); ok {
-		// Legacy in-memory ports may still allocate IDs themselves.
-		if proposal.ID == 0 {
-			proposal.ID = 1
-		}
-		if err := contextStore.SaveProposalContext(ctx, proposal); err != nil {
-			return domain.Proposal{}, err
-		}
-	} else {
-		// Legacy in-memory ports may not return identity values.
-		proposal.ID = 1
-		if err := service.proposals.SaveProposal(proposal); err != nil {
-			return domain.Proposal{}, err
-		}
-	}
-	return proposal, nil
+	return service.proposals.CreateProposal(ctx, proposal)
 }
 
 // ApplyByID rereads the proposal before applying it, which keeps the River
@@ -297,10 +258,7 @@ func vaultContentMatchesBase(content, baseHash string) bool {
 }
 
 func (service *ProposalService) getDocument(ctx context.Context, id int64) (domain.Document, error) {
-	if reader, ok := service.documents.(ContextDocumentReader); ok {
-		return reader.GetDocumentContext(ctx, id)
-	}
-	return service.documents.GetDocument(id)
+	return service.documents.GetDocument(ctx, id)
 }
 
 func documentPathParts(document domain.Document) (string, string, error) {

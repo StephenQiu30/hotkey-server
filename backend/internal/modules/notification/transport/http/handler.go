@@ -181,10 +181,10 @@ func (handler *Handler) WebSocket(authenticator httptransport.Authenticator) gin
 		if err != nil {
 			return
 		}
-		defer connection.CloseNow()
+		defer func() { _ = connection.CloseNow() }()
 		connection.SetReadLimit(notificationWebSocketReadLimit)
 
-		authenticationContext, cancelAuthentication := context.WithTimeout(context.Background(), notificationWebSocketAuthTimeout)
+		authenticationContext, cancelAuthentication := context.WithTimeout(c.Request.Context(), notificationWebSocketAuthTimeout)
 		authentication, err := readNotificationWebSocketAuthentication(authenticationContext, connection)
 		if err == nil {
 			err = validateNotificationWebSocketAuthentication(authentication)
@@ -203,7 +203,7 @@ func (handler *Handler) WebSocket(authenticator httptransport.Authenticator) gin
 		query := application.ListUserNotificationsQuery{
 			UserID: subject.UserID, MonitorID: authentication.MonitorID, AfterID: authentication.AfterID, Limit: 100,
 		}
-		streamContext := connection.CloseRead(context.Background())
+		streamContext := connection.CloseRead(c.Request.Context())
 		page, err := handler.service.ListUserNotifications(streamContext, query)
 		if err != nil {
 			_ = connection.Close(websocket.StatusInternalError, "notification service unavailable")

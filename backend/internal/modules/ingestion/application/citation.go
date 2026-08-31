@@ -631,11 +631,7 @@ func validCitationArtifactAnchorMap(contentSHA256 string, artifact *CitationArti
 		if block.MarkdownUTF8ByteEnd > artifact.SizeBytes {
 			return false
 		}
-		blocks[index] = DocumentAnchorBlockDTO{
-			Ordinal: block.Ordinal, PlaintextUTF8ByteStart: block.PlaintextUTF8ByteStart, PlaintextUTF8ByteEnd: block.PlaintextUTF8ByteEnd,
-			MarkdownUTF8ByteStart: block.MarkdownUTF8ByteStart, MarkdownUTF8ByteEnd: block.MarkdownUTF8ByteEnd,
-			MarkdownAnchor: block.MarkdownAnchor,
-		}
+		blocks[index] = DocumentAnchorBlockDTO(block)
 	}
 	return ValidatePersistedDocumentAnchorMap(&DerivedArtifactAnchorMapDTO{
 		NormalizationVersion: artifact.AnchorMap.NormalizationVersion, AnchorMapProfileVersion: artifact.AnchorMap.AnchorMapProfileVersion,

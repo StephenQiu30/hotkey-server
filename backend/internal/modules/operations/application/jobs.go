@@ -43,7 +43,7 @@ func (service *JobService) List(ctx context.Context, query operationsdomain.JobL
 		return operationsdomain.JobPage{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
-		return operationsdomain.JobPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return operationsdomain.JobPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return service.store.ListJobs(ctx, query)
 }
@@ -61,7 +61,7 @@ func (service *JobService) mutate(ctx context.Context, input operationsdomain.Jo
 		return operationsdomain.JobSummary{}, sharedrepository.ErrUnavailable
 	}
 	if err := input.Validate(); err != nil {
-		return operationsdomain.JobSummary{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return operationsdomain.JobSummary{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	hook := func(hookCtx context.Context, job operationsdomain.JobSummary) error {
 		if service.audit == nil {

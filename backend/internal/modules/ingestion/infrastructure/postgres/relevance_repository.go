@@ -31,7 +31,7 @@ func (repository *RelevanceRepository) UpsertSnapshot(ctx context.Context, input
 		return ingestiondomain.RelevanceSnapshot{}, false, sharedrepository.ErrUnavailable
 	}
 	if err := input.Validate(); err != nil {
-		return ingestiondomain.RelevanceSnapshot{}, false, fmt.Errorf("%w: relevance snapshot: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestiondomain.RelevanceSnapshot{}, false, fmt.Errorf("%w: relevance snapshot: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	reasonCodes, err := json.Marshal(input.ReasonCodes)
 	if err != nil {
@@ -105,7 +105,7 @@ func (repository *RelevanceRepository) ApplySuccessfulReview(ctx context.Context
 		return ingestiondomain.RelevanceSnapshot{}, sharedrepository.ErrUnavailable
 	}
 	if err := input.Validate(); err != nil {
-		return ingestiondomain.RelevanceSnapshot{}, fmt.Errorf("%w: successful relevance review: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestiondomain.RelevanceSnapshot{}, fmt.Errorf("%w: successful relevance review: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	reasonCodes, err := json.Marshal(input.ReasonCodes)
 	if err != nil {
@@ -233,7 +233,7 @@ LIMIT $6`, monitorID, snapshotID, decision, cursorScore, cursorID, query.Limit+1
 	if err != nil {
 		return ingestiondomain.RelevanceSnapshotPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	page := ingestiondomain.RelevanceSnapshotPage{Items: make([]ingestiondomain.RelevanceSnapshot, 0, query.Limit)}
 	for rows.Next() {
@@ -304,7 +304,7 @@ func (repository *RelevanceRepository) UpsertFeedback(ctx context.Context, input
 		return ingestiondomain.RelevanceFeedback{}, sharedrepository.ErrUnavailable
 	}
 	if err := input.Validate(); err != nil {
-		return ingestiondomain.RelevanceFeedback{}, fmt.Errorf("%w: relevance feedback: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestiondomain.RelevanceFeedback{}, fmt.Errorf("%w: relevance feedback: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var stored ingestiondomain.RelevanceFeedback
 	err := repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
@@ -406,7 +406,7 @@ func (repository *RelevanceRepository) UpsertPendingSuggestion(ctx context.Conte
 		return ingestiondomain.RelevanceSuggestion{}, false, sharedrepository.ErrUnavailable
 	}
 	if err := input.Validate(); err != nil {
-		return ingestiondomain.RelevanceSuggestion{}, false, fmt.Errorf("%w: relevance suggestion: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestiondomain.RelevanceSuggestion{}, false, fmt.Errorf("%w: relevance suggestion: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	input.Value = strings.TrimSpace(input.Value)
 	var stored ingestiondomain.RelevanceSuggestion
@@ -496,7 +496,7 @@ RETURNING id`, monitorID, configID)
 	if err != nil {
 		return 0, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	count := 0
 	for rows.Next() {
 		var id int64
@@ -537,7 +537,7 @@ LIMIT $4`, monitorID, status, cursorID, query.Limit+1)
 	if err != nil {
 		return ingestiondomain.RelevanceSuggestionPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	page := ingestiondomain.RelevanceSuggestionPage{Items: make([]ingestiondomain.RelevanceSuggestion, 0, query.Limit)}
 	for rows.Next() {
 		suggestion, err := scanSuggestion(rows)
@@ -649,7 +649,7 @@ ORDER BY ranked.scoring_version ASC`, monitorID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	values := []ingestiondomain.RelevanceEvaluation{}
 	for rows.Next() {
 		var value ingestiondomain.RelevanceEvaluation

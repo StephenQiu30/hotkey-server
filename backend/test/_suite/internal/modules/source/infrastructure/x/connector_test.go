@@ -38,7 +38,7 @@ func TestConnectorRejectsCompressionBombBeforeEvidence(t *testing.T) {
 	connector := newFixtureConnector(t, server, time.Now().UTC(), tokenLookup)
 	result, err := connector.Fetch(context.Background(), xFetchRequest())
 	if domain.ClassifyCollectionError(err) != domain.CollectionErrorPermanent ||
-		domain.SafeCollectionErrorCause(err) != "X compressed response is not permitted" {
+		domain.SafeCollectionErrorCause(err) != "compressed X response is not permitted" {
 		t.Fatalf("compression bomb error = %v / %q", err, domain.SafeCollectionErrorCause(err))
 	}
 	if len(result.Items) != 0 || len(result.Snapshots) != 0 {

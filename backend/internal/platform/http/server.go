@@ -28,28 +28,28 @@ func (s *Server) Address() string {
 }
 
 func NewServer(cfg config.Config, handler *gin.Engine, logger *zap.Logger) *Server {
-	requestContext, cancelRequests := context.WithCancel(context.Background())
 	return &Server{
 		server: &stdhttp.Server{
 			Addr:              cfg.HTTPAddr,
 			Handler:           handler,
 			ReadHeaderTimeout: 5 * time.Second,
 			IdleTimeout:       60 * time.Second,
-			BaseContext: func(net.Listener) context.Context {
-				return requestContext
-			},
 		},
-		logger:         logger,
-		cancelRequests: cancelRequests,
+		logger: logger,
 	}
 }
 
 func RegisterServer(lifecycle fx.Lifecycle, server *Server) {
 	lifecycle.Append(fx.Hook{
-		OnStart: func(context.Context) error {
+		OnStart: func(ctx context.Context) error {
+			requestContext, cancelRequests := context.WithCancel(context.WithoutCancel(ctx))
+			server.cancelRequests = cancelRequests
+			server.server.BaseContext = func(net.Listener) context.Context { return requestContext }
 			var err error
-			listener, err := net.Listen("tcp", server.server.Addr)
+			listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", server.server.Addr)
 			if err != nil {
+				cancelRequests()
+				server.cancelRequests = nil
 				return err
 			}
 			server.listener = listener

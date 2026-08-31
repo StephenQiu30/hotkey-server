@@ -1,3 +1,4 @@
+// Package architecture_test verifies repository architecture contracts.
 package architecture_test
 
 import (

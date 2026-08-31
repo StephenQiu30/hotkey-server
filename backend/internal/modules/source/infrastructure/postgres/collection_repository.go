@@ -67,7 +67,7 @@ func (repository *CollectionRepository) CreateOrReuseRun(ctx context.Context, re
 		return domain.CollectionRun{}, false, sharedrepository.ErrUnavailable
 	}
 	if err := request.Validate(); err != nil {
-		return domain.CollectionRun{}, false, fmt.Errorf("%w: collection request: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.CollectionRun{}, false, fmt.Errorf("%w: collection request: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var run domain.CollectionRun
 	created := false
@@ -228,7 +228,7 @@ LIMIT $3`, cursor.AfterID, cursor.SnapshotID, limit+1)
 	cursor.AfterID = page.Items[len(page.Items)-1].ID
 	nextCursor, err := repository.cursorCodec.Seal("collection_run_list", cursor)
 	if err != nil {
-		return domain.CollectionRunPage{}, fmt.Errorf("%w: encode collection run cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.CollectionRunPage{}, fmt.Errorf("%w: encode collection run cursor: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	page.NextCursor = nextCursor
 	for index := range page.Items {
@@ -249,7 +249,7 @@ func (repository *CollectionRepository) ListUnboundCaptured(ctx context.Context,
 		return domain.CapturedItemPage{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
-		return domain.CapturedItemPage{}, fmt.Errorf("%w: captured item query: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.CapturedItemPage{}, fmt.Errorf("%w: captured item query: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	statuses := []string{"pending"}
 	if query.IncludeFailed {
@@ -273,7 +273,7 @@ LIMIT $5`, query.RunID, statuses, cursor.AfterID, cursor.SnapshotID, limit+1)
 	if err != nil {
 		return domain.CapturedItemPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]domain.CapturedCollectionItem, 0, limit+1)
 	for rows.Next() {
 		var item domain.CapturedCollectionItem
@@ -283,7 +283,7 @@ LIMIT $5`, query.RunID, statuses, cursor.AfterID, cursor.SnapshotID, limit+1)
 		}
 		captured, err := decodeCapturedItem(payload)
 		if err != nil {
-			return domain.CapturedItemPage{}, fmt.Errorf("%w: decode captured item: %v", sharedrepository.ErrConstraint, err)
+			return domain.CapturedItemPage{}, fmt.Errorf("%w: decode captured item: %w", sharedrepository.ErrConstraint, err)
 		}
 		item.Item = captured
 		items = append(items, item)
@@ -299,7 +299,7 @@ LIMIT $5`, query.RunID, statuses, cursor.AfterID, cursor.SnapshotID, limit+1)
 	cursor.AfterID = page.Items[len(page.Items)-1].ID
 	page.NextCursor, err = repository.cursorCodec.Seal("captured_item_list", cursor)
 	if err != nil {
-		return domain.CapturedItemPage{}, fmt.Errorf("%w: encode captured item cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.CapturedItemPage{}, fmt.Errorf("%w: encode captured item cursor: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return page, nil
 }
@@ -312,7 +312,7 @@ func (repository *CollectionRepository) BindContent(ctx context.Context, binding
 		return sharedrepository.ErrUnavailable
 	}
 	if err := binding.Validate(); err != nil {
-		return fmt.Errorf("%w: captured content binding: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: captured content binding: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		result, err := transaction.SQL.ExecContext(ctx, `
@@ -346,7 +346,7 @@ func (repository *CollectionRepository) MarkIngestionFailure(ctx context.Context
 		return sharedrepository.ErrUnavailable
 	}
 	if err := failure.Validate(); err != nil {
-		return fmt.Errorf("%w: captured ingestion failure: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: captured ingestion failure: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		result, err := transaction.SQL.ExecContext(ctx, `
@@ -494,7 +494,7 @@ FOR UPDATE`, runID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	identities := make([]domain.CollectionRunTargetIdentity, 0)
 	for rows.Next() {
 		var identity domain.CollectionRunTargetIdentity
@@ -696,7 +696,7 @@ func collectionTargetsForUpdate(ctx context.Context, transaction database.Transa
 	byMonitorSource := make(map[int64]domain.PublishedCollectionTarget, len(supplied))
 	for _, target := range supplied {
 		if err := target.Validate(); err != nil {
-			return nil, fmt.Errorf("%w: collection target: %v", sharedrepository.ErrInvalidInput, err)
+			return nil, fmt.Errorf("%w: collection target: %w", sharedrepository.ErrInvalidInput, err)
 		}
 		if _, found := byMonitorSource[target.MonitorSourceID]; found {
 			return nil, fmt.Errorf("%w: duplicate collection target", sharedrepository.ErrInvalidInput)
@@ -712,7 +712,7 @@ FOR UPDATE`, runID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	targets := make([]collectionPersistedTarget, 0, len(supplied))
 	for rows.Next() {
 		var id, monitorSourceID, configVersionID int64
@@ -740,7 +740,7 @@ func (repository *CollectionRepository) persistCapturedItems(ctx context.Context
 	for _, item := range items {
 		payload, hash, err := encodedCapturedItem(item)
 		if err != nil {
-			return nil, fmt.Errorf("%w: captured item: %v", sharedrepository.ErrInvalidInput, err)
+			return nil, fmt.Errorf("%w: captured item: %w", sharedrepository.ErrInvalidInput, err)
 		}
 		if _, found := seen[item.ExternalID]; found {
 			continue
@@ -994,7 +994,7 @@ ORDER BY id ASC`, runID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	targets := make([]domain.CollectionRunTargetSummary, 0)
 	for rows.Next() {
 		var target domain.CollectionRunTargetSummary

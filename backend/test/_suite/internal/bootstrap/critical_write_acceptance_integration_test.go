@@ -205,7 +205,7 @@ func assertCriticalRightsAuditMatrix(t *testing.T, runtime *database.Runtime) {
 	if err != nil {
 		t.Fatalf("query critical write audits: %v", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	got := make(map[string]int)
 	for rows.Next() {
 		var action, result, reason string

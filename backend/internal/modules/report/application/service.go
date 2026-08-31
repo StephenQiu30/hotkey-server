@@ -165,7 +165,7 @@ func (service *Service) CreateDraft(ctx context.Context, input CreateInput) (dom
 	}
 	period, err := domain.PeriodFor(input.At, input.Type, location)
 	if err != nil {
-		return domain.Report{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Report{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	automatic, ok := service.store.(AutomaticStore)
 	if !ok {
@@ -286,7 +286,7 @@ func (service *Service) List(ctx context.Context, query domain.ListQuery) (domai
 		return domain.Page{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
-		return domain.Page{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Page{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return service.store.List(ctx, query)
 }

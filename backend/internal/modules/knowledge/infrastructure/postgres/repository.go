@@ -34,11 +34,7 @@ func NewRepositoryWithCursorCodec(runtime *database.Runtime, codec *pagination.C
 	return &Repository{runtime: runtime, cursorCodec: codec}
 }
 
-func (repository *Repository) GetDocument(id int64) (domain.Document, error) {
-	return repository.GetDocumentContext(context.Background(), id)
-}
-
-func (repository *Repository) GetDocumentContext(ctx context.Context, id int64) (domain.Document, error) {
+func (repository *Repository) GetDocument(ctx context.Context, id int64) (domain.Document, error) {
 	if repository == nil || repository.runtime == nil {
 		return domain.Document{}, sharedrepository.ErrUnavailable
 	}
@@ -68,7 +64,7 @@ FROM knowledge_documents WHERE status <> 'archived' ORDER BY id`)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	documents := make([]domain.Document, 0)
 	for rows.Next() {
 		var document domain.Document
@@ -115,7 +111,7 @@ LIMIT $3`, cursor.AfterID, cursor.SnapshotID, limit+1)
 	if err != nil {
 		return domain.DocumentPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]domain.Document, 0, limit+1)
 	for rows.Next() {
 		var item domain.Document
@@ -237,7 +233,7 @@ LIMIT 100`, status)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]domain.Proposal, 0)
 	for rows.Next() {
 		var item domain.Proposal
@@ -293,7 +289,7 @@ LIMIT $5`, query.Status, cursor.SnapshotID, afterCreatedAt, cursor.AfterID, limi
 	if err != nil {
 		return domain.ProposalPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	entries := make([]knowledgeProposalRow, 0, limit+1)
 	for rows.Next() {
 		var entry knowledgeProposalRow
@@ -397,7 +393,7 @@ func (repository *Repository) SaveDocument(ctx context.Context, document domain.
 		return sharedrepository.ErrUnavailable
 	}
 	if err := document.Validate(); err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	if countReferences(document) != 1 {
 		return fmt.Errorf("%w: document requires exactly one source reference", sharedrepository.ErrInvalidInput)
@@ -412,15 +408,11 @@ status = EXCLUDED.status, updated_at = now()`, document.ID, document.Version, do
 	return databaserepository.MapError(err)
 }
 
-func (repository *Repository) SaveProposal(proposal domain.Proposal) error {
-	return repository.saveProposal(context.Background(), proposal)
-}
-
-func (repository *Repository) SaveProposalContext(ctx context.Context, proposal domain.Proposal) error {
+func (repository *Repository) SaveProposal(ctx context.Context, proposal domain.Proposal) error {
 	return repository.saveProposal(ctx, proposal)
 }
 
-func (repository *Repository) CreateProposalContext(ctx context.Context, proposal domain.Proposal) (domain.Proposal, error) {
+func (repository *Repository) CreateProposal(ctx context.Context, proposal domain.Proposal) (domain.Proposal, error) {
 	if repository == nil || repository.runtime == nil {
 		return domain.Proposal{}, sharedrepository.ErrUnavailable
 	}
@@ -428,7 +420,7 @@ func (repository *Repository) CreateProposalContext(ctx context.Context, proposa
 		return domain.Proposal{}, fmt.Errorf("proposal id must be zero for creation")
 	}
 	if err := proposal.ValidateCreate(); err != nil {
-		return domain.Proposal{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Proposal{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	frontmatter := proposal.ProposedFrontmatter
 	if frontmatter == "" {
@@ -436,7 +428,7 @@ func (repository *Repository) CreateProposalContext(ctx context.Context, proposa
 	}
 	var raw json.RawMessage
 	if err := json.Unmarshal([]byte(frontmatter), &raw); err != nil {
-		return domain.Proposal{}, fmt.Errorf("%w: invalid proposal frontmatter: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Proposal{}, fmt.Errorf("%w: invalid proposal frontmatter: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var created domain.Proposal
 	var storedFrontmatter []byte
@@ -503,10 +495,10 @@ func (repository *Repository) ApplyProposal(ctx context.Context, proposalID, exp
 		return domain.Document{}, sharedrepository.ErrUnavailable
 	}
 	if err := document.Validate(); err != nil {
-		return domain.Document{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Document{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	if err := revision.Validate(); err != nil {
-		return domain.Document{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Document{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var applied domain.Document
 	err := repository.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
@@ -556,7 +548,7 @@ func (repository *Repository) saveProposal(ctx context.Context, proposal domain.
 		return sharedrepository.ErrUnavailable
 	}
 	if err := proposal.Validate(); err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	frontmatter := proposal.ProposedFrontmatter
 	if frontmatter == "" {
@@ -564,7 +556,7 @@ func (repository *Repository) saveProposal(ctx context.Context, proposal domain.
 	}
 	var raw json.RawMessage
 	if err := json.Unmarshal([]byte(frontmatter), &raw); err != nil {
-		return fmt.Errorf("%w: invalid proposal frontmatter: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: invalid proposal frontmatter: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	_, err := repository.runtime.SQL.ExecContext(ctx, `
 INSERT INTO knowledge_change_proposals (id, version, document_id, change_type, base_revision_no, base_hash, proposed_frontmatter, proposed_body, diff_summary, reason, status)

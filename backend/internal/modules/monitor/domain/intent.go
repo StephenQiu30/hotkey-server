@@ -109,13 +109,13 @@ func NewIntentClause(operator IntentClauseOperator, field IntentClauseField, val
 	case IntentClauseLanguage:
 		languages, languageErr := NormalizeLanguages([]string{normalized}, 1, 1)
 		if languageErr != nil {
-			return IntentClause{}, fmt.Errorf("%w: %v", ErrInvalidIntent, languageErr)
+			return IntentClause{}, fmt.Errorf("%w: %w", ErrInvalidIntent, languageErr)
 		}
 		normalized = languages[0]
 	case IntentClauseRegion:
 		regions, regionErr := NormalizeRegions([]string{normalized}, 1, 1)
 		if regionErr != nil {
-			return IntentClause{}, fmt.Errorf("%w: %v", ErrInvalidIntent, regionErr)
+			return IntentClause{}, fmt.Errorf("%w: %w", ErrInvalidIntent, regionErr)
 		}
 		normalized = regions[0]
 	}

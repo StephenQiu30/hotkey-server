@@ -28,7 +28,7 @@ func (budget *ExternalRequestBudget) CheckExternalRequest(ctx context.Context, r
 		return domain.ExternalRequestBudgetAvailability{}, sharedrepository.ErrUnavailable
 	}
 	if err := reservation.Validate(); err != nil {
-		return domain.ExternalRequestBudgetAvailability{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.ExternalRequestBudgetAvailability{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	at := reservation.At.UTC()
 	budgetDay := time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
@@ -60,7 +60,7 @@ WHERE source_connection_id=$1 AND resource_profile_version=$2 AND budget_day=$3`
 		availability.ResetAt = rateWindow.Add(time.Minute)
 	}
 	if err := availability.Validate(reservation); err != nil {
-		return domain.ExternalRequestBudgetAvailability{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		return domain.ExternalRequestBudgetAvailability{}, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 	}
 	return availability, nil
 }
@@ -70,7 +70,7 @@ func (budget *ExternalRequestBudget) ReserveExternalRequest(ctx context.Context,
 		return domain.ExternalRequestBudgetDecision{}, sharedrepository.ErrUnavailable
 	}
 	if err := reservation.Validate(); err != nil {
-		return domain.ExternalRequestBudgetDecision{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.ExternalRequestBudgetDecision{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	at := reservation.At.UTC()
 	windowStart := time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
@@ -91,7 +91,7 @@ func (budget *ExternalRequestBudget) ReserveExternalRequest(ctx context.Context,
 		return domain.ExternalRequestBudgetDecision{}, err
 	}
 	if err := decision.Validate(reservation.DailyLimit, reservation.PerMinuteLimit); err != nil {
-		return domain.ExternalRequestBudgetDecision{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		return domain.ExternalRequestBudgetDecision{}, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 	}
 	return decision, nil
 }

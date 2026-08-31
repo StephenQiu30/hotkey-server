@@ -178,11 +178,11 @@ func selectedFeedBody(payload []byte, selectorVersion string) (string, string, s
 		return preferredSelectedFeedFields(record.Encoded, record.Description)
 	case atomEntrySelectorVersion:
 		if root.Local != "atomEntry" && root.Local != "entry" {
-			return "", "", "", errors.New("Atom selected evidence root is invalid")
+			return "", "", "", errors.New("atom selected evidence root is invalid")
 		}
 		var record atomSelectedEntryRecord
 		if err := xml.Unmarshal(payload, &record); err != nil {
-			return "", "", "", errors.New("Atom selected evidence could not be decoded")
+			return "", "", "", errors.New("atom selected evidence could not be decoded")
 		}
 		return preferredSelectedFeedFields(record.Content, record.Summary)
 	default:

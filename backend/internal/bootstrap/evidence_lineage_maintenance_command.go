@@ -293,7 +293,7 @@ func runningBinarySHA256() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open maintenance binary: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	digest := sha256.New()
 	if _, err := io.Copy(digest, file); err != nil {
 		return "", fmt.Errorf("hash maintenance binary: %w", err)

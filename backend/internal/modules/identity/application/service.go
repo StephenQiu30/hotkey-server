@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
@@ -26,7 +25,7 @@ const verificationCodeLifetime = 10 * time.Minute
 // adapters are injected by bootstrap; this package never imports concrete
 // PostgreSQL, Redis, SMTP, bcrypt, or JWT implementations.
 type Dependencies struct {
-	Runtime      *database.Runtime
+	Runtime      TransactionRunner
 	Users        domain.UserRepository
 	Sessions     domain.SessionRepository
 	Audit        domain.AuditRepository
@@ -40,7 +39,7 @@ type Dependencies struct {
 // Service coordinates identity domain ports and owns every PostgreSQL write
 // boundary through Runtime.WithinTransaction.
 type Service struct {
-	runtime      *database.Runtime
+	runtime      TransactionRunner
 	users        domain.UserRepository
 	sessions     domain.SessionRepository
 	audit        domain.AuditRepository
@@ -203,7 +202,7 @@ func (service *Service) Register(ctx context.Context, input RegisterInput) (*dom
 	}
 
 	var user domain.User
-	err = service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+	err = service.withTransaction(ctx, func(ctx context.Context) error {
 		ticket, err := service.verification.ConsumeTicket(ctx, domain.VerificationPurposeRegistration, input.VerificationTicket)
 		if err != nil {
 			return verificationError(err)
@@ -240,7 +239,7 @@ func (service *Service) Login(ctx context.Context, credentials Credentials) (Aut
 	}
 
 	var credentialFailure bool
-	err := service.withTransaction(ctx, func(ctx context.Context, tx database.Transaction) error {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
 		user, err := service.users.FindByEmail(ctx, credentials.Email)
 		if err != nil {
 			if !errors.Is(err, sharedrepository.ErrNotFound) {
@@ -295,7 +294,7 @@ func (service *Service) Refresh(ctx context.Context, rawRefreshToken string) (Au
 	}
 
 	var replay bool
-	err := service.withTransaction(ctx, func(ctx context.Context, tx database.Transaction) error {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
 		now := service.now()
 		currentSession, _, err := service.sessions.FindByRefreshTokenHash(ctx, hashRefreshToken(rawRefreshToken))
 		if err != nil {
@@ -360,7 +359,7 @@ func (service *Service) Logout(ctx context.Context, subject *domain.Subject, raw
 	if service == nil || service.sessions == nil || service.audit == nil {
 		return unavailable(nil)
 	}
-	err := service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
 		now := service.now()
 		if subject != nil && subject.SessionID > 0 && subject.UserID > 0 {
 			if err := service.sessions.RevokeSession(ctx, subject.SessionID, "logout", now); err != nil {
@@ -422,7 +421,7 @@ func (service *Service) ChangePassword(ctx context.Context, subject domain.Subje
 		return validationError(err)
 	}
 	var credentialFailure bool
-	err = service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+	err = service.withTransaction(ctx, func(ctx context.Context) error {
 		user, err := service.users.FindByID(ctx, subject.UserID)
 		if err != nil {
 			if !errors.Is(err, sharedrepository.ErrNotFound) {
@@ -462,7 +461,7 @@ func (service *Service) ConfirmPasswordReset(ctx context.Context, verificationTi
 		return validationError(err)
 	}
 	var resetFailure bool
-	err = service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+	err = service.withTransaction(ctx, func(ctx context.Context) error {
 		ticket, err := service.verification.ConsumeTicket(ctx, domain.VerificationPurposePasswordReset, verificationTicket)
 		if err != nil {
 			var appError *sharederrors.AppError
@@ -522,7 +521,7 @@ func (service *Service) UpdateUser(ctx context.Context, actor domain.Subject, us
 	}
 
 	var changed *domain.User
-	err := service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
 		now := service.now()
 		// Keep the same lock order as the PostgreSQL lifecycle methods so the
 		// audit snapshot describes the exact state this transaction changes.
@@ -579,7 +578,7 @@ func (service *Service) DeleteUser(ctx context.Context, actor domain.Subject, us
 		return nil, err
 	}
 	var deleted *domain.User
-	err := service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
 		now := service.now()
 		var err error
 		deleted, err = service.users.SoftDelete(ctx, userID, now)
@@ -605,7 +604,7 @@ func (service *Service) RestoreUser(ctx context.Context, actor domain.Subject, u
 		return nil, err
 	}
 	var restored *domain.User
-	err := service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
 		now := service.now()
 		var err error
 		restored, err = service.users.RestoreDisabled(ctx, userID, now)
@@ -633,11 +632,11 @@ func (service *Service) now() time.Time {
 	return time.Now().UTC()
 }
 
-func (service *Service) withTransaction(ctx context.Context, fn func(context.Context, database.Transaction) error) error {
+func (service *Service) withTransaction(ctx context.Context, fn func(context.Context) error) error {
 	if service == nil || service.runtime == nil {
 		return unavailable(nil)
 	}
-	return service.runtime.WithinTransaction(ctx, fn)
+	return service.runtime.RunInTransaction(ctx, fn)
 }
 
 func (service *Service) issueAccessToken(userID, sessionID int64, now time.Time) (string, error) {
@@ -661,7 +660,7 @@ func (service *Service) requireAdmin(ctx context.Context, actor domain.Subject, 
 	if actor.UserID > 0 && actor.Role == domain.RoleAdmin {
 		return nil
 	}
-	if err := service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+	if err := service.withTransaction(ctx, func(ctx context.Context) error {
 		return service.audit.Create(ctx, auditEntry(ctx, "user", actor.UserID, action, "user", resourceID, "denied", nil, nil))
 	}); err != nil {
 		return serviceError(err)
@@ -673,7 +672,7 @@ func (service *Service) requireAdmin(ctx context.Context, actor domain.Subject, 
 // back. Keeping it separate ensures a rejected multi-field change cannot
 // commit a partial role/status mutation merely to preserve an audit record.
 func (service *Service) auditLifecycleFailure(ctx context.Context, actor domain.Subject, action string, resourceID int64) error {
-	return service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+	return service.withTransaction(ctx, func(ctx context.Context) error {
 		return service.audit.Create(ctx, auditEntry(ctx, "user", actor.UserID, action, "user", resourceID, "failure", nil, nil))
 	})
 }

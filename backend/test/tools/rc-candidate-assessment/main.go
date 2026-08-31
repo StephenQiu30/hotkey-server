@@ -21,6 +21,7 @@ var (
 	requiredGateOrder = []string{
 		"backend_static",
 		"backend_runtime",
+		"backend_race",
 		"backend_vulnerability",
 		"worker_recovery",
 		"frontend",

@@ -163,7 +163,7 @@ func (client *Client) Analyze(ctx context.Context, input AnalyzeRequest) (Analyz
 		}
 		return AnalyzeResponse{}, intelligencedomain.NewError(intelligencedomain.CodeAIProviderTransient)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, client.maxResponseBytes+1))
 		return AnalyzeResponse{}, intelligencedomain.NewError(statusCode(response.StatusCode))

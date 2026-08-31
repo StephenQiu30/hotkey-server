@@ -17,9 +17,9 @@ import (
 var _ operationsapplication.EvidenceLineageMaintenanceRepository = (*EvidenceLineageMaintenanceRepository)(nil)
 
 type EvidenceLineageMaintenanceRepository struct {
-	runtime      *database.Runtime
-	rawObjects   rawEvidenceAssetInspector
-	vaultFiles   vaultProjectionAssetInspector
+	runtime    *database.Runtime
+	rawObjects rawEvidenceAssetInspector
+	vaultFiles vaultProjectionAssetInspector
 }
 
 func NewEvidenceLineageMaintenanceRepository(runtime *database.Runtime) *EvidenceLineageMaintenanceRepository {
@@ -313,7 +313,7 @@ func queryBackfillCandidates(ctx context.Context, transaction *sql.Tx, phase str
 	if err != nil {
 		return nil, false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	records := make([]evidenceLineageBackfillCandidateRecord, 0, batchSize+1)
 	for rows.Next() {
 		var record evidenceLineageBackfillCandidateRecord

@@ -61,7 +61,7 @@ func (writer *Writer) PutIfAbsent(ctx context.Context, command knowledgeapplicat
 	if err != nil {
 		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if receipt, found, err := projectionReceiptAt(root, relativePath, projection); err != nil {
 		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
 	} else if found {
@@ -79,7 +79,7 @@ func (writer *Writer) PutIfAbsent(ctx context.Context, command knowledgeapplicat
 	if err != nil {
 		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
 	}
-	defer root.Remove(temporaryPath)
+	defer func() { _ = root.Remove(temporaryPath) }()
 	if _, err := temporary.Write(projection.content); err != nil {
 		_ = temporary.Close()
 		return knowledgeapplication.ProjectionStoreReceiptDTO{}, err
@@ -142,7 +142,7 @@ func (writer *Writer) ReadProjection(ctx context.Context, command knowledgeappli
 	if err != nil {
 		return knowledgeapplication.StoredProjectionContentDTO{}, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if err := rejectRootSymlinkComponents(root, filepath.Dir(relativePath)); err != nil {
 		return knowledgeapplication.StoredProjectionContentDTO{}, err
 	}
@@ -157,7 +157,7 @@ func (writer *Writer) ReadProjection(ctx context.Context, command knowledgeappli
 	if err != nil {
 		return knowledgeapplication.StoredProjectionContentDTO{}, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	openedInfo, err := file.Stat()
 	if err != nil || !os.SameFile(info, openedInfo) {
 		return knowledgeapplication.StoredProjectionContentDTO{}, fmt.Errorf("%w: projection changed during read", knowledgeapplication.ErrProjectionIntegrity)
@@ -204,7 +204,7 @@ func (writer *Writer) DeleteProjection(ctx context.Context, command knowledgeapp
 	if err != nil {
 		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if err := rejectRootSymlinkComponents(root, filepath.Dir(relativePath)); err != nil {
 		return knowledgeapplication.ProjectionDeleteReceiptDTO{}, err
 	}
@@ -510,7 +510,7 @@ func (writer *Writer) writeAtomic(path, content string) (string, error) {
 		return "", err
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }()
 	if _, err := writer.writeString(temporary, content); err != nil {
 		_ = temporary.Close()
 		return "", err
@@ -551,7 +551,7 @@ func readRegularFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	opened, err := file.Stat()
 	if err != nil || !os.SameFile(info, opened) {
 		return nil, domain.ErrVaultConflict
@@ -631,7 +631,7 @@ func projectionReceiptAt(root *os.Root, relativePath string, projection projecti
 	if err != nil {
 		return knowledgeapplication.ProjectionStoreReceiptDTO{}, false, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	openedInfo, err := file.Stat()
 	if err != nil || !os.SameFile(info, openedInfo) {
 		return knowledgeapplication.ProjectionStoreReceiptDTO{}, false, fmt.Errorf("%w: projection changed during read", knowledgeapplication.ErrProjectionIntegrity)
@@ -652,7 +652,7 @@ func syncRootDirectory(root *os.Root, directory string) error {
 	if err != nil {
 		return err
 	}
-	defer handle.Close()
+	defer func() { _ = handle.Close() }()
 	return handle.Sync()
 }
 

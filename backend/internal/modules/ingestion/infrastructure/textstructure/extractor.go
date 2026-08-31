@@ -49,7 +49,7 @@ func validateCommand(command ingestionapplication.ExtractDocumentStructureComman
 		return sharedrepository.ErrInvalidInput
 	}
 	for _, r := range command.ContentSHA256 {
-		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
 			return sharedrepository.ErrInvalidInput
 		}
 	}

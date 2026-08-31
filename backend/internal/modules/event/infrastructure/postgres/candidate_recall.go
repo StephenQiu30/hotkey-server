@@ -99,7 +99,7 @@ ORDER BY e.event_key ASC LIMIT $4`, fingerprint.Value, fingerprint.Version, fing
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanCandidates(rows)
 }
 
@@ -129,7 +129,7 @@ ORDER BY r.rule_type ASC, lower(r.value) ASC`, contentID)
 	if err != nil {
 		return domain.EventFingerprint{}, false, databaserepository.MapError(err)
 	}
-	defer rules.Close()
+	defer func() { _ = rules.Close() }()
 	facts := domain.EventFingerprintFacts{PublishedAt: publishedAt}
 	for rules.Next() {
 		var ruleType, value string
@@ -155,7 +155,7 @@ ORDER BY lower(region) ASC`, contentID)
 	if err != nil {
 		return domain.EventFingerprint{}, false, databaserepository.MapError(err)
 	}
-	defer regions.Close()
+	defer func() { _ = regions.Close() }()
 	for regions.Next() {
 		var region string
 		if err := regions.Scan(&region); err != nil {
@@ -221,7 +221,7 @@ ORDER BY ee.embedding <=> $1::halfvec LIMIT $6`, vector, profileID, profileVersi
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanCandidates(rows)
 }
 
@@ -233,7 +233,7 @@ func (repository *Repository) queryCandidates(ctx context.Context, query string,
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanCandidates(rows)
 }
 

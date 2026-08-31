@@ -20,7 +20,7 @@ func (repository *ContentRepository) Search(ctx context.Context, query searchdom
 	}
 	query = query.Normalized()
 	if err := query.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	if !query.Includes(searchdomain.ResourceContent) {
 		return []searchdomain.Candidate{}, nil
@@ -34,7 +34,7 @@ func (repository *ContentRepository) Search(ctx context.Context, query searchdom
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]searchdomain.Candidate, 0, query.Limit)
 	for rows.Next() {
 		var candidate searchdomain.Candidate

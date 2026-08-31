@@ -12,7 +12,6 @@ import (
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
@@ -30,14 +29,14 @@ type SubscriptionRepository interface {
 type TokenSource func() (string, error)
 
 type SubscriptionDependencies struct {
-	Runtime *database.Runtime
+	Runtime TransactionRunner
 	Store   SubscriptionRepository
 	Audit   operationsapplication.AuditWriter
 	Token   TokenSource
 }
 
 type SubscriptionService struct {
-	runtime *database.Runtime
+	runtime TransactionRunner
 	store   SubscriptionRepository
 	audit   operationsapplication.AuditWriter
 	token   TokenSource
@@ -128,7 +127,7 @@ func (service *SubscriptionService) Create(ctx context.Context, input CreateSubs
 		return SubscriptionSecret{}, invalidSubscriptionRequest()
 	}
 	created := domain.Subscription{}
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+	err := service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
 		value, err := service.store.CreateSubscription(transactionCtx, subscription)
 		if err != nil {
 			return err
@@ -147,7 +146,7 @@ func (service *SubscriptionService) List(ctx context.Context, subject identitydo
 		return domain.SubscriptionPage{}, err
 	}
 	if err := query.Validate(); err != nil {
-		return domain.SubscriptionPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.SubscriptionPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	page, err := service.store.ListSubscriptions(ctx, subject.UserID, query)
 	return page, deliverySubscriptionError(err)
@@ -192,7 +191,7 @@ func (service *SubscriptionService) Update(ctx context.Context, input UpdateSubs
 		next.Enabled = *input.Enabled
 	}
 	updated := domain.Subscription{}
-	err = service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+	err = service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
 		value, err := service.store.UpdateSubscription(transactionCtx, next, input.ExpectedVersion)
 		if err != nil {
 			return err
@@ -225,7 +224,7 @@ func (service *SubscriptionService) RotateRSSToken(ctx context.Context, input Ro
 		return SubscriptionSecret{}, fmt.Errorf("generate rss token: %w", err)
 	}
 	updated := domain.Subscription{}
-	err = service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+	err = service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
 		value, err := service.store.RotateRSSToken(transactionCtx, input.SubscriptionID, input.Subject.UserID, input.ExpectedVersion, domain.TokenHash(secret))
 		if err != nil {
 			return err
@@ -256,7 +255,7 @@ func (service *SubscriptionService) Delete(ctx context.Context, input DeleteSubs
 		return domain.Subscription{}, sharederrors.New(sharederrors.CodeConflict, 409, "disable the subscription before deleting it")
 	}
 	deleted := domain.Subscription{}
-	err = service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+	err = service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
 		value, err := service.store.DeleteSubscription(transactionCtx, input.SubscriptionID, input.Subject.UserID, input.ExpectedVersion)
 		if err != nil {
 			return err

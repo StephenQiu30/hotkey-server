@@ -184,7 +184,7 @@ FROM audit_logs WHERE `+strings.Join(clauses, " AND ")+fmt.Sprintf(" ORDER BY id
 	if err != nil {
 		return operationsdomain.AuditPage{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	page := operationsdomain.AuditPage{Items: make([]operationsdomain.AuditRecord, 0, query.Limit)}
 	for rows.Next() {
 		var record operationsdomain.AuditRecord

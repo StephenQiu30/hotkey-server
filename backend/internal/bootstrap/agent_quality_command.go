@@ -190,7 +190,7 @@ func validateAgentQualityCommandOptions(options agentQualityCommandOptions, posi
 	}
 	if !validAgentQualityPricing(options.AgentInputUSDPerMillionTokens, options.AgentOutputUSDPerMillionTokens) ||
 		options.AgentModelVersion == intelligenceagent.DeterministicRuntimeVersion && options.AgentInputUSDPerMillionTokens >= 0 {
-		return errors.New("Agent pricing requires a non-degraded runtime and two finite non-negative values together")
+		return errors.New("agent pricing requires a non-degraded runtime and two finite non-negative values together")
 	}
 	return nil
 }
@@ -200,13 +200,13 @@ func preflightAgentQualityReviewBundle(path string) error {
 		return nil
 	}
 	if _, err := os.Lstat(path); err == nil {
-		return errors.New("Agent quality review bundle already exists")
+		return errors.New("agent quality review bundle already exists")
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("inspect Agent quality review bundle: %w", err)
 	}
 	parent, err := os.Stat(filepath.Dir(path))
 	if err != nil || !parent.IsDir() {
-		return errors.New("Agent quality review bundle parent directory is unavailable")
+		return errors.New("agent quality review bundle parent directory is unavailable")
 	}
 	return nil
 }
@@ -228,7 +228,7 @@ func writeAgentQualityReviewBundle(path string, report intelligenceapplication.S
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		if os.IsExist(err) {
-			return errors.New("Agent quality review bundle already exists")
+			return errors.New("agent quality review bundle already exists")
 		}
 		return fmt.Errorf("create Agent quality review bundle: %w", err)
 	}
@@ -266,7 +266,7 @@ func readAgentQualityDataset(path string) (intelligenceapplication.ShadowQuality
 		return intelligenceapplication.ShadowQualityDataset{}, fmt.Errorf("open Agent quality dataset: %w", err)
 	}
 	if len(encoded) > maximumAgentQualityDatasetBytes {
-		return intelligenceapplication.ShadowQualityDataset{}, errors.New("Agent quality dataset exceeds 8 MiB")
+		return intelligenceapplication.ShadowQualityDataset{}, errors.New("agent quality dataset exceeds 8 MiB")
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(encoded)))
 	decoder.DisallowUnknownFields()

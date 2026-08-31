@@ -75,7 +75,7 @@ LIMIT 20`, target.PrimarySubjectKey, target.PrimaryActionKey, target.EventStarte
 	if err != nil {
 		return eventapplication.StorylineAssignmentTargetDTO{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	target.Candidates = []eventapplication.StorylineCandidateDTO{}
 	for rows.Next() {
 		var candidate eventapplication.StorylineCandidateDTO

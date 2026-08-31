@@ -55,7 +55,7 @@ FROM agent_tokens WHERE user_id = $1 ORDER BY created_at DESC, id DESC`, userID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]domain.Token, 0)
 	for rows.Next() {
 		token, err := scanToken(rows)

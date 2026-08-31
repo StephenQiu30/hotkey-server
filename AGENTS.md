@@ -33,23 +33,33 @@
 Go Core 是唯一业务后端和事实拥有者，`cmd/hotkey` 支持 `all`、`api` 与 `worker` 角色。Python Agent 是只返回结构化建议的内部分析服务，不改变 Go Core 的模块化单体依赖方向：
 
 ```text
-transport/http -> application -> domain
-infrastructure -> domain
+transport/http adapter -> application -> domain
+infrastructure adapter -> application/domain
 bootstrap -> all adapters
 ```
 
-- Transport 只处理协议、参数、认证上下文和统一 Result；Application 负责用例、权限、事务与跨模块编排；Domain 保存规则、实体、值对象和端口；Repository 只读写数据。
+- Transport 与 Infrastructure 都是外层 Adapter：Transport 只处理协议、参数、认证上下文和统一 Result，Infrastructure 实现内层端口；Application 负责用例、权限、事务与跨模块编排；Domain 保存规则、实体和值对象。除 `bootstrap` 组合根外，依赖只能指向内层，Adapter 之间不得直接耦合。
 - 跨模块调用使用目标模块的 Application 接口或只读查询端口，不直接读取其他模块拥有的表。
 - Domain 不得导入 Gin、GORM、pgx、River、MinIO 或第三方 SDK；第三方类型不得穿透 Infrastructure。
 - `internal/shared/` 只保存基础设施中立的稳定类型和契约，不导入 Platform 或具体适配器；通用数据库适配器位于 `internal/platform/database/repository`。
 - Redis 只用于缓存、验证码、短期票据与限流，不是业务事实源。除根目录 `agent/` 的 Python 分析服务外，不得引入第二套业务后端、第二套 Schema、Kafka、其他微服务、内部事件总线、Elasticsearch、独立向量库或通用规则引擎。
 
+### Go 工程约定
+
+- 所有 Go 代码遵循 Go 官方惯用法以及 Google/Uber Go Style Guide；命名保持短而明确，不使用 `Ixxx`、`Impl`，不创建全局 `controller/service/dao/mapper/pojo` 分层或 `utils/common` 杂物包。
+- 依赖通过显式构造函数注入；接口由消费方在最小使用面定义。只有出现第二个真实实现或明确替换点时才抽象，不使用全局 Service Locator、隐式注册或无职责包装层。
+- `context.Context` 作为请求链路首参数传递，不存入结构体，不用 `context.Background()` 截断已有调用链；派生 goroutine 必须有可取消上下文、明确所有者和可等待的退出路径。
+- 错误必须显式返回或明确忽略；保留错误链时使用 `%w`，判断使用 `errors.Is` / `errors.As`。运行日志使用现有结构化 logger，不以 `fmt.Print*` 或标准库 `log.Print*` 记录服务事件。
+- 新增或修改的数据结构必须保持边界清晰：Domain 实体和值对象不携带框架类型；Application Command/Query/Result/DTO 为纯 Go 类型；Transport DTO 与 Infrastructure Record 不得跨越所属边界。
+- Go 变更至少通过 `make format-check lint vet build architecture`；需要测试环境的变更继续运行 `make test` 和 `make race`，依赖变更运行 `make vulnerability`。`make ci` 汇总 `gofmt`、`goimports`、`go vet`、`golangci-lint`、单元/集成测试、Race Detector、`govulncheck` 及既有架构/Schema/OpenAPI 门禁。
+- `.golangci.yml` 对全部非生成 Go 代码执行完整检查；不得使用历史基线、路径白名单、降低检查级别或忽略新增告警的方式使门禁通过。
+
 ### 分层对象约定
 
 - Alibaba Java 开发手册只作为语言中立的分层与对象语义参考，不在 Go 中复制 `controller/service/mapper/pojo` 顶层目录。
-- Domain 保存实体、值对象和端口；Application 不得导入任一模块的 Infrastructure 或 Transport；Transport 不得导入 Infrastructure。既有 Application 对 `internal/platform/database` 事务协调器的有限引用由架构测试冻结，不得扩散；新用例使用 Domain/Shared 端口。
+- Domain 保存实体、值对象和端口；Application 不得导入任一模块的 Infrastructure、Transport 或 `internal/platform`；Transport 不得导入 Infrastructure。事务由 Application 定义的最小端口表达，并由外层运行时适配。
 - PostgreSQL 行结构属于 Infrastructure 私有 Record（Go 中使用未导出类型）；Application 的 Command、Query、Result、DTO 使用纯 Go 类型；HTTP 只暴露明确的 `RequestDTO` / `ResponseDTO`，不得把 GORM Model、数据库 Record 或第三方 SDK 对象向上透传。
-- 兼容迁移可在适配器边界保留短期类型别名，但新生产调用方必须引用内层规范类型，并由架构测试阻止新增反向依赖。
+- 跨层模型必须显式转换；不为了保留旧调用面向内层引入适配器类型、兼容别名或反向依赖。
 
 ## Python Agent 规则
 
@@ -77,7 +87,7 @@ bootstrap -> all adapters
 - 所有 `*_test.go` 与纯测试 fixture 位于 `backend/test/`；业务目录不得提交测试源码。
 - `test/_suite/` 按业务包镜像保存测试，使用 `go run ./test/runner test <package>` 或 Makefile 入口执行。
 - OpenAPI 只由 Swaggo 注解生成：`make openapi` 同步写入 `backend/openapi/docs.go` 与 `docs/openapi/swagger.json`，不得手工编辑生成物。
-- 涉及 Schema、OpenAPI、依赖或 CI 时运行 `make ci`；完成后清理临时映射、测试数据库和根构建产物。
+- 涉及 Go、Schema、OpenAPI、依赖或 CI 时运行 `make ci`；完成后清理临时映射、测试数据库和根构建产物。
 
 ## 前端规则
 

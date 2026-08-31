@@ -135,19 +135,19 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 		return SourceConnection{}, err
 	}
 	if connection.SourceType == SourceTypeX && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
-		return SourceConnection{}, fmt.Errorf("X source requires a Bearer credential reference")
+		return SourceConnection{}, fmt.Errorf("x source requires a Bearer credential reference")
 	}
 	if connection.SourceType == SourceTypeBingGrounding && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
-		return SourceConnection{}, fmt.Errorf("Bing Grounding source requires a Bearer credential reference")
+		return SourceConnection{}, fmt.Errorf("bing Grounding source requires a Bearer credential reference")
 	}
 	if connection.SourceType == SourceTypeBilibili && (connection.AuthType != AuthTypeOAuth2 || credentialRef == "") {
-		return SourceConnection{}, fmt.Errorf("Bilibili source requires an OAuth2 credential reference")
+		return SourceConnection{}, fmt.Errorf("bilibili source requires an OAuth2 credential reference")
 	}
 	if connection.SourceType == SourceTypeWeibo && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
-		return SourceConnection{}, fmt.Errorf("Weibo source requires a Bearer credential reference")
+		return SourceConnection{}, fmt.Errorf("weibo source requires a Bearer credential reference")
 	}
 	if connection.SourceType == SourceTypeGoogleAgentSearch && (connection.AuthType != AuthTypeBearer || credentialRef == "") {
-		return SourceConnection{}, fmt.Errorf("Google Agent Search source requires a Bearer credential reference")
+		return SourceConnection{}, fmt.Errorf("google Agent Search source requires a Bearer credential reference")
 	}
 	config := connection.Config
 	if config.isZero() {
@@ -158,36 +158,36 @@ func NormalizeSourceConnection(connection SourceConnection) (SourceConnection, e
 		return SourceConnection{}, err
 	}
 	if connection.SourceType != SourceTypeX && config.XMetricRefreshEnabled {
-		return SourceConnection{}, fmt.Errorf("X metric refresh is available only for X sources")
+		return SourceConnection{}, fmt.Errorf("x metric refresh is available only for X sources")
 	}
 	if connection.SourceType == SourceTypeBingGrounding && (!config.AllowBodyStorage || !config.RequiresAttribution || config.MaxPagesPerRun != 1) {
-		return SourceConnection{}, fmt.Errorf("Bing Grounding source requires body storage, attribution, and one page per run")
+		return SourceConnection{}, fmt.Errorf("bing Grounding source requires body storage, attribution, and one page per run")
 	}
 	if connection.SourceType == SourceTypeBilibili && (!config.AllowBodyStorage || !config.RequiresAttribution || !config.RequiresDeletionSync || config.BilibiliOpenID == "") {
-		return SourceConnection{}, fmt.Errorf("Bilibili source requires an authorized OpenID, body storage, attribution, and deletion sync")
+		return SourceConnection{}, fmt.Errorf("bilibili source requires an authorized OpenID, body storage, attribution, and deletion sync")
 	}
 	if connection.SourceType == SourceTypeBilibili && strings.TrimSpace(connection.TermsPolicyURL) != "https://openhome.bilibili.com/agreement/privacy-policy" {
-		return SourceConnection{}, fmt.Errorf("Bilibili source requires the official privacy policy URL")
+		return SourceConnection{}, fmt.Errorf("bilibili source requires the official privacy policy URL")
 	}
 	if connection.SourceType == SourceTypeWeibo && (!config.AllowBodyStorage || !config.RequiresAttribution || !config.RequiresDeletionSync) {
-		return SourceConnection{}, fmt.Errorf("Weibo source requires body storage, attribution, and deletion sync")
+		return SourceConnection{}, fmt.Errorf("weibo source requires body storage, attribution, and deletion sync")
 	}
 	if connection.SourceType == SourceTypeWeibo && strings.TrimSpace(connection.TermsPolicyURL) != WeiboDeveloperTerms {
-		return SourceConnection{}, fmt.Errorf("Weibo source requires the official developer agreement URL")
+		return SourceConnection{}, fmt.Errorf("weibo source requires the official developer agreement URL")
 	}
 	if connection.SourceType == SourceTypeGoogleAgentSearch {
 		expectedEndpoint, ok := googleAgentSearchEndpoint(config.GoogleLocation)
 		if !ok || connection.Endpoint != expectedEndpoint || !googleServingConfigPattern.MatchString(config.GoogleServingConfig) || !strings.Contains(config.GoogleServingConfig, "/locations/"+config.GoogleLocation+"/") {
-			return SourceConnection{}, fmt.Errorf("Google Agent Search source requires a matching official endpoint, location, and ServingConfig")
+			return SourceConnection{}, fmt.Errorf("google Agent Search source requires a matching official endpoint, location, and ServingConfig")
 		}
 		if !config.AllowBodyStorage || !config.RequiresAttribution || strings.TrimSpace(connection.TermsPolicyURL) != GoogleCloudTerms {
-			return SourceConnection{}, fmt.Errorf("Google Agent Search source requires snippet storage, attribution, and the official Google Cloud terms URL")
+			return SourceConnection{}, fmt.Errorf("google Agent Search source requires snippet storage, attribution, and the official Google Cloud terms URL")
 		}
 	}
 	if connection.SourceType == SourceTypeBingGrounding {
 		termsPolicyURL, err := url.Parse(strings.TrimSpace(connection.TermsPolicyURL))
 		if err != nil || termsPolicyURL.Scheme != "https" || termsPolicyURL.Hostname() == "" || termsPolicyURL.User != nil || termsPolicyURL.Fragment != "" {
-			return SourceConnection{}, fmt.Errorf("Bing Grounding source requires an HTTPS terms and policy URL")
+			return SourceConnection{}, fmt.Errorf("bing Grounding source requires an HTTPS terms and policy URL")
 		}
 		connection.TermsPolicyURL = termsPolicyURL.String()
 	}
@@ -250,39 +250,39 @@ func NormalizeEndpoint(sourceType SourceType, value string) (string, error) {
 	}
 	if sourceType == SourceTypeX {
 		if normalized != XRecentSearchEndpoint {
-			return "", fmt.Errorf("X endpoint must be the official recent search endpoint")
+			return "", fmt.Errorf("x endpoint must be the official recent search endpoint")
 		}
 		return XRecentSearchEndpoint, nil
 	}
 	if sourceType == SourceTypeBingGrounding {
 		parsed, err := url.Parse(normalized)
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
-			return "", fmt.Errorf("Bing Grounding endpoint must be an HTTPS Foundry Toolbox URI")
+			return "", fmt.Errorf("bing Grounding endpoint must be an HTTPS Foundry Toolbox URI")
 		}
 		if port := parsed.Port(); port != "" && port != "443" {
-			return "", fmt.Errorf("Bing Grounding endpoint must use port 443")
+			return "", fmt.Errorf("bing Grounding endpoint must use port 443")
 		}
 		host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
 		account := strings.TrimSuffix(host, ".services.ai.azure.com")
 		if account == host || account == "" || strings.Contains(account, ".") || !validDNSName(host) || !foundryToolboxPathPattern.MatchString(parsed.Path) {
-			return "", fmt.Errorf("Bing Grounding endpoint must be a versioned Foundry Toolbox MCP URI")
+			return "", fmt.Errorf("bing Grounding endpoint must be a versioned Foundry Toolbox MCP URI")
 		}
 		query := parsed.Query()
 		if len(query) != 1 || len(query["api-version"]) != 1 || query.Get("api-version") != "v1" {
-			return "", fmt.Errorf("Bing Grounding endpoint must use api-version=v1")
+			return "", fmt.Errorf("bing Grounding endpoint must use api-version=v1")
 		}
 		parsed.Scheme, parsed.Host = "https", host
 		return parsed.String(), nil
 	}
 	if sourceType == SourceTypeBilibili {
 		if normalized != BilibiliOpenEndpoint {
-			return "", fmt.Errorf("Bilibili endpoint must be the official Open Platform endpoint")
+			return "", fmt.Errorf("bilibili endpoint must be the official Open Platform endpoint")
 		}
 		return BilibiliOpenEndpoint, nil
 	}
 	if sourceType == SourceTypeWeibo {
 		if normalized != WeiboCLIApiEndpoint {
-			return "", fmt.Errorf("Weibo endpoint must be the official CLI API endpoint")
+			return "", fmt.Errorf("weibo endpoint must be the official CLI API endpoint")
 		}
 		return WeiboCLIApiEndpoint, nil
 	}
@@ -292,7 +292,7 @@ func NormalizeEndpoint(sourceType SourceType, value string) (string, error) {
 				return endpoint, nil
 			}
 		}
-		return "", fmt.Errorf("Google Agent Search endpoint must be an official regional endpoint")
+		return "", fmt.Errorf("google Agent Search endpoint must be an official regional endpoint")
 	}
 	if sourceType != SourceTypeRSS {
 		return "", fmt.Errorf("unsupported source type %q", sourceType)
@@ -527,26 +527,26 @@ func (config SourceConfig) Normalize() (SourceConfig, error) {
 		return SourceConfig{}, fmt.Errorf("max pages per run must be from 1 to 20")
 	}
 	if config.XMetricRefreshIntervalMinutes < 15 || config.XMetricRefreshIntervalMinutes > 1440 {
-		return SourceConfig{}, fmt.Errorf("X metric refresh interval must be from 15 to 1440 minutes")
+		return SourceConfig{}, fmt.Errorf("x metric refresh interval must be from 15 to 1440 minutes")
 	}
 	if config.XMetricRefreshObservationHours < 1 || config.XMetricRefreshObservationHours > 168 {
-		return SourceConfig{}, fmt.Errorf("X metric refresh observation period must be from 1 to 168 hours")
+		return SourceConfig{}, fmt.Errorf("x metric refresh observation period must be from 1 to 168 hours")
 	}
 	if config.XMetricRefreshMaxPostsPerRun < 1 || config.XMetricRefreshMaxPostsPerRun > 100 {
-		return SourceConfig{}, fmt.Errorf("X metric refresh batch must contain from 1 to 100 posts")
+		return SourceConfig{}, fmt.Errorf("x metric refresh batch must contain from 1 to 100 posts")
 	}
 	if config.XMetricRefreshDailyRequestBudget < 1 || config.XMetricRefreshDailyRequestBudget > 1440 {
-		return SourceConfig{}, fmt.Errorf("X metric refresh daily request budget must be from 1 to 1440")
+		return SourceConfig{}, fmt.Errorf("x metric refresh daily request budget must be from 1 to 1440")
 	}
 	config.BilibiliOpenID = strings.TrimSpace(config.BilibiliOpenID)
 	config.GoogleLocation = strings.ToLower(strings.TrimSpace(config.GoogleLocation))
 	config.GoogleServingConfig = strings.TrimSpace(config.GoogleServingConfig)
 	config.HackerNewsMode = HackerNewsMode(strings.ToLower(strings.TrimSpace(string(config.HackerNewsMode))))
 	if config.BilibiliOpenID != "" && !bilibiliOpenIDPattern.MatchString(config.BilibiliOpenID) {
-		return SourceConfig{}, fmt.Errorf("Bilibili OpenID is invalid")
+		return SourceConfig{}, fmt.Errorf("bilibili OpenID is invalid")
 	}
 	if !config.HackerNewsMode.Valid() {
-		return SourceConfig{}, fmt.Errorf("Hacker News mode must be new, top, or best")
+		return SourceConfig{}, fmt.Errorf("hacker News mode must be new, top, or best")
 	}
 	return config, nil
 }
@@ -640,7 +640,7 @@ func validDNSName(host string) bool {
 			return false
 		}
 		for _, character := range label {
-			if !(character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '-') {
+			if (character < 'a' || character > 'z') && (character < '0' || character > '9') && character != '-' {
 				return false
 			}
 		}
@@ -695,13 +695,14 @@ func normalizeRegions(values []string, min, max int) ([]string, error) {
 	return result, nil
 }
 
-// SortedAllowedLanguages/Regions are useful to callers constructing stable
-// preview inputs without exposing config JSON.
+// SortedAllowedLanguages returns a stable copy for preview construction.
 func (config SourceConfig) SortedAllowedLanguages() []string {
 	result := append([]string(nil), config.AllowedLanguages...)
 	sort.Strings(result)
 	return result
 }
+
+// SortedAllowedRegions returns a stable copy for preview construction.
 func (config SourceConfig) SortedAllowedRegions() []string {
 	result := append([]string(nil), config.AllowedRegions...)
 	sort.Strings(result)

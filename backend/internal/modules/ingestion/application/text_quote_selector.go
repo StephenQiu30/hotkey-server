@@ -158,7 +158,7 @@ func (service *TextQuoteSelectorService) Create(ctx context.Context, command Cre
 		return CreateTextQuoteSelectorResult{}, err
 	}
 	if err := validateTextQuoteTarget(target, command); err != nil {
-		return CreateTextQuoteSelectorResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrConflict, err)
+		return CreateTextQuoteSelectorResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrConflict, err)
 	}
 	return service.persistTextQuoteSelector(ctx, command, target, projection.Content)
 }
@@ -174,7 +174,7 @@ func (service *TextQuoteSelectorService) LocateAndCreate(ctx context.Context, co
 		return CreateTextQuoteSelectorResult{}, err
 	}
 	start := strings.Index(projection.Content, command.ExactQuote)
-	if start < 0 || strings.Index(projection.Content[start+len(command.ExactQuote):], command.ExactQuote) >= 0 {
+	if start < 0 || strings.Contains(projection.Content[start+len(command.ExactQuote):], command.ExactQuote) {
 		return CreateTextQuoteSelectorResult{}, fmt.Errorf("%w: exact quote must occur exactly once in the immutable plaintext", sharedrepository.ErrInvalidInput)
 	}
 	end := start + len(command.ExactQuote)
@@ -186,7 +186,7 @@ func (service *TextQuoteSelectorService) LocateAndCreate(ctx context.Context, co
 		DecisionAt: command.DecisionAt.UTC(),
 	}
 	if err := validateTextQuoteTarget(target, located); err != nil {
-		return CreateTextQuoteSelectorResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrConflict, err)
+		return CreateTextQuoteSelectorResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrConflict, err)
 	}
 	return service.persistTextQuoteSelector(ctx, located, target, projection.Content)
 }
@@ -220,7 +220,7 @@ func (service *TextQuoteSelectorService) persistTextQuoteSelector(ctx context.Co
 		PlaintextSHA256: command.PlaintextSHA256, NormalizationVersion: command.NormalizationVersion,
 	})
 	if err != nil {
-		return CreateTextQuoteSelectorResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return CreateTextQuoteSelectorResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	anchor := textQuoteMarkdownAnchor(target.AnchorBlocks, selector.UTF8ByteStart, selector.UTF8ByteEnd)
 	persisted, err := service.repository.PersistTextQuoteSelector(ctx, PersistTextQuoteSelectorCommand{

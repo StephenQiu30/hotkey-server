@@ -293,7 +293,7 @@ func readCompiledIntentProfileClauses(ctx context.Context, executor intentExecut
 	if err != nil {
 		return nil, mapIntentDatabaseError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []monitorapplication.CompiledIntentClauseDTO{}
 	for rows.Next() {
 		var record compiledIntentClauseRecord

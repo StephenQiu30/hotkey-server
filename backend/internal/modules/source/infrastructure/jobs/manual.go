@@ -26,7 +26,7 @@ func (activator *ManualCollectionActivator) Enqueue(ctx context.Context, command
 		return false, sharedrepository.ErrUnavailable
 	}
 	if err := command.Validate(); err != nil {
-		return false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return false, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	args := scheduler.CollectionJobArgs{
 		MonitorID: command.MonitorID, MonitorVersionID: command.ConfigVersionID,
@@ -36,7 +36,7 @@ func (activator *ManualCollectionActivator) Enqueue(ctx context.Context, command
 	}
 	encoded, err := scheduler.EncodeCollectionJobArgs(args)
 	if err != nil {
-		return false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return false, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	_, created, err := activator.jobs.Enqueue(ctx, queue.Job{
 		Kind: queue.KindCollectSource,

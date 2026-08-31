@@ -94,7 +94,7 @@ FOR UPDATE OF ec`, eventID)
 	if err != nil {
 		return nil, nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	members := make([]domain.EventMember, 0)
 	sourceIDs := make([]int64, 0)
 	for rows.Next() {

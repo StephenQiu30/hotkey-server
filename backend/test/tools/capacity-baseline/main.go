@@ -87,7 +87,7 @@ func run(parent context.Context) error {
 	if err != nil {
 		return errors.New("open PostgreSQL for capacity baseline")
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	database.SetMaxOpenConns(cfg.Concurrency + 2)
 	database.SetMaxIdleConns(cfg.Concurrency + 2)
 
@@ -248,7 +248,7 @@ func executeSample(parent context.Context, database *sql.DB, sourceID int64) (ti
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	count := 0
 	for rows.Next() {
 		var id int64

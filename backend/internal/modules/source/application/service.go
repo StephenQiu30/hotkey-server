@@ -6,7 +6,6 @@ package application
 import (
 	"context"
 	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 
@@ -14,7 +13,6 @@ import (
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
@@ -26,7 +24,7 @@ const (
 )
 
 type Dependencies struct {
-	Runtime             *database.Runtime
+	Runtime             configurationTransactions
 	Sources             domain.SourceConnectionRepository
 	MonitorUsage        domain.MonitorUsageReader
 	PublishedReferences domain.MonitorPublishedReferenceReader
@@ -35,7 +33,7 @@ type Dependencies struct {
 }
 
 type Service struct {
-	runtime             *database.Runtime
+	runtime             configurationTransactions
 	sources             domain.SourceConnectionRepository
 	monitorUsage        domain.MonitorUsageReader
 	publishedReferences domain.MonitorPublishedReferenceReader
@@ -104,7 +102,7 @@ func (service *Service) HandleBilibiliDeauthorization(ctx context.Context, webho
 		return false, sharederrors.New(sharederrors.CodeUnavailable, 503, "")
 	}
 	processed := false
-	err := service.withTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
 		created, err := repository.CreateBilibiliWebhookReceipt(ctx, webhook)
 		if err != nil {
 			return sourceWriteError(err)
@@ -159,8 +157,8 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (*domain.
 		return nil, err
 	}
 	var created domain.SourceConnection
-	err = service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err = service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		if err := service.sources.Create(ctx, &connection); err != nil {
@@ -213,8 +211,8 @@ func (service *Service) Update(ctx context.Context, input UpdateInput) (*domain.
 		return nil, domain.InvalidSourceConfiguration()
 	}
 	var changed domain.SourceConnection
-	err = service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err = service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		current, err := service.sources.LockByID(ctx, input.ID)
@@ -301,8 +299,8 @@ func (service *Service) changeEnabled(ctx context.Context, input LifecycleInput,
 		return nil, domain.SourceConnectionUnavailable()
 	}
 	var changed domain.SourceConnection
-	err := service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		current, err := service.sources.LockByID(ctx, input.ID)
@@ -358,8 +356,8 @@ func (service *Service) Archive(ctx context.Context, input LifecycleInput) (*dom
 		return nil, domain.SourceConnectionUnavailable()
 	}
 	var changed domain.SourceConnection
-	err := service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		current, err := service.sources.LockByID(ctx, input.ID)
@@ -404,8 +402,8 @@ func (service *Service) Restore(ctx context.Context, input LifecycleInput) (*dom
 		return nil, domain.SourceConnectionUnavailable()
 	}
 	var changed domain.SourceConnection
-	err := service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		current, err := service.sources.LockByID(ctx, input.ID)
@@ -557,19 +555,11 @@ func (service *Service) ensureCanRemoveSchedulableSource(ctx context.Context, so
 	return nil
 }
 
-func (service *Service) withTransaction(ctx context.Context, fn func(context.Context, database.Transaction) error) error {
+func (service *Service) withTransaction(ctx context.Context, fn func(context.Context) error) error {
 	if service == nil || service.runtime == nil {
 		return sharederrors.New(sharederrors.CodeUnavailable, 503, "")
 	}
-	return service.runtime.WithinTransaction(ctx, fn)
-}
-
-func lockConfiguration(ctx context.Context, transaction database.Transaction) error {
-	if transaction.SQL == nil {
-		return fmt.Errorf("source configuration transaction is required")
-	}
-	_, err := transaction.SQL.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, configurationAdvisoryLock)
-	return err
+	return service.runtime.RunInTransaction(ctx, fn)
 }
 
 func normalizeCreate(connection domain.SourceConnection) (domain.SourceConnection, error) {

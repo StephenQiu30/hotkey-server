@@ -416,7 +416,7 @@ func (repository *Repository) List(ctx context.Context, query domain.ListQuery) 
 		return domain.Page{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
-		return domain.Page{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Page{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	reportType, status := "", ""
 	if query.Type != nil {
@@ -427,7 +427,7 @@ func (repository *Repository) List(ctx context.Context, query domain.ListQuery) 
 	}
 	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", true, reportListFingerprint(query))
 	if err != nil {
-		return domain.Page{}, fmt.Errorf("%w: report cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Page{}, fmt.Errorf("%w: report cursor: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	rows, err := reportQueryerFor(ctx, repository.runtime).QueryContext(ctx, reportSelect+`
 WHERE deleted_at IS NULL
@@ -439,7 +439,7 @@ LIMIT $4`, reportType, status, cursor.ID, query.Limit+1)
 	if err != nil {
 		return domain.Page{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	page := domain.Page{Items: make([]domain.Report, 0, query.Limit)}
 	for rows.Next() {
 		report, err := scanReport(rows)
@@ -592,7 +592,7 @@ FROM report_items WHERE report_id = $1 ORDER BY rank,COALESCE(event_id,micro_eve
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	type itemRecord struct {
 		id   int64
 		item domain.Item
@@ -646,7 +646,7 @@ GROUP BY sentence.id ORDER BY sentence.ordinal`, reportItemID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	sentences := make([]domain.Sentence, 0)
 	for rows.Next() {
 		var sentence domain.Sentence

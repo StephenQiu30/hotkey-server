@@ -47,7 +47,8 @@ Common services exist only in the baseline; the two overrides do not repeat depe
 ```bash
 cd backend
 make openapi  # Regenerate runtime and published OpenAPI after contract changes.
-make ci       # Full backend acceptance; requires isolated PostgreSQL and Redis test services.
+make format-check lint vet build architecture  # Go static gates; no runtime services required.
+make ci       # Full tests, Race Detector, and govulncheck; requires disposable PostgreSQL and Redis.
 
 cd ../frontend
 npm run openapi:check

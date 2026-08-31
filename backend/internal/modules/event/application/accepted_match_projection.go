@@ -56,8 +56,7 @@ func (service *AcceptedMatchEventProjectionService) Project(ctx context.Context,
 		command.DocumentMatchDecisionID <= 0 || command.DocumentVersionID <= 0 {
 		return ProjectAcceptedDocumentMatchResult{}, ErrInvalidAcceptedMatchProjectionContract
 	}
-	family, err := service.families.ResolveAcceptedMatchFamily(ctx, ResolveAcceptedMatchFamilyQuery{
-		DocumentMatchDecisionID: command.DocumentMatchDecisionID, DocumentVersionID: command.DocumentVersionID})
+	family, err := service.families.ResolveAcceptedMatchFamily(ctx, ResolveAcceptedMatchFamilyQuery(command))
 	if err != nil {
 		return ProjectAcceptedDocumentMatchResult{}, fmt.Errorf("resolve accepted match family: %w", err)
 	}

@@ -1,3 +1,4 @@
+// Package clock defines the minimal time source consumed by application code.
 package clock
 
 import "time"

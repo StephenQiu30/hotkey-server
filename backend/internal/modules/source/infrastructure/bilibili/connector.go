@@ -339,7 +339,7 @@ func (connector *Connector) getCaptured(ctx context.Context, credential credenti
 	if err != nil {
 		return fetchedJSONResponse{}, temporary("request Bilibili Open Platform")
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	if err != nil || len(body) > maxResponseBodyBytes {
 		return fetchedJSONResponse{}, parse("read Bilibili response")
@@ -348,7 +348,7 @@ func (connector *Connector) getCaptured(ctx context.Context, credential credenti
 	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden:
 		return fetchedJSONResponse{}, authentication("Bilibili authorization rejected")
 	case response.StatusCode == http.StatusTooManyRequests:
-		return fetchedJSONResponse{}, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Bilibili rate limited"))
+		return fetchedJSONResponse{}, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("bilibili rate limited"))
 	case response.StatusCode >= 500:
 		return fetchedJSONResponse{}, temporary("Bilibili service unavailable")
 	case response.StatusCode != http.StatusOK:

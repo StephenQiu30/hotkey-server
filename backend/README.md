@@ -211,9 +211,11 @@ tools/                     # 构建期工具依赖
 
 业务代码保持在 `internal/`，防止被仓库外部误用；当前没有跨项目复用的公共 Go 库，因此不创建无实际职责的 `pkg/`。所有运行角色继续由 `cmd/hotkey` 的 `all`、`api`、`worker` 参数提供，不增加重复入口。
 
-`internal/shared` 不依赖 ORM、数据库驱动或 `internal/platform`；GORM CRUD 和 PostgreSQL 错误映射集中在 `internal/platform/database/repository`，业务模块的基础设施层向内依赖 shared 契约。
+`internal/shared` 不依赖 ORM、数据库驱动或 `internal/platform`；GORM CRUD 和 PostgreSQL 错误映射集中在 `internal/platform/database/repository`。Transport 与 Infrastructure 都是外层 Adapter，只能向 Application/Domain 内层依赖，彼此不得直接耦合。
 
-Alibaba 分层规范在本项目中按语言语义映射，而不是照搬 Java 目录：HTTP Transport 对应 Web/Controller，Application 对应用例 Service，Domain 保存 BO/实体/值对象与端口，Infrastructure/PostgreSQL 的未导出 Record 对应 DO，HTTP 的 RequestDTO/ResponseDTO 对应展示边界对象。Application 不引用具体 PostgreSQL Repository；适配器实现 Domain 端口，并由 `TestModuleLayersKeepInwardDependencies` 持续检查依赖方向。这样保留 Go 的包内聚性，同时满足 POJO“纯对象不携带框架/持久化细节”的核心要求。
+Alibaba 分层规范在本项目中只映射语言中立的对象边界，不照搬 Java 目录：Application Command/Query/Result/DTO 是纯 Go 用例模型，Domain 保存实体和值对象，Infrastructure/PostgreSQL 使用私有 Record，HTTP 使用明确的 RequestDTO/ResponseDTO。项目不创建全局 `controller/service/dao/mapper/pojo` 层，不使用 `Ixxx`/`Impl` 或 `utils/common` 杂物包；适配器通过显式构造函数注入消费方定义的小接口，并由架构测试持续检查依赖和命名方向。
+
+Go 代码遵循官方惯用法与 Google/Uber Go Style Guide。错误保留链时使用 `%w`，请求 Context 全链路传递，goroutine 必须可取消、可等待，服务事件使用结构化日志；跨层模型在边界显式转换，不透传数据库或第三方 SDK 类型。
 
 测试源码和纯测试 fixture 统一位于 `test/_suite`的包镜像路径；`test/runner` 在执行期间临时物化 `_test.go` 和包内 `testdata`，退出后清理，因此 `internal/` 生产树不保存纯测试资产。
 
@@ -230,8 +232,9 @@ GoLand 共享运行配置采用 [JetBrains 官方 Run/Debug 配置模型](https:
 
 ```bash
 make openapi     # 从 Swaggo 注解同步生成运行时与发布 OpenAPI
-make vet         # 静态检查
+make format-check lint vet  # gofmt、goimports、golangci-lint 与 go vet
 make test        # 单元与集成测试
+make race        # 完整测试集 Race Detector
 make build       # 构建检查
 make architecture repository  # 架构与仓库约束
 ```
@@ -244,7 +247,7 @@ export HOTKEY_TEST_REDIS_URL='redis://127.0.0.1:6379/15'
 make ci
 ```
 
-`make ci` 是本地与 GitHub Actions 共用的后端验收入口，覆盖 OpenAPI 漂移、数据库行为、测试、构建、Schema、架构边界与依赖漏洞。
+`make ci` 是本地与 GitHub Actions 共用的后端验收入口，覆盖格式/import、lint、OpenAPI 漂移、数据库行为、完整测试、Race Detector、构建、Schema、架构边界与 `govulncheck` 依赖漏洞检查。
 
 ## 项目状态
 

@@ -70,7 +70,7 @@ ORDER BY id ASC`)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	schedules := make([]domain.XMetricRefreshSchedule, 0)
 	for rows.Next() {
 		record, err := scanSourceConnection(rows)
@@ -79,7 +79,7 @@ ORDER BY id ASC`)
 		}
 		connection, err := record.sourceConnection()
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+			return nil, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 		}
 		schedule := domain.XMetricRefreshSchedule{
 			SourceConnectionID: connection.ID, SourceVersion: connection.Version,
@@ -87,7 +87,7 @@ ORDER BY id ASC`)
 			DailyRequestBudget: connection.Config.XMetricRefreshDailyRequestBudget,
 		}
 		if err := schedule.Validate(); err != nil {
-			return nil, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+			return nil, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 		}
 		schedules = append(schedules, schedule)
 	}
@@ -154,7 +154,7 @@ ORDER BY id ASC`, unique)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	contexts := make([]domain.MetricSourceContext, 0, len(unique))
 	for rows.Next() {
 		var context domain.MetricSourceContext
@@ -195,7 +195,7 @@ LIMIT $3`, cursor.AfterID, cursor.SnapshotID, limit+1)
 	if err != nil {
 		return nil, "", databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	connections := make([]domain.SourceConnection, 0, limit+1)
 	for rows.Next() {
@@ -205,7 +205,7 @@ LIMIT $3`, cursor.AfterID, cursor.SnapshotID, limit+1)
 		}
 		connection, err := record.sourceConnection()
 		if err != nil {
-			return nil, "", fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+			return nil, "", fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 		}
 		connections = append(connections, connection)
 	}
@@ -219,7 +219,7 @@ LIMIT $3`, cursor.AfterID, cursor.SnapshotID, limit+1)
 	cursor.AfterID = connections[len(connections)-1].ID
 	nextCursor, err := repository.cursorCodec.Seal("source_connection_list", cursor)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: encode source cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, "", fmt.Errorf("%w: encode source cursor: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return connections, nextCursor, nil
 }
@@ -321,7 +321,7 @@ func (repository *Repository) find(ctx context.Context, id int64, lock bool) (*d
 	}
 	connection, err := record.sourceConnection()
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		return nil, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 	}
 	return &connection, nil
 }
@@ -365,21 +365,21 @@ func uniqueSourceConnectionIDs(values []int64) []int64 {
 func encodeConfig(config domain.SourceConfig) (string, error) {
 	normalized, err := config.Normalize()
 	if err != nil {
-		return "", fmt.Errorf("%w: source config: %v", sharedrepository.ErrInvalidInput, err)
+		return "", fmt.Errorf("%w: source config: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	// SourceConfig.Map deliberately returns ordinary Go slices. Make the two
 	// empty defaults explicit here so PostgreSQL receives the design's stable
 	// JSON [] rather than Go's nil-slice JSON null (which Schema rejects).
 	encodedConfig := normalized.Map()
-	if normalized.AllowedLanguages == nil || len(normalized.AllowedLanguages) == 0 {
+	if len(normalized.AllowedLanguages) == 0 {
 		encodedConfig["allowed_languages"] = []string{}
 	}
-	if normalized.AllowedRegions == nil || len(normalized.AllowedRegions) == 0 {
+	if len(normalized.AllowedRegions) == 0 {
 		encodedConfig["allowed_regions"] = []string{}
 	}
 	encoded, err := json.Marshal(encodedConfig)
 	if err != nil {
-		return "", fmt.Errorf("%w: encode source config: %v", sharedrepository.ErrInvalidInput, err)
+		return "", fmt.Errorf("%w: encode source config: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return string(encoded), nil
 }
@@ -399,7 +399,7 @@ FOR UPDATE`, openID))
 	}
 	connection, err := record.sourceConnection()
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		return nil, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 	}
 	return &connection, nil
 }

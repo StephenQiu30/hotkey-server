@@ -45,7 +45,7 @@ ORDER BY relation.id ASC`, eventID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]application.EventIntelligenceEntity, 0)
 	for rows.Next() {
 		var item application.EventIntelligenceEntity
@@ -72,13 +72,13 @@ FROM event_claims WHERE event_id = $1 ORDER BY id ASC`, eventID)
 	for rows.Next() {
 		var item domain.Claim
 		if err := rows.Scan(&item.ID, &item.Version, &item.EventID, &item.NormalizedClaim, &item.ClaimHash, &item.Status, &item.Confidence, &item.ManualLocked); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, databaserepository.MapError(err)
 		}
 		claims = append(claims, item)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return nil, databaserepository.MapError(err)
 	}
 	if err := rows.Close(); err != nil {
@@ -101,7 +101,7 @@ FROM claim_evidences WHERE claim_id = $1 ORDER BY id ASC`, claimID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	evidence := make([]domain.ClaimEvidence, 0)
 	for rows.Next() {
 		var item domain.ClaimEvidence

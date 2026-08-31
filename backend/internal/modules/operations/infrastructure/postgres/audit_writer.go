@@ -35,7 +35,7 @@ func (writer *AuditWriter) Write(ctx context.Context, entry operationsdomain.Aud
 		return ErrTransactionRequired
 	}
 	if err := entry.Validate(); err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	before, err := marshalMetadata(entry.Before)
 	if err != nil {
@@ -78,11 +78,11 @@ func marshalMetadata(metadata map[string]any) ([]byte, error) {
 		return nil, nil
 	}
 	if err := operationsdomain.ValidateMetadata(metadata); err != nil {
-		return nil, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	encoded, err := json.Marshal(metadata)
 	if err != nil {
-		return nil, fmt.Errorf("%w: encode audit metadata: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, fmt.Errorf("%w: encode audit metadata: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return encoded, nil
 }

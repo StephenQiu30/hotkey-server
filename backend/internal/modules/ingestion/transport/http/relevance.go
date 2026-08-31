@@ -609,7 +609,7 @@ func relevanceSuggestionStatusScope(status *ingestiondomain.SuggestionStatus) st
 	return string(*status)
 }
 
-// RegisterRelevanceRoutes mounts the PLAN-009 public relevance contract. The
+// RegisterRelevanceRoutesWithCursorCodec mounts the public relevance contract. The
 // route groups make the four-role matrix structural rather than a conditional
 // hidden inside a handler; application authorization adds Analyst ownership.
 func RegisterRelevanceRoutesWithCursorCodec(router *gin.Engine, service relevanceHTTPService, authenticator httptransport.Authenticator, codec *pagination.Codec) {

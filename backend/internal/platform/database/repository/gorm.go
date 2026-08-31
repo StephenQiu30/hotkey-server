@@ -241,7 +241,7 @@ func pageLimit(limit int) (int, error) {
 
 func mapCursorError(err error) error {
 	if errors.Is(err, pagination.ErrInvalidCursor) || errors.Is(err, pagination.ErrStaleCursor) {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return err
 }

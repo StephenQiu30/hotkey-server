@@ -52,7 +52,7 @@ LIMIT $6`, query.DocumentVersionID, query.Fingerprint.ProfileVersion, query.Fing
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]ingestionapplication.ContentFamilyCandidateDTO, 0, query.Limit)
 	for rows.Next() {
 		var record contentFamilyCandidateRecord

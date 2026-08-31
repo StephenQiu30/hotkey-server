@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -37,7 +38,7 @@ func (adapter requestBoundaryAuditAdapter) WriteRequestBoundaryRejection(ctx con
 		return nil
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		return fmt.Errorf("request boundary audit context is required")
 	}
 	auditContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()

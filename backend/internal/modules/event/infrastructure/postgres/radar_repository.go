@@ -53,7 +53,7 @@ func NewRadarRepository(runtime *database.Runtime) *RadarRepository {
 // derived so the same root secret cannot validate another token type.
 func NewRadarRepositoryWithSigningSecret(runtime *database.Runtime, secret string) (*RadarRepository, error) {
 	if len([]byte(strings.TrimSpace(secret))) < sha256.Size {
-		return nil, fmt.Errorf("Radar cursor signing secret must be at least %d bytes", sha256.Size)
+		return nil, fmt.Errorf("radar cursor signing secret must be at least %d bytes", sha256.Size)
 	}
 	return newRadarRepository(runtime, []byte(secret)), nil
 }
@@ -77,20 +77,20 @@ func (repository *RadarRepository) ListRadar(ctx context.Context, query domain.R
 	if query.Cursor != "" {
 		cursor, err = decodeRadarCursor(query.Cursor, repository.cursorSigningKey)
 		if err != nil {
-			return domain.RadarPage{}, fmt.Errorf("%w: Radar cursor: %v", sharedrepository.ErrInvalidInput, err)
+			return domain.RadarPage{}, fmt.Errorf("%w: Radar cursor: %w", sharedrepository.ErrInvalidInput, err)
 		}
 		query.AsOf = cursor.AsOf.UTC()
 	}
 	if err := query.Validate(); err != nil {
-		return domain.RadarPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.RadarPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	shapeHash, err := query.ShapeHash()
 	if err != nil {
-		return domain.RadarPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.RadarPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	if query.Cursor != "" {
 		if err := cursor.ValidateForAt(query, now); err != nil {
-			return domain.RadarPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+			return domain.RadarPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 		}
 	}
 	if query.MonitorID != nil {
@@ -127,7 +127,7 @@ func (repository *RadarRepository) listInitialRadarPage(ctx context.Context, que
 	}
 	page.NextCursor, err = encodeRadarCursor(cursor, repository.cursorSigningKey)
 	if err != nil {
-		return domain.RadarPage{}, fmt.Errorf("%w: encode Radar cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.RadarPage{}, fmt.Errorf("%w: encode Radar cursor: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return page, nil
 }
@@ -169,7 +169,7 @@ func (repository *RadarRepository) listFrozenRadarPage(ctx context.Context, quer
 	}
 	page.NextCursor, err = encodeRadarCursor(next, repository.cursorSigningKey)
 	if err != nil {
-		return domain.RadarPage{}, fmt.Errorf("%w: encode Radar cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.RadarPage{}, fmt.Errorf("%w: encode Radar cursor: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return page, nil
 }
@@ -180,7 +180,7 @@ func (repository *RadarRepository) queryRadar(ctx context.Context, query domain.
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]domain.RadarEvent, 0, limit)
 	for rows.Next() {
 		item, err := scanRadarEvent(rows, query.Sort)

@@ -17,20 +17,20 @@ func MapError(err error) error {
 		return nil
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrNotFound, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrNotFound, err)
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrUnavailable, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrUnavailable, err)
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505", "40001":
-			return fmt.Errorf("%w: %v", sharedrepository.ErrConflict, err)
+			return fmt.Errorf("%w: %w", sharedrepository.ErrConflict, err)
 		case "23503", "23514":
-			return fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+			return fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 		case "57014":
-			return fmt.Errorf("%w: %v", sharedrepository.ErrUnavailable, err)
+			return fmt.Errorf("%w: %w", sharedrepository.ErrUnavailable, err)
 		}
 	}
 	return err

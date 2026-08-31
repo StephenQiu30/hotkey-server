@@ -168,7 +168,7 @@ func runDecisionQualityCommand(ctx context.Context, cfg config.Config, args []st
 		if serviceError != nil {
 			return serviceError
 		}
-		persistence := operationsapplication.PersistDecisionQualityEvaluationResult{}
+		var persistence operationsapplication.PersistDecisionQualityEvaluationResult
 		response.Evaluation, persistence, err = service.Evaluate(ctx, dataset, *actorUserID, *activate)
 		if err != nil {
 			return err

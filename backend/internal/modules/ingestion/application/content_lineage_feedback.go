@@ -171,9 +171,10 @@ func (service *ContentLineageFeedbackService) Review(ctx context.Context, comman
 func contentLineageFeedbackResult(command ReviewContentLineageCommand) (string, *int64, *string, error) {
 	result := ingestiondomain.ContentRelationUnrelated
 	var override *string
-	if command.FeedbackType == "duplicate" {
+	switch command.FeedbackType {
+	case "duplicate":
 		result = ingestiondomain.ContentRelationExactCopy
-	} else if command.FeedbackType == "relation_override" {
+	case "relation_override":
 		candidate := ingestiondomain.ContentRelation(strings.TrimSpace(command.RelationOverride))
 		if !candidate.Valid() {
 			return "", nil, nil, ErrInvalidContentFamilyContract

@@ -18,14 +18,14 @@ type XMetricRefreshScheduler struct {
 
 func NewXMetricRefreshScheduler(reader sourcedomain.XMetricRefreshScheduleReader, jobs scheduler.Enqueuer) (*XMetricRefreshScheduler, error) {
 	if reader == nil || jobs == nil {
-		return nil, fmt.Errorf("X metric refresh scheduler dependencies are required")
+		return nil, fmt.Errorf("x metric refresh scheduler dependencies are required")
 	}
 	return &XMetricRefreshScheduler{reader: reader, jobs: jobs}, nil
 }
 
 func (schedulerService *XMetricRefreshScheduler) RunOnce(ctx context.Context, now time.Time) (int, error) {
 	if schedulerService == nil || schedulerService.reader == nil || schedulerService.jobs == nil || now.IsZero() {
-		return 0, fmt.Errorf("X metric refresh scheduler is not initialized")
+		return 0, fmt.Errorf("x metric refresh scheduler is not initialized")
 	}
 	schedules, err := schedulerService.reader.ListXMetricRefreshSchedules(ctx)
 	if err != nil {
@@ -55,7 +55,7 @@ func (schedulerService *XMetricRefreshScheduler) RunOnce(ctx context.Context, no
 
 func (schedulerService *XMetricRefreshScheduler) Run(ctx context.Context, interval time.Duration) error {
 	if interval <= 0 {
-		return fmt.Errorf("X metric refresh scheduler interval must be positive")
+		return fmt.Errorf("x metric refresh scheduler interval must be positive")
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -96,7 +96,7 @@ type XMetricRefreshHandler struct{ service XMetricRefreshUseCase }
 
 func NewXMetricRefreshHandler(service XMetricRefreshUseCase) (*XMetricRefreshHandler, error) {
 	if service == nil {
-		return nil, fmt.Errorf("X metric refresh handler service is required")
+		return nil, fmt.Errorf("x metric refresh handler service is required")
 	}
 	return &XMetricRefreshHandler{service: service}, nil
 }

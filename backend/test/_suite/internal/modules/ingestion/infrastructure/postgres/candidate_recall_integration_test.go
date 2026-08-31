@@ -268,7 +268,7 @@ LIMIT 12`, []any{[]string{"openai"}}},
 			for rows.Next() {
 				var line string
 				if err := rows.Scan(&line); err != nil {
-					_ = rows.Close()
+					rows.Close()
 					return err
 				}
 				*item.plan = append(*item.plan, line)

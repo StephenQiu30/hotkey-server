@@ -39,7 +39,7 @@ const (
 const maximumShadowQualitySamples = 500
 
 var (
-	ErrInvalidShadowQualityDataset = errors.New("Agent Shadow quality dataset is invalid")
+	ErrInvalidShadowQualityDataset = errors.New("agent shadow quality dataset is invalid")
 	shadowQualityIDPattern         = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,128}$`)
 )
 

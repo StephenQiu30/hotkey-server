@@ -95,7 +95,7 @@ func registerPersistentWorkerLifecycle(lifecycle fx.Lifecycle, runner workerRunn
 			if _, err := runner.ReclaimStale(ctx, workerLeaseTimeout(cfg)); err != nil {
 				return err
 			}
-			runCtx, stop := context.WithCancel(context.Background())
+			runCtx, stop := context.WithCancel(context.WithoutCancel(ctx))
 			cancel = stop
 			for range workerConcurrency(cfg) {
 				workers.Add(1)
@@ -133,8 +133,8 @@ func registerCollectionSchedulerLifecycle(lifecycle fx.Lifecycle, runner collect
 	var cancel context.CancelFunc
 	var done chan struct{}
 	lifecycle.Append(fx.Hook{
-		OnStart: func(context.Context) error {
-			runCtx, stop := context.WithCancel(context.Background())
+		OnStart: func(ctx context.Context) error {
+			runCtx, stop := context.WithCancel(context.WithoutCancel(ctx))
 			cancel = stop
 			done = make(chan struct{})
 			go func() {
@@ -166,8 +166,8 @@ func registerXMetricRefreshSchedulerLifecycle(lifecycle fx.Lifecycle, runner xMe
 	var cancel context.CancelFunc
 	var done chan struct{}
 	lifecycle.Append(fx.Hook{
-		OnStart: func(context.Context) error {
-			runCtx, stop := context.WithCancel(context.Background())
+		OnStart: func(ctx context.Context) error {
+			runCtx, stop := context.WithCancel(context.WithoutCancel(ctx))
 			cancel = stop
 			done = make(chan struct{})
 			go func() {
@@ -205,8 +205,8 @@ func registerNotificationEmailDispatcherLifecycle(lifecycle fx.Lifecycle, dispat
 		interval = time.Second
 	}
 	lifecycle.Append(fx.Hook{
-		OnStart: func(context.Context) error {
-			runContext, stop := context.WithCancel(context.Background())
+		OnStart: func(ctx context.Context) error {
+			runContext, stop := context.WithCancel(context.WithoutCancel(ctx))
 			cancel, done = stop, make(chan struct{})
 			go func() {
 				defer close(done)

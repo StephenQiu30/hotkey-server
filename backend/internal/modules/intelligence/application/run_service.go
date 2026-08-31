@@ -288,7 +288,9 @@ func (service *RunService) retryOrFail(ctx context.Context, runID int64, profile
 		delay = 0
 	}
 	if err := service.sleep(ctx, delay); err != nil {
-		_ = service.fail(context.Background(), runID, code)
+		failureContext, cancelFailure := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancelFailure()
+		_ = service.fail(failureContext, runID, code)
 		return domain.NewError(code)
 	}
 	return nil

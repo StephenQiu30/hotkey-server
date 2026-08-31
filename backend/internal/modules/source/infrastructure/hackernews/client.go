@@ -1,3 +1,4 @@
+// Package hackernews implements the bounded Hacker News source adapter.
 package hackernews
 
 import (
@@ -21,7 +22,7 @@ const maxRedirects = 3
 
 var (
 	errUnsafeDestination = errors.New("unsafe Hacker News destination")
-	errRedirectLimit     = errors.New("Hacker News redirect limit exceeded")
+	errRedirectLimit     = errors.New("hacker news redirect limit exceeded")
 )
 
 type clientOptions struct {
@@ -109,7 +110,7 @@ func (client *client) get(ctx context.Context, path string, byteBudget *response
 		var quota requestQuotaError
 		if errors.As(err, &quota) {
 			resetAt := quota.resetAt.UTC()
-			return fetchedJSONResponse{}, &resetAt, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Hacker News daily request quota exceeded"))
+			return fetchedJSONResponse{}, &resetAt, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("hacker news daily request quota exceeded"))
 		}
 		return fetchedJSONResponse{}, nil, requestError(err)
 	}
@@ -118,12 +119,12 @@ func (client *client) get(ctx context.Context, path string, byteBudget *response
 	closeErr := response.Body.Close()
 	if readErr != nil || closeErr != nil {
 		if errors.Is(readErr, errResponseByteLimit) {
-			return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("Hacker News response exceeds cumulative byte limit"))
+			return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("hacker News response exceeds cumulative byte limit"))
 		}
 		if errors.Is(readErr, sourcenet.ErrResponseBodyRead) || errors.Is(readErr, context.Canceled) || closeErr != nil {
 			return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("read Hacker News response"))
 		}
-		return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("Hacker News compressed response is not permitted"))
+		return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("compressed Hacker News response is not permitted"))
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		status := response.StatusCode
@@ -142,22 +143,22 @@ func sameOfficialHost(endpoint, candidate *url.URL) bool {
 
 func requestError(err error) error {
 	if errors.Is(err, errUnsafeDestination) || errors.Is(err, errRedirectLimit) {
-		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("Hacker News destination is not permitted"))
+		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("hacker News destination is not permitted"))
 	}
-	return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("Hacker News request failed"))
+	return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("hacker News request failed"))
 }
 
 func statusError(status int) error {
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("Hacker News authentication failed"))
+		return domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("hacker News authentication failed"))
 	case http.StatusTooManyRequests:
-		return domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Hacker News rate limited"))
+		return domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("hacker News rate limited"))
 	}
 	if status >= http.StatusInternalServerError {
-		return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("Hacker News upstream unavailable"))
+		return domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("hacker News upstream unavailable"))
 	}
-	return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("Hacker News upstream rejected request"))
+	return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("hacker News upstream rejected request"))
 }
 
 func retryAfter(value string, now time.Time) *time.Time {

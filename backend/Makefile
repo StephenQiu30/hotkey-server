@@ -1,8 +1,10 @@
 GO := go
+GOIMPORTS ?= goimports
+GOLANGCI_LINT ?= golangci-lint
 SWAG := $(GO) run github.com/swaggo/swag/cmd/swag
 OPENAPI_EXCLUDE := internal/modules/agentaccess,internal/modules/alert,internal/modules/delivery/transport/http,internal/modules/event/transport/http/handler.go
 
-.PHONY: test-env minio-test-env openapi openapi-check vet test ci-test worker-recovery-acceptance river-fault-rehearsal-acceptance retention-rehearsal-acceptance m4-fault-recovery-acceptance joint-recovery-acceptance repeated-restore-rehearsal-acceptance rc-candidate-assessment runbook-dry-run-acceptance release-manifest-acceptance source-resource-limit-acceptance source-admission-matrix-acceptance source-management-audit-acceptance source-live-smoke request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-core-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-vulnerability ci
+.PHONY: test-env minio-test-env format format-check lint openapi openapi-check vet test race ci-test worker-recovery-acceptance river-fault-rehearsal-acceptance retention-rehearsal-acceptance m4-fault-recovery-acceptance joint-recovery-acceptance repeated-restore-rehearsal-acceptance rc-candidate-assessment runbook-dry-run-acceptance release-manifest-acceptance source-resource-limit-acceptance source-admission-matrix-acceptance source-management-audit-acceptance source-live-smoke request-boundary-acceptance monitor-publication-acceptance agent-skill-contract-acceptance agent-degradation-acceptance agent-capacity-baseline event-governance-role-acceptance event-semantic-separation-acceptance notification-convergence-acceptance report-publication-acceptance secret-rotation-core-acceptance secret-rotation-acceptance observability-cardinality-acceptance observability-alert-acceptance build architecture repository database-runtime schema capacity-fixture capacity-baseline collection-capacity-fixture collection-capacity-baseline search-capacity-fixture search-capacity-baseline codex-capacity-baseline recovery-evidence vulnerability ci-static ci-runtime ci-race ci-vulnerability ci
 
 test-env:
 	@sh test/tools/validate-test-environment.sh
@@ -12,6 +14,21 @@ minio-test-env:
 	@test -n "$(HOTKEY_TEST_MINIO_ACCESS_KEY)" || { printf '%s\n' 'HOTKEY_TEST_MINIO_ACCESS_KEY is required for Worker recovery acceptance' >&2; exit 1; }
 	@test -n "$(HOTKEY_TEST_MINIO_SECRET_KEY)" || { printf '%s\n' 'HOTKEY_TEST_MINIO_SECRET_KEY is required for Worker recovery acceptance' >&2; exit 1; }
 	@test -n "$(HOTKEY_TEST_MINIO_BUCKET)" || { printf '%s\n' 'HOTKEY_TEST_MINIO_BUCKET is required for Worker recovery acceptance' >&2; exit 1; }
+
+format:
+	$(GOIMPORTS) -w .
+
+format-check:
+	@unformatted="$$(gofmt -l .)"; \
+		test -z "$$unformatted" || { printf '%s\n%s\n' 'gofmt found unformatted Go files:' "$$unformatted" >&2; exit 1; }
+	@command -v $(GOIMPORTS) >/dev/null 2>&1 || { printf '%s\n' 'goimports is required on PATH' >&2; exit 1; }
+	@unformatted="$$( $(GOIMPORTS) -l . )"; \
+		test -z "$$unformatted" || { printf '%s\n%s\n' 'goimports found files with non-canonical imports:' "$$unformatted" >&2; exit 1; }
+
+lint:
+	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { printf '%s\n' 'golangci-lint is required on PATH' >&2; exit 1; }
+	$(GOLANGCI_LINT) config verify
+	$(GOLANGCI_LINT) run ./...
 
 openapi:
 	$(SWAG) init --generalInfo cmd/hotkey/main.go --parseInternal --tags '!events,!radar' --exclude "$(OPENAPI_EXCLUDE)" --output openapi --outputTypes go --packageName openapi
@@ -26,6 +43,9 @@ vet:
 
 test: test-env
 	$(GO) run ./test/runner test -p=1 ./... -count=1
+
+race: test-env
+	$(GO) run ./test/runner test -race -p=1 ./... -count=1
 
 # database-runtime already executes these exact packages against the disposable
 # database. PostgreSQL integration tests create a disposable database per test,
@@ -286,10 +306,12 @@ release-manifest-acceptance:
 vulnerability:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 
-ci-static: openapi-check vet build architecture repository
+ci-static: openapi-check format-check vet lint build architecture repository
 
 ci-runtime: database-runtime schema ci-test
 
+ci-race: race
+
 ci-vulnerability: vulnerability
 
-ci: ci-static ci-runtime ci-vulnerability
+ci: ci-static ci-runtime ci-race ci-vulnerability

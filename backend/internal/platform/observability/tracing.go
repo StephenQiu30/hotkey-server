@@ -22,11 +22,17 @@ type Telemetry struct {
 }
 
 func NewTelemetry(cfg config.Config) (*Telemetry, error) {
+	return NewTelemetryWithContext(context.Background(), cfg)
+}
+
+// NewTelemetryWithContext creates exporters within the caller-owned lifecycle.
+// Long-running tools use it so exporter setup cannot outlive their run context.
+func NewTelemetryWithContext(ctx context.Context, cfg config.Config) (*Telemetry, error) {
 	endpoint := strings.TrimSpace(cfg.OTLPHTTPEndpoint)
 	if endpoint == "" {
 		return newTelemetry(nil)
 	}
-	exporter, err := otlptracehttp.New(context.Background(), otlptracehttp.WithEndpointURL(endpoint))
+	exporter, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(endpoint))
 	if err != nil {
 		return nil, err
 	}

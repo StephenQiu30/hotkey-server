@@ -369,7 +369,7 @@ func (connector *Connector) get(ctx context.Context, target *url.URL, etag, last
 		return nil, nil, errUnsafeDestination
 	}
 	redirectChain := []string{}
-	request = request.WithContext(context.WithValue(request.Context(), redirectTraceContextKey{}, &redirectChain))
+	request = request.WithContext(context.WithValue(ctx, redirectTraceContextKey{}, &redirectChain))
 	request.Header.Set("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9")
 	request.Header.Set("Accept-Encoding", "gzip")
 	if strings.TrimSpace(etag) != "" {

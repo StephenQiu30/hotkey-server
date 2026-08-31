@@ -1,3 +1,4 @@
+// Package observability owns metrics and tracing adapters.
 package observability
 
 import (

@@ -106,7 +106,7 @@ func NewExpansionProvenance(source ExpansionSource, reason, modelVersion, prompt
 	}
 	normalizedReason, err := normalizeIntentValue(reason, 1000, "expansion reason")
 	if err != nil {
-		return ExpansionProvenance{}, fmt.Errorf("%w: %v", ErrInvalidExpansionCandidate, err)
+		return ExpansionProvenance{}, fmt.Errorf("%w: %w", ErrInvalidExpansionCandidate, err)
 	}
 	modelVersion = normalizeText(modelVersion)
 	promptVersion = normalizeText(promptVersion)
@@ -191,11 +191,11 @@ func NewExpansionCandidate(id, value string, provenance ExpansionProvenance, ass
 func RestoreExpansionCandidate(id, value string, provenance ExpansionProvenance, assessment ExpansionAssessment, status ExpansionApprovalStatus, review *ExpansionReview) (ExpansionCandidate, error) {
 	normalizedID, err := normalizeIntentIdentifier(id, 128, "expansion candidate id")
 	if err != nil {
-		return ExpansionCandidate{}, fmt.Errorf("%w: %v", ErrInvalidExpansionCandidate, err)
+		return ExpansionCandidate{}, fmt.Errorf("%w: %w", ErrInvalidExpansionCandidate, err)
 	}
 	normalizedValue, err := normalizeIntentValue(value, 160, "expansion candidate value")
 	if err != nil {
-		return ExpansionCandidate{}, fmt.Errorf("%w: %v", ErrInvalidExpansionCandidate, err)
+		return ExpansionCandidate{}, fmt.Errorf("%w: %w", ErrInvalidExpansionCandidate, err)
 	}
 	if !provenance.source.Valid() || provenance.reason == "" || !validIntentSHA256(provenance.inputHash) ||
 		!assessment.risk.Valid() || math.IsNaN(assessment.similarity) || math.IsInf(assessment.similarity, 0) || assessment.similarity < 0 || assessment.similarity > 1 || !status.Valid() {

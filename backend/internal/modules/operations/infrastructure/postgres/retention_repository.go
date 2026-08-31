@@ -40,7 +40,7 @@ func (repository *RetentionRepository) List(ctx context.Context) ([]operationsdo
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]operationsdomain.RetentionPolicy, 0)
 	for rows.Next() {
 		var policy operationsdomain.RetentionPolicy
@@ -86,7 +86,7 @@ func (repository *RetentionRepository) CreateRun(ctx context.Context, policy ope
 	}
 	candidateHash, err := operationsdomain.RetentionCandidateHash(policy, cutoff, batchSize, candidateIDs)
 	if err != nil {
-		return operationsdomain.RetentionRun{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return operationsdomain.RetentionRun{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	run := operationsdomain.RetentionRun{
 		PolicyID: policy.ID, PolicyVersion: policy.Version, DataClass: policy.DataClass, Cutoff: cutoff.UTC(), BatchSize: batchSize,
@@ -285,7 +285,7 @@ func (repository *RetentionRepository) candidateIDs(ctx context.Context, policy 
 	if err != nil {
 		return nil, false, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ids := make([]int64, 0, batchSize+1)
 	for rows.Next() {
 		var id int64
@@ -309,7 +309,7 @@ func (repository *RetentionRepository) runCandidateIDs(ctx context.Context, runI
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ids := make([]int64, 0)
 	for rows.Next() {
 		var id int64
@@ -331,7 +331,7 @@ func (repository *RetentionRepository) lockedRunCandidateIDs(ctx context.Context
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ids := make([]int64, 0, run.CandidateCount)
 	for rows.Next() {
 		var id int64
@@ -418,7 +418,7 @@ func retentionCandidate(policy operationsdomain.RetentionPolicy) (table, predica
 
 func validateRetentionRun(policy operationsdomain.RetentionPolicy, cutoff time.Time, batchSize int) error {
 	if err := policy.Validate(); err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	if cutoff.IsZero() || batchSize < 1 || batchSize > 1000 {
 		return fmt.Errorf("%w: invalid retention boundary", sharedrepository.ErrInvalidInput)

@@ -53,7 +53,7 @@ func (evaluator *IntentPreviewEvaluator) EvaluatePreview(ctx context.Context, ta
 	if !sameIntentPreviewTask(prepared.Preview.Task, task) {
 		return monitorapplication.IntentPreviewDTO{}, fmt.Errorf("%w: prepared preview identity differs", ErrIntentPreviewProcessorUnavailable)
 	}
-	compiled, err := evaluator.compiler.CompilePreview(ctx, monitorapplication.CompilePreviewIntentProfileCommand{Preview: prepared.Preview})
+	compiled, err := evaluator.compiler.CompilePreview(ctx, monitorapplication.CompilePreviewIntentProfileCommand(prepared))
 	if err != nil {
 		return monitorapplication.IntentPreviewDTO{}, err
 	}

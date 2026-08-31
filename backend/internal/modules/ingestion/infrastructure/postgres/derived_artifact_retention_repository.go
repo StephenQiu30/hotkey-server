@@ -122,7 +122,7 @@ FROM derived_artifact_deletion_audits WHERE derived_artifact_id=$1`, candidate.A
 				return databaserepository.MapError(err)
 			}
 			if err := candidate.Validate(at); err != nil {
-				return fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+				return fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 			}
 			if _, err := transaction.SQL.ExecContext(transactionCtx, `
 INSERT INTO derived_artifact_deletion_audits (

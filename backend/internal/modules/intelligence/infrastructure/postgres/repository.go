@@ -69,9 +69,12 @@ RETURNING id, version, created_at, updated_at`,
 	return nil
 }
 
-// Compatibility aliases keep adapter-focused tests source compatible while
-// the canonical plain contracts and ports live in Domain.
+// ClaimInput keeps adapter-focused tests source compatible while the canonical
+// plain contract lives in Domain.
 type ClaimInput = intelligencedomain.RunClaim
+
+// ClaimResult keeps adapter-focused tests source compatible while the
+// canonical plain result lives in Domain.
 type ClaimResult = intelligencedomain.ClaimedRun
 
 func (repository *Repository) Claim(ctx context.Context, input ClaimInput) (ClaimResult, error) {

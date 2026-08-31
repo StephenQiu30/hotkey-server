@@ -128,7 +128,7 @@ ORDER BY selected_scans.latest_run_id DESC, source_connection.id ASC, collection
 	if err != nil {
 		return sourcedomain.MonitorScanSourcePage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items := make([]sourcedomain.MonitorScanSource, 0, limit)
 	for rows.Next() {
@@ -197,7 +197,7 @@ LIMIT $4`, cursor.MonitorID, cursor.SnapshotRunID, cursor.AfterRunID, limit)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]monitorScanBoundary, 0, limit)
 	for rows.Next() {
 		var item monitorScanBoundary

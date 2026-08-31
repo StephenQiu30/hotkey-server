@@ -106,7 +106,7 @@ func (resolver *dohResolver) lookup(ctx context.Context, name dnsmessage.Name, r
 	if err != nil {
 		return nil, errors.New("perform source DNS-over-HTTPS request")
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("source DNS-over-HTTPS returned status %d", response.StatusCode)
 	}

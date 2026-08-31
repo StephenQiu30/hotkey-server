@@ -243,7 +243,7 @@ func rightsDecisionMatchesRequest(request RecordRightsDecisionRepositoryDTO, can
 func validateRightsPolicyDTO(policy RightsPolicyDTO) error {
 	_, err := rightsPolicyEntity(policy)
 	if err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 	}
 	return nil
 }
@@ -270,7 +270,7 @@ func validateRightsDecisionDTO(decision RightsDecisionDTO) error {
 	}
 	_, err := rightsDecisionEntity(decision)
 	if err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 	}
 	return nil
 }
@@ -451,7 +451,7 @@ func validRightsManagementReasonCodes(values []string) bool {
 			return false
 		}
 		for _, character := range value {
-			if !(character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '_' || character == '-' || character == ':') {
+			if (character < 'a' || character > 'z') && (character < '0' || character > '9') && character != '_' && character != '-' && character != ':' {
 				return false
 			}
 		}

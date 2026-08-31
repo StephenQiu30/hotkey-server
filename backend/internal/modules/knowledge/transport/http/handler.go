@@ -84,12 +84,12 @@ func (handler *Handler) GetDocument(c *gin.Context) error {
 		return err
 	}
 	reader, ok := handler.reader.(interface {
-		GetDocumentContext(context.Context, int64) (knowledgedomain.Document, error)
+		GetDocument(context.Context, int64) (knowledgedomain.Document, error)
 	})
 	if !ok {
 		return knowledgeError(sharedrepository.ErrUnavailable)
 	}
-	document, err := reader.GetDocumentContext(c.Request.Context(), id)
+	document, err := reader.GetDocument(c.Request.Context(), id)
 	if err != nil {
 		return knowledgeError(err)
 	}
@@ -198,7 +198,7 @@ func (handler *Handler) Create(c *gin.Context) error {
 	if err := c.ShouldBindJSON(&request); err != nil {
 		return sharederrors.New(sharederrors.CodeInvalidRequest, stdhttp.StatusBadRequest, "invalid knowledge proposal")
 	}
-	proposal, err := handler.proposals.CreateContext(c.Request.Context(), request.DocumentID, request.BaseRevision, request.BaseHash, request.Frontmatter, request.Body, request.Reason)
+	proposal, err := handler.proposals.Create(c.Request.Context(), request.DocumentID, request.BaseRevision, request.BaseHash, request.Frontmatter, request.Body, request.Reason)
 	if err != nil {
 		return knowledgeError(err)
 	}

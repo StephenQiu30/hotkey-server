@@ -164,15 +164,12 @@ func (service *MicroEventService) Assign(ctx context.Context, command AssignCont
 		command.ClusteringProfileVersion != CanonicalMicroEventClusteringProfileVersion {
 		return AssignContentFamilyToMicroEventResult{}, ErrInvalidMicroEventContract
 	}
-	target, err := service.repository.ReadMicroEventAssignmentTarget(ctx, ReadMicroEventAssignmentTargetQuery{
-		ContentFamilyID: command.ContentFamilyID, DocumentMatchDecisionID: command.DocumentMatchDecisionID,
-		ClusteringProfileVersion: command.ClusteringProfileVersion,
-	})
+	target, err := service.repository.ReadMicroEventAssignmentTarget(ctx, ReadMicroEventAssignmentTargetQuery(command))
 	if err != nil {
 		return AssignContentFamilyToMicroEventResult{}, fmt.Errorf("read micro-event assignment target: %w", err)
 	}
 	if err := validateMicroEventTarget(target, command); err != nil {
-		return AssignContentFamilyToMicroEventResult{}, fmt.Errorf("%w: %v", ErrInvalidMicroEventContract, err)
+		return AssignContentFamilyToMicroEventResult{}, fmt.Errorf("%w: %w", ErrInvalidMicroEventContract, err)
 	}
 	if target.ExistingAssignment != nil {
 		value := target.ExistingAssignment
@@ -195,7 +192,7 @@ func (service *MicroEventService) Assign(ctx context.Context, command AssignCont
 		ContentFamilyID: target.ContentFamilyID, Candidates: candidates, ProfileVersion: command.ClusteringProfileVersion,
 	})
 	if err != nil {
-		return AssignContentFamilyToMicroEventResult{}, fmt.Errorf("%w: %v", ErrInvalidMicroEventContract, err)
+		return AssignContentFamilyToMicroEventResult{}, fmt.Errorf("%w: %w", ErrInvalidMicroEventContract, err)
 	}
 	if decision.Action == eventdomain.MicroEventActionJoin && service.qualityProfiles != nil {
 		active, readErr := service.qualityProfiles.IsDecisionQualityProfileActive(ctx, "micro_event_clustering", command.ClusteringProfileVersion)
@@ -232,7 +229,7 @@ func (service *MicroEventService) Assign(ctx context.Context, command AssignCont
 	if !microEventReceiptMatches(persisted, target, mutation) {
 		return AssignContentFamilyToMicroEventResult{}, fmt.Errorf("%w: micro-event receipt changed", ErrInvalidMicroEventContract)
 	}
-	return AssignContentFamilyToMicroEventResult{Event: persisted.Event, Decision: persisted.Decision}, nil
+	return AssignContentFamilyToMicroEventResult(persisted), nil
 }
 
 func microEventExistingAssignmentMatches(value CommitMicroEventMembershipResult, target MicroEventAssignmentTargetDTO, profileVersion string) bool {

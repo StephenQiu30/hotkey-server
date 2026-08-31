@@ -238,7 +238,7 @@ WHERE revision_id=$1 ORDER BY ordinal`, revision.ID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]monitorapplication.IntentClauseDTO, 0)
 	for rows.Next() {
 		var item monitorapplication.IntentClauseDTO
@@ -257,7 +257,7 @@ WHERE revision_id=$1 ORDER BY ordinal`, revision.ID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	type entityRecord struct {
 		ID  int64
 		DTO monitorapplication.IntentEntityDTO
@@ -285,7 +285,7 @@ WHERE revision_id=$1 ORDER BY ordinal`, revision.ID)
 		for aliasRows.Next() {
 			var alias string
 			if err := aliasRows.Scan(&alias); err != nil {
-				aliasRows.Close()
+				_ = aliasRows.Close()
 				return nil, err
 			}
 			record.DTO.Aliases = append(record.DTO.Aliases, alias)
@@ -304,7 +304,7 @@ SELECT label,example_text FROM monitor_intent_examples WHERE revision_id=$1 ORDE
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]monitorapplication.IntentExampleDTO, 0)
 	for rows.Next() {
 		var item monitorapplication.IntentExampleDTO
@@ -327,7 +327,7 @@ WHERE dc.revision_id=$1 ORDER BY dc.ordinal`, revision.ID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]monitorapplication.ExpansionCandidateDTO, 0)
 	for rows.Next() {
 		var record intentDraftCandidateRecord

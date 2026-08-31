@@ -59,7 +59,7 @@ func (service *EmbeddingQueryService) ActiveContent(ctx context.Context, content
 }
 
 func (service *EmbeddingQueryService) NearestMonitors(ctx context.Context, embedding ActiveEmbedding, limit int) ([]EmbeddingNeighbor, error) {
-	if service == nil || service.repository == nil || !embedding.EmbeddingSpace.valid() || limit < 1 || limit > 12 {
+	if service == nil || service.repository == nil || !embedding.valid() || limit < 1 || limit > 12 {
 		return nil, domain.NewError(domain.CodeAIModelProfileInvalid)
 	}
 	if err := domain.ValidateEmbedding(embedding.Vector); err != nil {

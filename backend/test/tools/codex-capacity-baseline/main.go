@@ -122,7 +122,7 @@ func run(parent context.Context) error {
 		return err
 	}
 	if status == "failed" {
-		return errors.New("Codex capacity calibration completed with failed samples")
+		return errors.New("codex capacity calibration completed with failed samples")
 	}
 	fmt.Printf("Codex capacity evidence written to %s (status=%s; approval remains required)\n", cfg.Output, status)
 	return nil

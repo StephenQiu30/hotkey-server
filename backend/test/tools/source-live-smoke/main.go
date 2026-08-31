@@ -197,7 +197,7 @@ func validateBaseURL(raw string) (*url.URL, error) {
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
 		return nil, errors.New("HOTKEY_SOURCE_LIVE_SMOKE_BASE_URL must be an origin URL")
 	}
-	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && isLoopbackHost(parsed.Hostname())) {
+	if parsed.Scheme != "https" && (parsed.Scheme != "http" || !isLoopbackHost(parsed.Hostname())) {
 		return nil, errors.New("HOTKEY_SOURCE_LIVE_SMOKE_BASE_URL must use HTTPS or loopback HTTP")
 	}
 	parsed.Path = "/"
@@ -397,7 +397,7 @@ func requestJSON(ctx context.Context, client *http.Client, cfg config, method, p
 	if err != nil {
 		return &codedError{code: "request_failed"}
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	limited, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
 		return &codedError{code: "response_read_failed"}

@@ -3,6 +3,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -54,13 +56,14 @@ func run(root string, args []string, goCommand string) (status int) {
 		}
 	}()
 
-	command := exec.Command(goCommand, args...)
+	command := exec.CommandContext(context.Background(), goCommand, args...)
 	command.Dir = root
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	command.Env = append(os.Environ(), "HOTKEY_TEST_SUITE_ACTIVE=1")
 	if err := command.Run(); err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) {
 			return exitError.ExitCode()
 		} else {
 			fmt.Fprintln(os.Stderr, err)
@@ -99,7 +102,7 @@ func materialize(root, suiteRoot string, entries []string) (links []string, err 
 			return
 		}
 		if cleanupErr := cleanup(root, links); cleanupErr != nil {
-			err = fmt.Errorf("%w; %v", err, cleanupErr)
+			err = fmt.Errorf("%w; %w", err, cleanupErr)
 		}
 	}()
 	for _, source := range entries {

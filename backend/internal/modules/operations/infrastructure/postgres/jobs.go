@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -54,7 +55,7 @@ func (repository *JobRepository) ListJobs(ctx context.Context, query operationsd
 		return operationsdomain.JobPage{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
-		return operationsdomain.JobPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return operationsdomain.JobPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	cursor := jobListCursor{
 		Version: jobListCursorVersion, SubjectUserID: query.SubjectUserID, FilterFingerprint: jobListFingerprint(query),
@@ -89,7 +90,7 @@ FROM river_job WHERE `+strings.Join(filters, " AND ")+` ORDER BY id ASC LIMIT $3
 	if err != nil {
 		return operationsdomain.JobPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	page := operationsdomain.JobPage{Items: make([]operationsdomain.JobSummary, 0, query.Limit+1)}
 	for rows.Next() {
 		job, err := scanJobSummary(rows)
@@ -169,7 +170,7 @@ func (repository *JobRepository) mutateJob(ctx context.Context, jobID int64, nex
 			query = `UPDATE river_job SET state = $1, attempt = 0, attempted_at = NULL, finalized_at = NULL, scheduled_at = now(), errors = ARRAY[]::jsonb[] WHERE id = $2 AND state IN ('discarded', 'cancelled') RETURNING id, kind, ` + safeResourceIDProjection + `, state, attempt, max_attempts, priority, scheduled_at, attempted_at, finalized_at, created_at, ''`
 		}
 		if _, err := scanJobSummary(transaction.SQL.QueryRowContext(transactionCtx, query, args...), &result); err != nil {
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				return repository.classifyMutationConflict(transactionCtx, transaction.SQL, jobID, allowedStates)
 			}
 			return databaserepository.MapError(err)
@@ -218,7 +219,7 @@ func scanJobSummary(row rowScanner, target ...*operationsdomain.JobSummary) (ope
 		job.FinalizedAt = &value
 	}
 	if err := job.Validate(); err != nil {
-		return operationsdomain.JobSummary{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		return operationsdomain.JobSummary{}, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 	}
 	if len(target) > 0 && target[0] != nil {
 		*target[0] = job

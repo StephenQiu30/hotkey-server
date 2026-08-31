@@ -123,7 +123,7 @@ ORDER BY eligible.id ASC`, eventID, windowEnd, windowStart)
 	if err != nil {
 		return domain.MetricEvidenceSet{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	keys := map[domain.MetricPopulationKey]struct{}{}
 	for rows.Next() {
 		item, err := scanMetricEvidence(rows)
@@ -170,7 +170,7 @@ LIMIT $4`, eventID, windowHours, before.UTC(), limit)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	results := make([]domain.HeatResult, 0, limit)
 	for rows.Next() {
 		var result domain.HeatResult
@@ -293,7 +293,7 @@ JOIN baseline ON baseline.content_id = latest.content_id`, key.SourceConnectionI
 	if err != nil {
 		return domain.MetricPopulation{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	population := domain.MetricPopulation{MetricPopulationKey: key, Deltas: []domain.MetricCounts{}}
 	for rows.Next() {
 		var views, likes, comments, shares sql.NullInt64
@@ -321,7 +321,7 @@ FOR UPDATE OF monitor_event`, current.EventID)
 	if err != nil {
 		return databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	type projection struct {
 		id    int64
 		final float64

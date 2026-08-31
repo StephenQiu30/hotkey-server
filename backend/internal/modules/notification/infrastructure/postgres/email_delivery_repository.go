@@ -124,7 +124,7 @@ LIMIT 1`, application.PrimaryEmailDeliveryTarget, application.MaximumEmailAttemp
 			&record.alertEmailEnabled, &record.monitorName, &record.sourceName, &record.sourceType,
 			&record.relevanceScore, &record.originalURL, &record.maxFenceGeneration, &record.currentlyEligible,
 		)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
 		if err != nil {

@@ -60,7 +60,7 @@ func (reader *DocumentProjectionAuthorizationReader) ReadDocumentProjectionAutho
 		return ingestionapplication.DocumentProjectionAuthorizationDTO{}, sharedrepository.ErrUnavailable
 	}
 	if err := ingestionapplication.ValidateDocumentProjectionAuthorizationQuery(query); err != nil {
-		return ingestionapplication.DocumentProjectionAuthorizationDTO{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestionapplication.DocumentProjectionAuthorizationDTO{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 
 	record, err := scanDocumentProjectionAuthorizationRecord(reader.executor(ctx).QueryRowContext(ctx, `
@@ -248,7 +248,7 @@ func documentProjectionAuthorizationDTOFromRecord(
 	}
 	if err := ingestionapplication.ValidateDocumentProjectionAuthorizationDTO(result, query); err != nil {
 		return ingestionapplication.DocumentProjectionAuthorizationDTO{}, fmt.Errorf(
-			"%w: persisted document projection authorization is invalid: %v",
+			"%w: persisted document projection authorization is invalid: %w",
 			sharedrepository.ErrConstraint,
 			err,
 		)

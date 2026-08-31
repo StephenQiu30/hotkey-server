@@ -34,7 +34,7 @@ type reportArchiveProposalCreatorFake struct {
 	err                      error
 }
 
-func (creator *reportArchiveProposalCreatorFake) CreateContext(_ context.Context, documentID, baseRevision int64, baseHash, frontmatter, body, reason string) (knowledgedomain.Proposal, error) {
+func (creator *reportArchiveProposalCreatorFake) Create(_ context.Context, documentID, baseRevision int64, baseHash, frontmatter, body, reason string) (knowledgedomain.Proposal, error) {
 	creator.documentID, creator.baseRevision, creator.baseHash = documentID, baseRevision, baseHash
 	creator.frontmatter, creator.body, creator.reason = frontmatter, body, reason
 	return knowledgedomain.Proposal{ID: 1, Version: 1, DocumentID: documentID, BaseRevisionNo: baseRevision, BaseHash: baseHash, ProposedFrontmatter: frontmatter, ProposedBody: body, Reason: reason, Status: knowledgedomain.ProposalPending}, creator.err

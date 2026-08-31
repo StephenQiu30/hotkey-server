@@ -161,9 +161,9 @@ func (j *JWT) Parse(raw string) (domain.AccessTokenClaims, error) {
 		UserID:    userID,
 		SessionID: sessionID,
 		TokenID:   parsedClaims.ID,
-		IssuedAt:  parsedClaims.IssuedAt.Time.UTC(),
-		NotBefore: parsedClaims.NotBefore.Time.UTC(),
-		ExpiresAt: parsedClaims.ExpiresAt.Time.UTC(),
+		IssuedAt:  parsedClaims.IssuedAt.UTC(),
+		NotBefore: parsedClaims.NotBefore.UTC(),
+		ExpiresAt: parsedClaims.ExpiresAt.UTC(),
 	}, nil
 }
 

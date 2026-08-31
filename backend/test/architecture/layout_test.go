@@ -344,10 +344,13 @@ func TestBackendMakefileIsCanonicalAcceptanceEntryPoint(t *testing.T) {
 	makefileText := string(makefile)
 	for _, fragment := range []string{
 		"test-env:",
+		"format-check:",
+		"lint:",
 		"openapi:",
 		"openapi-check: openapi",
 		"vet:",
 		"test: test-env",
+		"race: test-env",
 		"ci-test: test-env",
 		"build:",
 		"architecture:",
@@ -355,10 +358,11 @@ func TestBackendMakefileIsCanonicalAcceptanceEntryPoint(t *testing.T) {
 		"database-runtime: test-env",
 		"schema: test-env",
 		"vulnerability:",
-		"ci-static: openapi-check vet build architecture repository",
+		"ci-static: openapi-check format-check vet lint build architecture repository",
 		"ci-runtime: database-runtime schema ci-test",
+		"ci-race: race",
 		"ci-vulnerability: vulnerability",
-		"ci: ci-static ci-runtime ci-vulnerability",
+		"ci: ci-static ci-runtime ci-race ci-vulnerability",
 	} {
 		if !strings.Contains(makefileText, fragment) {
 			t.Errorf("backend Makefile must contain %q", fragment)
@@ -370,7 +374,7 @@ func TestBackendMakefileIsCanonicalAcceptanceEntryPoint(t *testing.T) {
 		t.Fatalf("read CI workflow: %v", err)
 	}
 	workflowText := string(workflow)
-	for _, command := range []string{"run: make ci-static", "run: make ci-runtime", "run: make ci-vulnerability"} {
+	for _, command := range []string{"run: make ci-static", "run: make ci-runtime", "run: make ci-race", "run: make ci-vulnerability"} {
 		if !strings.Contains(workflowText, command) {
 			t.Errorf("backend CI must execute canonical parallel entry point %q", command)
 		}

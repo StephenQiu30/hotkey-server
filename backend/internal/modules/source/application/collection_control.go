@@ -11,7 +11,6 @@ import (
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
@@ -20,7 +19,7 @@ import (
 // CollectionControlDependencies are separate from CollectionDependencies:
 // these control-plane operations never plan queries or issue Fetch calls.
 type CollectionControlDependencies struct {
-	Runtime    *database.Runtime
+	Runtime    configurationTransactions
 	Sources    domain.SourceConnectionRepository
 	Runs       domain.CollectionRepository
 	Connectors domain.CollectionConnectorRegistry
@@ -50,7 +49,7 @@ type ManualCollectionActivator interface {
 }
 
 type CollectionControlService struct {
-	runtime    *database.Runtime
+	runtime    configurationTransactions
 	sources    domain.SourceConnectionRepository
 	runs       domain.CollectionRepository
 	connectors domain.CollectionConnectorRegistry
@@ -160,9 +159,9 @@ func (service *CollectionControlService) Manual(ctx context.Context, input Manua
 		interval          time.Duration
 	}
 	var summary domain.ManualCollectionSummary
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+	err := service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
 		lockKey := "hotkey.manual_collection:" + strconv.FormatInt(input.MonitorID, 10) + ":" + strconv.FormatInt(now.Truncate(5*time.Minute).Unix(), 10)
-		if _, err := transaction.SQL.ExecContext(transactionCtx, `SELECT pg_advisory_xact_lock(hashtext($1))`, lockKey); err != nil {
+		if err := service.runtime.LockTransaction(transactionCtx, lockKey); err != nil {
 			return err
 		}
 		targets, err := service.targets.ListForManualCollection(transactionCtx, input.MonitorID)
@@ -333,8 +332,8 @@ func (service *CollectionControlService) Retry(ctx context.Context, input Collec
 		return domain.CollectionRunSummary{}, domain.InvalidCollectionRequest()
 	}
 	var summary domain.CollectionRunSummary
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
-		if _, err := transaction.SQL.ExecContext(transactionCtx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "hotkey.monitor_source_configuration"); err != nil {
+	err := service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
+		if err := service.runtime.LockTransaction(transactionCtx, "hotkey.monitor_source_configuration"); err != nil {
 			return err
 		}
 		var err error
@@ -429,7 +428,7 @@ func (service *CollectionControlService) persistHealth(ctx context.Context, subj
 	if service == nil || service.runtime == nil {
 		return sharederrors.New(sharederrors.CodeUnavailable, 503, "")
 	}
-	return service.runtime.WithinTransaction(ctx, func(ctx context.Context, _ database.Transaction) error {
+	return service.runtime.RunInTransaction(ctx, func(ctx context.Context) error {
 		current, err := service.sources.LockByID(ctx, observed.ID)
 		if err != nil {
 			return sourceHealthReadError(err)

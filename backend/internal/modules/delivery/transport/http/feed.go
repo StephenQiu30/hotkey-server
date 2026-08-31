@@ -40,12 +40,13 @@ func (handler *Handler) Feed(c *gin.Context) {
 	var body []byte
 	var etag string
 	contentType := "application/rss+xml; charset=utf-8"
-	if format == "atom" {
+	switch format {
+	case "atom":
 		body, etag, err = application.RenderAtom(feed)
 		contentType = "application/atom+xml; charset=utf-8"
-	} else if format == "rss" {
+	case "rss":
 		body, etag, err = application.RenderRSS(feed)
-	} else {
+	default:
 		c.Status(http.StatusBadRequest)
 		return
 	}

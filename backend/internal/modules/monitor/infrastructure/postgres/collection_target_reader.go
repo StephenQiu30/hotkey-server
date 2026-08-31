@@ -136,7 +136,7 @@ ORDER BY monitor_source.id ASC, term.term_order ASC, term.ordinal ASC, term.valu
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	targets := []sourcedomain.PublishedCollectionTarget{}
 	var currentID int64
@@ -148,13 +148,13 @@ ORDER BY monitor_source.id ASC, term.term_order ASC, term.ordinal ASC, term.valu
 		if row.monitorSourceID != currentID {
 			if currentID != 0 {
 				if err := targets[len(targets)-1].Validate(); err != nil {
-					return nil, fmt.Errorf("%w: invalid published collection target: %v", sharedrepository.ErrConstraint, err)
+					return nil, fmt.Errorf("%w: invalid published collection target: %w", sharedrepository.ErrConstraint, err)
 				}
 			}
 			currentID = row.monitorSourceID
 			target, err := row.target()
 			if err != nil {
-				return nil, fmt.Errorf("%w: decode published collection target: %v", sharedrepository.ErrConstraint, err)
+				return nil, fmt.Errorf("%w: decode published collection target: %w", sharedrepository.ErrConstraint, err)
 			}
 			targets = append(targets, target)
 		}
@@ -167,7 +167,7 @@ ORDER BY monitor_source.id ASC, term.term_order ASC, term.ordinal ASC, term.valu
 	}
 	if currentID != 0 {
 		if err := targets[len(targets)-1].Validate(); err != nil {
-			return nil, fmt.Errorf("%w: invalid published collection target: %v", sharedrepository.ErrConstraint, err)
+			return nil, fmt.Errorf("%w: invalid published collection target: %w", sharedrepository.ErrConstraint, err)
 		}
 	}
 	return targets, nil

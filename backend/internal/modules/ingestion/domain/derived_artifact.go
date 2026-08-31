@@ -108,7 +108,7 @@ func (artifact DerivedArtifact) Validate() error {
 	}
 	if artifact.ArtifactType == DerivedArtifactMarkdown {
 		if artifact.AnchorMap == nil || artifact.AnchorMap.Validate() != nil || artifact.AnchorMap.MarkdownSHA256 != artifact.SHA256 {
-			return fmt.Errorf("Markdown derived artifact requires an exact anchor map identity")
+			return fmt.Errorf("markdown derived artifact requires an exact anchor map identity")
 		}
 	} else if artifact.AnchorMap != nil {
 		return fmt.Errorf("plaintext derived artifact cannot carry a Markdown anchor map")

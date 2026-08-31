@@ -1,3 +1,4 @@
+// Package domain owns Agent Access entities, value objects, and ports.
 package domain
 
 import (

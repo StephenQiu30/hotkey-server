@@ -30,7 +30,7 @@ ORDER BY ri.rank, ri.event_id`, tokenHash)
 	if err != nil {
 		return deliveryapplication.Feed{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	feed := deliveryapplication.Feed{Link: "https://hotkey.local/feeds", UpdatedAt: time.Time{}}
 	for rows.Next() {
 		var reportTitle, itemTitle, summary string

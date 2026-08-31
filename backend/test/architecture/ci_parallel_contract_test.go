@@ -13,13 +13,14 @@ func TestBackendCIPreservesCanonicalCoverageAcrossParallelGates(t *testing.T) {
 	workflow := readRepositoryFile(t, repository, ".github/workflows/ci.yml")
 
 	for _, fragment := range []string{
-		"ci-static: openapi-check vet build architecture repository",
+		"ci-static: openapi-check format-check vet lint build architecture repository",
 		"ci-test: test-env",
 		"grep -v -e '/internal/platform/database$$' -e '/internal/shared/repository$$'",
 		"test -p=2 $$packages -count=1",
 		"ci-runtime: database-runtime schema ci-test",
+		"ci-race: race",
 		"ci-vulnerability: vulnerability",
-		"ci: ci-static ci-runtime ci-vulnerability",
+		"ci: ci-static ci-runtime ci-race ci-vulnerability",
 	} {
 		if !strings.Contains(makefile, fragment) {
 			t.Errorf("backend Makefile must preserve canonical CI coverage through %q", fragment)
@@ -31,13 +32,16 @@ func TestBackendCIPreservesCanonicalCoverageAcrossParallelGates(t *testing.T) {
 		"run: make ci-static",
 		"backend-acceptance:",
 		"run: make ci-runtime",
+		"backend-race-acceptance:",
+		"run: make ci-race",
 		"backend-vulnerability-acceptance:",
 		"run: make ci-vulnerability",
 		"all-acceptance:",
 		"if: ${{ always() }}",
-		"needs: [backend-static-acceptance, backend-acceptance, backend-vulnerability-acceptance, worker-recovery-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance, browser-smoke-acceptance]",
+		"needs: [backend-static-acceptance, backend-acceptance, backend-race-acceptance, backend-vulnerability-acceptance, worker-recovery-acceptance, frontend-acceptance, agent-acceptance, compose-acceptance, browser-smoke-acceptance]",
 		"HOTKEY_RC_GATE_BACKEND_STATIC: ${{ needs.backend-static-acceptance.result }}",
 		"HOTKEY_RC_GATE_BACKEND_RUNTIME: ${{ needs.backend-acceptance.result }}",
+		"HOTKEY_RC_GATE_BACKEND_RACE: ${{ needs.backend-race-acceptance.result }}",
 		"HOTKEY_RC_GATE_BACKEND_VULNERABILITY: ${{ needs.backend-vulnerability-acceptance.result }}",
 		"HOTKEY_RC_GATE_WORKER_RECOVERY: ${{ needs.worker-recovery-acceptance.result }}",
 		"HOTKEY_RC_GATE_FRONTEND: ${{ needs.frontend-acceptance.result }}",

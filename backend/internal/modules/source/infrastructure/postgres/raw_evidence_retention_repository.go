@@ -110,7 +110,7 @@ SELECT COALESCE(max(attempt_no),0)+1 FROM evidence_deletion_audits WHERE evidenc
 				return databaserepository.MapError(err)
 			}
 			if err := candidate.Validate(at); err != nil {
-				return fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+				return fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 			}
 			if _, err := transaction.SQL.ExecContext(transactionCtx, `
 INSERT INTO evidence_deletion_audits (

@@ -180,7 +180,7 @@ END`, riverQueueLagAlertThresholdSeconds, queue.KindProjectKnowledge, queue.Kind
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	alerts := make([]operationsdomain.RuntimeAlert, 0, 8)
 	for rows.Next() {

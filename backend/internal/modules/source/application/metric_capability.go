@@ -10,7 +10,6 @@ import (
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
@@ -19,14 +18,14 @@ import (
 var metricCapabilityReasonPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 type MetricCapabilityDependencies struct {
-	Runtime        *database.Runtime
+	Runtime        TransactionRunner
 	Profiles       domain.MetricCapabilityProfileRepository
 	SourceContexts domain.MetricSourceContextRepository
 	Audit          operationsapplication.AuditWriter
 }
 
 type MetricCapabilityService struct {
-	runtime        *database.Runtime
+	runtime        TransactionRunner
 	profiles       domain.MetricCapabilityProfileRepository
 	sourceContexts domain.MetricSourceContextRepository
 	audit          operationsapplication.AuditWriter
@@ -62,7 +61,7 @@ func (service *MetricCapabilityService) CreateDraft(ctx context.Context, input C
 	}
 	profile := input.Profile
 	profile.Status, profile.PublishedAt, profile.ArchivedAt = domain.MetricCapabilityDraft, nil, nil
-	err := service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
 		if err := service.profiles.CreateDraft(ctx, &profile); err != nil {
 			return metricCapabilityWriteError(err)
 		}
@@ -83,7 +82,7 @@ func (service *MetricCapabilityService) Publish(ctx context.Context, input Metri
 		return nil, err
 	}
 	var published domain.MetricCapabilityProfile
-	err = service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+	err = service.withTransaction(ctx, func(ctx context.Context) error {
 		profile, err := service.profiles.LockByID(ctx, input.ID)
 		if err != nil {
 			return metricCapabilityReadError(err)
@@ -127,7 +126,7 @@ func (service *MetricCapabilityService) Archive(ctx context.Context, input Metri
 		return nil, err
 	}
 	var archived domain.MetricCapabilityProfile
-	err = service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
+	err = service.withTransaction(ctx, func(ctx context.Context) error {
 		profile, err := service.profiles.LockByID(ctx, input.ID)
 		if err != nil {
 			return metricCapabilityReadError(err)
@@ -193,11 +192,11 @@ func (service *MetricCapabilityService) ResolveMetricSourceCapabilities(ctx cont
 	return capabilities, nil
 }
 
-func (service *MetricCapabilityService) withTransaction(ctx context.Context, fn func(context.Context, database.Transaction) error) error {
+func (service *MetricCapabilityService) withTransaction(ctx context.Context, fn func(context.Context) error) error {
 	if service == nil || service.runtime == nil {
 		return sharederrors.New(sharederrors.CodeUnavailable, 503, "")
 	}
-	return service.runtime.WithinTransaction(ctx, fn)
+	return service.runtime.RunInTransaction(ctx, fn)
 }
 
 func normalizeMetricCapabilityReason(input MetricCapabilityLifecycleInput) (string, error) {

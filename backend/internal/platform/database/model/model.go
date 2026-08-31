@@ -62,8 +62,8 @@ type Persistence struct {
 	CursorFields  []string
 }
 
-// The strongly named records make table ownership explicit before GORM is
-// introduced. Schema remains the executable source for SQL types and defaults.
+// User is the persistence record for an identity user. Schema remains the
+// executable source for SQL types and defaults.
 type User struct {
 	Record
 	Email, PasswordHash, DisplayName, Role, Status string

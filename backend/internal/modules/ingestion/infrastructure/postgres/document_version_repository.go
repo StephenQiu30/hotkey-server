@@ -35,7 +35,7 @@ func (repository *DocumentVersionRepository) ResolveDocument(ctx context.Context
 		return ingestionapplication.DocumentDTO{}, false, sharedrepository.ErrUnavailable
 	}
 	if err := ingestionapplication.ValidateDocumentIdentityDTO(identity); err != nil {
-		return ingestionapplication.DocumentDTO{}, false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestionapplication.DocumentDTO{}, false, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var document ingestionapplication.DocumentDTO
 	created := false
@@ -150,7 +150,7 @@ func (repository *DocumentVersionRepository) AppendDocumentVersion(ctx context.C
 		return ingestionapplication.DocumentVersionDTO{}, false, sharedrepository.ErrUnavailable
 	}
 	if err := ingestionapplication.ValidateDocumentVersionDraftDTO(draft); err != nil {
-		return ingestionapplication.DocumentVersionDTO{}, false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestionapplication.DocumentVersionDTO{}, false, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	warningsJSON, err := json.Marshal(draft.QualityWarnings)
 	if err != nil {
@@ -243,7 +243,7 @@ func (repository *DocumentVersionRepository) CompareAndSwapDocumentVersionLifecy
 		return ingestionapplication.DocumentVersionDTO{}, sharedrepository.ErrUnavailable
 	}
 	if err := ingestionapplication.ValidateTransitionDocumentVersionCommand(transition); err != nil {
-		return ingestionapplication.DocumentVersionDTO{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestionapplication.DocumentVersionDTO{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	displayDecisionID := documentOptionalInt64(transition.DisplayPrivateRightsDecisionID)
 	var updated ingestionapplication.DocumentVersionDTO

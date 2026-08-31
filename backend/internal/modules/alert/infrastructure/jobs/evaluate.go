@@ -29,7 +29,7 @@ func NewEvaluateJob(ref alertapplication.EventUpdateRef, scheduledAt time.Time) 
 		ScheduledAt: scheduledAt.UTC(), MaxAttempts: 5, Priority: 3,
 	}
 	if err := job.Validate(); err != nil {
-		return queue.Job{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return queue.Job{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return job, nil
 }

@@ -201,7 +201,7 @@ func rightsManagementAttemptAuditEntry(ctx context.Context, event sourceapplicat
 		return operationsdomain.AuditEntry{}, fmt.Errorf("%w: rights attempt audit operation is invalid", sharedrepository.ErrInvalidInput)
 	}
 	if err := entry.Validate(); err != nil {
-		return operationsdomain.AuditEntry{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return operationsdomain.AuditEntry{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return entry, nil
 }
@@ -252,7 +252,7 @@ func rightsManagementAuditEntry(ctx context.Context, event sourceapplication.Rig
 		return operationsdomain.AuditEntry{}, fmt.Errorf("%w: rights audit operation is invalid", sharedrepository.ErrInvalidInput)
 	}
 	if err := entry.Validate(); err != nil {
-		return operationsdomain.AuditEntry{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return operationsdomain.AuditEntry{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return entry, nil
 }

@@ -94,7 +94,7 @@ func (service *MicroEventGovernanceService) Govern(ctx context.Context, command 
 		MembershipDecisionID: command.MembershipDecisionID, ContentFamilyID: command.ContentFamilyID,
 		ExpectedMemberVersion: command.ExpectedMemberVersion, TargetMicroEventID: command.TargetMicroEventID,
 		ExpectedTargetEventVersion: command.ExpectedTargetEventVersion}); err != nil {
-		return GovernMicroEventResult{}, fmt.Errorf("%w: %v", ErrInvalidMicroEventGovernanceContract, err)
+		return GovernMicroEventResult{}, fmt.Errorf("%w: %w", ErrInvalidMicroEventGovernanceContract, err)
 	}
 	mutation := ApplyMicroEventGovernanceCommand{GovernMicroEventCommand: command,
 		CommandFingerprint: microEventGovernanceFingerprint(command)}

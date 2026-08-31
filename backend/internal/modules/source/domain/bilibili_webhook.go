@@ -47,11 +47,11 @@ func VerifyBilibiliWebhook(body []byte, signature, secret string) (BilibiliWebho
 	switch result.Event {
 	case "verify_webhooks":
 		if len(result.Echo) == 0 || string(result.Echo) == "null" {
-			return BilibiliWebhook{}, errors.New("Bilibili webhook challenge is missing")
+			return BilibiliWebhook{}, errors.New("bilibili webhook challenge is missing")
 		}
 	case "deauthorize":
 		if result.OpenID == "" || len(result.OpenID) > 128 {
-			return BilibiliWebhook{}, errors.New("Bilibili webhook OpenID is invalid")
+			return BilibiliWebhook{}, errors.New("bilibili webhook OpenID is invalid")
 		}
 	default:
 		return BilibiliWebhook{}, errors.New("unsupported Bilibili webhook event")

@@ -109,7 +109,7 @@ func validConfig(t *testing.T, repository string) config {
 		CIRunID:                  "123456789",
 		ProductionEgressDisabled: true,
 		RequiredGates: map[string]string{
-			"backend_static": "success", "backend_runtime": "success", "backend_vulnerability": "success",
+			"backend_static": "success", "backend_runtime": "success", "backend_race": "success", "backend_vulnerability": "success",
 			"worker_recovery": "success", "frontend": "success", "python_agent": "success",
 			"compose": "success", "browser_business_flow": "success",
 		},

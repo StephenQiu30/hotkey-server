@@ -34,14 +34,14 @@ var _ ingestionapplication.SourceEvidenceReader = (*sourceEvidenceReaderAdapter)
 
 func newSourceEvidenceReaderAdapter(selections sourceEvidenceSelectionReader) (*sourceEvidenceReaderAdapter, error) {
 	if selections == nil {
-		return nil, fmt.Errorf("Source evidence selection reader is required")
+		return nil, fmt.Errorf("source evidence selection reader is required")
 	}
 	return &sourceEvidenceReaderAdapter{selections: selections}, nil
 }
 
 func provideSourceEvidenceReaderAdapter(service *sourceapplication.EvidenceSelectionService) (*sourceEvidenceReaderAdapter, error) {
 	if service == nil {
-		return nil, fmt.Errorf("Source evidence selection service is required")
+		return nil, fmt.Errorf("source evidence selection service is required")
 	}
 	return newSourceEvidenceReaderAdapter(service)
 }

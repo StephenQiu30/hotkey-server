@@ -8,7 +8,6 @@ import (
 	"time"
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 )
 
@@ -62,8 +61,8 @@ func (service *Service) DeleteBySourceItem(ctx context.Context, sourceConnection
 
 	result := DeleteBySourceItemResult{}
 	deleteFailures := make([]error, 0)
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
-		if err := lockSourceEvidenceTransaction(transactionCtx, transaction, sourceConnectionID); err != nil {
+	err := service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
+		if err := lockSourceEvidenceTransaction(transactionCtx, service.runtime, sourceConnectionID); err != nil {
 			return err
 		}
 		content, changed, err := service.contents.MarkDeleted(transactionCtx, sourceConnectionID, externalID)
@@ -135,8 +134,8 @@ func (service *Service) ReconcileObjects(ctx context.Context, sourceConnectionID
 		return 0, errors.New("content repository, evidence store, and source connection id are required")
 	}
 	deleted := 0
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
-		if err := lockSourceEvidenceTransaction(transactionCtx, transaction, sourceConnectionID); err != nil {
+	err := service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
+		if err := lockSourceEvidenceTransaction(transactionCtx, service.runtime, sourceConnectionID); err != nil {
 			return err
 		}
 		prefix := fmt.Sprintf("evidence/v1/%d/", sourceConnectionID)

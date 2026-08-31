@@ -464,7 +464,7 @@ func createM4RecoverableKnowledge(
 		ProposedFrontmatter: `{"title":"M4 recovery knowledge"}`,
 		ProposedBody:        "approved recovery body", Reason: "independent recovery fixture", Status: knowledgedomain.ProposalPending,
 	}
-	if err := repository.SaveProposal(proposal); err != nil {
+	if err := repository.SaveProposal(context.Background(), proposal); err != nil {
 		t.Fatal(err)
 	}
 	approved, err := repository.UpdateProposalStatus(ctx, proposal.ID, proposal.Version, knowledgedomain.ProposalApproved)

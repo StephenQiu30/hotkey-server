@@ -114,6 +114,5 @@ func (adapter *acceptedDocumentMatchEventProjectionAdapter) ConsumeAcceptedDocum
 			return ingestionapplication.ConsumeAcceptedDocumentMatchResult{}, ingestionapplication.ErrInvalidDocumentMatchContract
 		}
 	}
-	return ingestionapplication.ConsumeAcceptedDocumentMatchResult{DocumentMatchDecisionID: command.DocumentMatchDecisionID,
-		DocumentVersionID: command.DocumentVersionID}, nil
+	return ingestionapplication.ConsumeAcceptedDocumentMatchResult(command), nil
 }

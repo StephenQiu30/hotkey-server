@@ -215,7 +215,7 @@ LIMIT 20`, target.PrimarySubjectKey, target.PrimaryActionKey, target.LocationKey
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []eventapplication.MicroEventCandidateDTO{}
 	for rows.Next() {
 		var value eventapplication.MicroEventCandidateDTO

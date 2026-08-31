@@ -345,7 +345,7 @@ func (service *RawEvidenceArchiveService) Archive(ctx context.Context, command A
 		if err != nil {
 			if persistedEvidenceLifecycleIs(persisted, domain.EvidenceLifecyclePending) {
 				if markErr := service.repository.MarkFailed(ctx, persisted.ID, rawStoreFailureCode); markErr != nil {
-					return ArchiveRawEvidenceResult{}, fmt.Errorf("store raw evidence: %w; mark snapshot failed: %v", err, markErr)
+					return ArchiveRawEvidenceResult{}, fmt.Errorf("store raw evidence: %w; mark snapshot failed: %w", err, markErr)
 				}
 			}
 			return ArchiveRawEvidenceResult{}, fmt.Errorf("store raw evidence: %w", err)
@@ -442,7 +442,7 @@ func archiveObservationDTOs(sourceConnectionID, collectionRunID int64, items []d
 				return nil, fmt.Errorf("raw evidence observation time exceeds response capture time")
 			}
 			if err := verifier.Verify(evidenceSelectorInputDTOFromEntities(snapshot, reference)); err != nil {
-				return nil, fmt.Errorf("%w: %v", domain.ErrEvidenceSelection, err)
+				return nil, fmt.Errorf("%w: %w", domain.ErrEvidenceSelection, err)
 			}
 			observation, err := sourceObservationDTOFromEntity(sourceConnectionID, collectionRunID, normalized, upstreamIdentity, snapshot, reference)
 			if err != nil {
@@ -565,11 +565,11 @@ func sourceObservationIdentity(item domain.SourceItem) string {
 	// evidence locator; observation identity must not smuggle Body-derived
 	// material into a repository command.
 	for _, value := range []string{item.SourceCode, item.ExternalID, item.ContentType, item.Title, item.Language, item.URL, item.DiscussionURL, item.Author} {
-		_, _ = digest.Write([]byte(fmt.Sprintf("%d:%s", len(value), value)))
+		_, _ = fmt.Fprintf(digest, "%d:%s", len(value), value)
 	}
 	for _, party := range item.Parties {
 		for _, value := range []string{string(party.Role), string(party.Kind), party.IdentityNamespace, party.ExternalID, party.DisplayName, party.HomepageURL} {
-			_, _ = digest.Write([]byte(fmt.Sprintf("%d:%s", len(value), value)))
+			_, _ = fmt.Fprintf(digest, "%d:%s", len(value), value)
 		}
 	}
 	if item.PublishedAt != nil {

@@ -68,7 +68,8 @@ func (runner *ShadowRunner) Submit(ctx context.Context, request intelligencedoma
 		return
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		runner.observe(ShadowObservation{Result: "dropped", Dropped: true})
+		return
 	}
 	request = cloneShadowRequest(request)
 	primary = cloneShadowResponse(primary)

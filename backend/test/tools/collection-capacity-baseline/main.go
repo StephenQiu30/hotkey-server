@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -121,7 +122,7 @@ func run(parent context.Context) error {
 	if err != nil {
 		return errors.New("open PostgreSQL for collection capacity baseline")
 	}
-	defer runtimeDB.Close()
+	defer func() { _ = runtimeDB.Close() }()
 	// The database/sql facade is backed by the already-bounded pgx pool. Its
 	// open limit must never exceed pgx MaxConns, otherwise concurrent callers
 	// can retain every pgx connection while database/sql opens facade
@@ -272,7 +273,7 @@ WHERE kind='collect_source' AND convert_from(unique_key, 'UTF8') LIKE 'collectio
 	if err != nil {
 		return queueEvidence{}, errors.New("read collection queue wait")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	waits := make([]measured, 0, jobs)
 	for rows.Next() {
 		var micros int64
@@ -350,7 +351,7 @@ func persistCollectionSample(ctx context.Context, database *sql.DB, sourceID, mo
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	digest := sha256.Sum256([]byte(fmt.Sprintf("%d:%d:%d", time.Now().UnixNano(), sampleIndex, sourceID)))
 	signature := hex.EncodeToString(digest[:])
 	windowStart := time.Now().UTC().Add(time.Duration(sampleIndex+1) * time.Hour)
@@ -425,9 +426,7 @@ func measureAPI(ctx context.Context, runtimeDB *database.Runtime, samples, concu
 		return apiEvidence{}, err
 	}
 	gin.SetMode(gin.ReleaseMode)
-	router := gin.New()
-	sourcehttp.RegisterCollectionRoutes(router, service, capacityAuthenticator{})
-	server := httptest.NewServer(router)
+	server := newCollectionServer(ctx, service)
 	defer server.Close()
 	client := server.Client()
 	route := "/api/v1/collection-runs?limit=50"
@@ -444,6 +443,23 @@ func measureAPI(ctx context.Context, runtimeDB *database.Runtime, samples, concu
 		Route: route, Stack: "httptest_http+gin+authz+application+postgres+dto+json", Concurrency: concurrency, Warmups: 10,
 		Latency: summarize(measurements),
 	}, nil
+}
+
+// contextcheck follows Gin's route factory into request middleware even though
+// every request inherits ctx from BaseContext.
+//
+//nolint:contextcheck
+func newCollectionServer(ctx context.Context, service *sourceapplication.CollectionControlService) *httptest.Server {
+	server := httptest.NewUnstartedServer(newCollectionRouter(service))
+	server.Config.BaseContext = func(net.Listener) context.Context { return ctx }
+	server.Start()
+	return server
+}
+
+func newCollectionRouter(service *sourceapplication.CollectionControlService) *gin.Engine {
+	router := gin.New()
+	sourcehttp.RegisterCollectionRoutes(router, service, capacityAuthenticator{})
+	return router
 }
 
 func executeAPIRequest(parent context.Context, client *http.Client, url string) (time.Duration, error) {

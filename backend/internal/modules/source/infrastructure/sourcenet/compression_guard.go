@@ -61,11 +61,8 @@ func DefaultCompressionLimits(maxDecodedBytes int64) CompressionLimits {
 // connectors. It keeps encoded and decoded bytes in bounded memory, never
 // creates a temporary file, and returns no partial payload on rejection.
 func ReadBoundedResponse(ctx context.Context, body io.Reader, contentEncoding string, limits CompressionLimits) ([]byte, error) {
-	if body == nil || limits.Validate() != nil {
+	if ctx == nil || body == nil || limits.Validate() != nil {
 		return nil, ErrInvalidCompressedResponse
-	}
-	if ctx == nil {
-		ctx = context.Background()
 	}
 	guardCtx, cancel := context.WithTimeout(ctx, limits.MaxWallClock)
 	defer cancel()

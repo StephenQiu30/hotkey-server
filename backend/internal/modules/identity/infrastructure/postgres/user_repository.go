@@ -111,7 +111,7 @@ LIMIT $6`, cursor.AfterID, cursor.SnapshotID, search, role, string(query.Status)
 	if err != nil {
 		return domain.UserPage{}, mapRepositoryError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	users := make([]domain.User, 0, limit+1)
 	for rows.Next() {
@@ -131,7 +131,7 @@ LIMIT $6`, cursor.AfterID, cursor.SnapshotID, search, role, string(query.Status)
 	cursor.AfterID = users[len(users)-1].ID
 	nextCursor, err := repository.cursorCodec.Seal("identity_user_list", cursor)
 	if err != nil {
-		return domain.UserPage{}, fmt.Errorf("%w: encode user cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.UserPage{}, fmt.Errorf("%w: encode user cursor: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return domain.UserPage{Items: users, NextCursor: nextCursor}, nil
 }
@@ -463,7 +463,7 @@ FOR UPDATE`)
 	if err != nil {
 		return nil, mapRepositoryError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	admins := make([]domain.User, 0)
 	for rows.Next() {
 		user, err := scanUser(rows)

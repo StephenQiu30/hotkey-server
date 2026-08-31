@@ -1,3 +1,4 @@
+// Package domain owns Knowledge entities, value objects, and rules.
 package domain
 
 import (
@@ -11,8 +12,8 @@ import (
 )
 
 var (
-	ErrVaultConflict               = errors.New("Vault document conflict")
-	ErrVaultHumanRegionUnavailable = errors.New("Vault human region unavailable")
+	ErrVaultConflict               = errors.New("vault document conflict")
+	ErrVaultHumanRegionUnavailable = errors.New("vault human region unavailable")
 )
 
 const (
@@ -241,10 +242,10 @@ func UpdateVaultDocument(existing string, input VaultDocumentRenderInput) (strin
 		return "", err
 	}
 	if identity.documentID != input.DocumentID || identity.documentType != input.Type || identity.sourceID != input.SourceID {
-		return "", fmt.Errorf("Vault document identity conflict")
+		return "", fmt.Errorf("vault document identity conflict")
 	}
 	if input.RevisionNo != identity.revisionNo && input.RevisionNo != identity.revisionNo+1 {
-		return "", fmt.Errorf("Vault document revision conflict")
+		return "", fmt.Errorf("vault document revision conflict")
 	}
 	candidate, err := RenderVaultDocument(input)
 	if err != nil {
@@ -256,7 +257,7 @@ func UpdateVaultDocument(existing string, input VaultDocumentRenderInput) (strin
 		if candidate == existing {
 			return existing, nil
 		}
-		return "", fmt.Errorf("Vault document revision content conflict")
+		return "", fmt.Errorf("vault document revision content conflict")
 	}
 	return candidate, nil
 }
@@ -321,49 +322,49 @@ type vaultDocumentIdentity struct {
 func parseVaultDocument(content string) (vaultDocumentIdentity, string, error) {
 	if strings.Count(content, AutomaticRegionBegin) != 1 || strings.Count(content, AutomaticRegionEnd) != 1 ||
 		strings.Count(content, HumanRegionBegin) != 1 || strings.Count(content, HumanRegionEnd) != 1 {
-		return vaultDocumentIdentity{}, "", fmt.Errorf("Vault document region conflict")
+		return vaultDocumentIdentity{}, "", fmt.Errorf("vault document region conflict")
 	}
 	automaticStart := strings.Index(content, AutomaticRegionBegin)
 	automaticEnd := strings.Index(content, AutomaticRegionEnd)
 	humanStart := strings.Index(content, HumanRegionBegin)
 	humanEnd := strings.Index(content, HumanRegionEnd)
 	if automaticStart < 0 || automaticEnd <= automaticStart || humanStart <= automaticEnd || humanEnd <= humanStart {
-		return vaultDocumentIdentity{}, "", fmt.Errorf("Vault document regions overlap")
+		return vaultDocumentIdentity{}, "", fmt.Errorf("vault document regions overlap")
 	}
 	humanEnd += len(HumanRegionEnd)
 
 	if !strings.HasPrefix(content, "---\n") {
-		return vaultDocumentIdentity{}, "", fmt.Errorf("Vault document frontmatter is missing")
+		return vaultDocumentIdentity{}, "", fmt.Errorf("vault document frontmatter is missing")
 	}
 	frontmatterEnd := strings.Index(content[len("---\n"):], "\n---\n")
 	if frontmatterEnd < 0 {
-		return vaultDocumentIdentity{}, "", fmt.Errorf("Vault document frontmatter is malformed")
+		return vaultDocumentIdentity{}, "", fmt.Errorf("vault document frontmatter is malformed")
 	}
 	frontmatterEnd += len("---\n")
 	if frontmatterEnd >= automaticStart {
-		return vaultDocumentIdentity{}, "", fmt.Errorf("Vault document frontmatter overlaps automatic region")
+		return vaultDocumentIdentity{}, "", fmt.Errorf("vault document frontmatter overlaps automatic region")
 	}
 	values := make(map[string]string)
 	for _, line := range strings.Split(content[len("---\n"):frontmatterEnd], "\n") {
 		key, value, found := strings.Cut(line, ":")
 		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
 		if !found || key == "" || value == "" {
-			return vaultDocumentIdentity{}, "", fmt.Errorf("Vault document frontmatter is malformed")
+			return vaultDocumentIdentity{}, "", fmt.Errorf("vault document frontmatter is malformed")
 		}
 		if _, duplicated := values[key]; duplicated {
-			return vaultDocumentIdentity{}, "", fmt.Errorf("Vault document frontmatter key is duplicated")
+			return vaultDocumentIdentity{}, "", fmt.Errorf("vault document frontmatter key is duplicated")
 		}
 		values[key] = value
 	}
 	if values["hotkey_schema"] != "1" || len(values["hotkey_generated_sha256"]) != 64 {
-		return vaultDocumentIdentity{}, "", fmt.Errorf("Vault document frontmatter version is unsupported")
+		return vaultDocumentIdentity{}, "", fmt.Errorf("vault document frontmatter version is unsupported")
 	}
 	documentID, documentErr := strconv.ParseInt(values["hotkey_document_id"], 10, 64)
 	sourceID, sourceErr := strconv.ParseInt(values["hotkey_source_id"], 10, 64)
 	revisionNo, revisionErr := strconv.ParseInt(values["hotkey_revision"], 10, 64)
 	documentType := DocumentType(values["hotkey_document_type"])
 	if documentErr != nil || sourceErr != nil || revisionErr != nil || documentID <= 0 || sourceID <= 0 || revisionNo < 0 || !validDocumentType(documentType) {
-		return vaultDocumentIdentity{}, "", fmt.Errorf("Vault document identity is invalid")
+		return vaultDocumentIdentity{}, "", fmt.Errorf("vault document identity is invalid")
 	}
 	return vaultDocumentIdentity{
 		documentID: documentID, documentType: documentType, sourceID: sourceID, revisionNo: revisionNo,

@@ -226,7 +226,7 @@ func (repository *TextQuoteSelectorRepository) PersistTextQuoteSelector(ctx cont
 		return ingestionapplication.TextQuoteSelectorDTO{}, sharedrepository.ErrUnavailable
 	}
 	if err := validatePersistTextQuoteSelectorCommand(command); err != nil {
-		return ingestionapplication.TextQuoteSelectorDTO{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return ingestionapplication.TextQuoteSelectorDTO{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var stored textQuoteSelectorRecord
 	err := repository.runtime.WithinTransaction(ctx, func(transactionContext context.Context, transaction database.Transaction) error {

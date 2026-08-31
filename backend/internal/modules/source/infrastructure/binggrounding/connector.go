@@ -45,7 +45,7 @@ const (
 
 var (
 	errUnsafeDestination = errors.New("unsafe Foundry destination")
-	errRedirectLimit     = errors.New("Foundry redirect limit exceeded")
+	errRedirectLimit     = errors.New("foundry redirect limit exceeded")
 	emailPattern         = regexp.MustCompile(`(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b`)
 	secretPattern        = regexp.MustCompile(`(?i)\b(?:api[_ -]?key|access[_ -]?token|password|secret|bearer)\s*[:=]\s*\S+`)
 	jwtPattern           = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b`)
@@ -442,7 +442,7 @@ func (connector *Connector) request(ctx context.Context, token, session string, 
 }
 
 func readPayload(response *http.Response) ([]byte, int64, int64, []byte, error) {
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	payload, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	if err != nil || len(payload) > maxResponseBodyBytes {
 		return nil, 0, 0, nil, permanent("Foundry response exceeds the safe body limit")
@@ -516,11 +516,11 @@ func (connector *Connector) mapResult(result toolCallResult, querySignature, que
 		}
 	}
 	if strings.TrimSpace(answer) == "" {
-		return domain.SourceItem{}, errors.New("Web Search answer is missing")
+		return domain.SourceItem{}, errors.New("web Search answer is missing")
 	}
 	queryReference, err := normalizeQuery(queryReference)
 	if err != nil {
-		return domain.SourceItem{}, errors.New("Web Search query reference is invalid")
+		return domain.SourceItem{}, errors.New("web Search query reference is invalid")
 	}
 	attachments := make([]domain.SourceAttachment, 0, len(annotations))
 	seen := make(map[string]struct{}, len(annotations))
@@ -540,7 +540,7 @@ func (connector *Connector) mapResult(result toolCallResult, querySignature, que
 		}
 	}
 	if len(attachments) == 0 {
-		return domain.SourceItem{}, errors.New("Web Search citations are missing")
+		return domain.SourceItem{}, errors.New("web Search citations are missing")
 	}
 	digestInput := querySignature + "\x00" + query + "\x00" + answer
 	for _, attachment := range attachments {
@@ -577,7 +577,7 @@ func (connector *Connector) token() (string, error) {
 	name := strings.TrimPrefix(connector.credentialRef, "env:")
 	token, ok := connector.lookupEnv(name)
 	if !ok || strings.TrimSpace(token) == "" || strings.ContainsAny(token, "\r\n") {
-		return "", domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("Foundry credential is unavailable"))
+		return "", domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("foundry credential is unavailable"))
 	}
 	return token, nil
 }
@@ -653,9 +653,9 @@ func requestError(err error) error {
 func statusError(status int) error {
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("Foundry authentication failed"))
+		return domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("foundry authentication failed"))
 	case http.StatusTooManyRequests:
-		return domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Foundry rate limited"))
+		return domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("foundry rate limited"))
 	}
 	if status >= http.StatusInternalServerError {
 		return temporary("Foundry upstream unavailable")
@@ -665,7 +665,7 @@ func statusError(status int) error {
 
 func rpcStatusError(code int) error {
 	if code == -32006 || code == -32007 {
-		return domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("Foundry authorization consent is required"))
+		return domain.NewCollectionError(domain.CollectionErrorAuthentication, errors.New("foundry authorization consent is required"))
 	}
 	return parse("Foundry MCP tool failed")
 }

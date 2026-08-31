@@ -116,7 +116,7 @@ func (service *DocumentRecallProjectionService) PersistSearchProjection(ctx cont
 	}
 	prepared, err := prepareDocumentSearchProjection(command)
 	if err != nil {
-		return DocumentSearchProjectionResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return DocumentSearchProjectionResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	result, err := service.writer.PersistDocumentSearchProjection(ctx, prepared)
 	if err != nil {
@@ -143,7 +143,7 @@ func (service *DocumentRecallProjectionService) PersistEmbeddingReceipt(ctx cont
 	}
 	prepared, err := prepareDocumentEmbeddingReceipt(command)
 	if err != nil {
-		return DocumentEmbeddingReceiptResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return DocumentEmbeddingReceiptResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	result, err := service.writer.PersistDocumentEmbeddingReceipt(ctx, prepared)
 	if err != nil {

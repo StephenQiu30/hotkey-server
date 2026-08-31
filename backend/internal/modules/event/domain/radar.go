@@ -275,7 +275,7 @@ func (cursor RadarCursor) ValidateForAt(query RadarQuery, now time.Time) error {
 		return err
 	}
 	if cursor.ShapeHash != want {
-		return fmt.Errorf("Radar cursor does not match query")
+		return fmt.Errorf("radar cursor does not match query")
 	}
 	seen := map[int64]struct{}{cursor.EventID: {}}
 	previous := RadarCursorPosition{EventID: cursor.EventID, RankingScore: cursor.RankingScore, LastSeenAt: cursor.LastSeenAt}

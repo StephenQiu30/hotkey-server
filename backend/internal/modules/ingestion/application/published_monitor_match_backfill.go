@@ -79,10 +79,7 @@ func (service *PublishedMonitorMatchBackfillService) Backfill(ctx context.Contex
 		command.MonitorVersionID <= 0 || command.CompiledProfileID <= 0 {
 		return result, ErrInvalidDocumentMatchContract
 	}
-	trigger, err := service.documents.ReadPublishedMonitorTrigger(ctx, ReadPublishedMonitorTriggerQuery{
-		MonitorID: command.MonitorID, MonitorVersionID: command.MonitorVersionID,
-		CompiledProfileID: command.CompiledProfileID,
-	})
+	trigger, err := service.documents.ReadPublishedMonitorTrigger(ctx, ReadPublishedMonitorTriggerQuery(command))
 	if err != nil {
 		return result, fmt.Errorf("read published monitor backfill trigger: %w", err)
 	}

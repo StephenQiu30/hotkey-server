@@ -233,7 +233,7 @@ func (service *SourceDocumentGenerationService) Generate(ctx context.Context, co
 		service.contentFamilies == nil || service.publishedMatchEvaluations == nil || service.now == nil || command.EvidenceReferenceID <= 0 {
 		return GenerateSourceDocumentResult{}, fmt.Errorf("%w: invalid source document generation input", sharedrepository.ErrInvalidInput)
 	}
-	evidence, err := service.evidence.ReadSelectedSourceEvidence(ctx, SourceEvidenceQuery{EvidenceReferenceID: command.EvidenceReferenceID})
+	evidence, err := service.evidence.ReadSelectedSourceEvidence(ctx, SourceEvidenceQuery(command))
 	if err != nil {
 		return GenerateSourceDocumentResult{}, fmt.Errorf("read selected source evidence: %w", err)
 	}
@@ -615,7 +615,7 @@ func validateGeneratedDocumentProjection(
 			artifact.AnchorMap.AnchorMapProfileVersion != anchorMap.AnchorMapProfileVersion ||
 			artifact.AnchorMap.PlaintextSHA256 != anchorMap.PlaintextSHA256 || artifact.AnchorMap.MarkdownSHA256 != anchorMap.MarkdownSHA256 ||
 			artifact.AnchorMap.AnchorMapSHA256 != anchorMap.AnchorMapSHA256 {
-			return errors.New("Markdown anchor map receipt is inconsistent")
+			return errors.New("markdown anchor map receipt is inconsistent")
 		}
 	} else if artifact.AnchorMap != nil {
 		return errors.New("plaintext projection returned a Markdown anchor map")

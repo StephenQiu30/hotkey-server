@@ -348,7 +348,7 @@ func (service *ClaimEvidenceService) CalculateState(ctx context.Context, command
 	}
 	calculated, err := eventdomain.CalculateEvidenceState(eventdomain.EvidenceStateInput{AlgorithmVersion: command.AlgorithmVersion, Items: domainItems})
 	if err != nil {
-		return CalculateEvidenceStateResult{}, fmt.Errorf("%w: %v", ErrInvalidClaimEvidenceContract, err)
+		return CalculateEvidenceStateResult{}, fmt.Errorf("%w: %w", ErrInvalidClaimEvidenceContract, err)
 	}
 	sort.Slice(ids, func(left, right int) bool { return ids[left] < ids[right] })
 	evidenceHash := evidenceStateSetHash(target.Items)

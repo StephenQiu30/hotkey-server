@@ -60,7 +60,7 @@ func (repository *UpdateRepository) AppendUpdate(ctx context.Context, candidate 
 		return nil, false, sharedrepository.ErrUnavailable
 	}
 	if err := candidate.Validate(); err != nil {
-		return nil, false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, false, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	reasons, err := json.Marshal(candidate.ReasonCodes)
 	if err != nil {
@@ -160,7 +160,7 @@ LIMIT $3`, query.EventID, query.Cursor, query.Limit+1)
 	if err != nil {
 		return domain.EventUpdatePage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]domain.EventUpdate, 0, query.Limit+1)
 	for rows.Next() {
 		update, err := scanEventUpdate(rows)

@@ -159,10 +159,10 @@ func TestApplicationRollbackEvidenceRequiresZeroTrafficAndUnchangedAssets(t *tes
 			{Contract: "openapi", ReadinessStatus: 503, AdmittedBusinessRequests: 0, MutationStarted: false},
 			{Contract: "configuration", ReadinessStatus: 503, AdmittedBusinessRequests: 0, MutationStarted: false},
 		},
-		CompatibleReadinessStatus:           200,
+		CompatibleReadinessStatus:          200,
 		CompatibleAdmittedBusinessRequests: 1,
-		Assets:                              assets,
-		Differences:                         []string{},
+		Assets:                             assets,
+		Differences:                        []string{},
 	}
 	if err := validateApplicationRollbackEvidence(valid); err != nil {
 		t.Fatalf("validateApplicationRollbackEvidence(valid) error = %v", err)

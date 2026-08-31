@@ -62,7 +62,7 @@ func (provider *OllamaProvider) Embed(ctx context.Context, request intelligenced
 	if err != nil {
 		return intelligencedomain.EmbeddingResponse{}, mapLangChainError(err)
 	}
-	defer httpResponse.Body.Close()
+	defer func() { _ = httpResponse.Body.Close() }()
 	var response struct {
 		Vectors         [][]float32 `json:"embeddings"`
 		PromptEvalCount int64       `json:"prompt_eval_count"`
@@ -138,7 +138,7 @@ func (provider *OllamaProvider) GenerateStructured(ctx context.Context, request 
 		}
 		return intelligencedomain.StructuredResponse{}, mapLangChainError(err)
 	}
-	defer httpResponse.Body.Close()
+	defer func() { _ = httpResponse.Body.Close() }()
 	var response ollamaStructuredResponseRecord
 	decoder := json.NewDecoder(io.LimitReader(httpResponse.Body, 32<<20))
 	if err := decoder.Decode(&response); err != nil || !response.Done || !json.Valid([]byte(response.Message.Content)) || response.PromptEvalCount < 0 || response.EvalCount < 0 {
@@ -191,7 +191,7 @@ func (provider *OllamaProvider) verifyModelDigest(ctx context.Context, modelName
 	if err != nil {
 		return mapLangChainError(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	var payload struct {
 		Models []struct {
 			Name   string `json:"name"`

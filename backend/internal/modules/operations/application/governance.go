@@ -9,7 +9,6 @@ import (
 
 	identitydomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/domain"
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
@@ -37,7 +36,7 @@ type RetentionStore interface {
 }
 
 type GovernanceService struct {
-	runtime   *database.Runtime
+	runtime   TransactionRunner
 	store     GovernanceStore
 	retention RetentionStore
 	audit     AuditWriter
@@ -45,7 +44,7 @@ type GovernanceService struct {
 }
 
 type GovernanceDependencies struct {
-	Runtime   *database.Runtime
+	Runtime   TransactionRunner
 	Store     GovernanceStore
 	Retention RetentionStore
 	Audit     AuditWriter
@@ -88,7 +87,7 @@ func (service *GovernanceService) PreviewRetention(ctx context.Context, input Re
 		return operationsdomain.CleanupResult{}, err
 	}
 	var result operationsdomain.CleanupResult
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+	err := service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
 		policy, cutoff, err := service.retentionBoundary(transactionCtx, input)
 		if err != nil {
 			return err
@@ -132,7 +131,7 @@ func (service *GovernanceService) ApproveRetention(ctx context.Context, input Re
 		return operationsdomain.CleanupResult{}, err
 	}
 	var result operationsdomain.CleanupResult
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+	err := service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
 		run, err := service.retention.ApproveRun(transactionCtx, input.RunID, input.CandidateHash, input.Subject.UserID, service.now().UTC())
 		if err != nil {
 			return err
@@ -153,7 +152,7 @@ func (service *GovernanceService) ExecuteRetention(ctx context.Context, input Re
 	var result operationsdomain.CleanupResult
 	var attempted operationsdomain.RetentionRun
 	blocked := false
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, _ database.Transaction) error {
+	err := service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
 		var err error
 		attempted, err = service.retention.FindRun(transactionCtx, input.RunID)
 		if err != nil {

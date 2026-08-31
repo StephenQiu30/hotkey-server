@@ -6,6 +6,7 @@ import (
 	eventpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/event/infrastructure/postgres"
 	identitypostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/identity/infrastructure/postgres"
 	ingestionpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/infrastructure/postgres"
+	intelligencedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/domain"
 	intelligencepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/intelligence/infrastructure/postgres"
 	knowledgepostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/knowledge/infrastructure/postgres"
 	monitorpostgres "github.com/StephenQiu30/hotkey-server/backend/internal/modules/monitor/infrastructure/postgres"
@@ -42,6 +43,14 @@ func newKnowledgeRepository(runtime *database.Runtime, codec *pagination.Codec) 
 
 func newIntelligenceRepository(runtime *database.Runtime, codec *pagination.Codec) *intelligencepostgres.Repository {
 	return intelligencepostgres.NewRepositoryWithCursorCodec(runtime, codec)
+}
+
+func newModelProfileRepository(repository *intelligencepostgres.Repository) intelligencedomain.ModelProfileRepository {
+	return repository
+}
+
+func newRunLeaseRepository(repository *intelligencepostgres.Repository) intelligencedomain.RunLeaseRepository {
+	return repository
 }
 
 func newCollectionRepository(runtime *database.Runtime, codec *pagination.Codec) *sourcepostgres.CollectionRepository {

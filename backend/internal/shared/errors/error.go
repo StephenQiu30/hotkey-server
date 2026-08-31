@@ -1,3 +1,4 @@
+// Package errors defines stable application errors and their public mapping.
 package errors
 
 import (

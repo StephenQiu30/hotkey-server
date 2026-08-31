@@ -117,7 +117,7 @@ func (service *Service) ListUserNotifications(ctx context.Context, query ListUse
 		UserID: query.UserID, MonitorID: query.MonitorID, AfterID: query.AfterID, Limit: query.Limit,
 	}.Normalized()
 	if err := normalized.Validate(); err != nil {
-		return ListUserNotificationsResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return ListUserNotificationsResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	result, err := service.repository.ListUserNotifications(ctx, ListUserNotificationsQuery{
 		UserID: normalized.UserID, MonitorID: normalized.MonitorID, AfterID: normalized.AfterID, Limit: normalized.Limit,
@@ -136,7 +136,7 @@ func (service *Service) ListUserNotifications(ctx context.Context, query ListUse
 			return ListUserNotificationsResult{}, sharedrepository.ErrConstraint
 		}
 		if err := ValidateUserNotificationDTO(item); err != nil {
-			return ListUserNotificationsResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+			return ListUserNotificationsResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 		}
 	}
 	return result, nil
@@ -191,7 +191,7 @@ func ValidateNotificationDeliveryAttemptCommand(command RecordNotificationDelive
 		return sharedrepository.ErrInvalidInput
 	}
 	if err := attempt.Validate(); err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return nil
 }

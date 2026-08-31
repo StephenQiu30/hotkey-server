@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 )
 
@@ -40,7 +40,7 @@ func requestID() gin.HandlerFunc {
 func traceContext(telemetry *observability.Telemetry) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestContext := otel.GetTextMapPropagator().Extract(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
-		tracer := trace.NewNoopTracerProvider().Tracer("hotkey-server/http")
+		tracer := noop.NewTracerProvider().Tracer("hotkey-server/http")
 		if telemetry != nil && telemetry.TracerProvider != nil {
 			tracer = telemetry.TracerProvider.Tracer("hotkey-server/http")
 		}

@@ -40,7 +40,7 @@ func (store *RawEvidenceStore) DeleteIfMatches(ctx context.Context, command appl
 		return application.DeleteRawEvidenceObjectResult{}, err
 	}
 	if store == nil || store.client == nil || store.bucket == "" {
-		return application.DeleteRawEvidenceObjectResult{}, errors.New("Source raw evidence store is not initialized")
+		return application.DeleteRawEvidenceObjectResult{}, errors.New("source raw evidence store is not initialized")
 	}
 	object, err := store.client.StatObject(ctx, store.bucket, command.ObjectKey, miniosdk.StatObjectOptions{})
 	if err != nil {
@@ -60,7 +60,7 @@ func (store *RawEvidenceStore) DeleteIfMatches(ctx context.Context, command appl
 		return application.DeleteRawEvidenceObjectResult{}, fmt.Errorf("delete Source raw evidence object: %w", err)
 	}
 	if _, err := store.client.StatObject(ctx, store.bucket, command.ObjectKey, miniosdk.StatObjectOptions{}); err == nil {
-		return application.DeleteRawEvidenceObjectResult{}, errors.New("Source raw evidence object remained after delete")
+		return application.DeleteRawEvidenceObjectResult{}, errors.New("source raw evidence object remained after delete")
 	} else if !rawObjectMissing(err) {
 		return application.DeleteRawEvidenceObjectResult{}, fmt.Errorf("verify Source raw evidence object delete: %w", err)
 	}
@@ -163,7 +163,7 @@ func newRawEvidenceStore(client rawObjectClient, bucket string) *RawEvidenceStor
 // an If-None-Match write, and maps the private HEAD record back to a Result.
 func (store *RawEvidenceStore) PutIfAbsent(ctx context.Context, command application.StoreRawEvidenceCommand) (application.StoreRawEvidenceResult, error) {
 	if store == nil || store.client == nil || store.bucket == "" {
-		return application.StoreRawEvidenceResult{}, errors.New("Source raw evidence store is not initialized")
+		return application.StoreRawEvidenceResult{}, errors.New("source raw evidence store is not initialized")
 	}
 	manifest, err := rawObjectManifestFromCommand(command)
 	if err != nil {

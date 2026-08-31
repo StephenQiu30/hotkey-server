@@ -18,7 +18,7 @@ type reportArchiveDocumentStore interface {
 }
 
 type reportArchiveProposalCreator interface {
-	CreateContext(context.Context, int64, int64, string, string, string, string) (knowledgedomain.Proposal, error)
+	Create(context.Context, int64, int64, string, string, string, string) (knowledgedomain.Proposal, error)
 }
 
 // reportArchivePlanner is the composition-root adapter between the report
@@ -46,7 +46,7 @@ func (planner *reportArchivePlanner) Prepare(ctx context.Context, report reportd
 		return sharedrepository.ErrInvalidInput
 	}
 	if err := report.ValidatePublicationShape(); err != nil {
-		return fmt.Errorf("%w: invalid published report: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: invalid published report: %w", sharedrepository.ErrInvalidInput, err)
 	}
 
 	title := reportArchiveTitle(report)
@@ -57,7 +57,7 @@ func (planner *reportArchivePlanner) Prepare(ctx context.Context, report reportd
 		}
 	}
 	if err := knowledgedomain.ValidateVaultMarkdown(title + "\n" + body); err != nil {
-		return fmt.Errorf("%w: invalid report projection: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: invalid report projection: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	frontmatter, err := json.Marshal(struct {
 		Title string `json:"title"`
@@ -74,7 +74,7 @@ func (planner *reportArchivePlanner) Prepare(ctx context.Context, report reportd
 	if err := document.Validate(); err != nil || document.Type != knowledgedomain.DocumentReport || document.ReportID == nil || *document.ReportID != report.ID || document.VaultPath != vaultPath || len(document.ContentHash) != 64 {
 		return fmt.Errorf("%w: invalid report knowledge document", sharedrepository.ErrInvalidInput)
 	}
-	_, err = planner.proposals.CreateContext(ctx, document.ID, document.RevisionNo, document.ContentHash, string(frontmatter), body, "report_published")
+	_, err = planner.proposals.Create(ctx, document.ID, document.RevisionNo, document.ContentHash, string(frontmatter), body, "report_published")
 	return err
 }
 

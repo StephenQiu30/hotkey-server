@@ -340,7 +340,7 @@ func (connector *Connector) request(ctx context.Context, method, path string, qu
 	if err != nil {
 		return fetchedJSONResponse{}, domain.RateLimit{}, temporary("request Weibo CLI API")
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	rateLimit := parseRateLimit(response.Header)
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	if err != nil {
@@ -353,7 +353,7 @@ func (connector *Connector) request(ctx context.Context, method, path string, qu
 	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusPaymentRequired:
 		return fetchedJSONResponse{}, rateLimit, authentication("Weibo authorization rejected")
 	case response.StatusCode == http.StatusTooManyRequests:
-		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Weibo rate limited"))
+		return fetchedJSONResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("weibo rate limited"))
 	case response.StatusCode >= 500:
 		return fetchedJSONResponse{}, rateLimit, temporary("Weibo service unavailable")
 	case response.StatusCode < 200 || response.StatusCode >= 300:
@@ -442,14 +442,14 @@ func (value user) stableID() string {
 func weiboResultPointer(raw json.RawMessage, index int) (string, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || index < 0 {
-		return "", errors.New("Weibo result locator is invalid")
+		return "", errors.New("weibo result locator is invalid")
 	}
 	if trimmed[0] == '[' {
 		return "/" + strconv.Itoa(index), nil
 	}
 	var record map[string]json.RawMessage
 	if json.Unmarshal(trimmed, &record) != nil {
-		return "", errors.New("Weibo result locator is invalid")
+		return "", errors.New("weibo result locator is invalid")
 	}
 	for _, field := range []string{"statuses", "items"} {
 		if value := bytes.TrimSpace(record[field]); len(value) > 0 && value[0] == '[' {
@@ -462,7 +462,7 @@ func weiboResultPointer(raw json.RawMessage, index int) (string, error) {
 			return "/data" + pointer, nil
 		}
 	}
-	return "", errors.New("Weibo result locator did not resolve")
+	return "", errors.New("weibo result locator did not resolve")
 }
 
 func decodeSearchPage(raw json.RawMessage) (searchPage, error) {
@@ -516,11 +516,11 @@ func (value post) unavailable() bool {
 func normalizeQuery(value string) (string, error) {
 	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
 	if value == "" || utf8.RuneCountInString(value) > maxQueryCharacters {
-		return "", errors.New("Weibo query length is invalid")
+		return "", errors.New("weibo query length is invalid")
 	}
 	for _, character := range value {
 		if unicode.IsControl(character) {
-			return "", errors.New("Weibo query contains control characters")
+			return "", errors.New("weibo query contains control characters")
 		}
 	}
 	return value, nil
@@ -624,7 +624,7 @@ func classifyAPIError(value *apiError) error {
 		return authentication("Weibo invoke authorization rejected")
 	}
 	if strings.Contains(code, "RATE") || strings.Contains(code, "QUOTA") || strings.Contains(code, "CREDIT") {
-		return domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Weibo quota unavailable"))
+		return domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("weibo quota unavailable"))
 	}
 	return permanent("Weibo invoke rejected")
 }

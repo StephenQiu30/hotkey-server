@@ -1,3 +1,4 @@
+// Package application implements Search use cases and consumer-owned ports.
 package application
 
 import (

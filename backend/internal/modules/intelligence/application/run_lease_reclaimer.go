@@ -34,8 +34,8 @@ func NewRunLeaseReclaimer(runs domain.RunLeaseRepository) (*RunLeaseReclaimer, e
 // network work after process failure.
 func RegisterRunLeaseReclaimerLifecycle(lifecycle fx.Lifecycle, reclaimer *RunLeaseReclaimer) {
 	lifecycle.Append(fx.Hook{
-		OnStart: func(context.Context) error {
-			reclaimer.start()
+		OnStart: func(ctx context.Context) error {
+			reclaimer.start(ctx)
 			return nil
 		},
 		OnStop: func(context.Context) error {
@@ -44,13 +44,13 @@ func RegisterRunLeaseReclaimerLifecycle(lifecycle fx.Lifecycle, reclaimer *RunLe
 	})
 }
 
-func (reclaimer *RunLeaseReclaimer) start() {
+func (reclaimer *RunLeaseReclaimer) start(parent context.Context) {
 	reclaimer.mu.Lock()
 	defer reclaimer.mu.Unlock()
 	if reclaimer.cancel != nil {
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.WithoutCancel(parent))
 	reclaimer.cancel = cancel
 	reclaimer.done = make(chan struct{})
 	done := reclaimer.done

@@ -30,7 +30,7 @@ func NewSubscriptionHandler(service subscriptionService) *SubscriptionHandler {
 	return &SubscriptionHandler{service: service}
 }
 
-// ListSubscriptions returns only the current user's subscriptions and never
+// List returns only the current user's subscriptions and never
 // exposes RSS hashes or any delivery recipient owned by another user.
 // @Summary List the current user's report subscriptions
 // @Tags delivery
@@ -62,7 +62,7 @@ func (handler *SubscriptionHandler) List(c *gin.Context) error {
 	return nil
 }
 
-// GetSubscription returns one current-user subscription without token material.
+// Get returns one current-user subscription without token material.
 // @Summary Get a report subscription
 // @Tags delivery
 // @Produce json
@@ -90,7 +90,7 @@ func (handler *SubscriptionHandler) Get(c *gin.Context) error {
 	return nil
 }
 
-// CreateSubscription creates an email or private RSS subscription. An RSS
+// Create creates an email or private RSS subscription. An RSS
 // token is returned only in this create response.
 // @Summary Create a report subscription
 // @Tags delivery
@@ -124,7 +124,7 @@ func (handler *SubscriptionHandler) Create(c *gin.Context) error {
 	return nil
 }
 
-// UpdateSubscription changes the current user's mutable subscription fields
+// Update changes the current user's mutable subscription fields
 // under an explicit optimistic version.
 // @Summary Update a report subscription
 // @Tags delivery
@@ -160,7 +160,7 @@ func (handler *SubscriptionHandler) Update(c *gin.Context) error {
 	return nil
 }
 
-// RotateRSSToken invalidates the old private Feed URL immediately and returns
+// RotateToken invalidates the old private Feed URL immediately and returns
 // the replacement opaque token once.
 // @Summary Rotate a private RSS token
 // @Tags delivery
@@ -196,7 +196,7 @@ func (handler *SubscriptionHandler) RotateToken(c *gin.Context) error {
 	return nil
 }
 
-// DeleteSubscription soft-deletes a disabled current-user subscription while
+// Delete soft-deletes a disabled current-user subscription while
 // retaining immutable report and delivery history.
 // @Summary Delete a disabled report subscription
 // @Tags delivery

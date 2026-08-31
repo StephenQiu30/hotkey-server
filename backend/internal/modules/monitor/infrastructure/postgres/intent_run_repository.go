@@ -451,7 +451,7 @@ FROM monitor_intent_expansion_candidates WHERE origin_run_id=$1 ORDER BY candida
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]monitorapplication.ExpansionCandidateDTO, 0)
 	for rows.Next() {
 		var record intentExpansionCandidateRecord
@@ -533,13 +533,13 @@ SELECT id,document_version_id,title,decision FROM monitor_intent_preview_samples
 	for rows.Next() {
 		var sample sampleIdentity
 		if err := rows.Scan(&sample.ID, &sample.DTO.DocumentVersionID, &sample.DTO.Title, &sample.DTO.Decision); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		samples = append(samples, sample)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return nil, err
 	}
 	if err := rows.Close(); err != nil {
@@ -554,13 +554,13 @@ SELECT channel,rank,score FROM monitor_intent_preview_recall_signals WHERE sampl
 		for signals.Next() {
 			var signal monitorapplication.PreviewRecallSignalDTO
 			if err := signals.Scan(&signal.Channel, &signal.Rank, &signal.Score); err != nil {
-				signals.Close()
+				_ = signals.Close()
 				return nil, err
 			}
 			sample.DTO.RecallSignals = append(sample.DTO.RecallSignals, signal)
 		}
 		if err := signals.Err(); err != nil {
-			signals.Close()
+			_ = signals.Close()
 			return nil, err
 		}
 		if err := signals.Close(); err != nil {
@@ -574,7 +574,7 @@ SELECT reason_type,reason FROM monitor_intent_preview_reasons WHERE sample_id=$1
 		for reasons.Next() {
 			var kind, reason string
 			if err := reasons.Scan(&kind, &reason); err != nil {
-				reasons.Close()
+				_ = reasons.Close()
 				return nil, err
 			}
 			if kind == "match" {
@@ -584,7 +584,7 @@ SELECT reason_type,reason FROM monitor_intent_preview_reasons WHERE sample_id=$1
 			}
 		}
 		if err := reasons.Err(); err != nil {
-			reasons.Close()
+			_ = reasons.Close()
 			return nil, err
 		}
 		if err := reasons.Close(); err != nil {
@@ -596,7 +596,7 @@ SELECT reason_type,reason FROM monitor_intent_preview_reasons WHERE sample_id=$1
 	if err != nil {
 		return nil, err
 	}
-	defer warnings.Close()
+	defer func() { _ = warnings.Close() }()
 	for warnings.Next() {
 		var warning string
 		if err := warnings.Scan(&warning); err != nil {

@@ -112,7 +112,7 @@ func (store *Store) ReadText(ctx context.Context, objectKey string, maxBytes int
 	if err != nil {
 		return ingestiondomain.EvidenceText{}, fmt.Errorf("get evidence object: %w", err)
 	}
-	defer object.Close()
+	defer func() { _ = object.Close() }()
 	body, err := io.ReadAll(io.LimitReader(object, maxBytes+1))
 	if err != nil {
 		return ingestiondomain.EvidenceText{}, fmt.Errorf("read evidence object: %w", err)
@@ -247,7 +247,7 @@ func validSHA256(value string) bool {
 		return false
 	}
 	for _, character := range value {
-		if !(character >= '0' && character <= '9') && !(character >= 'a' && character <= 'f') {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
 			return false
 		}
 	}

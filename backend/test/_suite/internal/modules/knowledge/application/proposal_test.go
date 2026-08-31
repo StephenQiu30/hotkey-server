@@ -15,7 +15,7 @@ import (
 
 type proposalDocumentsFake struct{ document domain.Document }
 
-func (fake proposalDocumentsFake) GetDocument(int64) (domain.Document, error) {
+func (fake proposalDocumentsFake) GetDocument(context.Context, int64) (domain.Document, error) {
 	return fake.document, nil
 }
 
@@ -26,9 +26,10 @@ type proposalStoreFake struct {
 	applyErr       error
 }
 
-func (fake *proposalStoreFake) SaveProposal(proposal domain.Proposal) error {
+func (fake *proposalStoreFake) CreateProposal(_ context.Context, proposal domain.Proposal) (domain.Proposal, error) {
+	proposal.ID = 1
 	fake.proposal = proposal
-	return nil
+	return proposal, nil
 }
 func (fake *proposalStoreFake) UpdateProposalStatus(_ context.Context, id, version int64, status domain.ProposalStatus) (domain.Proposal, error) {
 	fake.proposal.ID, fake.proposal.Version, fake.proposal.Status = id, version+1, status
@@ -95,7 +96,7 @@ func TestProposalApplyRechecksBaseAndCreatesNewRevision(t *testing.T) {
 	documents := proposalDocumentsFake{document: domain.Document{ID: 7, Version: 1, RevisionNo: 0, Type: domain.DocumentEvent, VaultPath: "events/evt-1.md", ContentHash: baseHash, Status: domain.DocumentActive, EventID: ptr(9)}}
 	store := &proposalStoreFake{}
 	service := NewProposalService(documents, store)
-	proposal, err := service.CreateContext(context.Background(), 7, 0, baseHash, `{"title":"Event"}`, "new body", "fixture")
+	proposal, err := service.Create(context.Background(), 7, 0, baseHash, `{"title":"Event"}`, "new body", "fixture")
 	if err != nil {
 		t.Fatal(err)
 	}

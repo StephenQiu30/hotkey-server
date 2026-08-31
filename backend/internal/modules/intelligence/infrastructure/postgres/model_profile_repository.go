@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	stdhttp "net/http"
 
@@ -143,7 +144,7 @@ LIMIT $3`, cursor.AfterID, cursor.SnapshotID, limit+1)
 	if err != nil {
 		return intelligencedomain.ModelProfilePage{}, fmt.Errorf("list AI profiles: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	profiles := make([]intelligencedomain.ModelProfile, 0, limit+1)
 	for rows.Next() {
@@ -207,7 +208,7 @@ ORDER BY fallback_priority ASC,id ASC`, string(taskType))
 	if err != nil {
 		return nil, fmt.Errorf("list eligible AI profiles: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	profiles := make([]intelligencedomain.ModelProfile, 0)
 	for rows.Next() {
@@ -234,7 +235,7 @@ FROM ai_model_profiles WHERE id=$1`
 	}
 	profile, deleted, err := scanProfile(queryer.QueryRowContext(ctx, query, id))
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return intelligencedomain.ModelProfile{}, false, intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)
 		}
 		return intelligencedomain.ModelProfile{}, false, fmt.Errorf("read AI profile: %w", err)

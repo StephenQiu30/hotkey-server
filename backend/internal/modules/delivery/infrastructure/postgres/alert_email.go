@@ -18,7 +18,7 @@ func (repository *Repository) CreateAlertDelivery(ctx context.Context, delivery 
 		return domain.AlertDelivery{}, false, sharedrepository.ErrUnavailable
 	}
 	if err := delivery.ValidateForCreate(); err != nil {
-		return domain.AlertDelivery{}, false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.AlertDelivery{}, false, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	created, err := scanAlertDelivery(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
 INSERT INTO alert_email_deliveries (occurrence_id,idempotency_key,recipient,subject,text_body,html_body,severity,status)
@@ -68,7 +68,7 @@ func (repository *Repository) UpdateAlertDelivery(ctx context.Context, delivery 
 		return sharedrepository.ErrUnavailable
 	}
 	if err := delivery.Validate(); err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	result, err := deliveryQueryerFor(ctx, repository.runtime).ExecContext(ctx, `UPDATE alert_email_deliveries SET status=$1,next_attempt_at=$2,succeeded_at=$3,last_error=NULLIF($4,''),updated_at=now() WHERE id=$5 AND occurrence_id=$6`, delivery.Status, delivery.NextAttemptAt, delivery.SucceededAt, delivery.LastError, delivery.ID, delivery.OccurrenceID)
 	if err != nil {

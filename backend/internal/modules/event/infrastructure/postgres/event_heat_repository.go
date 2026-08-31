@@ -90,7 +90,7 @@ ORDER BY current_micro_event_id`, contentID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]int64, 0)
 	for rows.Next() {
 		var microEventID int64
@@ -255,7 +255,7 @@ ORDER BY content.id`, microEventID, windowStart.UTC(), windowEnd.UTC())
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]eventMetricEvidence, 0)
 	for rows.Next() {
 		var item eventMetricEvidence
@@ -311,7 +311,7 @@ ORDER BY content.id`, key.SourceConnectionID, key.ContentType, windowStart.UTC()
 	if err != nil {
 		return population, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var baselineViews, baselineLikes, baselineComments, baselineShares sql.NullInt64
 		var latestViews, latestLikes, latestComments, latestShares sql.NullInt64

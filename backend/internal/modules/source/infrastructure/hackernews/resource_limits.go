@@ -13,7 +13,7 @@ import (
 
 const ResourceLimitProfileVersion = "hacker-news-resource-limits-v1"
 
-var errResponseByteLimit = errors.New("Hacker News cumulative response byte limit exceeded")
+var errResponseByteLimit = errors.New("hacker news cumulative response byte limit exceeded")
 
 // ResourceLimitProfile freezes every Hacker News resource dimension. One
 // Fetch call consumes one logical page; the page may fan out into bounded

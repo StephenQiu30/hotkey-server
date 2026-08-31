@@ -20,7 +20,7 @@ func (repository *Repository) Search(ctx context.Context, query searchdomain.Que
 	}
 	query = query.Normalized()
 	if err := query.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	if !query.Includes(searchdomain.ResourceKnowledge) || query.SourceConnectionID != nil || query.MonitorID != nil {
 		return []searchdomain.Candidate{}, nil
@@ -34,7 +34,7 @@ func (repository *Repository) Search(ctx context.Context, query searchdomain.Que
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]searchdomain.Candidate, 0, query.Limit)
 	for rows.Next() {
 		candidate := searchdomain.Candidate{Type: searchdomain.ResourceKnowledge}

@@ -89,7 +89,8 @@ func (err *classifiedError) Is(target error) bool {
 func NewRetryableError(cause error) error { return newClassifiedError(ErrRetryable, cause) }
 func NewRetryableErrorAt(cause error, retryAt time.Time) error {
 	err := newClassifiedError(ErrRetryable, cause)
-	classified, _ := err.(*classifiedError)
+	var classified *classifiedError
+	_ = errors.As(err, &classified)
 	if classified != nil && !retryAt.IsZero() {
 		value := retryAt.UTC()
 		classified.retryAt = &value

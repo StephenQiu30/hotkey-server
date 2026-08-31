@@ -92,7 +92,7 @@ func (server *Server) serve() {
 }
 
 func (server *Server) handle(connection net.Conn) {
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	_ = connection.SetDeadline(time.Now().Add(10 * time.Second))
 	reader := bufio.NewReader(connection)
 	writer := bufio.NewWriter(connection)

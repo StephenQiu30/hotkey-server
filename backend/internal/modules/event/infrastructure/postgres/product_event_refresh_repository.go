@@ -218,7 +218,7 @@ ORDER BY monitor.id,config.id`, update.MicroEventID)
 		for rows.Next() {
 			var value candidate
 			if err := rows.Scan(&value.monitorID, &value.configID, &value.threshold, &value.cooldownMinutes); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return databaserepository.MapError(err)
 			}
 			candidates = append(candidates, value)

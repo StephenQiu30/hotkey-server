@@ -18,7 +18,6 @@ import (
 	operationsapplication "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/application"
 	operationsdomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/operations/domain"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	sharederrors "github.com/StephenQiu30/hotkey-server/backend/internal/shared/errors"
 	sharedrepository "github.com/StephenQiu30/hotkey-server/backend/internal/shared/repository"
 	"github.com/StephenQiu30/hotkey-server/backend/internal/shared/requestcontext"
@@ -27,7 +26,7 @@ import (
 const configurationAdvisoryLock = "hotkey.monitor_source_configuration"
 
 type Dependencies struct {
-	Runtime           *database.Runtime
+	Runtime           configurationTransactions
 	Monitors          domain.MonitorRepository
 	Sources           sourcedomain.MonitorSourceReader
 	Audit             operationsapplication.AuditWriter
@@ -36,7 +35,7 @@ type Dependencies struct {
 }
 
 type Service struct {
-	runtime           *database.Runtime
+	runtime           configurationTransactions
 	monitors          domain.MonitorRepository
 	sources           sourcedomain.MonitorSourceReader
 	audit             operationsapplication.AuditWriter
@@ -113,8 +112,8 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (*domain.
 	}
 	monitor := domain.Monitor{Name: draft.Name, Description: draft.Description, Status: domain.MonitorStatusDraft, CreatedByUserID: input.Subject.UserID, UpdatedByUserID: input.Subject.UserID}
 	config := domain.MonitorConfigVersion{Revision: 1, State: domain.ConfigVersionDraft, Config: draft.Config}
-	err = service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err = service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		if err := service.monitors.Create(ctx, &monitor, &config, draft.Rules, draft.Sources); err != nil {
@@ -196,8 +195,8 @@ func (service *Service) ReplaceDraft(ctx context.Context, input ReplaceDraftInpu
 	}
 	var changed domain.Monitor
 	var draftResult domain.MonitorConfigVersion
-	err := service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		monitor, err := service.monitors.LockByID(ctx, input.MonitorID)
@@ -295,8 +294,8 @@ func (service *Service) AddAICandidate(ctx context.Context, input AICandidateInp
 	}
 	var resultConfig domain.MonitorConfigVersion
 	var resultRule domain.MonitorRule
-	err = service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err = service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		monitor, config, rules, sources, err := service.lockExpectedDraftInTransaction(ctx, input.MonitorID, input.Expected)
@@ -336,8 +335,8 @@ func (service *Service) ApproveAICandidate(ctx context.Context, input ApprovalIn
 		return nil, domain.InvalidMonitorConfiguration()
 	}
 	var result domain.MonitorConfigVersion
-	err := service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		monitor, config, rules, sources, err := service.lockExpectedDraftInTransaction(ctx, input.MonitorID, input.Expected)
@@ -384,8 +383,8 @@ func (service *Service) Publish(ctx context.Context, input PublishInput) (*domai
 	}
 	var changed domain.Monitor
 	var publishedResult domain.MonitorConfigVersion
-	err := service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		monitor, draft, rules, sources, err := service.lockPublishableDraft(ctx, input.MonitorID, input.Expected)
@@ -521,8 +520,8 @@ func (service *Service) Delete(ctx context.Context, input LifecycleInput) (*doma
 		return nil, domain.MonitorVersionConflict()
 	}
 	var deleted domain.Monitor
-	err := service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		monitor, err := service.monitors.LockByID(ctx, input.MonitorID)
@@ -563,8 +562,8 @@ func (service *Service) changeState(ctx context.Context, input LifecycleInput, t
 		return nil, domain.MonitorVersionConflict()
 	}
 	var changed domain.Monitor
-	err := service.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
-		if err := lockConfiguration(ctx, transaction); err != nil {
+	err := service.withTransaction(ctx, func(ctx context.Context) error {
+		if err := service.runtime.LockTransaction(ctx, configurationAdvisoryLock); err != nil {
 			return err
 		}
 		monitor, err := service.monitors.LockByID(ctx, input.MonitorID)
@@ -1100,18 +1099,11 @@ func requireAdmin(subject identitydomain.Subject) error {
 	}
 	return nil
 }
-func (service *Service) withTransaction(ctx context.Context, fn func(context.Context, database.Transaction) error) error {
+func (service *Service) withTransaction(ctx context.Context, fn func(context.Context) error) error {
 	if service == nil || service.runtime == nil {
 		return sharederrors.New(sharederrors.CodeUnavailable, 503, "")
 	}
-	return service.runtime.WithinTransaction(ctx, fn)
-}
-func lockConfiguration(ctx context.Context, transaction database.Transaction) error {
-	if transaction.SQL == nil {
-		return fmt.Errorf("monitor configuration transaction is required")
-	}
-	_, err := transaction.SQL.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, configurationAdvisoryLock)
-	return err
+	return service.runtime.RunInTransaction(ctx, fn)
 }
 func monitorReadError(err error) error {
 	if err == nil {

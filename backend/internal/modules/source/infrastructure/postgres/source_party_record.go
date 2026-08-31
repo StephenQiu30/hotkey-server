@@ -143,7 +143,7 @@ ORDER BY CASE relation.role WHEN 'publisher' THEN 0 WHEN 'content_origin' THEN 1
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]sourceapplication.SourceObservationPartyDTO, 0)
 	for rows.Next() {
 		var value sourceapplication.SourceObservationPartyDTO

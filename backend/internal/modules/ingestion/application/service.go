@@ -11,7 +11,6 @@ import (
 
 	ingestiondomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/ingestion/domain"
 	sourcedomain "github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 )
 
 const (
@@ -35,7 +34,7 @@ func (err downstreamEnqueueError) Unwrap() error { return err.cause }
 // ingestion-owned persistence/object-store ports. In particular, Service has
 // no Connector dependency and cannot initiate another upstream fetch.
 type Dependencies struct {
-	Runtime       *database.Runtime
+	Runtime       evidenceTransactions
 	Captures      sourcedomain.CapturedItemReader
 	Contents      ingestiondomain.ContentRepository
 	Evidence      ingestiondomain.EvidenceStore
@@ -53,7 +52,7 @@ type ContentMetricRefresher interface {
 // written before the database transaction; the Content asset and Source bind
 // are then made atomic in one Runtime transaction.
 type Service struct {
-	runtime  *database.Runtime
+	runtime  evidenceTransactions
 	captures sourcedomain.CapturedItemReader
 	contents ingestiondomain.ContentRepository
 	evidence ingestiondomain.EvidenceStore
@@ -73,7 +72,7 @@ func NewService(dependencies Dependencies) (*Service, error) {
 // so a downstream retry can never roll back an observed provider fact.
 func (service *Service) AppendXMetricObservation(ctx context.Context, contentID int64, capturedAt time.Time, metrics sourcedomain.SourceMetrics) error {
 	if service == nil || service.contents == nil || contentID <= 0 || capturedAt.IsZero() {
-		return errors.New("X metric observation identity is invalid")
+		return errors.New("x metric observation identity is invalid")
 	}
 	if err := service.contents.AppendMetricSnapshot(ctx, contentID, capturedAt.UTC(), metrics); err != nil {
 		return fmt.Errorf("append X metric snapshot: %w", err)
@@ -86,7 +85,7 @@ func (service *Service) AppendXMetricObservation(ctx context.Context, contentID 
 	return nil
 }
 
-// IngestRun processes one bounded page of Source-owned captures. A failed
+// IngestRunInput describes one bounded page of Source-owned captures. A failed
 // item is classified on that item and does not prevent later captures in the
 // same run from progressing.
 type IngestRunInput struct {
@@ -211,11 +210,11 @@ func (service *Service) persistCaptured(ctx context.Context, captured sourcedoma
 
 func (service *Service) persistContent(ctx context.Context, captured sourcedomain.CapturedCollectionItem, content ingestiondomain.NormalizedContent, decision ingestiondomain.DedupeDecision, receipt ingestiondomain.EvidenceReceipt, hasEvidence bool, downstream func(context.Context, int64) error) (int64, error) {
 	var contentID int64
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
+	err := service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
 		// The same source-scoped lock serializes a delete tombstone with every
 		// Content upsert, asset write, and Source bind. It is required even for
 		// title-only captures, which have no EvidenceStore operation.
-		if err := lockSourceEvidenceTransaction(transactionCtx, transaction, content.SourceConnectionID); err != nil {
+		if err := lockSourceEvidenceTransaction(transactionCtx, service.runtime, content.SourceConnectionID); err != nil {
 			return err
 		}
 		createEvidenceAsset := false
@@ -344,8 +343,8 @@ func ingestionFailureCode(err error) string {
 // before deleting an object from a failed Content/asset/bind transaction.
 // Delete failures intentionally leave an orphan for ReconcileObjects.
 func (service *Service) compensateEvidence(ctx context.Context, sourceConnectionID int64, objectKey string) {
-	_ = service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
-		if err := lockSourceEvidenceTransaction(transactionCtx, transaction, sourceConnectionID); err != nil {
+	_ = service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
+		if err := lockSourceEvidenceTransaction(transactionCtx, service.runtime, sourceConnectionID); err != nil {
 			return err
 		}
 		known, err := service.assetObjectKnown(transactionCtx, sourceConnectionID, objectKey)
@@ -369,11 +368,11 @@ func (service *Service) receiptAvailable(ctx context.Context, sourceConnectionID
 	return false, nil
 }
 
-func lockSourceEvidenceTransaction(ctx context.Context, transaction database.Transaction, sourceConnectionID int64) error {
-	if transaction.SQL == nil || sourceConnectionID <= 0 {
-		return errors.New("transaction and source connection id are required for evidence lock")
+func lockSourceEvidenceTransaction(ctx context.Context, transactions WideTransactionLocker, sourceConnectionID int64) error {
+	if transactions == nil || sourceConnectionID <= 0 {
+		return errors.New("transaction runner and source connection id are required for evidence lock")
 	}
-	if _, err := transaction.SQL.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))`, fmt.Sprintf("hotkey.ingestion.evidence/v1/%d", sourceConnectionID)); err != nil {
+	if err := transactions.LockTransactionWide(ctx, fmt.Sprintf("hotkey.ingestion.evidence/v1/%d", sourceConnectionID)); err != nil {
 		return fmt.Errorf("acquire source evidence transaction lock: %w", err)
 	}
 	return nil

@@ -1,3 +1,4 @@
+// Package domain owns Delivery entities, value objects, and rules.
 package domain
 
 import (

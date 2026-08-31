@@ -173,5 +173,5 @@ func intentRunToDTO(run domain.IntentAnalysisRun) IntentRunDTO {
 }
 
 func invalidIntentContract(cause error) error {
-	return fmt.Errorf("%w: %v", ErrInvalidIntentContract, cause)
+	return fmt.Errorf("%w: %w", ErrInvalidIntentContract, cause)
 }

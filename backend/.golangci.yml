@@ -1,0 +1,27 @@
+version: "2"
+
+run:
+  timeout: 10m
+  tests: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - contextcheck
+    - errcheck
+    - errorlint
+    - govet
+    - ineffassign
+    - noctx
+    - staticcheck
+  settings:
+    staticcheck:
+      checks:
+        - all
+  exclusions:
+    generated: strict

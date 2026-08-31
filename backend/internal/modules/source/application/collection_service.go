@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/StephenQiu30/hotkey-server/backend/internal/modules/source/domain"
-	"github.com/StephenQiu30/hotkey-server/backend/internal/platform/database"
 	"go.uber.org/zap"
 )
 
@@ -22,7 +21,7 @@ const (
 // durable failure record. Collection execution also needs a Source-owned
 // connection lookup, durable repository and fixed connector registry.
 type CollectionDependencies struct {
-	Runtime       *database.Runtime
+	Runtime       collectionTransactions
 	Sources       domain.SourceConnectionRepository
 	Runs          domain.CollectionRepository
 	Connectors    domain.CollectionConnectorRegistry
@@ -37,7 +36,7 @@ type CollectionDependencies struct {
 }
 
 type CollectionService struct {
-	runtime       *database.Runtime
+	runtime       collectionTransactions
 	sources       domain.SourceConnectionRepository
 	runs          domain.CollectionRepository
 	connectors    domain.CollectionConnectorRegistry
@@ -89,8 +88,8 @@ func (service *CollectionService) CollectResolvedWithSuccessHook(ctx context.Con
 	var request domain.CollectionRequest
 	var run domain.CollectionRun
 	var started bool
-	err := service.runtime.WithinTransaction(ctx, func(transactionCtx context.Context, transaction database.Transaction) error {
-		if _, err := transaction.SQL.ExecContext(transactionCtx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, domain.CollectionClaimKey(sourceConnectionID, querySignature)); err != nil {
+	err := service.runtime.RunInTransaction(ctx, func(transactionCtx context.Context) error {
+		if err := service.runtime.LockTransactionWide(transactionCtx, domain.CollectionClaimKey(sourceConnectionID, querySignature)); err != nil {
 			return err
 		}
 		var err error

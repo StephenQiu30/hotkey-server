@@ -40,7 +40,7 @@ func (service *RadarService) List(ctx context.Context, query domain.RadarQuery) 
 		query.AsOf = query.AsOf.UTC()
 	}
 	if err := query.Validate(); err != nil {
-		return domain.RadarPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.RadarPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	page, err := service.repository.ListRadar(ctx, query)
 	if err != nil {

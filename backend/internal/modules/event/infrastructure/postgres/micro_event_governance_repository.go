@@ -356,7 +356,7 @@ WHERE member.micro_event_id=$1 AND member.active ORDER BY member.id FOR UPDATE`,
 		if err := rows.Scan(&member.id, &member.version, &member.decision.id, &member.decision.contentFamilyID,
 			&member.decision.documentMatchDecisionID, &member.decision.monitorID, &member.decision.monitorVersionID,
 			&member.decision.clusteringProfileVersion); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return databaserepository.MapError(err)
 		}
 		members = append(members, member)

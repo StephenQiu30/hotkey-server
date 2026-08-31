@@ -168,7 +168,7 @@ func (service *Service) Evaluate(ctx context.Context, ref EventUpdateRef) (Evalu
 		result.EligibleCount++
 		fingerprint, err := domain.OccurrenceFingerprint(domain.FingerprintInput{MonitorConfigVersionID: policy.ConfigVersionID, EventUpdateID: ref.ID, TriggerType: trigger, PolicyVersion: domain.PolicyVersionV2})
 		if err != nil {
-			return EvaluationResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+			return EvaluationResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 		}
 		command := domain.RecordOccurrenceCommand{
 			MonitorID: candidate.MonitorID, EventID: candidate.EventID, EventUpdateID: ref.ID,
@@ -250,7 +250,7 @@ func (service *Service) List(ctx context.Context, query domain.ListQuery) (domai
 		return domain.ThreadPage{}, sharedrepository.ErrUnavailable
 	}
 	if err := query.Validate(); err != nil {
-		return domain.ThreadPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.ThreadPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return reader.List(ctx, query)
 }
@@ -298,7 +298,7 @@ func (service *Service) transition(ctx context.Context, input ActionInput, to do
 	}
 	command := domain.TransitionCommand{ThreadID: input.ThreadID, ExpectedVersion: input.ExpectedVersion, To: to, ActorUserID: input.Subject.UserID, ReasonCode: input.ReasonCode, At: service.clock.Now().UTC()}
 	if err := command.Validate(); err != nil {
-		return domain.Thread{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Thread{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return writer.Transition(ctx, command)
 }

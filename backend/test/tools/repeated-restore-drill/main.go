@@ -194,7 +194,7 @@ func run(parent context.Context) error {
 	if err != nil {
 		return errors.New("create repeated restore workspace")
 	}
-	defer os.RemoveAll(workRoot)
+	defer func() { _ = os.RemoveAll(workRoot) }()
 	runID, err := randomIdentifier()
 	if err != nil {
 		return err
@@ -213,7 +213,7 @@ func run(parent context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer source.stop(context.Background())
+	defer source.stop(ctx)
 	if err := createSourceFixture(ctx, source, filepath.Join(workRoot, "source-vault")); err != nil {
 		return err
 	}
@@ -235,7 +235,7 @@ func run(parent context.Context) error {
 	manifest.Assets = cloneInventories(expected)
 	sealBackupManifest(&manifest)
 	incidentCutoffAt := time.Now().UTC()
-	source.stop(context.Background())
+	source.stop(ctx)
 	source = &composeProject{}
 
 	failureStops, err := preflightFailureEvidence(workRoot, backupRoot, manifest, schemaSHA, openAPISHA)
@@ -330,11 +330,11 @@ func startComposeProject(ctx context.Context, cfg config, runID, role string) (*
 	if err != nil {
 		return nil, err
 	}
-	postgresPort, err := freePort()
+	postgresPort, err := freePort(ctx)
 	if err != nil {
 		return nil, err
 	}
-	minioPort, err := freePort()
+	minioPort, err := freePort(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -353,20 +353,20 @@ func startComposeProject(ctx context.Context, cfg config, runID, role string) (*
 	)
 	project.postgresContainer, err = composeRunContainer(ctx, project, environment, "postgres", postgresPort, 5432)
 	if err != nil {
-		project.stop(context.Background())
+		project.stop(ctx)
 		return nil, err
 	}
 	project.minioContainer, err = composeRunContainer(ctx, project, environment, "minio", minioPort, 9000)
 	if err != nil {
-		project.stop(context.Background())
+		project.stop(ctx)
 		return nil, err
 	}
 	if err := waitContainerHealthy(ctx, project.postgresContainer); err != nil {
-		project.stop(context.Background())
+		project.stop(ctx)
 		return nil, err
 	}
 	if err := waitContainerHealthy(ctx, project.minioContainer); err != nil {
-		project.stop(context.Background())
+		project.stop(ctx)
 		return nil, err
 	}
 	project.dsn = fmt.Sprintf("postgres://hotkey:%s@127.0.0.1:%d/hotkey?sslmode=disable", url.QueryEscape(project.postgresPassword), postgresPort)
@@ -375,16 +375,16 @@ func startComposeProject(ctx context.Context, cfg config, runID, role string) (*
 		Secure: false, Region: "us-east-1", BucketLookup: minio.BucketLookupPath,
 	})
 	if err != nil {
-		project.stop(context.Background())
+		project.stop(ctx)
 		return nil, errors.New("create repeated restore MinIO client")
 	}
 	project.minioClient = client
 	if err := client.MakeBucket(ctx, project.bucket, minio.MakeBucketOptions{Region: "us-east-1"}); err != nil {
-		project.stop(context.Background())
+		project.stop(ctx)
 		return nil, errors.New("create repeated restore MinIO bucket")
 	}
 	if err := client.SetBucketVersioning(ctx, project.bucket, minio.BucketVersioningConfiguration{Status: "Enabled"}); err != nil {
-		project.stop(context.Background())
+		project.stop(ctx)
 		return nil, errors.New("enable repeated restore MinIO versioning")
 	}
 	volume := exec.CommandContext(ctx, "docker", "volume", "create",
@@ -392,7 +392,7 @@ func startComposeProject(ctx context.Context, cfg config, runID, role string) (*
 		"--label", "com.docker.compose.volume=vault_data", project.vaultVolume)
 	if output, err := volume.CombinedOutput(); err != nil {
 		_ = output
-		project.stop(context.Background())
+		project.stop(ctx)
 		return nil, errors.New("create repeated restore Vault volume")
 	}
 	return project, nil
@@ -442,16 +442,18 @@ func (project *composeProject) stop(ctx context.Context) {
 	if project == nil || project.name == "" || project.name == "hotkey" || !strings.HasPrefix(project.name, "hkr-") {
 		return
 	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
 	for _, containerID := range []string{project.postgresContainer, project.minioContainer} {
 		if containerID != "" {
-			_ = exec.CommandContext(ctx, "docker", "rm", "--force", containerID).Run()
+			_ = exec.CommandContext(cleanupCtx, "docker", "rm", "--force", containerID).Run()
 		}
 	}
-	command := exec.CommandContext(ctx, "docker", "compose", "--file", project.cfg.ComposeFile, "--project-name", project.name, "down", "--volumes", "--remove-orphans")
+	command := exec.CommandContext(cleanupCtx, "docker", "compose", "--file", project.cfg.ComposeFile, "--project-name", project.name, "down", "--volumes", "--remove-orphans")
 	command.Env = append(os.Environ(), "HOTKEY_CONTAINER_PREFIX="+project.prefix)
 	_ = command.Run()
 	if project.vaultVolume != "" && strings.HasPrefix(project.vaultVolume, "hkr-") {
-		_ = exec.CommandContext(ctx, "docker", "volume", "rm", project.vaultVolume).Run()
+		_ = exec.CommandContext(cleanupCtx, "docker", "volume", "rm", project.vaultVolume).Run()
 	}
 	project.name = ""
 }
@@ -461,7 +463,7 @@ func createSourceFixture(ctx context.Context, project *composeProject, vaultStag
 	if err != nil {
 		return errors.New("open isolated source PostgreSQL")
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	if err := platformdatabase.InitializeEmpty(ctx, database.Pool); err != nil {
 		return errors.New("initialize isolated source PostgreSQL")
 	}
@@ -549,7 +551,7 @@ func executeRestore(ctx context.Context, cfg config, runID, role, backupRoot str
 	if err != nil {
 		return restoreResult{}, err
 	}
-	defer project.stop(context.Background())
+	defer project.stop(ctx)
 	if err := validateBackupPackage(backupRoot, manifest, schemaSHA, openAPISHA); err != nil {
 		return restoreResult{}, err
 	}
@@ -597,7 +599,7 @@ func executeApplicationRollbackDrill(ctx context.Context, project *composeProjec
 	if err != nil {
 		return applicationRollbackResult{}, errors.New("open rollback readiness database")
 	}
-	defer runtime.Close()
+	defer func() { _ = runtime.Close() }()
 
 	cfg := platformconfig.Default()
 	cfg.Environment = "testing"
@@ -660,36 +662,49 @@ func cloneRuntimeCompatibilityChecks(source map[string]bootstrap.RuntimeCompatib
 	return result
 }
 
+// contextcheck follows the Gin router factory into request middleware even
+// though every synthetic request below is created with ctx.
+//
+//nolint:contextcheck
 func probeCompatibilityAdmission(ctx context.Context, cfg platformconfig.Config, checks map[string]bootstrap.RuntimeCompatibilityCheck) (int, int, error) {
 	metrics, err := observability.NewMetrics()
 	if err != nil {
 		return 0, 0, errors.New("create rollback readiness metrics")
 	}
-	telemetry, err := observability.NewTelemetry(cfg)
+	telemetry, err := observability.NewTelemetryWithContext(ctx, cfg)
 	if err != nil {
 		return 0, 0, errors.New("create rollback readiness telemetry")
 	}
-	defer telemetry.Shutdown(ctx)
+	defer func() { _ = telemetry.Shutdown(ctx) }()
 	readiness := bootstrap.NewRuntimeCompatibilityReadiness(
 		httptransport.ReadinessFunc(func(context.Context) error { return nil }),
 		checks,
 	)
-	router := httptransport.NewRouter(readiness, metrics, telemetry, zap.NewNop(), cfg)
+	router := newCompatibilityProbeRouter(readiness, metrics, telemetry, cfg)
 	readyResponse := httptest.NewRecorder()
-	router.ServeHTTP(readyResponse, httptest.NewRequest(http.MethodGet, "/readyz", nil).WithContext(ctx))
+	router.ServeHTTP(readyResponse, httptest.NewRequestWithContext(ctx, http.MethodGet, "/readyz", nil))
 	if strings.Contains(readyResponse.Body.String(), "compatibility sentinel") {
 		return 0, 0, errors.New("rollback readiness leaked an internal compatibility error")
 	}
 	admitted := 0
 	if readyResponse.Code == http.StatusOK {
 		businessResponse := httptest.NewRecorder()
-		router.ServeHTTP(businessResponse, httptest.NewRequest(http.MethodGet, "/api/v1/capabilities", nil).WithContext(ctx))
+		router.ServeHTTP(businessResponse, httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/capabilities", nil))
 		if businessResponse.Code != http.StatusOK {
 			return 0, 0, errors.New("compatible rollback business request failed")
 		}
 		admitted = 1
 	}
 	return readyResponse.Code, admitted, nil
+}
+
+func newCompatibilityProbeRouter(
+	readiness httptransport.Readiness,
+	metrics *observability.Metrics,
+	telemetry *observability.Telemetry,
+	cfg platformconfig.Config,
+) *gin.Engine {
+	return httptransport.NewRouter(readiness, metrics, telemetry, zap.NewNop(), cfg)
 }
 
 func validateApplicationRollbackEvidence(result applicationRollbackResult) error {
@@ -730,7 +745,7 @@ func executeReconciliationFailure(ctx context.Context, cfg config, runID, backup
 	if err != nil {
 		return failureResult{}, err
 	}
-	defer project.stop(context.Background())
+	defer project.stop(ctx)
 	if err := validateBackupPackage(backupRoot, tampered, schemaSHA, openAPISHA); err != nil {
 		return failureResult{}, err
 	}
@@ -800,7 +815,7 @@ func ensureEmptyTarget(ctx context.Context, project *composeProject) error {
 	if err != nil {
 		return errors.New("open repeated restore target")
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	var tables int
 	if err := database.QueryRowContext(ctx, `SELECT count(*) FROM pg_tables WHERE schemaname='public'`).Scan(&tables); err != nil || tables != 0 {
 		return errors.New("repeated restore target PostgreSQL is not empty")
@@ -819,7 +834,7 @@ func restoreBackup(ctx context.Context, project *composeProject, root string) er
 	if err != nil {
 		return codedError{code: "backup_missing"}
 	}
-	defer backup.Close()
+	defer func() { _ = backup.Close() }()
 	command := exec.CommandContext(ctx, "docker", "exec", "--interactive", project.postgresContainer,
 		"pg_restore", "--username=hotkey", "--dbname=hotkey", "--no-owner", "--no-acl", "--exit-on-error")
 	command.Stdin = backup
@@ -838,7 +853,7 @@ func verifyRestoredSchema(ctx context.Context, project *composeProject) error {
 	if err != nil {
 		return errors.New("open repeated restored PostgreSQL")
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	verification, err := platformdatabase.Verify(ctx, database.Pool)
 	if err != nil || verification.CatalogFingerprint == "" || len(verification.Tables) == 0 {
 		return errors.New("verify repeated restored PostgreSQL schema")
@@ -920,7 +935,7 @@ func collectAssets(ctx context.Context, project *composeProject, vaultExport str
 	if err != nil {
 		return nil, errors.New("open repeated restore database for reconciliation")
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	postgresFacts, err := postgresInventory(ctx, database)
 	if err != nil {
 		return nil, err
@@ -1001,7 +1016,7 @@ func queryInventory(ctx context.Context, database *sql.DB, query string) (invent
 	if err != nil {
 		return inventory{}, errors.New("query repeated restore reconciliation facts")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	records := make([]string, 0)
 	for rows.Next() {
 		var record string
@@ -1142,7 +1157,11 @@ func copyDirectoryToVolume(ctx context.Context, source, volume string) error {
 	if err != nil {
 		return err
 	}
-	defer exec.CommandContext(context.Background(), "docker", "rm", "--force", containerID).Run()
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		_ = exec.CommandContext(cleanupCtx, "docker", "rm", "--force", containerID).Run()
+	}()
 	command := exec.CommandContext(ctx, "docker", "cp", filepath.Clean(source)+string(filepath.Separator)+".", containerID+":/vault")
 	if output, err := command.CombinedOutput(); err != nil {
 		_ = output
@@ -1159,7 +1178,11 @@ func copyVolumeToDirectory(ctx context.Context, volume, destination string) erro
 	if err != nil {
 		return err
 	}
-	defer exec.CommandContext(context.Background(), "docker", "rm", "--force", containerID).Run()
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		_ = exec.CommandContext(cleanupCtx, "docker", "rm", "--force", containerID).Run()
+	}()
 	command := exec.CommandContext(ctx, "docker", "cp", containerID+":/vault/.", destination)
 	if output, err := command.CombinedOutput(); err != nil {
 		_ = output
@@ -1261,7 +1284,7 @@ func fileSHA256(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	digest := sha256.New()
 	if _, err := io.Copy(digest, io.LimitReader(file, 256<<20)); err != nil {
 		return "", err
@@ -1269,12 +1292,12 @@ func fileSHA256(path string) (string, error) {
 	return hex.EncodeToString(digest.Sum(nil)), nil
 }
 
-func freePort() (int, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+func freePort(ctx context.Context) (int, error) {
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		return 0, errors.New("reserve repeated restore host port")
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	return listener.Addr().(*net.TCPAddr).Port, nil
 }
 

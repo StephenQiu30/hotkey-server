@@ -101,9 +101,7 @@ func (service *PublishedMatchEvaluationService) EvaluateForDocument(ctx context.
 	if command.TriggerMonitorVersionID < 0 {
 		return EvaluatePublishedMatchesForDocumentResult{}, ErrInvalidDocumentMatchContract
 	}
-	read, err := service.targets.ReadPublishedMatchTargets(ctx, PublishedMatchTargetsQuery{
-		DocumentVersionID: command.DocumentVersionID, TriggerMonitorVersionID: command.TriggerMonitorVersionID,
-	})
+	read, err := service.targets.ReadPublishedMatchTargets(ctx, PublishedMatchTargetsQuery(command))
 	if err != nil {
 		return EvaluatePublishedMatchesForDocumentResult{DocumentVersionID: command.DocumentVersionID}, fmt.Errorf("read published match targets: %w", err)
 	}
@@ -123,10 +121,7 @@ func (service *PublishedMatchEvaluationService) EvaluateForDocument(ctx context.
 		previousMonitorID = target.MonitorID
 	}
 	for _, target := range read.Targets {
-		evaluated, err := service.evaluator.EvaluatePublished(ctx, EvaluatePublishedDocumentMatchesCommand{
-			MonitorID: target.MonitorID, MonitorVersionID: target.MonitorVersionID,
-			CompiledProfileID: target.CompiledProfileID, RelevanceProfileID: target.RelevanceProfileID,
-		})
+		evaluated, err := service.evaluator.EvaluatePublished(ctx, EvaluatePublishedDocumentMatchesCommand(target))
 		if err != nil {
 			return result, fmt.Errorf("evaluate published match target: %w", err)
 		}

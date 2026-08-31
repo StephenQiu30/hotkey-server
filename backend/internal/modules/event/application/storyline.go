@@ -118,10 +118,7 @@ func (service *StorylineService) Assign(ctx context.Context, command AssignMicro
 		command.RelationProfileVersion != CanonicalStorylineRelationProfileVersion {
 		return AssignMicroEventToStorylineResult{}, ErrInvalidStorylineContract
 	}
-	target, err := service.repository.ReadStorylineAssignmentTarget(ctx, ReadStorylineAssignmentTargetQuery{
-		MicroEventID: command.MicroEventID, MicroEventVersion: command.MicroEventVersion,
-		RelationProfileVersion: command.RelationProfileVersion,
-	})
+	target, err := service.repository.ReadStorylineAssignmentTarget(ctx, ReadStorylineAssignmentTargetQuery(command))
 	if err != nil {
 		return AssignMicroEventToStorylineResult{}, fmt.Errorf("read storyline assignment target: %w", err)
 	}
@@ -149,7 +146,7 @@ func (service *StorylineService) Assign(ctx context.Context, command AssignMicro
 		ProfileVersion: target.RelationProfileVersion, Candidates: candidates,
 	})
 	if err != nil {
-		return AssignMicroEventToStorylineResult{}, fmt.Errorf("%w: %v", ErrInvalidStorylineContract, err)
+		return AssignMicroEventToStorylineResult{}, fmt.Errorf("%w: %w", ErrInvalidStorylineContract, err)
 	}
 	mutation := CommitStorylineAssignmentCommand{MicroEventID: target.MicroEventID,
 		MicroEventVersion: target.MicroEventVersion, StorylineKey: storylineKey(target.MicroEventID, target.RelationProfileVersion),
@@ -165,7 +162,7 @@ func (service *StorylineService) Assign(ctx context.Context, command AssignMicro
 	if !storylineReceiptMatches(persisted, mutation) {
 		return AssignMicroEventToStorylineResult{}, fmt.Errorf("%w: storyline receipt changed", ErrInvalidStorylineContract)
 	}
-	return AssignMicroEventToStorylineResult{Storyline: persisted.Storyline, Relation: persisted.Relation}, nil
+	return AssignMicroEventToStorylineResult(persisted), nil
 }
 
 func validStorylineTarget(value StorylineAssignmentTargetDTO, command AssignMicroEventToStorylineCommand) bool {

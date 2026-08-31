@@ -59,7 +59,8 @@ docker compose --env-file .env.prod -f docker-compose-prod.yml up --build --deta
 ```bash
 cd backend
 make openapi  # 契约变更时重新生成后端与发布 OpenAPI
-make ci       # 后端完整验收；需要隔离的 PostgreSQL 与 Redis 测试环境
+make format-check lint vet build architecture  # 不依赖运行时服务的 Go 静态门禁
+make ci       # 完整后端验收，含测试、Race Detector 与 govulncheck；需要可丢弃 PostgreSQL/Redis
 
 cd ../frontend
 npm run openapi:check

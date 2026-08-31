@@ -195,11 +195,11 @@ func (service *DocumentVersionService) PersistDocumentObservation(ctx context.Co
 	validationCandidate := documentVersionCandidate(1, observation, persistCommand)
 	preNormalized, err := validationCandidate.Normalize()
 	if err != nil {
-		return PersistDocumentVersionResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return PersistDocumentVersionResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	documentIdentity, err := documentIdentityFromObservationDTO(observation)
 	if err != nil {
-		return PersistDocumentVersionResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return PersistDocumentVersionResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	resolutionIdentity := documentIdentityDTOFromDomain(documentIdentity)
 	resolutionIdentity.CanonicalURL = strings.TrimSpace(observation.CanonicalURL)
@@ -207,7 +207,7 @@ func (service *DocumentVersionService) PersistDocumentObservation(ctx context.Co
 		resolutionIdentity.ContentSHA256 = preNormalized.ContentSHA256
 	}
 	if err := ValidateDocumentIdentityDTO(resolutionIdentity); err != nil {
-		return PersistDocumentVersionResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return PersistDocumentVersionResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	documentDTO, documentCreated, err := service.versions.ResolveDocument(ctx, resolutionIdentity)
 	if err != nil {
@@ -223,7 +223,7 @@ func (service *DocumentVersionService) PersistDocumentObservation(ctx context.Co
 
 	normalized, err := documentVersionCandidate(document.ID, observation, persistCommand).Normalize()
 	if err != nil {
-		return PersistDocumentVersionResult{}, fmt.Errorf("%w: normalize document version: %v", sharedrepository.ErrInvalidInput, err)
+		return PersistDocumentVersionResult{}, fmt.Errorf("%w: normalize document version: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	storedDTO, versionCreated, err := service.versions.AppendDocumentVersion(ctx, newDocumentVersionDraftDTO(observation.SourceConnectionID, normalized))
 	if err != nil {
@@ -312,7 +312,7 @@ func (service *DocumentVersionService) TransitionDocumentVersion(ctx context.Con
 		return TransitionDocumentVersionResult{}, fmt.Errorf("%w: invalid document version lifecycle input", sharedrepository.ErrInvalidInput)
 	}
 	if err := transition.Validate(); err != nil {
-		return TransitionDocumentVersionResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return TransitionDocumentVersionResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	currentDTO, err := service.versions.GetDocumentVersion(ctx, command.DocumentVersionID)
 	if err != nil {
@@ -329,7 +329,7 @@ func (service *DocumentVersionService) TransitionDocumentVersion(ctx context.Con
 		return TransitionDocumentVersionResult{DocumentVersion: documentVersionDTOFromDomain(current)}, nil
 	}
 	if err := ingestiondomain.ValidateDocumentTransition(current.LifecycleState, transition.To); err != nil {
-		return TransitionDocumentVersionResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrConflict, err)
+		return TransitionDocumentVersionResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrConflict, err)
 	}
 	updatedDTO, err := service.versions.CompareAndSwapDocumentVersionLifecycle(ctx, command)
 	if err != nil {

@@ -86,7 +86,7 @@ ORDER BY content.id ASC`, contentIDs)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	references := make([]eventapplication.ContentSearchReference, 0, len(contentIDs))
 	for rows.Next() {
 		var reference eventapplication.ContentSearchReference
@@ -287,7 +287,7 @@ func encodeMicroEventEvidenceCursor(codec *pagination.Codec, cursor microEventEv
 func decodeMicroEventEvidenceCursor(codec *pagination.Codec, value string, expectedMicroEventID int64) (microEventEvidenceCursor, error) {
 	var cursor microEventEvidenceCursor
 	if err := codec.Open(value, "micro_event_evidence_list", &cursor); err != nil {
-		return microEventEvidenceCursor{}, fmt.Errorf("%w: micro-event evidence cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return microEventEvidenceCursor{}, fmt.Errorf("%w: micro-event evidence cursor: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	if cursor.Version != 1 || cursor.MicroEventID != expectedMicroEventID || cursor.AsOf.IsZero() || cursor.ID <= 0 {
 		return microEventEvidenceCursor{}, fmt.Errorf("%w: micro-event evidence cursor shape", sharedrepository.ErrInvalidInput)
@@ -371,7 +371,8 @@ WHERE event.status=ANY($1) AND event.created_at<=$2 AND event.id<=$4
 	}
 	groupBy := `
 GROUP BY event.id,storyline.value,heat.value,heat.score,heat.window_ended_at,relevance.score,evidence_state.value`
-	if query.Sort == "latest" {
+	switch query.Sort {
+	case "latest":
 		if query.Cursor != "" {
 			startedAt := addArgument(cursor.EventStartedAt)
 			id := addArgument(cursor.ID)
@@ -379,7 +380,7 @@ GROUP BY event.id,storyline.value,heat.value,heat.score,heat.window_ended_at,rel
 		}
 		statement += groupBy + `
 ORDER BY event.event_started_at DESC,event.id DESC LIMIT $3`
-	} else if query.Sort == "heat" {
+	case "heat":
 		if query.Cursor != "" && cursor.HasHeat {
 			heatScore := addArgument(cursor.HeatScore)
 			heatWindow := addArgument(cursor.HeatWindowEnd)
@@ -397,7 +398,7 @@ ORDER BY event.event_started_at DESC,event.id DESC LIMIT $3`
 		}
 		statement += groupBy + `
 ORDER BY heat.score DESC NULLS LAST,heat.window_ended_at DESC NULLS LAST,event.event_started_at DESC,event.id DESC LIMIT $3`
-	} else {
+	default:
 		if query.Cursor != "" && cursor.HasRelevance {
 			relevanceScore := addArgument(cursor.RelevanceScore)
 			startedAt := addArgument(cursor.EventStartedAt)
@@ -418,7 +419,7 @@ ORDER BY relevance.score DESC NULLS LAST,event.event_started_at DESC,event.id DE
 	if err != nil {
 		return eventapplication.MicroEventPageDTO{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []eventapplication.MicroEventProjectionDTO{}
 	for rows.Next() {
 		record, err := scanMicroEventProjection(rows)
@@ -464,7 +465,7 @@ GROUP BY event.id,storyline.value,heat.value,heat.score,heat.window_ended_at,rel
 	if err != nil {
 		return eventapplication.MicroEventProjectionDTO{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		return eventapplication.MicroEventProjectionDTO{}, sharedrepository.ErrNotFound
 	}
@@ -488,7 +489,7 @@ ORDER BY member.content_family_id,member.id`, id)
 	if err != nil {
 		return eventapplication.MicroEventProjectionDTO{}, databaserepository.MapError(err)
 	}
-	defer members.Close()
+	defer func() { _ = members.Close() }()
 	result.Members = make([]eventapplication.MicroEventMemberProjectionDTO, 0, result.ContentFamilyCount)
 	for members.Next() {
 		var member eventapplication.MicroEventMemberProjectionDTO
@@ -538,7 +539,7 @@ GROUP BY sentence.id ORDER BY sentence.ordinal`, summary.ID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var sentence eventapplication.EvidenceSummarySentenceDTO
 		var modelRunID, actorUserID sql.NullInt64
@@ -620,7 +621,7 @@ FROM projection ORDER BY id LIMIT $4`, query.MicroEventID, cursor.ID, cursor.AsO
 	if err != nil {
 		return eventapplication.MicroEventEvidencePageDTO{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := []eventapplication.ClaimEvidenceProjectionDTO{}
 	for rows.Next() {
 		var item eventapplication.ClaimEvidenceProjectionDTO

@@ -135,7 +135,7 @@ func (service *EventHeatService) Calculate(ctx context.Context, command Calculat
 			Engagement: target.Weights.Engagement, Recency: target.Weights.Recency},
 	})
 	if err != nil {
-		return CalculateEventHeatResult{}, fmt.Errorf("%w: %v", ErrInvalidEventHeatContract, err)
+		return CalculateEventHeatResult{}, fmt.Errorf("%w: %w", ErrInvalidEventHeatContract, err)
 	}
 	if target.NormalizationFallback {
 		calculated.ReasonCodes = append(calculated.ReasonCodes, "normalization_fallback")

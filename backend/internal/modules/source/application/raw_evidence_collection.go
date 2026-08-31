@@ -120,7 +120,7 @@ func (service *RawEvidenceCollectionService) archiveFetch(ctx context.Context, s
 	if err != nil {
 		return ArchiveCollectionEvidenceResult{}, err
 	}
-	return ArchiveCollectionEvidenceResult{Snapshots: archived.Snapshots}, nil
+	return ArchiveCollectionEvidenceResult(archived), nil
 }
 
 func (service *RawEvidenceCollectionService) ArchiveContext(ctx context.Context, command ArchiveContextEvidenceCommand) error {

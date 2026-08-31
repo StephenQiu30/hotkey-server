@@ -60,7 +60,7 @@ LIMIT $2`, sourceConnectionID, limit)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanSourceCandidateHits(rows)
 }
 
@@ -95,7 +95,7 @@ LIMIT $2`, terms, limit)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanLexicalCandidateHits(rows)
 }
 
@@ -122,7 +122,7 @@ ORDER BY monitor.id ASC, rule.priority ASC, rule.id ASC`, monitorIDs)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	byID := map[int64]*ingestiondomain.RelevanceCandidate{}
 	for rows.Next() {

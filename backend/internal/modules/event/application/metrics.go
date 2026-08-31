@@ -73,7 +73,7 @@ func (service *HeatService) RecomputeEventMetrics(ctx context.Context, command M
 		return nil, fmt.Errorf("%w: metric recompute dependencies are required", sharedrepository.ErrUnavailable)
 	}
 	if err := command.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	windowEnd := command.WindowEnd.UTC().Truncate(time.Hour)
 	resultsByWindow := make(map[int]domain.HeatResult, len(domain.MetricWindowsV1()))

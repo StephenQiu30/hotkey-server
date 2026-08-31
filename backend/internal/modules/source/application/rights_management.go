@@ -120,9 +120,8 @@ type RecordRightsDecisionResult struct {
 	IdempotentReplay bool
 }
 
-// Repository DTOs explicitly carry the future durable idempotency facts. A
-// PostgreSQL adapter must persist IdempotencyKey and CommandFingerprint; it
-// must not derive them from policy_hash, subject input_digest, or request_id.
+// CreateRightsPolicyRepositoryDTO explicitly carries durable idempotency
+// facts. PostgreSQL must persist both values rather than deriving them.
 type CreateRightsPolicyRepositoryDTO struct {
 	ActorID            int64
 	IdempotencyKey     string

@@ -139,7 +139,7 @@ func (store *Store) Enqueue(ctx context.Context, job Job) (int64, bool, error) {
 		return 0, false, sharedrepository.ErrUnavailable
 	}
 	if err := job.Validate(); err != nil {
-		return 0, false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return 0, false, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	args, err := job.encodedArgs()
 	if err != nil {

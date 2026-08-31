@@ -260,7 +260,7 @@ VALUES ($1,'Recovery knowledge','safe summary','active',$2,$2) RETURNING id`,
 		ProposedFrontmatter: frontmatter, ProposedBody: body, Reason: "recovery fixture",
 		Status: knowledgedomain.ProposalPending,
 	}
-	if err := repository.SaveProposal(proposal); err != nil {
+	if err := repository.SaveProposal(context.Background(), proposal); err != nil {
 		t.Fatal(err)
 	}
 	approved, err := repository.UpdateProposalStatus(ctx, proposal.ID, proposal.Version, knowledgedomain.ProposalApproved)

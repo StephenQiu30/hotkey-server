@@ -179,7 +179,7 @@ func (adapter *CodexCLIAdapter) Run(ctx context.Context, request CodexCLIProcess
 		return CodexCLIProcessResult{}, err
 	}
 
-	command := exec.Command(adapter.executable, codexCLIArguments(request)...)
+	command := exec.CommandContext(runContext, adapter.executable, codexCLIArguments(request)...)
 	command.Dir = workspace
 	command.Env = codexCLIEnvironment(workspace)
 	command.Stdin = bytes.NewReader(request.Prompt)
@@ -272,7 +272,7 @@ func materializeCodexCLIAuth(workspace, authFile string) error {
 	if err != nil {
 		return intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)
 	}
-	defer source.Close()
+	defer func() { _ = source.Close() }()
 	openedInfo, err := source.Stat()
 	if err != nil || !openedInfo.Mode().IsRegular() || !os.SameFile(linkInfo, openedInfo) {
 		return intelligencedomain.NewError(intelligencedomain.CodeAIModelUnavailable)

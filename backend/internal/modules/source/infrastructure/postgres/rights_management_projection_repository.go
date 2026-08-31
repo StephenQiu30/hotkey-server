@@ -65,7 +65,7 @@ LIMIT $3`, query.SourceEndpointID, cursorID, limit+1)
 	if err != nil {
 		return sourceapplication.ListRightsPoliciesRepositoryResultDTO{}, mapRightsManagementDatabaseError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]sourceapplication.RightsPolicyReadDTO, 0, limit+1)
 	for rows.Next() {
 		record, err := scanRightsPolicyRead(rows)
@@ -82,7 +82,7 @@ LIMIT $3`, query.SourceEndpointID, cursorID, limit+1)
 		result.Items = items[:limit]
 		result.NextCursor, err = repository.cursorCodec.Encode("id", true, fingerprint, result.Items[len(result.Items)-1].ID)
 		if err != nil {
-			return sourceapplication.ListRightsPoliciesRepositoryResultDTO{}, fmt.Errorf("%w: encode rights policy cursor: %v", sharedrepository.ErrConstraint, err)
+			return sourceapplication.ListRightsPoliciesRepositoryResultDTO{}, fmt.Errorf("%w: encode rights policy cursor: %w", sharedrepository.ErrConstraint, err)
 		}
 	}
 	return result, nil
@@ -118,7 +118,7 @@ ORDER BY batch.id DESC,decision.action,decision.id`, query.SourceEndpointID, cur
 	if err != nil {
 		return sourceapplication.ListRightsDecisionBatchesRepositoryResultDTO{}, mapRightsManagementDatabaseError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type accumulatedBatch struct {
 		record    rightsDecisionBatchReadRecord
@@ -134,7 +134,7 @@ ORDER BY batch.id DESC,decision.action,decision.id`, query.SourceEndpointID, cur
 		}
 		decision, err := decisionRecord.applicationDTO()
 		if err != nil {
-			return sourceapplication.ListRightsDecisionBatchesRepositoryResultDTO{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+			return sourceapplication.ListRightsDecisionBatchesRepositoryResultDTO{}, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 		}
 		if len(accumulated) == 0 || accumulated[len(accumulated)-1].record.ID != batchRecord.ID {
 			accumulated = append(accumulated, accumulatedBatch{record: batchRecord, decisions: []sourceapplication.RightsDecisionReadDTO{decision}})
@@ -160,7 +160,7 @@ ORDER BY batch.id DESC,decision.action,decision.id`, query.SourceEndpointID, cur
 	if len(accumulated) > limit {
 		result.NextCursor, err = repository.cursorCodec.Encode("id", true, fingerprint, result.Items[len(result.Items)-1].ID)
 		if err != nil {
-			return sourceapplication.ListRightsDecisionBatchesRepositoryResultDTO{}, fmt.Errorf("%w: encode rights decision batch cursor: %v", sharedrepository.ErrConstraint, err)
+			return sourceapplication.ListRightsDecisionBatchesRepositoryResultDTO{}, fmt.Errorf("%w: encode rights decision batch cursor: %w", sharedrepository.ErrConstraint, err)
 		}
 	}
 	return result, nil
@@ -184,7 +184,7 @@ WHERE decision.id=$1 AND decision.source_connection_id=$2`, query.DecisionID, qu
 	}
 	result, err := record.applicationDTO()
 	if err != nil {
-		return sourceapplication.RightsDecisionReadDTO{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		return sourceapplication.RightsDecisionReadDTO{}, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 	}
 	return result, nil
 }
@@ -231,7 +231,7 @@ ORDER BY CASE terminal.action
 	if err != nil {
 		return sourceapplication.RightsActionMatrixDTO{}, mapRightsManagementDatabaseError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	records := make(map[string][]rightsActionEvaluationRecord, len(rightsActionProjectionOrder))
 	for rows.Next() {
 		var record rightsActionEvaluationRecord
@@ -333,7 +333,7 @@ func (repository *RightsManagementRepository) rightsProjectionPageParameters(kin
 	fingerprint := fmt.Sprintf("source-endpoint:%d:rights:%s", sourceEndpointID, kind)
 	cursor, err := repository.cursorCodec.Decode(encodedCursor, "id", true, fingerprint)
 	if err != nil {
-		return 0, 0, "", fmt.Errorf("%w: rights projection cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return 0, 0, "", fmt.Errorf("%w: rights projection cursor: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return limit, cursor.ID, fingerprint, nil
 }

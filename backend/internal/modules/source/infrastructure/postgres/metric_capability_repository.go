@@ -28,7 +28,7 @@ func (repository *MetricCapabilityRepository) CreateDraft(ctx context.Context, p
 		return fmt.Errorf("%w: metric capability profile is required", sharedrepository.ErrInvalidInput)
 	}
 	if err := profile.ValidateDraft(); err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		return transaction.SQL.QueryRowContext(ctx, `

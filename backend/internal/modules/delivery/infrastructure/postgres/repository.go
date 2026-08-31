@@ -122,7 +122,7 @@ WHERE enabled = true AND deleted_at IS NULL ORDER BY id ASC`)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]domain.Subscription, 0)
 	for rows.Next() {
 		item, err := scanSubscription(rows)
@@ -142,7 +142,7 @@ func (repository *Repository) SaveSubscription(ctx context.Context, subscription
 		return sharedrepository.ErrUnavailable
 	}
 	if err := subscription.Validate(); err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	_, err := deliveryQueryerFor(ctx, repository.runtime).ExecContext(ctx, `
 INSERT INTO report_subscriptions (id, version, user_id, monitor_id, report_type, channel, recipient, rss_token_hash, timezone, schedule, enabled)
@@ -160,7 +160,7 @@ func (repository *Repository) CreateSubscription(ctx context.Context, subscripti
 		return domain.Subscription{}, sharedrepository.ErrUnavailable
 	}
 	if err := subscription.ValidateCreate(); err != nil {
-		return domain.Subscription{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Subscription{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return scanSubscription(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
 INSERT INTO report_subscriptions (user_id, monitor_id, report_type, channel, recipient, rss_token_hash, timezone, schedule, enabled)
@@ -182,11 +182,11 @@ func (repository *Repository) ListSubscriptions(ctx context.Context, userID int6
 		return domain.SubscriptionPage{}, sharedrepository.ErrInvalidInput
 	}
 	if err := query.Validate(); err != nil {
-		return domain.SubscriptionPage{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.SubscriptionPage{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	cursor, err := repository.cursorCodec.Decode(query.Cursor, "id", true, subscriptionListFingerprint(userID))
 	if err != nil {
-		return domain.SubscriptionPage{}, fmt.Errorf("%w: subscription cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.SubscriptionPage{}, fmt.Errorf("%w: subscription cursor: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	rows, err := deliveryQueryerFor(ctx, repository.runtime).QueryContext(ctx, `SELECT `+subscriptionColumns+`
 FROM report_subscriptions
@@ -196,7 +196,7 @@ LIMIT $3`, userID, cursor.ID, query.Limit+1)
 	if err != nil {
 		return domain.SubscriptionPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	page := domain.SubscriptionPage{Items: make([]domain.Subscription, 0, query.Limit)}
 	for rows.Next() {
 		subscription, err := scanSubscription(rows)
@@ -227,7 +227,7 @@ func (repository *Repository) UpdateSubscription(ctx context.Context, subscripti
 		return domain.Subscription{}, sharedrepository.ErrInvalidInput
 	}
 	if err := subscription.Validate(); err != nil {
-		return domain.Subscription{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Subscription{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	next, err := scanSubscription(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
 UPDATE report_subscriptions
@@ -246,7 +246,7 @@ func (repository *Repository) RotateRSSToken(ctx context.Context, subscriptionID
 	}
 	candidate := domain.Subscription{ID: subscriptionID, Version: expectedVersion, UserID: userID, ReportType: "daily", Channel: domain.ChannelRSS, TokenHash: tokenHash, Timezone: "UTC", Schedule: "0 0 * * *"}
 	if err := candidate.Validate(); err != nil {
-		return domain.Subscription{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return domain.Subscription{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	next, err := scanSubscription(deliveryQueryerFor(ctx, repository.runtime).QueryRowContext(ctx, `
 UPDATE report_subscriptions
@@ -283,7 +283,7 @@ func (repository *Repository) CreateDelivery(ctx context.Context, delivery domai
 		validation.ID = 1
 	}
 	if err := validation.Validate(); err != nil {
-		return false, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return false, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	var id int64
 	queryer := deliveryQueryerFor(ctx, repository.runtime)
@@ -384,7 +384,7 @@ func (repository *Repository) UpdateDelivery(ctx context.Context, delivery domai
 		return sharedrepository.ErrUnavailable
 	}
 	if err := delivery.Validate(); err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	result, err := repository.runtime.SQL.ExecContext(ctx, `
 UPDATE report_deliveries SET status = $1, next_attempt_at = $2, succeeded_at = $3, updated_at = now()

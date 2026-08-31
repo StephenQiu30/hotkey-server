@@ -85,7 +85,7 @@ func (mailer *Mailer) sendSMTP(ctx context.Context, message Message) error {
 	if err != nil {
 		return err
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	if mailer.config.TLSMode == "tls" {
 		tlsConnection := tls.Client(connection, mailer.connectionTLSConfig())
 		if err := tlsConnection.HandshakeContext(ctx); err != nil {
@@ -98,7 +98,7 @@ func (mailer *Mailer) sendSMTP(ctx context.Context, message Message) error {
 	if err != nil {
 		return err
 	}
-	defer client.Quit()
+	defer func() { _ = client.Quit() }()
 	if mailer.config.TLSMode == "starttls" {
 		if ok, _ := client.Extension("STARTTLS"); !ok {
 			return fmt.Errorf("SMTP server does not support STARTTLS")

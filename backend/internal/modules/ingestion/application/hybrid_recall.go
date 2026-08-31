@@ -388,15 +388,16 @@ func validateReadyRecallProfile(query ReadyRecallProfileDTO) error {
 			return fmt.Errorf("%w: exact semantic profile is invalid", ErrInvalidHybridRecallQuery)
 		}
 	}
-	if query.SemanticState == SemanticRecallStateReady {
+	switch query.SemanticState {
+	case SemanticRecallStateReady:
 		if query.Semantic == nil || query.SemanticUnavailableReason != "" {
 			return fmt.Errorf("%w: ready semantic profile is incomplete", ErrInvalidHybridRecallQuery)
 		}
-	} else if query.SemanticState == SemanticRecallStateUnavailable {
+	case SemanticRecallStateUnavailable:
 		if query.Semantic != nil || !validSemanticUnavailableReason(query.SemanticUnavailableReason) {
 			return fmt.Errorf("%w: unavailable semantic profile is invalid", ErrInvalidHybridRecallQuery)
 		}
-	} else {
+	default:
 		return fmt.Errorf("%w: semantic state is invalid", ErrInvalidHybridRecallQuery)
 	}
 	return nil

@@ -14,8 +14,8 @@ import (
 )
 
 type bilibiliWebhookServiceFake struct {
-	called  int
-	openID  string
+	called int
+	openID string
 }
 
 func (service *bilibiliWebhookServiceFake) HandleBilibiliDeauthorization(_ context.Context, webhook domain.BilibiliWebhook) (bool, error) {

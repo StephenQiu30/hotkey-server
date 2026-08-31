@@ -52,7 +52,7 @@ FOR UPDATE OF monitor, config_version, target, member`, sourceID)
 	if err != nil {
 		return sourcedomain.SourceUsage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type grouped struct {
 		status string

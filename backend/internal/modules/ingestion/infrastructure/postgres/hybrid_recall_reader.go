@@ -78,7 +78,7 @@ ORDER BY requested.ordinal`, query.DocumentVersionIDs)
 	if err != nil {
 		return ingestionapplication.RecallPreviewDocumentResult{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := ingestionapplication.RecallPreviewDocumentResult{Documents: []ingestionapplication.RecallPreviewDocumentDTO{}}
 	for rows.Next() {
 		var document ingestionapplication.RecallPreviewDocumentDTO
@@ -119,7 +119,7 @@ func (reader *HybridDocumentRecallReader) RecallLexical(ctx context.Context, que
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanDocumentRecallHits(rows)
 }
 
@@ -145,7 +145,7 @@ func (reader *HybridDocumentRecallReader) RecallStructured(ctx context.Context, 
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanDocumentRecallHits(rows)
 }
 
@@ -190,7 +190,7 @@ func (reader *HybridDocumentRecallReader) RecallSemantic(ctx context.Context, qu
 		}
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanDocumentRecallHits(rows)
 }
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -207,7 +208,7 @@ func run(parent context.Context) error {
 	if err != nil {
 		return errors.New("open PostgreSQL for search capacity baseline")
 	}
-	defer runtimeDB.Close()
+	defer func() { _ = runtimeDB.Close() }()
 	poolLimit := int(runtimeDB.Pool.Config().MaxConns)
 	runtimeDB.SQL.SetMaxOpenConns(poolLimit)
 	runtimeDB.SQL.SetMaxIdleConns(poolLimit)
@@ -404,7 +405,7 @@ func sanitizePlan(raw []byte) ([]planNode, error) {
 }
 
 func measureAPI(ctx context.Context, service *searchapplication.Service, cfg config) (apiEvidence, error) {
-	server := newSearchServer(service)
+	server := newSearchServer(ctx, service)
 	defer server.Close()
 	client := server.Client()
 	expected := make(map[string]expectedResult, len(fixedQueries))
@@ -456,11 +457,22 @@ func measureAPI(ctx context.Context, service *searchapplication.Service, cfg con
 	}, nil
 }
 
-func newSearchServer(service *searchapplication.Service) *httptest.Server {
+// contextcheck follows Gin's route factory into request middleware even though
+// every request inherits ctx from BaseContext.
+//
+//nolint:contextcheck
+func newSearchServer(ctx context.Context, service *searchapplication.Service) *httptest.Server {
+	server := httptest.NewUnstartedServer(newSearchRouter(service))
+	server.Config.BaseContext = func(net.Listener) context.Context { return ctx }
+	server.Start()
+	return server
+}
+
+func newSearchRouter(service *searchapplication.Service) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	searchhttp.RegisterRoutes(router, service, capacityAuthenticator{})
-	return httptest.NewServer(router)
+	return router
 }
 
 func executeConcurrent(count, concurrency int, execute func(int) requestResult) []requestResult {
@@ -531,7 +543,7 @@ func executeSearchRequest(parent context.Context, client *http.Client, baseURL s
 	seen := make(map[resultIdentity]struct{}, len(envelope.Data.Items))
 	for _, item := range envelope.Data.Items {
 		identity := resultIdentity{ResourceType: item.Type, ID: item.ID}
-		if item.ID <= 0 || searchdomain.ResourceType(item.Type).Valid() == false {
+		if item.ID <= 0 || !searchdomain.ResourceType(item.Type).Valid() {
 			result.err = errors.New("search capacity response contains invalid identity")
 			return result
 		}
@@ -562,13 +574,15 @@ RETURNING id`).Scan(&contentID)
 		return indexUpdateEvidence{}, errors.New("prepare search index update fixture")
 	}
 	defer func() {
-		_, _ = runtimeDB.SQL.ExecContext(context.Background(), `
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_, _ = runtimeDB.SQL.ExecContext(cleanupCtx, `
 UPDATE contents
 SET title=replace(title,'capacityindexfresh','capacityindexstale'),version=version+1,updated_at=clock_timestamp()
 WHERE id=$1 AND strpos(title,'capacityindexfresh')>0`, contentID)
 	}()
 	query := newCapacityQuery("index-update-content", map[string]string{"q": "capacityindexfresh", "types": "content", "limit": "10"})
-	server := newSearchServer(service)
+	server := newSearchServer(ctx, service)
 	defer server.Close()
 	startedAt := time.Now()
 	result := indexUpdateEvidence{ResourceType: "content", QueryDigest: digestString(query.route)}

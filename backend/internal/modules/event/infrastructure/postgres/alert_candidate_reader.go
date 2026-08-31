@@ -82,7 +82,7 @@ ORDER BY monitor_event.monitor_id ASC`, eventID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	candidates := make([]application.AlertCandidate, 0)
 	for rows.Next() {
 		candidate := application.AlertCandidate{

@@ -66,7 +66,7 @@ LIMIT $4`, start.UTC(), end.UTC(), monitorID, limit)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]reportapplication.EventSnapshot, 0)
 	for rows.Next() {
 		var item reportapplication.EventSnapshot
@@ -107,7 +107,7 @@ GROUP BY sentence.id ORDER BY sentence.ordinal`, summaryID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]domain.Sentence, 0)
 	for rows.Next() {
 		var sentence domain.Sentence

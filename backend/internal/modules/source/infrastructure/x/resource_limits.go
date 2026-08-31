@@ -13,7 +13,7 @@ import (
 
 const ResourceLimitProfileVersion = "x-api-resource-limits-v1"
 
-var errResponseByteLimit = errors.New("X cumulative response byte limit exceeded")
+var errResponseByteLimit = errors.New("x cumulative response byte limit exceeded")
 
 // ResourceLimitProfile applies to both Recent Search and Post Lookup. One
 // connector invocation consumes one logical API page, while retries and

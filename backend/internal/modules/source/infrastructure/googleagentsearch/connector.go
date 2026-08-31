@@ -175,7 +175,7 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 		DialContext: secureDialContext(endpoint.Hostname(), options.resolver, options.dialContext),
 	}
 	client := &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error {
-		return errors.New("Google Agent Search redirects are not allowed")
+		return errors.New("google agent search redirects are not allowed")
 	}}
 	return &Connector{
 		sourceID: normalized.ID, endpoint: endpoint, servingConfig: normalized.Config.GoogleServingConfig,
@@ -283,7 +283,7 @@ func (connector *Connector) search(ctx context.Context, token string, body searc
 	if err != nil {
 		return fetchedSearchResponse{}, domain.RateLimit{}, temporary("request Google Agent Search")
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	rateLimit := parseRateLimit(response.Header)
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBodyBytes+1))
 	if err != nil {
@@ -296,7 +296,7 @@ func (connector *Connector) search(ctx context.Context, token string, body searc
 	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden:
 		return fetchedSearchResponse{}, rateLimit, authentication("Google Agent Search authorization rejected")
 	case response.StatusCode == http.StatusTooManyRequests:
-		return fetchedSearchResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Google Agent Search rate limited"))
+		return fetchedSearchResponse{}, rateLimit, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("google agent search rate limited"))
 	case response.StatusCode >= 500:
 		return fetchedSearchResponse{}, rateLimit, temporary("Google Agent Search service unavailable")
 	case response.StatusCode < 200 || response.StatusCode >= 300:
@@ -379,7 +379,7 @@ func stableID(value searchResult) string {
 func normalizeQuery(value string) (string, error) {
 	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
 	if value == "" || utf8.RuneCountInString(value) > maxQueryCharacters || containsControl(value) {
-		return "", errors.New("Google Agent Search query is invalid")
+		return "", errors.New("google agent search query is invalid")
 	}
 	return value, nil
 }
@@ -491,9 +491,10 @@ func parseRateLimit(header http.Header) domain.RateLimit {
 func healthFailure(checkedAt time.Time, err error) domain.HealthResult {
 	kind := domain.ClassifyCollectionError(err)
 	code := "request_failed"
-	if kind == domain.CollectionErrorAuthentication {
+	switch kind {
+	case domain.CollectionErrorAuthentication:
 		code = "credential_unavailable"
-	} else if kind == domain.CollectionErrorPermanent || kind == domain.CollectionErrorParse {
+	case domain.CollectionErrorPermanent, domain.CollectionErrorParse:
 		code = "capability_unavailable"
 	}
 	return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: kind, DiagnosticCode: code}

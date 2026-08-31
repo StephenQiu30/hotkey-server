@@ -90,7 +90,7 @@ ORDER BY source.source_type, run.status, run.trigger_type`)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	retries := make(map[string]float64)
 	for rows.Next() {
 		var sourceType, outcome, trigger string
@@ -126,7 +126,7 @@ FROM river_job GROUP BY kind,state ORDER BY kind,state`)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	retries := make(map[string]float64)
 	queueLag := make(map[string]float64)
 	for rows.Next() {

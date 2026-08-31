@@ -150,7 +150,7 @@ func (service *DocumentProjectionService) Project(ctx context.Context, command P
 	}
 	prepared, err := prepareDocumentProjection(command)
 	if err != nil {
-		return ProjectDocumentResult{}, fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return ProjectDocumentResult{}, fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	reservation, err := service.repository.Reserve(ctx, prepared.reservation)
 	if err != nil {
@@ -260,7 +260,7 @@ func prepareDocumentProjection(command ProjectDocumentCommand) (preparedDocument
 	}
 	if command.ArtifactType == DocumentProjectionMarkdown {
 		if command.AnchorMap == nil {
-			return preparedDocumentProjection{}, errors.New("Markdown projection requires an immutable anchor map")
+			return preparedDocumentProjection{}, errors.New("markdown projection requires an immutable anchor map")
 		}
 		mapped := MapDocumentTextResult{
 			Plaintext: command.AnchorMap.Plaintext, NormalizationVersion: command.AnchorMap.NormalizationVersion,
@@ -269,7 +269,7 @@ func prepareDocumentProjection(command ProjectDocumentCommand) (preparedDocument
 			AnchorMapSHA256: command.AnchorMap.AnchorMapSHA256, Blocks: cloneDocumentAnchorBlocks(command.AnchorMap.Blocks),
 		}
 		if err := ValidateMapDocumentTextResult(MapDocumentTextCommand{Markdown: string(command.ProjectionBytes)}, mapped); err != nil {
-			return preparedDocumentProjection{}, fmt.Errorf("Markdown anchor map is invalid: %w", err)
+			return preparedDocumentProjection{}, fmt.Errorf("markdown anchor map is invalid: %w", err)
 		}
 	} else if command.AnchorMap != nil {
 		return preparedDocumentProjection{}, errors.New("plaintext projection cannot carry a Markdown anchor map")
@@ -471,11 +471,11 @@ func (service *DocumentProjectionService) quarantineContentConflict(ctx context.
 		return fmt.Errorf("%w: conflicting reservation document version is invalid", sharedrepository.ErrConflict)
 	}
 	if _, err := service.repository.Quarantine(ctx, QuarantineDerivedArtifactCommand{ArtifactID: reservation.Artifact.ID}); err != nil {
-		return fmt.Errorf("%w: quarantine conflicting derived artifact: %v", sharedrepository.ErrConflict, err)
+		return fmt.Errorf("%w: quarantine conflicting derived artifact: %w", sharedrepository.ErrConflict, err)
 	}
 	if documentVersion.LifecycleState != ingestiondomain.DocumentQuarantined && documentVersion.LifecycleState != ingestiondomain.DocumentTombstoned {
 		if _, err := service.transitionDocumentVersion(ctx, documentVersion, ingestiondomain.DocumentQuarantined, nil); err != nil {
-			return fmt.Errorf("%w: quarantine conflicting document version: %v", sharedrepository.ErrConflict, err)
+			return fmt.Errorf("%w: quarantine conflicting document version: %w", sharedrepository.ErrConflict, err)
 		}
 	}
 	return fmt.Errorf("%w: immutable document projection content conflict", sharedrepository.ErrConflict)

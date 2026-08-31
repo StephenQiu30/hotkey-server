@@ -125,7 +125,7 @@ func (repository *Repository) List(ctx context.Context, query domain.MonitorList
 	if err != nil {
 		return nil, "", databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	monitors := make([]domain.Monitor, 0, limit+1)
 	for rows.Next() {
 		var monitor domain.Monitor
@@ -144,7 +144,7 @@ func (repository *Repository) List(ctx context.Context, query domain.MonitorList
 	cursor.AfterID = monitors[len(monitors)-1].ID
 	nextCursor, err := repository.cursorCodec.Seal("monitor_list", cursor)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: encode monitor cursor: %v", sharedrepository.ErrInvalidInput, err)
+		return nil, "", fmt.Errorf("%w: encode monitor cursor: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return monitors, nextCursor, nil
 }
@@ -190,7 +190,7 @@ LIMIT $7`, query.MonitorID, cursor.SnapshotID, query.IncludeDrafts, cursor.Snaps
 	if err != nil {
 		return domain.MonitorConfigPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]domain.MonitorConfigVersion, 0, limit+1)
 	for rows.Next() {
 		var config domain.MonitorConfigVersion
@@ -289,7 +289,7 @@ func (repository *Repository) SaveDraft(ctx context.Context, config *domain.Moni
 	return repository.withTransaction(ctx, func(ctx context.Context, transaction database.Transaction) error {
 		normalized, err := domain.NormalizeMonitorConfig(config.Config)
 		if err != nil {
-			return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+			return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 		}
 		config.Config = normalized
 		if _, err := transaction.SQL.ExecContext(ctx, `DELETE FROM monitor_rules WHERE config_version_id = $1`, config.ID); err != nil {
@@ -482,7 +482,7 @@ func (repository *Repository) insertConfig(ctx context.Context, queryer interfac
 }, config *domain.MonitorConfigVersion) error {
 	normalized, err := domain.NormalizeMonitorConfig(config.Config)
 	if err != nil {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	config.Config = normalized
 	languages, regions, err := configArrays(config.Config)
@@ -536,7 +536,7 @@ func (repository *Repository) rules(ctx context.Context, configID int64, lock bo
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []domain.MonitorRule{}
 	for rows.Next() {
 		var rule domain.MonitorRule
@@ -560,7 +560,7 @@ func (repository *Repository) sources(ctx context.Context, configID int64, lock 
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := []domain.MonitorSource{}
 	for rows.Next() {
 		var source domain.MonitorSource
@@ -684,7 +684,7 @@ func (scan stringSliceScan) Scan(value any) error {
 func configArrays(config domain.MonitorConfig) (string, string, error) {
 	normalized, err := domain.NormalizeMonitorConfig(config)
 	if err != nil {
-		return "", "", fmt.Errorf("%w: %v", sharedrepository.ErrInvalidInput, err)
+		return "", "", fmt.Errorf("%w: %w", sharedrepository.ErrInvalidInput, err)
 	}
 	return textArray(normalized.Languages), textArray(normalized.Regions), nil
 }

@@ -86,7 +86,7 @@ WHERE id=$1`, decisionID))
 	}
 	result, err := record.applicationDTO()
 	if err != nil {
-		return sourceapplication.RightsDecisionDTO{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		return sourceapplication.RightsDecisionDTO{}, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 	}
 	return result, nil
 }
@@ -225,7 +225,7 @@ RETURNING `+rightsManagementDecisionColumns,
 	}
 	result, err := record.applicationDTO()
 	if err != nil {
-		return sourceapplication.RightsDecisionDTO{}, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+		return sourceapplication.RightsDecisionDTO{}, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 	}
 	return result, nil
 }
@@ -239,7 +239,7 @@ ORDER BY action,id`, batchID)
 	if err != nil {
 		return nil, mapRightsManagementDatabaseError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	decisions := make([]sourceapplication.RightsDecisionDTO, 0, 9)
 	for rows.Next() {
 		record, err := scanRightsManagementDecision(rows)
@@ -248,7 +248,7 @@ ORDER BY action,id`, batchID)
 		}
 		decision, err := record.applicationDTO()
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", sharedrepository.ErrConstraint, err)
+			return nil, fmt.Errorf("%w: %w", sharedrepository.ErrConstraint, err)
 		}
 		decisions = append(decisions, decision)
 	}
@@ -281,7 +281,7 @@ func (repository *RightsManagementRepository) withTransaction(ctx context.Contex
 
 func mapRightsManagementDatabaseError(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("%w: %v", sharedrepository.ErrNotFound, err)
+		return fmt.Errorf("%w: %w", sharedrepository.ErrNotFound, err)
 	}
 	return databaserepository.MapError(err)
 }

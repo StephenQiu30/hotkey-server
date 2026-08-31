@@ -106,7 +106,7 @@ func selectXMLItem(payload []byte, locator, selectorVersion string) ([]byte, err
 		}
 		var document atomFeed
 		if err := xml.Unmarshal(payload, &document); err != nil || index > len(document.Entries) {
-			return nil, errors.New("Atom entry selector did not resolve")
+			return nil, errors.New("atom entry selector did not resolve")
 		}
 		selected = document.Entries[index-1]
 	default:

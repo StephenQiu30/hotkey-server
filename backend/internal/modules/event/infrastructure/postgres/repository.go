@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -79,7 +80,7 @@ ORDER BY id ASC LIMIT $2`, query.Cursor, query.Limit+1, monitorID)
 	if err != nil {
 		return domain.EventPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]domain.Event, 0, query.Limit)
 	for rows.Next() {
 		event, err := scanEvent(rows)
@@ -112,7 +113,7 @@ FROM event_contents WHERE event_id = $1 ORDER BY membership_score DESC, content_
 	if err != nil {
 		return domain.EventMemberPage{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]domain.EventMember, 0)
 	for rows.Next() {
 		var member domain.EventMember
@@ -155,7 +156,7 @@ ORDER BY membership.is_representative DESC, membership.membership_score DESC, me
 	if err != nil {
 		return application.EventIntelligenceSource{}, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	evidence := make([]domain.EvidenceRef, 0)
 	for rows.Next() {
 		var item domain.EvidenceRef
@@ -219,7 +220,7 @@ ORDER BY event.id ASC`, contentID)
 	if err != nil {
 		return nil, databaserepository.MapError(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	eventIDs := make([]int64, 0)
 	for rows.Next() {
 		var eventID int64
@@ -545,7 +546,7 @@ func mergeMembers(ctx context.Context, query *sql.Tx, sourceID, targetID int64, 
 		var targetVersion int64
 		var targetCreatedAt time.Time
 		err := query.QueryRowContext(ctx, `SELECT id, membership_score, version, created_at FROM event_contents WHERE event_id = $1 AND content_id = $2 FOR UPDATE`, targetID, member.ContentID).Scan(&targetIDValue, &targetScore, &targetVersion, &targetCreatedAt)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			if _, err := query.ExecContext(ctx, `UPDATE event_contents SET event_id = $1, version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`, targetID, member.ID, member.Version); err != nil {
 				return err
 			}
@@ -688,7 +689,7 @@ func scanEvent(row rowScanner) (domain.Event, error) {
 	var reasons []byte
 	var calculatedAt sql.NullTime
 	if err := row.Scan(&event.ID, &event.Version, &event.EventKey, &fingerprint, &fingerprintVersion, &event.TitleZH, &titleEN, &event.Summary, &event.LifecycleStatus, &event.FirstSeenAt, &event.LastSeenAt, &representative, &merged, &event.ManualLocked, &event.HeatScore, &event.TrendScore, &event.TrendStatus, &event.HeatWindowHours, &event.HeatVersion, &reasons, &event.MetricCapabilityProfileSetHash, &calculatedAt); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Event{}, fmt.Errorf("%w: event", sharedrepository.ErrNotFound)
 		}
 		return domain.Event{}, databaserepository.MapError(err)

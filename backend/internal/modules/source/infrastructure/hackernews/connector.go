@@ -101,7 +101,7 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 	}
 	readTimeout := time.Duration(normalized.Config.RequestTimeoutSeconds) * time.Second
 	reserveRequest := func(ctx context.Context) error {
-		return reserveHackerNewsRequest(ctx, options.requestBudget, normalized.ID, options.resourceLimits, int64(normalized.Config.RateLimitPerMinute), options.clientOptions.now)
+		return reserveHackerNewsRequest(ctx, options.requestBudget, normalized.ID, options.resourceLimits, int64(normalized.Config.RateLimitPerMinute), options.now)
 	}
 	return &Connector{
 		sourceID: normalized.ID, client: newClient(endpoint, options.resourceLimits, readTimeout, reserveRequest, options.clientOptions), mode: normalized.Config.HackerNewsMode,
@@ -112,7 +112,7 @@ func newConnector(connection domain.SourceConnection, options connectorOptions) 
 func (connector *Connector) Validate(_ context.Context, connection domain.SourceConnection) error {
 	normalized, err := domain.NormalizeSourceConnection(connection)
 	if err != nil || normalized.SourceType != domain.SourceTypeHackerNews || normalized.Endpoint != domain.HackerNewsEndpoint || (connector.sourceID > 0 && normalized.ID != connector.sourceID) {
-		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("Hacker News source connection does not match connector"))
+		return domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("hacker News source connection does not match connector"))
 	}
 	return nil
 }
@@ -125,14 +125,14 @@ func (connector *Connector) get(ctx context.Context, path string, byteBudget *re
 				return fetchedJSONResponse{}, nil, err
 			}
 			resetAt := quota.resetAt.UTC()
-			return fetchedJSONResponse{}, &resetAt, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("Hacker News daily request quota exceeded"))
+			return fetchedJSONResponse{}, &resetAt, domain.NewCollectionError(domain.CollectionErrorRateLimited, errors.New("hacker News daily request quota exceeded"))
 		}
 		response, retryAfter, err := connector.client.get(ctx, path, byteBudget)
 		if err == nil || domain.ClassifyCollectionError(err) != domain.CollectionErrorTemporary || attempt >= connector.resourceLimits.MaxRetries {
 			return response, retryAfter, err
 		}
 		if err := connector.retryWait(ctx, attempt+1); err != nil {
-			return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("Hacker News retry interrupted"))
+			return fetchedJSONResponse{}, nil, domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("hacker News retry interrupted"))
 		}
 	}
 }
@@ -178,7 +178,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		return domain.FetchResult{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("invalid Hacker News fetch request"))
 	}
 	if connector.sourceID > 0 && request.SourceConnectionID != connector.sourceID {
-		return domain.FetchResult{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("Hacker News fetch request source does not match connector"))
+		return domain.FetchResult{}, domain.NewCollectionError(domain.CollectionErrorPermanent, errors.New("hacker News fetch request source does not match connector"))
 	}
 	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
 	defer cancel()
@@ -247,7 +247,7 @@ func (connector *Connector) Fetch(ctx context.Context, request domain.FetchReque
 		}
 		item := outcome.item
 		if outcome.snapshot == nil {
-			return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("Hacker News item evidence is missing"))
+			return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("hacker News item evidence is missing"))
 		}
 		result.Snapshots = appendUniqueSnapshot(result.Snapshots, *outcome.snapshot)
 		result.Items = append(result.Items, item)
@@ -322,7 +322,7 @@ func (connector *Connector) fetchRanked(ctx context.Context, request domain.Fetc
 		default:
 			item := outcome.item
 			if outcome.snapshot == nil {
-				return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("Hacker News item evidence is missing"))
+				return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("hacker News item evidence is missing"))
 			}
 			if err := evidencecapture.BindJSONPointer(&item, rankedSnapshot, "/"+strconv.Itoa(rankByID[outcome.id]), domain.EvidenceUsageContext); err != nil {
 				return result, domain.NewCollectionError(domain.CollectionErrorParse, errors.New("bind Hacker News ranked evidence"))
@@ -385,9 +385,10 @@ func (connector *Connector) Health(ctx context.Context, connection domain.Source
 		return domain.HealthResult{CheckedAt: checkedAt, ErrorKind: domain.ClassifyCollectionError(err), DiagnosticCode: "invalid_source_connection"}
 	}
 	path := "maxitem.json"
-	if connector.mode == domain.HackerNewsModeTop {
+	switch connector.mode {
+	case domain.HackerNewsModeTop:
 		path = "topstories.json"
-	} else if connector.mode == domain.HackerNewsModeBest {
+	case domain.HackerNewsModeBest:
 		path = "beststories.json"
 	}
 	ctx, cancel := context.WithTimeout(ctx, connector.resourceLimits.WallClockTimeout)
@@ -459,7 +460,7 @@ func (connector *Connector) fetchRankedItems(parent context.Context, ids []int64
 		return ordered, failure
 	}
 	if len(ordered) != len(ids) {
-		return ordered, &itemOutcome{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("Hacker News ranked page was interrupted"))}
+		return ordered, &itemOutcome{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("hacker News ranked page was interrupted"))}
 	}
 	return ordered, nil
 }
@@ -557,7 +558,7 @@ func (connector *Connector) fetchItems(parent context.Context, start, end int64,
 		return collected, failure
 	}
 	if len(collected) != int(end-start+1) {
-		return collected, &itemOutcome{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("Hacker News item page was interrupted"))}
+		return collected, &itemOutcome{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("hacker News item page was interrupted"))}
 	}
 	return collected, nil
 }
@@ -572,7 +573,7 @@ func stopsHNPage(err error) bool {
 }
 
 func canceledPageFailure(_ error) *itemOutcome {
-	return &itemOutcome{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("Hacker News item page canceled"))}
+	return &itemOutcome{err: domain.NewCollectionError(domain.CollectionErrorTemporary, errors.New("hacker News item page canceled"))}
 }
 
 func preferredPageFailure(candidate, current itemOutcome) bool {
