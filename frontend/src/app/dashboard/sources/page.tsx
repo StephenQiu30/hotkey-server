@@ -51,6 +51,7 @@ import { HotKeyAPIError } from "@/lib/request";
 import { ConfirmDeleteDialog } from "@/components/dashboard/ConfirmDeleteDialog";
 import { SourceConnectionDialog } from "@/components/dashboard/SourceConnectionDialog";
 import { SourceCredentialDialog } from "@/components/dashboard/SourceCredentialDialog";
+import { SourceRightsDialog } from "@/components/dashboard/SourceRightsDialog";
 import {
   CursorPagination,
   DEFAULT_PAGE_SIZE,
@@ -72,6 +73,7 @@ export default function SourcesPage() {
   const canManage = useAuthStore(
     (state) => state.user?.role === UserRole.Admin
   );
+  const actorUserID = useAuthStore((state) => state.user?.id ?? 0);
   const [sources, setSources] = useState<HotKeyAPI.SourceReadResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>();
@@ -405,6 +407,10 @@ export default function SourcesPage() {
                           }
                         />
                       )}
+                      <SourceRightsDialog
+                        actorUserID={actorUserID}
+                        source={source}
+                      />
                       {!source.config?.allow_body_storage && (
                         <Button
                           variant="outline"

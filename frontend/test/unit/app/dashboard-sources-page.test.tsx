@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   getSourcePresets: vi.fn(),
   postSourceConnections: vi.fn(),
   patchSourceConnectionsId: vi.fn(),
+  getSourceEndpointsIdRightsPolicies: vi.fn(),
+  getSourceEndpointsIdRightsDecisionBatches: vi.fn(),
+  postSourceEndpointsIdRightsPolicies: vi.fn(),
+  postSourceEndpointsIdRightsDecisionBatches: vi.fn(),
 }));
 
 vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
@@ -22,6 +26,15 @@ vi.mock("@/services/hotkey/hotkey-server/sources", () => ({
   postSourceConnectionsIdEnable: vi.fn(),
   postSourceConnectionsIdHealth: vi.fn(),
   postSourceConnectionsIdArchive: vi.fn(),
+}));
+
+vi.mock("@/services/hotkey/hotkey-server/sourceRights", () => ({
+  getSourceEndpointsIdRightsPolicies: mocks.getSourceEndpointsIdRightsPolicies,
+  getSourceEndpointsIdRightsDecisionBatches:
+    mocks.getSourceEndpointsIdRightsDecisionBatches,
+  postSourceEndpointsIdRightsPolicies: mocks.postSourceEndpointsIdRightsPolicies,
+  postSourceEndpointsIdRightsDecisionBatches:
+    mocks.postSourceEndpointsIdRightsDecisionBatches,
 }));
 
 const setRole = (role: UserRole) =>
@@ -65,7 +78,144 @@ describe("multi-source workspace", () => {
     mocks.getSourceConnections.mockResolvedValue({ data: { items: [] } });
     mocks.getSourcePresets.mockResolvedValue({ data: { items: sourcePresets } });
     mocks.postSourceConnections.mockResolvedValue({ data: { id: 1 } });
+    mocks.getSourceEndpointsIdRightsPolicies.mockResolvedValue({
+      data: { items: [] },
+    });
+    mocks.getSourceEndpointsIdRightsDecisionBatches.mockResolvedValue({
+      data: { items: [] },
+    });
+    mocks.postSourceEndpointsIdRightsPolicies.mockResolvedValue({
+      data: {
+        policy: {
+          id: 31,
+          version: 1,
+          revision: 1,
+          policy_hash: "a".repeat(64),
+          scope_type: "source_endpoint",
+          scope_subject: "7",
+          priority: 300,
+          approved_by_user_id: 1,
+        },
+      },
+    });
+    mocks.postSourceEndpointsIdRightsDecisionBatches.mockResolvedValue({
+      data: { decision_batch_id: 41, decisions: [] },
+    });
     setRole(UserRole.Admin);
+  });
+
+  it("records an approved source Rights policy and an atomic decision batch", async () => {
+    mocks.getSourceConnections.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 7,
+            version: 2,
+            name: "Official HN",
+            source_type: "hacker_news",
+            enabled: true,
+            health_status: "unknown",
+            terms_policy_url: "https://github.com/HackerNews/API",
+            config: { allow_body_storage: true },
+          },
+        ],
+      },
+    });
+    render(<SourcesPage />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "管理 Official HN 的使用权" }));
+    expect(await screen.findByText("尚未登记使用权策略")).toBeInTheDocument();
+    expect(mocks.getSourceEndpointsIdRightsPolicies).toHaveBeenCalledWith({ id: 7, limit: 50 });
+    expect(mocks.getSourceEndpointsIdRightsDecisionBatches).toHaveBeenCalledWith({ id: 7, limit: 50 });
+
+    fireEvent.change(screen.getByLabelText("授权依据"), {
+      target: { value: "官方 Hacker News API 允许读取公开数据；仅用于本地分析。" },
+    });
+    await user.click(screen.getByRole("button", { name: "保存使用权策略" }));
+
+    await waitFor(() =>
+      expect(mocks.postSourceEndpointsIdRightsPolicies).toHaveBeenCalledWith(
+        { id: 7 },
+        expect.objectContaining({
+          approved_by_user_id: 1,
+          basis_summary: "官方 Hacker News API 允许读取公开数据；仅用于本地分析。",
+          priority: 300,
+          revision: 1,
+          scope_subject: "7",
+          scope_type: "source_endpoint",
+          terms_url: "https://github.com/HackerNews/API",
+        }),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+            "Idempotency-Key": expect.stringMatching(/^rights-policy-7-/),
+          }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(mocks.postSourceEndpointsIdRightsDecisionBatches).toHaveBeenCalledWith(
+        { id: 7 },
+        expect.objectContaining({
+          expected_policy_version: 1,
+          input_digest: "a".repeat(64),
+          policy_id: 31,
+          subject_key: "7",
+          subject_type: "source_endpoint",
+          decisions: expect.arrayContaining([
+            expect.objectContaining({
+              action: "fetch",
+              decision: "allow",
+              evaluator: "admin_rights_workspace",
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+            "Idempotency-Key": expect.stringMatching(/^rights-decisions-7-/),
+            "If-Match": '"v1"',
+          }),
+        }),
+      ),
+    );
+    expect(await screen.findByText("使用权策略已保存")).toBeInTheDocument();
+  });
+
+  it("retries an incomplete Rights decision batch without duplicating its policy", async () => {
+    mocks.getSourceConnections.mockResolvedValue({
+      data: {
+        items: [{
+          id: 7,
+          version: 2,
+          name: "Official HN",
+          source_type: "hacker_news",
+          terms_policy_url: "https://github.com/HackerNews/API",
+        }],
+      },
+    });
+    mocks.postSourceEndpointsIdRightsDecisionBatches
+      .mockRejectedValueOnce(new Error("决策批次暂时不可用"))
+      .mockResolvedValueOnce({ data: { decision_batch_id: 41, decisions: [] } });
+    render(<SourcesPage />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "管理 Official HN 的使用权" }));
+    fireEvent.change(screen.getByLabelText("授权依据"), {
+      target: { value: "官方 API 公开读取条款" },
+    });
+    await user.click(screen.getByRole("button", { name: "保存使用权策略" }));
+    expect(await screen.findByText("决策批次暂时不可用")).toBeInTheDocument();
+    expect(screen.getByLabelText("授权依据")).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "保存使用权策略" }));
+    expect(await screen.findByText("使用权策略已保存")).toBeInTheDocument();
+    expect(mocks.postSourceEndpointsIdRightsPolicies).toHaveBeenCalledTimes(1);
+    expect(mocks.postSourceEndpointsIdRightsDecisionBatches).toHaveBeenCalledTimes(2);
+    const firstHeaders = mocks.postSourceEndpointsIdRightsDecisionBatches.mock.calls[0][2].headers;
+    const secondHeaders = mocks.postSourceEndpointsIdRightsDecisionBatches.mock.calls[1][2].headers;
+    expect(secondHeaders["Idempotency-Key"]).toBe(firstHeaders["Idempotency-Key"]);
   });
 
   it("offers free feed presets before paid or credentialed providers", async () => {
