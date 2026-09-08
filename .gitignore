@@ -31,7 +31,6 @@ artifacts/
 /reports/
 test-results/
 playwright-report/
-.next/
 out/
 tsconfig.tsbuildinfo
 
@@ -47,12 +46,3 @@ dogfood-output/
 product-design-output/
 *.log
 npm-debug.log*
-
-# Backend-only artifacts
-/backend/package-lock.json
-/backend/hotkey-server
-/backend/hotkey
-/backend/.symphony-codex-prompt.*
-/backend/.symphony-workspaces/
-/docs/swagger.json
-/docs/swagger.yaml

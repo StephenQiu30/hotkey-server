@@ -1,190 +1,72 @@
 name: hotkey
-
+x-app: &app
+  image: hotkey-backend:local
+  build: ./backend
+  init: true
+  restart: unless-stopped
+  stop_grace_period: 45s
+  environment: &environment
+    HOTKEY_DATABASE_URL: postgresql+psycopg://hotkey:learning@postgres:5432/hotkey
+    HOTKEY_BROKER_URL: amqp://hotkey:learning@rabbitmq:5672/hotkey
+    HOTKEY_ALLOWED_ORIGINS: '["http://localhost:8010","http://127.0.0.1:8010"]'
+  depends_on:
+    migrate: {condition: service_completed_successfully}
+    rabbitmq: {condition: service_healthy}
 services:
   postgres:
-    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey}-postgres"
-    image: pgvector/pgvector:pg16
-    restart: unless-stopped
+    image: postgres:16
     environment:
       POSTGRES_DB: hotkey
       POSTGRES_USER: hotkey
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-hotkey}"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_PASSWORD: learning
+    ports: ["127.0.0.1:${HOTKEY_DB_PORT:-15435}:5432"]
+    volumes: ["database_data:/var/lib/postgresql/data"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hotkey -d hotkey"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
-  redis:
-    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey}-redis"
-    image: redis:latest
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      test: [CMD-SHELL, "pg_isready -U hotkey -d hotkey"]
+      interval: 3s
       timeout: 3s
-      retries: 20
-
-  minio:
-    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey}-minio"
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address :9001
+      retries: 30
+  rabbitmq:
+    image: rabbitmq:4.1-management
     environment:
-      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-hotkey}"
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-change-me}"
-    volumes:
-      - minio_data:/data
+      RABBITMQ_DEFAULT_USER: hotkey
+      RABBITMQ_DEFAULT_PASS: learning
+      RABBITMQ_DEFAULT_VHOST: hotkey
+    ports: ["127.0.0.1:${HOTKEY_AMQP_PORT:-15673}:5672"]
+    volumes: ["queue_data:/var/lib/rabbitmq"]
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:9000/minio/health/live"]
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  migrate:
+    image: hotkey-backend:local
+    build: ./backend
+    environment: *environment
+    command: [python, -m, cli, migrate]
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
+  backend:
+    <<: *app
+    command: [uvicorn, main:create_app, --factory, --host, 0.0.0.0, --port, "8080", --no-access-log]
+    ports: ["127.0.0.1:${HOTKEY_BACKEND_PORT:-8867}:8080"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/ready',timeout=4)"]
       interval: 5s
       timeout: 5s
       retries: 20
-      start_period: 5s
-
-  minio-init:
-    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey}-minio-init"
-    image: minio/mc:latest
-    restart: "no"
+  worker:
+    <<: *app
+    command: [celery, -A, worker.app:app, worker, --loglevel=WARNING, --pool=prefork, --concurrency=2]
+  scheduler:
+    <<: *app
+    command: [python, -m, cli, scheduler]
+  web:
+    build: ./frontend
+    ports: ["127.0.0.1:${HOTKEY_WEB_PORT:-8010}:8080"]
     depends_on:
-      minio:
-        condition: service_healthy
-    environment:
-      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-hotkey}"
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-change-me}"
-      HOTKEY_MINIO_BUCKET: "${HOTKEY_MINIO_BUCKET:-hotkey-evidence}"
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        until mc alias set hotkey http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do
-          sleep 1
-        done
-        mc mb --ignore-existing "hotkey/$$HOTKEY_MINIO_BUCKET"
-
-  db-init:
-    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey}-db-init"
-    image: hotkey-server:env
-    restart: "no"
-    environment:
-      HOTKEY_ENV: development
-      HOTKEY_ROLE: all
-      HOTKEY_DATABASE_URL: "postgres://hotkey:${POSTGRES_PASSWORD:-hotkey}@postgres:5432/hotkey?sslmode=disable&connect_timeout=5"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        /usr/local/bin/hotkey db verify ||
-        /usr/local/bin/hotkey db init --empty-only --confirm-empty ||
-          /usr/local/bin/hotkey db verify
-
-  hotkey-agent:
-    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey}-agent"
-    image: hotkey-agent:env
-    build:
-      context: ./agent
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    environment:
-      HOTKEY_AGENT_AUTH_TOKEN: "${HOTKEY_AGENT_AUTH_TOKEN:-development-agent-token-change-me-000000}"
-      HOTKEY_AGENT_PREVIOUS_AUTH_TOKENS: "${HOTKEY_AGENT_PREVIOUS_AUTH_TOKENS:-}"
-      HOTKEY_AGENT_MAX_REQUEST_BYTES: "${HOTKEY_AGENT_MAX_REQUEST_BYTES:-262144}"
-      HOTKEY_AGENT_MAX_CONCURRENCY: "${HOTKEY_AGENT_MAX_CONCURRENCY:-2}"
-      HOTKEY_AGENT_CODEX_APP_SERVER_URL: "${HOTKEY_AGENT_CODEX_APP_SERVER_URL:-ws://host.docker.internal:4500}"
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    pids_limit: 128
-    mem_limit: "512m"
-    cpus: "1.0"
-    tmpfs:
-      - /tmp:size=64m,mode=1777
-    expose:
-      - "8090"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/readyz', timeout=2)"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-
-  hotkey-server:
-    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey}-api"
-    image: hotkey-server:env
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    environment:
-      HOTKEY_ENV: development
-      HOTKEY_ROLE: all
-      HOTKEY_HTTP_ADDR: :8080
-      HOTKEY_DATABASE_URL: "postgres://hotkey:${POSTGRES_PASSWORD:-hotkey}@postgres:5432/hotkey?sslmode=disable&connect_timeout=5"
-      HOTKEY_REDIS_URL: redis://redis:6379/0
-      HOTKEY_MINIO_ENDPOINT: minio:9000
-      HOTKEY_MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:-hotkey}"
-      HOTKEY_MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:-change-me}"
-      HOTKEY_MINIO_BUCKET: "${HOTKEY_MINIO_BUCKET:-hotkey-evidence}"
-      HOTKEY_MINIO_USE_SSL: "false"
-      HOTKEY_VAULT_PATH: /var/lib/hotkey/vault
-      HOTKEY_CORS_ALLOWED_ORIGINS: "${HOTKEY_CORS_ALLOWED_ORIGINS:-http://localhost:8010,http://127.0.0.1:8010}"
-      HOTKEY_REFRESH_COOKIE_SECURE: "false"
-      HOTKEY_JWT_SECRET: "${HOTKEY_JWT_SECRET:-development-jwt-secret-change-me-000000}"
-      HOTKEY_VERIFICATION_HMAC_SECRET: "${HOTKEY_VERIFICATION_HMAC_SECRET:-development-hmac-secret-change-me-0000}"
-      HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY: "${HOTKEY_SOURCE_CREDENTIAL_MASTER_KEY:-ZGV2ZWxvcG1lbnQtc291cmNlLW1hc3Rlci1rZXktMDA=}"
-      HOTKEY_AGENT_SHADOW_ENABLED: "${HOTKEY_AGENT_SHADOW_ENABLED:-true}"
-      HOTKEY_AGENT_URL: http://hotkey-agent:8090
-      HOTKEY_AGENT_AUTH_TOKEN: "${HOTKEY_AGENT_AUTH_TOKEN:-development-agent-token-change-me-000000}"
-    depends_on:
-      db-init:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
-    ports:
-      - "${HOTKEY_HTTP_PORT:-8866}:8080"
-    volumes:
-      - vault_data:/var/lib/hotkey/vault
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/readyz"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-    stop_grace_period: 30s
-
-  hotkey-web:
-    container_name: "${HOTKEY_CONTAINER_PREFIX:-hotkey}-web"
-    image: hotkey-web:env
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        HOTKEY_API_ORIGIN: http://hotkey-server:8080
-        HOTKEY_DEPLOY_ENV: env
-    restart: unless-stopped
-    depends_on:
-      hotkey-server:
-        condition: service_healthy
-    ports:
-      - "${WEB_PORT:-8010}:3000"
-    environment:
-      NODE_ENV: production
-      HOTKEY_DEPLOY_ENV: env
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-
+      backend: {condition: service_healthy}
 volumes:
-  postgres_data:
-  minio_data:
-  vault_data:
+  database_data:
+  queue_data:

@@ -1,67 +1,28 @@
 {
-  "name": "hotkey-web",
+  "name": "hotkey-workspace",
   "version": "0.2.0",
-  "description": "面向内容创作者与研究者的开源 AI 热点情报工作台",
   "private": true,
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/StephenQiu30/hotkey-server.git",
-    "directory": "frontend"
-  },
-  "bugs": {
-    "url": "https://github.com/StephenQiu30/hotkey-server/issues"
-  },
-  "homepage": "https://github.com/StephenQiu30/hotkey-server/tree/main/frontend#readme",
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 8010",
-    "build": "next build",
-    "start": "next start -p 8010",
-    "typecheck": "tsc --noEmit",
-    "openapi:generate": "openapi2ts",
-    "openapi:check": "node scripts/check-openapi.mjs",
-    "test": "tsc --noEmit",
-    "test:unit": "vitest run",
-    "test:unit:watch": "vitest",
-    "e2e:auth": "agent-browser --session-name hotkey-auth",
-    "e2e:chat": "agent-browser chat"
+    "generate": "openapi-typescript ../docs/openapi/openapi.json -o src/api.generated.ts",
+    "check:contract": "node scripts/check-contract.mjs",
+    "build": "tsc --noEmit && vite build",
+    "test:e2e": "playwright test",
+    "format:check": "prettier --check src tests scripts playwright.config.ts tsconfig.json package.json index.html"
   },
   "dependencies": {
-    "@gsap/react": "^2.1.2",
-    "axios": "^1.15.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "gsap": "^3.15.0",
-    "lucide-react": "^1.24.0",
-    "next": "^16.3.0",
-    "radix-ui": "^1.6.7",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-markdown": "^10.1.0",
-    "recharts": "^3.8.1",
-    "remark-gfm": "^4.0.1",
-    "sonner": "^2.0.7",
-    "tailwind-merge": "^3.6.0",
-    "three": "^0.185.1",
-    "zustand": "^5.0.12"
+    "openapi-fetch": "^0.17.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
-    "@tailwindcss/postcss": "^4.3.2",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^14.6.1",
-    "@types/node": "^24.12.4",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@types/three": "^0.185.4",
-    "@umijs/openapi": "^1.14.1",
-    "agent-browser": "0.33.2",
-    "jsdom": "^26.1.0",
-    "postcss": "^8.5.19",
-    "tailwindcss": "^4.3.2",
-    "typescript": "~5.9.3",
-    "vitest": "^3.2.4"
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "openapi-typescript": "^7.10.0",
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0"
   }
 }

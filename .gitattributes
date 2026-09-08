@@ -1,8 +1,7 @@
 * text=auto
 
-*.go text eol=lf
-*.mod text eol=lf
-*.sum text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
 *.js text eol=lf
 *.jsx text eol=lf
 *.mjs text eol=lf

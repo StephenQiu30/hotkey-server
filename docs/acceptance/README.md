@@ -1,32 +1,6 @@
----
-layer: Acceptance
-scope: shared
-doc_no: "000"
-title: Acceptance 索引
-status: active
-version: v1.0
-owner: HotKey Team
-canonical_path: docs/acceptance/README.md
----
+# acceptance
 
-# Acceptance 索引
+当前项目只维护新架构文档；历史文档见 Git。
 
-004 已整体 `passed`；001、002、003、005 保持 `failed` 的部分验收，只登记证据完整的局部门禁并保留整体未完成结论。旧验收文件属于被清理的历史基线，不得用来证明当前未完成需求已经实现。
 
-实现完成后按 `NNN-中文主题验收.md` 新增同编号文件，并至少记录：
-
-- Git revision、构建版本、环境和验证日期；
-- 每条 `AC-NNN-*` 的通过/失败及对应 `EV-NNN-*`；
-- 实际执行的自动化命令和结果摘要；
-- 人工、性能、安全、故障注入和恢复证据；
-- Schema、OpenAPI、配置和部署影响；
-- 已知限制、偏差批准和回滚验证；
-- 验收人与结论。
-
-| 编号 | 交付域 | 计划状态 | Acceptance |
-|---:|---|---|---|
-| 001 | 产品需求分析与总体架构 | in_progress | [部分验收](001-HotKey产品需求分析与总体架构验收.md)（`failed`） |
-| 002 | 监控来源采集与证据链 | in_progress | [部分验收](002-监控来源采集与证据链验收.md)（`failed`） |
-| 003 | 智能研判事件热度与人工治理 | in_progress | [部分验收](003-智能研判事件热度与人工治理验收.md)（`failed`） |
-| 004 | 通知报告知识投影与检索 | completed | [验收完成](004-通知报告知识投影与检索验收.md) |
-| 005 | 安全运维质量与交付 | in_progress | [部分验收](005-安全运维质量与交付验收.md)（`failed`） |
+完整平台关键词/评论分析尚未完成验收。局部运行验证见 [Operations](../operations/006-Python运行与验证.md)。

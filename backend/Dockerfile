@@ -1,30 +1,11 @@
-FROM golang:latest AS builder
-
-WORKDIR /src
-
-COPY go.mod go.sum ./
-ARG GOPROXY=https://proxy.golang.org,direct
-RUN GOPROXY="${GOPROXY}" go mod download && go mod verify
-
-COPY . .
-RUN CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/hotkey ./cmd/hotkey
-
-FROM alpine:latest
-
-RUN apk add --no-cache ca-certificates tzdata wget \
-    && addgroup -S -g 10001 hotkey \
-    && adduser -S -D -H -u 10001 -G hotkey hotkey \
-    && mkdir -p /var/lib/hotkey/vault \
-    && chown -R hotkey:hotkey /var/lib/hotkey
-
-COPY --from=builder --chown=hotkey:hotkey /out/hotkey /usr/local/bin/hotkey
-
-ENV TZ=UTC
+FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:0.11.32 /uv /usr/local/bin/uv
 WORKDIR /app
-USER hotkey
-
-EXPOSE 8080
-STOPSIGNAL SIGTERM
-
-ENTRYPOINT ["/usr/local/bin/hotkey"]
-CMD ["serve", "--role", "all"]
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+COPY src ./src
+WORKDIR /app/src
+ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
+RUN groupadd --gid 10001 hotkey && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin hotkey
+USER hotkey:hotkey
+CMD ["uvicorn", "main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
