@@ -53,4 +53,24 @@ func TestG5RCCandidateAssessmentGateAggregatesWithoutForgingReleaseApproval(t *t
 	if !strings.HasPrefix(row, "- [ ]") {
 		t.Errorf("RC remains product-blocked but G5-005 was marked complete: %s", row)
 	}
+
+	acceptance := readRepositoryFile(t, repository, "docs/acceptance/005-安全运维质量与交付验收.md")
+	for _, fragment := range []string{
+		"bf8fd2d046b24eb52bce59a9676b6ea080b78587",
+		"https://github.com/StephenQiu30/hotkey-server/actions/runs/33376192821",
+		"https://github.com/StephenQiu30/hotkey-server/actions/runs/33378056399",
+		"color-contrast",
+		"4.47:1",
+		"人工产品 UAT",
+		"release_ready=false",
+	} {
+		if !strings.Contains(acceptance, fragment) {
+			t.Errorf("005 Acceptance is missing current technical baseline fragment %q", fragment)
+		}
+	}
+	for _, checkID := range []string{"CHK-005-G4-001", "CHK-005-G5-005"} {
+		if row := markdownChecklistRow(t, plan, checkID); !strings.HasPrefix(row, "- [ ]") {
+			t.Errorf("%s must remain open until product UAT and release evidence exist: %s", checkID, row)
+		}
+	}
 }

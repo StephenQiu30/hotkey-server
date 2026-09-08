@@ -10,8 +10,8 @@ canonical_path: docs/acceptance/001-HotKey产品需求分析与总体架构验�
 design: docs/design/001-HotKey产品需求分析与总体架构设计.md
 prd: docs/prd/001-HotKey产品需求分析与总体架构.md
 plan: docs/plans/001-HotKey产品需求分析与总体架构计划.md
-verified_revision: "e1d8a47dc14cc5e09442dfa3148544e1e57d1630"
-verification_date: "2026-08-30"
+verified_revision: "bf8fd2d046b24eb52bce59a9676b6ea080b78587"
+verification_date: "2026-08-31"
 ---
 
 # HotKey 产品需求分析与总体架构验收
@@ -26,12 +26,12 @@ verification_date: "2026-08-30"
 
 | 项目 | 实际值 |
 |---|---|
-| 验证日期 | 2026-08-30（Asia/Shanghai） |
-| 代码基线 | `96203d843d6fe363d60991af627effc8a0366f72`；容量与联合恢复历史基线 `3d9acccb` |
+| 验证日期 | 2026-08-31（Asia/Shanghai） |
+| 代码基线 | `bf8fd2d046b24eb52bce59a9676b6ea080b78587`；正式 Monitor 浏览器发布历史基线 `96203d84`；容量与联合恢复历史基线 `3d9acccb` |
 | 本机环境 | macOS 26.6.2、Apple arm64、Go 1.26.5、Node.js 24.19.0、uv 0.11.32 |
 | 项目运行 | 根 `docker-compose.yml`；Go Core、Python Agent、Web、PostgreSQL、Redis、MinIO 共 6 个服务均为 `healthy`；API `/readyz` 与 Web 首页均返回 HTTP 200 |
 | 自动化环境 | 本机既有工具链与可丢弃测试库；GitHub Actions Ubuntu Runner 与隔离 PostgreSQL、Redis、MinIO、Fresh Compose Project |
-| 远端证据 | [GitHub Actions 33307433106](https://github.com/StephenQiu30/hotkey-server/actions/runs/33307433106)：Backend static/test/vulnerability、Worker recovery、Frontend、Python Agent、Compose 与 Fresh-container browser 共 8 个 Job 及最终汇总全部 `success`；净化索引见 [`release-evidence-index-github-ubuntu-96203d84.json`](evidence/005/release-evidence-index-github-ubuntu-96203d84.json) |
+| 远端证据 | [GitHub Actions 33378056399](https://github.com/StephenQiu30/hotkey-server/actions/runs/33378056399)：Backend static/test/race/vulnerability、Worker recovery、Frontend、Python Agent、Compose 与 Fresh-container browser 共 9 个执行 Job 及最终汇总全部 `success`；历史发布净化索引见 [`release-evidence-index-github-ubuntu-96203d84.json`](evidence/005/release-evidence-index-github-ubuntu-96203d84.json) |
 
 ## P0 主故事现状矩阵
 
@@ -311,6 +311,7 @@ verification_date: "2026-08-30"
 - 结果：自动化技术前置通过，两个 Checklist 保持未勾选；
 - 实现证据：提交 `e97f6cb5` 以先失败的架构契约补齐 Viewer Fixture、四角色允许/拒绝/导航矩阵、Analyst 自有 Monitor 正式发布、11 页 WCAG 扫描和 8 次连续 Tab 焦点证据；`1e33fb4e` 将角色切换改为真实 UI 退出登录，避免清 Cookie 产生失败 Refresh；`e1d8a47d` 在切换前等待账户控件完成鉴权水合，保持零放宽断言；
 - 远端证据：[GitHub Actions 33309743252](https://github.com/StephenQiu30/hotkey-server/actions/runs/33309743252) 在完整 revision `e1d8a47dc14cc5e09442dfa3148544e1e57d1630` 上通过 8/8 执行 Job 和 `All acceptance gates`。四个角色均满足批准的允许面、拒绝面和菜单策略；Analyst 完成自有 Monitor 创建与发布；11 页无障碍违规、页面错误和失败 HTTP 请求均为 0；连续 8 次 Tab 命中 8 个不同可交互目标，全部离开 `body` 且可见焦点为真；
+- 无障碍回归闭环：[GitHub Actions 33376192821](https://github.com/StephenQiu30/hotkey-server/actions/runs/33376192821) 在 Admin 治理页捕获 3 个 `color-contrast` 节点，对比度为 `4.47:1`，低于 WCAG AA `4.5:1`；提交 `bf8fd2d046b24eb52bce59a9676b6ea080b78587` 将三处告警元数据改用标准前景色并加入单测，[GitHub Actions 33378056399](https://github.com/StephenQiu30/hotkey-server/actions/runs/33378056399) 的 Frontend、Fresh-container browser、其余七个执行 Job 与 `All acceptance gates` 全部 `success`；
 - 不可变索引：[`four-role-browser-technical-uat-github-ubuntu-e1d8a47d.json`](evidence/005/four-role-browser-technical-uat-github-ubuntu-e1d8a47d.json) 绑定 Artifact ID `9731854747`、Digest `sha256:b30f495bcf40c4727d7fd7bc111fee7e0b2e64378de72be8503f2fc791dc5c99` 和逐文件 SHA-256，Secret 扫描覆盖 638 文件/11,360,381 字节且泄露为 0，`differences=[]`；
 - 本机镜像：正式根 Compose 六个服务保持 `healthy`，没有为测试重启；同一四角色与键盘技术走查通过后，四个临时浏览器会话和认证配置已清理；
 - 边界：操作者是技术走查与 CI，不是产品负责人。该证据只关闭自动化四角色/键盘技术前置，不替代人工产品 UAT、产品负责人签字或 G6 发布批准。
@@ -347,7 +348,7 @@ capacity: HOTKEY_CAPACITY_DATASET_SIZE=100000 HOTKEY_CAPACITY_CONCURRENCY=20 HOT
 joint recovery: HOTKEY_RECOVERY_TEST_DSN='postgresql test DSN' HOTKEY_RECOVERY_MINIO_ENDPOINT='isolated MinIO endpoint' HOTKEY_RECOVERY_MINIO_ACCESS_KEY='test-only key' HOTKEY_RECOVERY_MINIO_SECRET_KEY='test-only secret' HOTKEY_RECOVERY_GIT_REVISION=3d9acccbc136195ee1c26fa7d9cec69cef2d1740 HOTKEY_RECOVERY_ENVIRONMENT=macos-26.6.2-local-postgresql-18.4-minio-isolated HOTKEY_RECOVERY_HARDWARE='Apple M5; 10 CPU; 24 GiB RAM; internal APFS SSD; PostgreSQL 18.4 and MinIO loopback' HOTKEY_RECOVERY_PRODUCTION_EGRESS_DISABLED=true HOTKEY_RECOVERY_OUTPUT=../docs/acceptance/evidence/001/joint-recovery-macos-arm64-3d9acccb.json make joint-recovery-acceptance
 ```
 
-历史本机全量结果通过；本轮前端 56 个文件/293 项单测及 TypeScript 通过，后端 `ci-static` 通过，Python Agent 沿既有 CI 继续验证；生产依赖审计和 Go 当前调用链漏洞门禁均通过。最新远端运行 `33309743252` 在 `e1d8a47d` 上通过 8 个必需 Job 与最终汇总，并完成 Monitor 正式发布、四角色浏览器、键盘、数据库、容量、隐私和可用性证据闭环。
+历史本机全量结果通过；本轮前端 56 个文件/299 项单测、TypeScript 与生产构建通过，后端架构契约通过，Python Agent 沿既有 CI 继续验证；生产依赖审计和 Go 当前调用链漏洞门禁均通过。最新实现远端运行 `33378056399` 在 `bf8fd2d0` 上通过 9 个执行 Job 与最终汇总，并完成 Monitor 正式发布、四角色浏览器、键盘、无障碍、数据库、容量、隐私和可用性证据闭环。
 
 ## 未完成项与停止条件
 
