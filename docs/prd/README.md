@@ -22,6 +22,9 @@ canonical_path: docs/prd/README.md
 | 003 | Codex 智能研判、事件、Heat 与人工治理 | [Design](../design/003-智能研判事件热度与人工治理设计.md) | [PRD](003-智能研判事件热度与人工治理.md) | [Plan](../plans/003-智能研判事件热度与人工治理计划.md) | `approved` |
 | 004 | 通知、日报、Obsidian 知识投影与全文检索 | [Design](../design/004-通知报告知识投影与检索设计.md) | [PRD](004-通知报告知识投影与检索.md) | [Plan](../plans/004-通知报告知识投影与检索计划.md) | `implemented` |
 | 005 | 安全、运维、质量门禁与 24 周 P0 交付 | [Design](../design/005-安全运维质量与交付设计.md) | [PRD](005-安全运维质量与交付.md) | [Plan](../plans/005-安全运维质量与交付计划.md) | `approved` |
+| 006 | 国内外关键词监控、评论/回复与观点分析 | [Design](../design/006-社交媒体关键词监控与评论分析设计.md) | [PRD](006-社交媒体关键词监控与评论分析.md) | [Plan](../plans/006-社交媒体关键词监控与评论分析计划.md) | `draft` |
+
+以下共通边界属于 001–005 原基线。006 已按用户新增需求将评论设为必要能力，并提议全 Python 服务端与新库，旧实现和验收不能作为可信依据；具体变更在 006 实施时同步，不沿用旧 P1 划分来省略本次要求。
 
 ## 共通边界
 
@@ -30,3 +33,5 @@ canonical_path: docs/prd/README.md
 - 新知识检索不依赖向量、Embedding 或 RAG；仓库现有 Provider、ONNX、Embedding 与 pgvector 路径是待评估迁移现状，不得描述为已清理。
 - 24 周只承诺完成通过门禁的 P0；评论、周报、更多授权来源、邮件和生产高可用均属于 P1。
 - 每条 P0 FR/NFR 必须映射 Given-When-Then 验收，量化候选指标必须先补齐数据规模、环境、统计窗口与排除条件。
+
+006 v2.1：个人非商业学习项目，固定 SQLAlchemy 与 RabbitMQ；首轮单 owner、单实例，允许按许可复用采集组件，四角色协作与多工作空间管理列 P1。

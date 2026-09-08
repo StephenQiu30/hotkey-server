@@ -67,6 +67,10 @@ uv run pip-audit
 
 The published backend OpenAPI contract is [`docs/openapi/swagger.json`](docs/openapi/swagger.json), while runtime registration code lives at `backend/openapi/docs.go`. The generated frontend client lives under `frontend/src/services/hotkey/hotkey-server/`.
 
+The proposed [social media keyword monitoring and comment analysis design](docs/design/006-社交媒体关键词监控与评论分析设计.md) compares platform access and GitHub projects, free API and web collection options, a rebuilt all-Python backend, durable collection tasks, incremental comments, and analysis. Its linked PRD and implementation plan describe proposed work, not implemented capabilities.
+
 The rebuilt deployment, recovery, source-incident, and capacity contracts are indexed in the [operations guides](docs/operations/README.md). A guide marked `planned` has not passed the rebuilt baseline acceptance gate and is not yet a production procedure.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) for contribution and vulnerability-reporting guidance.
+
+The 006 v2.1 proposal targets personal, non-commercial learning, with SQLAlchemy and RabbitMQ fixed; the first iteration runs with one owner on a single instance.

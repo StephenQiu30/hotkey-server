@@ -61,6 +61,12 @@ flowchart LR
   E --> F["Acceptance 与发布"]
 ```
 
+## 006 新增设计提案（2026-09-08）
+
+[社交媒体关键词监控与评论分析 Design](design/006-社交媒体关键词监控与评论分析设计.md) · [PRD](prd/006-社交媒体关键词监控与评论分析.md) · [Plan / SPEC / CHECKLIST](plans/006-社交媒体关键词监控与评论分析计划.md)。用户要求国内外平台并重、免费接口与可维护网页采集优先，并允许替换不合理架构。006 v2 撤回保留 Go 的建议，推荐全 Python 服务端、PostgreSQL 任务账本与 Celery/RabbitMQ、Alembic 新库；身份权限、采集、事件与分析均重新设计，评论与回复是必要范围。
+
+006 状态为 `proposed / draft / planned`，不是当前运行架构，也未创建 Acceptance。上文“当前事实”与 001–005 仅描述待核查的历史库存，不是新方案可信基线；006 实施时会同步修改所替代的治理、Compose、Schema 演进与架构测试，不用原先禁止 Collector/迁移的条款否决本次方案研究。
+
 ## 追踪规则
 
 - 业务/功能/非功能需求：`BR-NNN-001`、`FR-NNN-001`、`NFR-NNN-001`；
@@ -98,3 +104,5 @@ flowchart LR
 - 数据库结构：`backend/db/schema.sql`
 - 发布 API 契约：`docs/openapi/swagger.json`，只允许由后端生成
 - 文档写作规范：[`TEMPLATE.md`](TEMPLATE.md)
+
+006 v2.1：个人非商业学习项目，固定 SQLAlchemy 与 RabbitMQ；首轮单 owner、单实例，允许按许可复用采集组件，四角色协作与多工作空间管理列 P1。

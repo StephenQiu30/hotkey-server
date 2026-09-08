@@ -80,6 +80,10 @@ uv run pip-audit
 
 后端 OpenAPI 发布契约位于 [`docs/openapi/swagger.json`](docs/openapi/swagger.json)，运行时注册代码位于 `backend/openapi/docs.go`，生成的前端客户端位于 `frontend/src/services/hotkey/hotkey-server/`。
 
+新增 [社交媒体关键词监控与评论分析设计](docs/design/006-社交媒体关键词监控与评论分析设计.md)：包含国内外平台与 GitHub 调研、免费接口/网页采集、全 Python 服务端重建设计、评论增量与分析，以及关联 PRD/实施计划。当前为设计提案，尚未实现。
+
 重新立项后的部署、恢复、来源故障和容量契约见 [Operations 手册](docs/operations/README.md)。其中标为 `planned` 的手册尚未通过新基线验收，不得直接作为生产操作依据；生产更新前必须完成恢复演练，回滚不删除事实、任务、审计或持久卷。
 
 贡献和安全报告请参阅 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [SECURITY.md](SECURITY.md)。
+
+006 v2.1 定位为个人非商业学习项目，固定 SQLAlchemy 与 RabbitMQ，首轮采用单 owner、单实例运行。
