@@ -5,22 +5,13 @@ from fastapi import APIRouter, Query
 
 from api.dependencies import Authenticated, Monitors
 from monitors.schemas import (
-    SOURCE_NAMES,
     MonitorInput,
     MonitorPage,
     MonitorUpdate,
     MonitorView,
-    SourceView,
 )
 
 router = APIRouter(prefix="/api/v1")
-
-
-@router.get(
-    "/sources", response_model=list[SourceView], tags=["monitoring"], operation_id="listSources"
-)
-def sources(owner: Authenticated) -> list[SourceView]:
-    return [SourceView(id=name) for name in SOURCE_NAMES]
 
 
 @router.get(

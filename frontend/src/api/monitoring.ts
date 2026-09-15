@@ -52,11 +52,3 @@ export async function updateMonitor(
     ...(options || {}),
   });
 }
-
-/** Sources GET /api/v1/sources */
-export async function listSources(options?: RequestOptions) {
-  return request<API.SourceView[]>("/api/v1/sources", {
-    method: "GET",
-    ...(options || {}),
-  });
-}

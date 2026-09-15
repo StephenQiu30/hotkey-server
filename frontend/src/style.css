@@ -139,6 +139,45 @@ section {
   color: #6d734f;
   font-size: 11px;
 }
+.source-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.source-heading h3 {
+  margin: 0;
+}
+.source-cards {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.capability-list {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 0;
+}
+.capability-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid #edf0eb;
+  font-size: 13px;
+}
+.capability-list strong {
+  color: #68776d;
+  font-weight: 600;
+  text-align: right;
+}
+.capability-list strong[data-support="supported"] {
+  color: #496a38;
+}
+.capability-list strong[data-support="authorization_required"] {
+  color: #925b19;
+}
+.source-note {
+  margin: 16px 0 0;
+}
 .tags {
   display: flex;
   flex-wrap: wrap;

@@ -72,17 +72,12 @@ declare namespace API {
     keywords: string[];
     /** Sources */
     sources: (
-      | "weibo"
+      | "x"
       | "bilibili"
+      | "weibo"
       | "xiaohongshu"
       | "douyin"
-      | "zhihu"
-      | "kuaishou"
-      | "wechat"
-      | "youtube"
       | "bluesky"
-      | "x"
-      | "reddit"
     )[];
     /** Title */
     title: string;
@@ -100,17 +95,12 @@ declare namespace API {
     keywords: string[];
     /** Sources */
     sources: (
-      | "weibo"
+      | "x"
       | "bilibili"
+      | "weibo"
       | "xiaohongshu"
       | "douyin"
-      | "zhihu"
-      | "kuaishou"
-      | "wechat"
-      | "youtube"
       | "bluesky"
-      | "x"
-      | "reddit"
     )[];
     /** Title */
     title: string;
@@ -178,24 +168,40 @@ declare namespace API {
     until: string;
   };
 
+  type SourceOperationCapability = {
+    /** Access Mode */
+    access_mode:
+      | "public_web"
+      | "public_api"
+      | "official_paid_api"
+      | "authorized_session";
+    /** Content Purchase Cost */
+    content_purchase_cost?: number;
+    /** Evidence Ref */
+    evidence_ref: string;
+    /** Note */
+    note: string;
+    /** Operation */
+    operation: "search_posts" | "fetch_post" | "list_comments" | "list_replies";
+    /** Rights */
+    rights: "unknown" | "allowed" | "denied";
+    /** Support */
+    support: "unknown" | "supported" | "unsupported" | "authorization_required";
+    /** Verified At */
+    verified_at: string;
+  };
+
   type SourceView = {
-    /** Comments */
-    comments?: string;
+    /** Eligible For Collection */
+    eligible_for_collection: boolean;
     /** Id */
-    id:
-      | "weibo"
-      | "bilibili"
-      | "xiaohongshu"
-      | "douyin"
-      | "zhihu"
-      | "kuaishou"
-      | "wechat"
-      | "youtube"
-      | "bluesky"
-      | "x"
-      | "reddit";
-    /** Search */
-    search?: string;
+    id: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
+    /** Operations */
+    operations: SourceOperationCapability[];
+    /** Pipeline */
+    pipeline: "not_connected" | "connected" | "degraded" | "paused";
+    /** Roles */
+    roles: ("discovery" | "comments" | "supplement")[];
   };
 
   type updateMonitorParams = {

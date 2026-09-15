@@ -1,9 +1,14 @@
 from fastapi import APIRouter
 
 from api.dependencies import Authenticated, Sources
-from sources.schemas import QueryPreview, SearchInput
+from sources.schemas import QueryPreview, SearchInput, SourceView
 
 router = APIRouter(prefix="/api/v1/sources", tags=["sources"])
+
+
+@router.get("", response_model=list[SourceView], operation_id="listSources")
+def source_catalog(service: Sources, owner: Authenticated) -> list[SourceView]:
+    return service.catalog()
 
 
 @router.post(

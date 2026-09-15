@@ -75,7 +75,7 @@ class Bluesky:
 
     def _fetch(
         self,
-        operation: Literal["search_posts", "thread"],
+        operation: Literal["search_posts", "fetch_thread"],
         endpoint: str,
         params: dict[str, str | int],
     ) -> tuple[SourceResult, dict[str, Any] | None]:
@@ -158,7 +158,7 @@ class Bluesky:
 
     def thread(self, request: ThreadInput) -> SourceResult:
         result, data = self._fetch(
-            "thread",
+            "fetch_thread",
             "app.bsky.feed.getPostThread",
             {
                 "uri": request.uri,

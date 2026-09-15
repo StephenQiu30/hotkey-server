@@ -4,17 +4,12 @@ import { message } from "../../request";
 type Monitor = API.MonitorView;
 type Source = API.SourceView;
 export const sourceLabels: Record<Source["id"], string> = {
-  weibo: "微博",
+  x: "X",
   bilibili: "B站",
+  weibo: "微博",
   xiaohongshu: "小红书",
   douyin: "抖音",
-  zhihu: "知乎",
-  kuaishou: "快手",
-  wechat: "微信",
-  youtube: "YouTube",
   bluesky: "Bluesky",
-  x: "X",
-  reddit: "Reddit",
 };
 export function MonitorEditor({
   monitor,

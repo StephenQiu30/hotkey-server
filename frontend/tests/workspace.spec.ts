@@ -17,12 +17,17 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   await expect(
     page.getByRole("heading", { name: "我的热点观察" }),
   ).toBeVisible();
+  const sources = page.getByRole("region", { name: "来源能力" });
+  await expect(sources.getByRole("heading", { name: "B站" })).toBeVisible();
+  await expect(
+    sources.getByText("技术可读 · 权限待核对").first(),
+  ).toBeVisible();
   await page.getByRole("button", { name: "新建监控", exact: true }).click();
   const title = `学习验证-${Date.now()}`;
   await page.getByLabel("监控名称").fill(title);
   await page.getByLabel("关键词（每行一个，最多 20 个）").fill("人工智能\nAI");
   await page.getByLabel("微博", { exact: true }).check();
-  await page.getByLabel("YouTube", { exact: true }).check();
+  await page.getByLabel("B站", { exact: true }).check();
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(
     page.getByRole("heading", { name: title, exact: true }),

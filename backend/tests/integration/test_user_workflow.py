@@ -65,7 +65,7 @@ def test_monitor_version_conflict_and_no_fake_collection(client, database):
     body = {
         "title": "AI 观察",
         "keywords": ["AI", " AI ", "人工智能"],
-        "sources": ["weibo", "youtube"],
+        "sources": ["weibo", "bilibili"],
     }
     result = client.post("/api/v1/monitors", json=body)
     assert result.status_code == 201
@@ -76,7 +76,16 @@ def test_monitor_version_conflict_and_no_fake_collection(client, database):
     assert client.patch(path, json=update).json()["version"] == 2
     assert client.patch(path, json=update).status_code == 409
     assert client.get("/api/v1/monitors?limit=101").status_code == 422
-    assert all(s["search"] == "not_connected" for s in client.get("/api/v1/sources").json())
+    sources = client.get("/api/v1/sources").json()
+    assert all(source["pipeline"] == "not_connected" for source in sources)
+    assert all(not source["eligible_for_collection"] for source in sources)
+    bilibili = next(source for source in sources if source["id"] == "bilibili")
+    assert {operation["operation"] for operation in bilibili["operations"]} == {
+        "search_posts",
+        "fetch_post",
+        "list_comments",
+        "list_replies",
+    }
     with database() as session:
         assert (
             session.scalar(
@@ -122,7 +131,7 @@ def test_expired_session_and_pagination(client, database):
         assert (
             client.post(
                 "/api/v1/monitors",
-                json={"title": title, "keywords": ["AI"], "sources": ["youtube"]},
+                json={"title": title, "keywords": ["AI"], "sources": ["bilibili"]},
             ).status_code
             == 201
         )

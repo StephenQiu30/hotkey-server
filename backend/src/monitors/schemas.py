@@ -5,39 +5,13 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from core.schemas import Input
-
-SourceName = Literal[
-    "weibo",
-    "bilibili",
-    "xiaohongshu",
-    "douyin",
-    "zhihu",
-    "kuaishou",
-    "wechat",
-    "youtube",
-    "bluesky",
-    "x",
-    "reddit",
-]
-SOURCE_NAMES: tuple[SourceName, ...] = (
-    "weibo",
-    "bilibili",
-    "xiaohongshu",
-    "douyin",
-    "zhihu",
-    "kuaishou",
-    "wechat",
-    "youtube",
-    "bluesky",
-    "x",
-    "reddit",
-)
+from sources.schemas import SourceName
 
 
 class MonitorInput(Input):
     title: str = Field(min_length=1, max_length=100)
     keywords: list[str] = Field(min_length=1, max_length=20)
-    sources: list[SourceName] = Field(min_length=1, max_length=11)
+    sources: list[SourceName] = Field(min_length=1, max_length=6)
 
     @field_validator("keywords")
     @classmethod
@@ -71,9 +45,3 @@ class MonitorView(BaseModel):
 class MonitorPage(BaseModel):
     items: list[MonitorView]
     next_cursor: UUID | None
-
-
-class SourceView(BaseModel):
-    id: SourceName
-    search: Literal["not_connected"] = "not_connected"
-    comments: Literal["not_connected"] = "not_connected"

@@ -4,8 +4,17 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
+from sources.adapters.bilibili import Bilibili
 from sources.adapters.bluesky import Bluesky
-from sources.schemas import SearchInput, ThreadInput
+from sources.schemas import (
+    BilibiliCommentsInput,
+    BilibiliPostInput,
+    BilibiliRepliesInput,
+    BilibiliSearchInput,
+    SearchInput,
+    ThreadInput,
+)
+from sources.services import SourceService
 
 URI = "at://did:plc:sample/app.bsky.feed.post/root"
 
@@ -31,6 +40,27 @@ def search(**kwargs):
 
 def adapter(handler):
     return Bluesky(httpx.Client(transport=httpx.MockTransport(handler)))
+
+
+def bilibili_adapter(handler):
+    return Bilibili(httpx.Client(transport=httpx.MockTransport(handler)))
+
+
+def test_priority_source_catalog_separates_support_rights_and_pipeline():
+    sources = {source.id: source for source in SourceService().catalog()}
+    assert set(sources) == {"x", "bilibili", "weibo", "xiaohongshu", "douyin", "bluesky"}
+    assert all(source.pipeline == "not_connected" for source in sources.values())
+    assert all(not source.eligible_for_collection for source in sources.values())
+    bilibili = {operation.operation: operation for operation in sources["bilibili"].operations}
+    assert set(bilibili) == {"search_posts", "fetch_post", "list_comments", "list_replies"}
+    assert all(operation.support == "supported" for operation in bilibili.values())
+    assert all(operation.rights == "unknown" for operation in bilibili.values())
+    x_search = next(
+        operation for operation in sources["x"].operations if operation.operation == "search_posts"
+    )
+    assert x_search.support == "authorization_required"
+    assert x_search.content_purchase_cost == 0
+    assert x_search.evidence_ref.endswith("EV-007-001-source-poc.json")
 
 
 def test_window_validation():
@@ -171,12 +201,114 @@ def test_wrong_root_relation_fails_closed():
     assert result.code == "schema_changed" and not result.items
 
 
+def test_bilibili_bounded_search_post_comments_and_replies():
+    def handler(request):
+        if request.url.host == "search.bilibili.com":
+            assert request.url.params["keyword"] == "人工智能"
+            return httpx.Response(
+                200,
+                content=b'<script>res:[{bvid:"BV1BVFWeHEaV"},{bvid:"BV1BVFWeHEaV"}]</script>',
+                headers={"Content-Type": "text/html"},
+            )
+        if request.url.path == "/x/web-interface/view":
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "aid": 113,
+                        "bvid": "BV1BVFWeHEaV",
+                        "title": "synthetic video",
+                        "desc": "synthetic description",
+                        "pubdate": 1789401600,
+                        "owner": {"mid": 7},
+                        "stat": {"reply": 2},
+                    },
+                },
+            )
+        if request.url.path == "/x/v2/reply/main":
+            assert request.url.params["next"] == "0"
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "cursor": {"next": 1, "is_end": False},
+                        "replies": [
+                            {
+                                "rpid": 201,
+                                "root": 0,
+                                "parent": 0,
+                                "ctime": 1789401700,
+                                "rcount": 1,
+                                "member": {"mid": "8"},
+                                "content": {"message": "synthetic root comment"},
+                            }
+                        ],
+                    },
+                },
+            )
+        assert request.url.path == "/x/v2/reply/reply"
+        assert request.url.params["root"] == "201"
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "page": {"num": 1, "size": 20, "count": 1},
+                    "replies": [
+                        {
+                            "rpid": 202,
+                            "root": 201,
+                            "parent": 201,
+                            "ctime": 1789401800,
+                            "rcount": 0,
+                            "member": {"mid": "9"},
+                            "content": {"message": "synthetic reply"},
+                        }
+                    ],
+                },
+            },
+        )
+
+    source = bilibili_adapter(handler)
+    search_result = source.search(BilibiliSearchInput(keyword="人工智能", limit=20))
+    assert search_result.status == "ok"
+    assert [reference.external_id for reference in search_result.references] == [
+        "bvid:BV1BVFWeHEaV"
+    ]
+    post_result = source.post(BilibiliPostInput(bvid="BV1BVFWeHEaV"))
+    assert post_result.items[0].external_id == "video:113"
+    assert post_result.items[0].reply_count == 2
+    comments = source.comments(BilibiliCommentsInput(aid=113, cursor=0, limit=20))
+    assert comments.cursor == "1"
+    assert comments.items[0].kind == "comment"
+    assert comments.items[0].root_id == "video:113"
+    replies = source.replies(BilibiliRepliesInput(aid=113, root_id=201, page=1, limit=20))
+    assert replies.items[0].kind == "reply"
+    assert replies.items[0].parent_id == "comment:201"
+    assert replies.cursor is None
+
+
+def test_bilibili_challenge_and_schema_drift_are_not_empty_success():
+    challenged = bilibili_adapter(lambda _: httpx.Response(412, json={"code": -412})).search(
+        BilibiliSearchInput(keyword="人工智能")
+    )
+    assert challenged.status == "failed" and challenged.code == "access_denied"
+    changed = bilibili_adapter(
+        lambda _: httpx.Response(200, content=b"<html>changed</html>")
+    ).search(BilibiliSearchInput(keyword="人工智能"))
+    assert changed.status == "failed" and changed.code == "schema_changed"
+
+
 def test_probe_validation_needs_no_runtime_secrets(monkeypatch, capsys):
     from cli.commands import main
 
     monkeypatch.delenv("HOTKEY_DATABASE_URL", raising=False)
     monkeypatch.delenv("HOTKEY_BROKER_URL", raising=False)
-    monkeypatch.setattr("sys.argv", ["cli", "source-probe", "thread", "--uri", "private-input"])
+    monkeypatch.setattr(
+        "sys.argv", ["cli", "source-probe", "bluesky", "thread", "--uri", "private-input"]
+    )
     with pytest.raises(SystemExit) as exc:
         main()
     assert exc.value.code == 2

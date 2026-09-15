@@ -43,8 +43,9 @@ FastAPI 从路由、状态码和 Pydantic 模型自动维护接口文档。服�
 来源探测无需数据库或 RabbitMQ 配置，每次只发送一个有界请求：
 
 ```sh
-uv run --directory backend/src python -m cli source-probe search --keyword science --since 2026-09-01T00:00:00Z --until 2026-09-08T00:00:00Z --limit 20
-uv run --directory backend/src python -m cli source-probe thread --uri 'at://did:plc:YOUR_DID/app.bsky.feed.post/YOUR_RECORD_KEY' --depth 1 --max-nodes 20
+uv run --directory backend/src python -m cli source-probe bluesky search --keyword science --since 2026-09-01T00:00:00Z --until 2026-09-08T00:00:00Z --limit 20
+uv run --directory backend/src python -m cli source-probe bluesky thread --uri 'at://did:plc:YOUR_DID/app.bsky.feed.post/YOUR_RECORD_KEY' --depth 1 --max-nodes 20
+uv run --directory backend/src python -m cli source-probe bilibili search --keyword 人工智能 --limit 3
 ```
 
 线程示例中的 DID 和记录键需替换成真实帖子标识。CLI 输出 JSON；输入错误退出 2，来源失败退出 1，ok/empty/partial 退出 0，因此必须读取 status/code 判断是否部分结果。HTTP 查询预览为已认证的 `POST /api/v1/sources/bluesky/query-preview`，需要会话、Origin 与 CSRF；仅验证和规范化查询，不发起外部请求。

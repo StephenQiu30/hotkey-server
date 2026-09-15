@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createDiagnosticJob, cancelJob, listJobs } from "../api/jobs";
 import { getSession, logout } from "../api/identity";
-import { listMonitors, listSources } from "../api/monitoring";
+import { listMonitors } from "../api/monitoring";
+import { listSources } from "../api/sources";
 import { Login } from "../features/identity/Login";
 import {
   MonitorEditor,
   sourceLabels,
 } from "../features/monitors/MonitorEditor";
+import { SourceCapabilities } from "../features/sources/SourceCapabilities";
 import { errorCode, message } from "../request";
 type Job = API.JobView;
 type Monitor = API.MonitorView;
@@ -180,6 +182,7 @@ export function App() {
             }}
           />
         )}
+        <SourceCapabilities sources={sources} />
         <section>
           <div className="section-title">
             <h2>

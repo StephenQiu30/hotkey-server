@@ -187,21 +187,16 @@
           "sources": {
             "items": {
               "enum": [
-                "weibo",
+                "x",
                 "bilibili",
+                "weibo",
                 "xiaohongshu",
                 "douyin",
-                "zhihu",
-                "kuaishou",
-                "wechat",
-                "youtube",
-                "bluesky",
-                "x",
-                "reddit"
+                "bluesky"
               ],
               "type": "string"
             },
-            "maxItems": 11,
+            "maxItems": 6,
             "minItems": 1,
             "title": "Sources",
             "type": "array"
@@ -265,21 +260,16 @@
           "sources": {
             "items": {
               "enum": [
-                "weibo",
+                "x",
                 "bilibili",
+                "weibo",
                 "xiaohongshu",
                 "douyin",
-                "zhihu",
-                "kuaishou",
-                "wechat",
-                "youtube",
-                "bluesky",
-                "x",
-                "reddit"
+                "bluesky"
               ],
               "type": "string"
             },
-            "maxItems": 11,
+            "maxItems": 6,
             "minItems": 1,
             "title": "Sources",
             "type": "array"
@@ -490,40 +480,137 @@
         "title": "SearchInput",
         "type": "object"
       },
-      "SourceView": {
+      "SourceOperationCapability": {
         "properties": {
-          "comments": {
-            "const": "not_connected",
-            "default": "not_connected",
-            "title": "Comments",
-            "type": "string"
-          },
-          "id": {
+          "access_mode": {
             "enum": [
-              "weibo",
-              "bilibili",
-              "xiaohongshu",
-              "douyin",
-              "zhihu",
-              "kuaishou",
-              "wechat",
-              "youtube",
-              "bluesky",
-              "x",
-              "reddit"
+              "public_web",
+              "public_api",
+              "official_paid_api",
+              "authorized_session"
             ],
-            "title": "Id",
+            "title": "Access Mode",
             "type": "string"
           },
-          "search": {
-            "const": "not_connected",
-            "default": "not_connected",
-            "title": "Search",
+          "content_purchase_cost": {
+            "const": 0,
+            "default": 0,
+            "title": "Content Purchase Cost",
+            "type": "integer"
+          },
+          "evidence_ref": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Evidence Ref",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          },
+          "operation": {
+            "enum": [
+              "search_posts",
+              "fetch_post",
+              "list_comments",
+              "list_replies"
+            ],
+            "title": "Operation",
+            "type": "string"
+          },
+          "rights": {
+            "enum": [
+              "unknown",
+              "allowed",
+              "denied"
+            ],
+            "title": "Rights",
+            "type": "string"
+          },
+          "support": {
+            "enum": [
+              "unknown",
+              "supported",
+              "unsupported",
+              "authorization_required"
+            ],
+            "title": "Support",
+            "type": "string"
+          },
+          "verified_at": {
+            "format": "date",
+            "title": "Verified At",
             "type": "string"
           }
         },
         "required": [
-          "id"
+          "operation",
+          "support",
+          "rights",
+          "access_mode",
+          "verified_at",
+          "evidence_ref",
+          "note"
+        ],
+        "title": "SourceOperationCapability",
+        "type": "object"
+      },
+      "SourceView": {
+        "properties": {
+          "eligible_for_collection": {
+            "title": "Eligible For Collection",
+            "type": "boolean"
+          },
+          "id": {
+            "enum": [
+              "x",
+              "bilibili",
+              "weibo",
+              "xiaohongshu",
+              "douyin",
+              "bluesky"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/SourceOperationCapability"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
+          "pipeline": {
+            "enum": [
+              "not_connected",
+              "connected",
+              "degraded",
+              "paused"
+            ],
+            "title": "Pipeline",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "enum": [
+                "discovery",
+                "comments",
+                "supplement"
+              ],
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "roles",
+          "pipeline",
+          "eligible_for_collection",
+          "operations"
         ],
         "title": "SourceView",
         "type": "object"
@@ -2238,9 +2325,9 @@
             "OwnerSession": []
           }
         ],
-        "summary": "Sources",
+        "summary": "Source Catalog",
         "tags": [
-          "monitoring"
+          "sources"
         ]
       }
     },
