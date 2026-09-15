@@ -1,6 +1,700 @@
 {
   "components": {
     "schemas": {
+      "AnalysisComposition": {
+        "properties": {
+          "ordering_origins": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Ordering Origins",
+            "type": "object"
+          },
+          "platforms": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Platforms",
+            "type": "object"
+          },
+          "roots": {
+            "minimum": 0.0,
+            "title": "Roots",
+            "type": "integer"
+          },
+          "time_buckets": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Time Buckets",
+            "type": "object"
+          }
+        },
+        "required": [
+          "platforms",
+          "roots",
+          "time_buckets",
+          "ordering_origins"
+        ],
+        "title": "AnalysisComposition",
+        "type": "object"
+      },
+      "AnalysisContextView": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url"
+          },
+          "content_id": {
+            "format": "uuid",
+            "title": "Content Id",
+            "type": "string"
+          },
+          "content_version_id": {
+            "format": "uuid",
+            "title": "Content Version Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "sample",
+              "parent",
+              "root"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "text_sha256": {
+            "title": "Text Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content_id",
+          "content_version_id",
+          "text",
+          "text_sha256",
+          "canonical_url",
+          "available"
+        ],
+        "title": "AnalysisContextView",
+        "type": "object"
+      },
+      "AnalysisLabelInput": {
+        "additionalProperties": false,
+        "properties": {
+          "abstained": {
+            "default": false,
+            "title": "Abstained",
+            "type": "boolean"
+          },
+          "citation_content_version_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Citation Content Version Ids",
+            "type": "array"
+          },
+          "request": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Request",
+            "type": "string"
+          },
+          "sentiment": {
+            "enum": [
+              "positive",
+              "negative",
+              "neutral",
+              "mixed",
+              "unknown"
+            ],
+            "title": "Sentiment",
+            "type": "string"
+          },
+          "stance": {
+            "enum": [
+              "support",
+              "oppose",
+              "neutral",
+              "mixed",
+              "unknown"
+            ],
+            "title": "Stance",
+            "type": "string"
+          },
+          "target": {
+            "default": "",
+            "maxLength": 160,
+            "title": "Target",
+            "type": "string"
+          },
+          "topic": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sentiment",
+          "stance"
+        ],
+        "title": "AnalysisLabelInput",
+        "type": "object"
+      },
+      "AnalysisLabelView": {
+        "properties": {
+          "abstained": {
+            "title": "Abstained",
+            "type": "boolean"
+          },
+          "citation_content_version_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Citation Content Version Ids",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label_source": {
+            "const": "manual",
+            "title": "Label Source",
+            "type": "string"
+          },
+          "request": {
+            "title": "Request",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "analysis-label-v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sentiment": {
+            "enum": [
+              "positive",
+              "negative",
+              "neutral",
+              "mixed",
+              "unknown"
+            ],
+            "title": "Sentiment",
+            "type": "string"
+          },
+          "stance": {
+            "enum": [
+              "support",
+              "oppose",
+              "neutral",
+              "mixed",
+              "unknown"
+            ],
+            "title": "Stance",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "topic",
+          "target",
+          "sentiment",
+          "stance",
+          "request",
+          "abstained",
+          "citation_content_version_ids",
+          "label_source",
+          "schema_version",
+          "created_at"
+        ],
+        "title": "AnalysisLabelView",
+        "type": "object"
+      },
+      "AnalysisRunInput": {
+        "additionalProperties": false,
+        "properties": {
+          "cutoff": {
+            "format": "date-time",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "expected_event_revision": {
+            "minimum": 1.0,
+            "title": "Expected Event Revision",
+            "type": "integer"
+          },
+          "max_items": {
+            "default": 24,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Max Items",
+            "type": "integer"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_event_revision",
+          "since",
+          "until",
+          "cutoff"
+        ],
+        "title": "AnalysisRunInput",
+        "type": "object"
+      },
+      "AnalysisRunPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisRunSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AnalysisRunPage",
+        "type": "object"
+      },
+      "AnalysisRunSummary": {
+        "properties": {
+          "abstained_count": {
+            "title": "Abstained Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_revision": {
+            "title": "Event Revision",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "labeled_count": {
+            "title": "Labeled Count",
+            "type": "integer"
+          },
+          "manifest_sha256": {
+            "title": "Manifest Sha256",
+            "type": "string"
+          },
+          "sample_count": {
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "succeeded",
+              "stale"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event_id",
+          "event_revision",
+          "status",
+          "manifest_sha256",
+          "sample_count",
+          "labeled_count",
+          "abstained_count",
+          "created_at"
+        ],
+        "title": "AnalysisRunSummary",
+        "type": "object"
+      },
+      "AnalysisRunView": {
+        "properties": {
+          "abstained_count": {
+            "title": "Abstained Count",
+            "type": "integer"
+          },
+          "analyzer_id": {
+            "const": "manual",
+            "title": "Analyzer Id",
+            "type": "string"
+          },
+          "composition": {
+            "$ref": "#/components/schemas/AnalysisComposition"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cutoff": {
+            "format": "date-time",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_revision": {
+            "title": "Event Revision",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "input_tokens": {
+            "const": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "label_schema_version": {
+            "const": "analysis-label-v1",
+            "title": "Label Schema Version",
+            "type": "string"
+          },
+          "labeled_count": {
+            "title": "Labeled Count",
+            "type": "integer"
+          },
+          "manifest_sha256": {
+            "title": "Manifest Sha256",
+            "type": "string"
+          },
+          "max_items": {
+            "title": "Max Items",
+            "type": "integer"
+          },
+          "method": {
+            "const": "manual_baseline",
+            "title": "Method",
+            "type": "string"
+          },
+          "output_tokens": {
+            "const": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "pending_count": {
+            "title": "Pending Count",
+            "type": "integer"
+          },
+          "prompt_version": {
+            "const": "none",
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "recomputed_from_manifest": {
+            "default": false,
+            "title": "Recomputed From Manifest",
+            "type": "boolean"
+          },
+          "sample_count": {
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisSampleView"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "sampling_policy_version": {
+            "const": "event-comment-stratified-v1",
+            "title": "Sampling Policy Version",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "succeeded",
+              "stale"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "token_budget": {
+            "const": 0,
+            "title": "Token Budget",
+            "type": "integer"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "valid_labeled_count": {
+            "title": "Valid Labeled Count",
+            "type": "integer"
+          },
+          "viewpoints": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisViewpoint"
+            },
+            "title": "Viewpoints",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "event_id",
+          "event_revision",
+          "status",
+          "method",
+          "analyzer_id",
+          "prompt_version",
+          "label_schema_version",
+          "sampling_policy_version",
+          "manifest_sha256",
+          "since",
+          "until",
+          "cutoff",
+          "max_items",
+          "sample_count",
+          "labeled_count",
+          "valid_labeled_count",
+          "abstained_count",
+          "pending_count",
+          "token_budget",
+          "input_tokens",
+          "output_tokens",
+          "composition",
+          "samples",
+          "viewpoints",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AnalysisRunView",
+        "type": "object"
+      },
+      "AnalysisSampleView": {
+        "properties": {
+          "contexts": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisContextView"
+            },
+            "title": "Contexts",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "comment",
+              "reply"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisLabelView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ordering_origin": {
+            "const": "provider_default",
+            "title": "Ordering Origin",
+            "type": "string"
+          },
+          "position": {
+            "minimum": 1.0,
+            "title": "Position",
+            "type": "integer"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "root_external_id": {
+            "title": "Root External Id",
+            "type": "string"
+          },
+          "selection_reason": {
+            "const": "stratum_round_robin",
+            "title": "Selection Reason",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "x",
+              "bilibili",
+              "weibo",
+              "xiaohongshu",
+              "douyin",
+              "bluesky"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "time_bucket_start": {
+            "format": "date-time",
+            "title": "Time Bucket Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "source",
+          "kind",
+          "root_external_id",
+          "published_at",
+          "time_bucket_start",
+          "ordering_origin",
+          "selection_reason",
+          "contexts",
+          "label"
+        ],
+        "title": "AnalysisSampleView",
+        "type": "object"
+      },
+      "AnalysisViewpoint": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisContextView"
+            },
+            "minItems": 1,
+            "title": "Citations",
+            "type": "array"
+          },
+          "request": {
+            "title": "Request",
+            "type": "string"
+          },
+          "sample_count": {
+            "minimum": 1.0,
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "sentiment": {
+            "enum": [
+              "positive",
+              "negative",
+              "neutral",
+              "mixed",
+              "unknown"
+            ],
+            "title": "Sentiment",
+            "type": "string"
+          },
+          "stance": {
+            "enum": [
+              "support",
+              "oppose",
+              "neutral",
+              "mixed",
+              "unknown"
+            ],
+            "title": "Stance",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "target",
+          "sentiment",
+          "stance",
+          "request",
+          "sample_count",
+          "citations"
+        ],
+        "title": "AnalysisViewpoint",
+        "type": "object"
+      },
       "BudgetSpec": {
         "properties": {
           "content_purchase_cost": {
@@ -1934,6 +2628,401 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/analysis-runs/{identity}": {
+      "get": {
+        "operationId": "getAnalysisRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request content too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Get Analysis Run",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/v1/analysis-runs/{identity}/recompute": {
+      "post": {
+        "operationId": "recomputeAnalysisRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request content too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Recompute Analysis Run",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/v1/analysis-runs/{identity}/samples/{sample_id}/label": {
+      "put": {
+        "operationId": "labelAnalysisSample",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sample Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisLabelInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "State conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request content too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Label Analysis Sample",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
     "/api/v1/collection-runs": {
       "get": {
         "operationId": "listCollectionRuns",
@@ -2004,7 +3093,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "413": {
             "content": {
@@ -2014,7 +3103,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -2024,7 +3113,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -2034,7 +3123,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -2044,7 +3133,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -2109,7 +3198,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "404": {
             "content": {
@@ -2119,7 +3208,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "413": {
             "content": {
@@ -2129,7 +3218,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -2139,7 +3228,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -2149,7 +3238,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -2159,7 +3248,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -2243,7 +3332,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "413": {
             "content": {
@@ -2253,7 +3342,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -2263,7 +3352,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -2273,7 +3362,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -2283,7 +3372,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -2367,7 +3456,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "413": {
             "content": {
@@ -2377,7 +3466,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -2387,7 +3476,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -2397,7 +3486,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -2407,7 +3496,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -2470,7 +3559,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -2490,7 +3579,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -2500,7 +3589,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -2510,7 +3599,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -2520,7 +3609,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -2585,7 +3674,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "404": {
             "content": {
@@ -2595,7 +3684,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "413": {
             "content": {
@@ -2605,7 +3694,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -2615,7 +3704,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -2625,7 +3714,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -2635,7 +3724,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -2646,6 +3735,276 @@
         "summary": "Get Event",
         "tags": [
           "events"
+        ]
+      }
+    },
+    "/api/v1/events/{identity}/analysis-runs": {
+      "get": {
+        "operationId": "listEventAnalysisRuns",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRunPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request content too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "List Event Analysis Runs",
+        "tags": [
+          "analysis"
+        ]
+      },
+      "post": {
+        "operationId": "createEventAnalysisRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisRunInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "State conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request content too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Create Event Analysis Run",
+        "tags": [
+          "analysis"
         ]
       }
     },
@@ -2710,7 +4069,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -2730,7 +4089,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "409": {
             "content": {
@@ -2740,7 +4099,7 @@
                 }
               }
             },
-            "description": "Conflict"
+            "description": "State conflict"
           },
           "413": {
             "content": {
@@ -2750,7 +4109,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -2760,7 +4119,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -2770,7 +4129,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -2780,7 +4139,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -2855,7 +4214,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -2875,7 +4234,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "413": {
             "content": {
@@ -2885,7 +4244,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -2895,7 +4254,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -2905,7 +4264,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -2915,7 +4274,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -2990,7 +4349,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -3010,7 +4369,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "409": {
             "content": {
@@ -3020,7 +4379,7 @@
                 }
               }
             },
-            "description": "Conflict"
+            "description": "State conflict"
           },
           "413": {
             "content": {
@@ -3030,7 +4389,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -3040,7 +4399,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -3050,7 +4409,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -3060,7 +4419,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -3129,7 +4488,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "404": {
             "content": {
@@ -3139,7 +4498,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "413": {
             "content": {
@@ -3149,7 +4508,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -3159,7 +4518,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -3169,7 +4528,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -3179,7 +4538,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -3254,7 +4613,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -3274,7 +4633,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "409": {
             "content": {
@@ -3284,7 +4643,7 @@
                 }
               }
             },
-            "description": "Conflict"
+            "description": "State conflict"
           },
           "413": {
             "content": {
@@ -3294,7 +4653,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -3304,7 +4663,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -3314,7 +4673,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -3324,7 +4683,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -3418,7 +4777,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "404": {
             "content": {
@@ -3428,7 +4787,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "413": {
             "content": {
@@ -3438,7 +4797,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -3448,7 +4807,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -3458,7 +4817,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -3468,7 +4827,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -3552,7 +4911,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "413": {
             "content": {
@@ -3562,7 +4921,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -3572,7 +4931,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -3582,7 +4941,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -3592,7 +4951,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -3667,7 +5026,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -3687,7 +5046,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -3697,7 +5056,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -3707,7 +5066,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -3717,7 +5076,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -3782,7 +5141,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "404": {
             "content": {
@@ -3792,7 +5151,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "413": {
             "content": {
@@ -3802,7 +5161,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -3812,7 +5171,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -3822,7 +5181,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -3832,7 +5191,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -3897,7 +5256,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -3917,7 +5276,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "409": {
             "content": {
@@ -3927,7 +5286,7 @@
                 }
               }
             },
-            "description": "Conflict"
+            "description": "State conflict"
           },
           "413": {
             "content": {
@@ -3937,7 +5296,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -3947,7 +5306,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -3957,7 +5316,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -3967,7 +5326,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -4051,7 +5410,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "413": {
             "content": {
@@ -4061,7 +5420,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -4071,7 +5430,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -4081,7 +5440,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -4091,7 +5450,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -4154,7 +5513,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -4174,7 +5533,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -4184,7 +5543,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -4194,7 +5553,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -4204,7 +5563,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -4279,7 +5638,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -4299,7 +5658,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "409": {
             "content": {
@@ -4309,7 +5668,7 @@
                 }
               }
             },
-            "description": "Conflict"
+            "description": "State conflict"
           },
           "413": {
             "content": {
@@ -4319,7 +5678,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -4329,7 +5688,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -4339,7 +5698,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -4349,7 +5708,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -4424,7 +5783,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -4444,7 +5803,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "409": {
             "content": {
@@ -4454,7 +5813,7 @@
                 }
               }
             },
-            "description": "Conflict"
+            "description": "State conflict"
           },
           "413": {
             "content": {
@@ -4464,7 +5823,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -4474,7 +5833,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -4484,7 +5843,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -4494,7 +5853,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -4569,7 +5928,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -4589,7 +5948,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "409": {
             "content": {
@@ -4599,7 +5958,7 @@
                 }
               }
             },
-            "description": "Conflict"
+            "description": "State conflict"
           },
           "413": {
             "content": {
@@ -4609,7 +5968,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -4619,7 +5978,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -4629,7 +5988,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -4639,7 +5998,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -4726,7 +6085,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -4746,7 +6105,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "409": {
             "content": {
@@ -4756,7 +6115,7 @@
                 }
               }
             },
-            "description": "Conflict"
+            "description": "State conflict"
           },
           "413": {
             "content": {
@@ -4766,7 +6125,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -4776,7 +6135,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "429": {
             "content": {
@@ -4786,7 +6145,7 @@
                 }
               }
             },
-            "description": "Too Many Requests"
+            "description": "Rate limited"
           },
           "500": {
             "content": {
@@ -4796,7 +6155,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -4806,7 +6165,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -4900,7 +6259,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "413": {
             "content": {
@@ -4910,7 +6269,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -4920,7 +6279,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -4930,7 +6289,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -4940,7 +6299,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -5005,7 +6364,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -5025,7 +6384,7 @@
                 }
               }
             },
-            "description": "Not Found"
+            "description": "Resource not found"
           },
           "413": {
             "content": {
@@ -5035,7 +6394,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -5045,7 +6404,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -5055,7 +6414,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -5065,7 +6424,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -5113,7 +6472,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -5133,7 +6492,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -5143,7 +6502,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -5153,7 +6512,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -5163,7 +6522,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -5216,7 +6575,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "413": {
             "content": {
@@ -5226,7 +6585,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -5236,7 +6595,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -5246,7 +6605,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -5256,7 +6615,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -5300,7 +6659,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -5320,7 +6679,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -5330,7 +6689,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "429": {
             "content": {
@@ -5340,7 +6699,7 @@
                 }
               }
             },
-            "description": "Too Many Requests"
+            "description": "Rate limited"
           },
           "500": {
             "content": {
@@ -5350,7 +6709,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -5360,7 +6719,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "summary": "Login",
@@ -5414,7 +6773,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "413": {
             "content": {
@@ -5424,7 +6783,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -5434,7 +6793,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -5444,7 +6803,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -5454,7 +6813,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -5519,7 +6878,7 @@
                 }
               }
             },
-            "description": "Unauthorized"
+            "description": "Authentication required"
           },
           "403": {
             "content": {
@@ -5539,7 +6898,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Request content too large"
           },
           "422": {
             "content": {
@@ -5549,7 +6908,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Validation failed"
           },
           "500": {
             "content": {
@@ -5559,7 +6918,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Internal error"
           },
           "503": {
             "content": {
@@ -5569,7 +6928,7 @@
                 }
               }
             },
-            "description": "Service Unavailable"
+            "description": "Service unavailable"
           }
         },
         "security": [

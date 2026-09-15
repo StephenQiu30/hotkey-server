@@ -3,6 +3,7 @@ from typing import Annotated, cast
 from fastapi import Depends, Header, Request, Security
 from fastapi.security import APIKeyCookie
 
+from analysis.services import AnalysisService
 from collection.services import CollectionService
 from contents.services import ContentService
 from core.schemas import HealthView
@@ -47,6 +48,10 @@ def notification_service(request: Request) -> NotificationService:
     return NotificationService(request.app.state.database.sessions)
 
 
+def analysis_service(request: Request) -> AnalysisService:
+    return AnalysisService(request.app.state.database.sessions)
+
+
 def collection_service(request: Request, sources: Sources) -> CollectionService:
     return CollectionService(
         request.app.state.database.sessions,
@@ -65,6 +70,7 @@ Jobs = Annotated[JobService, Depends(job_service)]
 Contents = Annotated[ContentService, Depends(content_service)]
 Events = Annotated[EventService, Depends(event_service)]
 Notifications = Annotated[NotificationService, Depends(notification_service)]
+Analyses = Annotated[AnalysisService, Depends(analysis_service)]
 Collections = Annotated[CollectionService, Depends(collection_service)]
 Health = Annotated[HealthView, Depends(health_status)]
 session_cookie = APIKeyCookie(name="hk_session", scheme_name="OwnerSession", auto_error=False)

@@ -23,6 +23,9 @@ const messages: Record<string, string> = {
   validation_failed: "请检查输入的长度、来源和关键词。",
   database_unavailable: "数据库暂时不可用，请稍后重试。",
   origin_forbidden: "访问地址未被允许，请检查服务配置。",
+  analysis_sample_empty: "当前事件在所选范围没有可分析评论。",
+  analysis_citation_outside_sample: "引用必须来自该条冻结样本的上下文。",
+  analysis_label_exists: "该样本已经有不同的人工标签。",
 };
 
 const client = axios.create({

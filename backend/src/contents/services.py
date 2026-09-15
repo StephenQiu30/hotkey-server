@@ -48,6 +48,251 @@ class ContentTrendRecord:
     observations: tuple[ContentTrendObservation, ...]
 
 
+@dataclass(frozen=True)
+class AnalysisTextVersion:
+    content_id: UUID
+    content_version_id: UUID
+    text: str
+    text_sha256: str
+    canonical_url: str | None
+    visibility: str
+
+
+@dataclass(frozen=True)
+class ContentAnalysisCandidate:
+    content_id: UUID
+    content_version_id: UUID
+    source: str
+    kind: str
+    root_external_id: str
+    published_at: datetime
+    text_sha256: str
+    raw_page_id: UUID
+    context: AnalysisTextVersion
+    parent_context: AnalysisTextVersion | None
+    root_context: AnalysisTextVersion | None
+
+
+def _latest_versions(
+    session: Session, identities: set[UUID], cutoff: datetime
+) -> dict[UUID, ContentVersion]:
+    if not identities:
+        return {}
+    latest = (
+        select(
+            ContentVersion.content_id.label("content_id"),
+            func.max(ContentVersion.version).label("version"),
+        )
+        .where(
+            ContentVersion.content_id.in_(identities),
+            ContentVersion.observed_at <= cutoff,
+        )
+        .group_by(ContentVersion.content_id)
+        .subquery()
+    )
+    rows = session.scalars(
+        select(ContentVersion).join(
+            latest,
+            and_(
+                latest.c.content_id == ContentVersion.content_id,
+                latest.c.version == ContentVersion.version,
+            ),
+        )
+    )
+    return {row.content_id: row for row in rows}
+
+
+def content_version_contexts(
+    session: Session, identities: set[UUID]
+) -> dict[UUID, AnalysisTextVersion]:
+    if not identities:
+        return {}
+    rows = session.execute(
+        select(ContentVersion, Content)
+        .join(Content, Content.id == ContentVersion.content_id)
+        .where(ContentVersion.id.in_(identities))
+    )
+    return {
+        version.id: AnalysisTextVersion(
+            content_id=content.id,
+            content_version_id=version.id,
+            text=version.text,
+            text_sha256=version.text_sha256,
+            canonical_url=content.canonical_url,
+            visibility=content.visibility,
+        )
+        for version, content in rows
+    }
+
+
+def current_content_version_ids(session: Session, identities: set[UUID]) -> dict[UUID, UUID]:
+    if not identities:
+        return {}
+    latest = _latest_versions(session, identities, datetime.max.replace(tzinfo=UTC))
+    return {content_id: version.id for content_id, version in latest.items()}
+
+
+def content_analysis_candidates(
+    session: Session,
+    event_member_ids: tuple[UUID, ...],
+    since: datetime,
+    until: datetime,
+    cutoff: datetime,
+) -> list[ContentAnalysisCandidate]:
+    if not event_member_ids:
+        return []
+    members = list(session.scalars(select(Content).where(Content.id.in_(event_member_ids))))
+    root_keys = {
+        (member.source, member.root_external_id) for member in members if member.kind == "post"
+    }
+    direct_ids = {member.id for member in members if member.kind in {"comment", "reply"}}
+    root_conditions = [
+        and_(Content.source == source, Content.root_external_id == root_external_id)
+        for source, root_external_id in root_keys
+    ]
+    scope_conditions = []
+    if root_conditions:
+        scope_conditions.append(and_(Content.relation_status == "resolved", or_(*root_conditions)))
+    if direct_ids:
+        scope_conditions.append(Content.id.in_(direct_ids))
+    if not scope_conditions:
+        return []
+    candidate_rows = list(
+        session.scalars(
+            select(Content).where(
+                Content.kind.in_(("comment", "reply")),
+                Content.visibility == "available",
+                or_(*scope_conditions),
+            )
+        )
+    )
+    latest = _latest_versions(session, {row.id for row in candidate_rows}, cutoff)
+    candidate_rows = [
+        row
+        for row in candidate_rows
+        if row.id in latest and since <= latest[row.id].published_at < until
+    ]
+    if not candidate_rows:
+        return []
+
+    parent_keys = {
+        (row.source, row.provider_namespace, row.parent_external_id)
+        for row in candidate_rows
+        if row.parent_external_id is not None
+    }
+    parent_rows = (
+        list(
+            session.scalars(
+                select(Content).where(
+                    or_(
+                        *[
+                            and_(
+                                Content.source == source,
+                                Content.provider_namespace == namespace,
+                                Content.external_id == external_id,
+                            )
+                            for source, namespace, external_id in parent_keys
+                        ]
+                    )
+                )
+            )
+        )
+        if parent_keys
+        else []
+    )
+    root_rows = list(
+        session.scalars(
+            select(Content).where(
+                Content.kind == "post",
+                or_(
+                    *[
+                        and_(
+                            Content.source == source,
+                            Content.external_id == root_external_id,
+                        )
+                        for source, root_external_id in {
+                            (row.source, row.root_external_id) for row in candidate_rows
+                        }
+                    ]
+                ),
+            )
+        )
+    )
+    context_versions = _latest_versions(
+        session, {row.id for row in [*parent_rows, *root_rows]}, cutoff
+    )
+    parent_contexts = {
+        (row.source, row.provider_namespace, row.external_id): AnalysisTextVersion(
+            content_id=row.id,
+            content_version_id=context_versions[row.id].id,
+            text=context_versions[row.id].text,
+            text_sha256=context_versions[row.id].text_sha256,
+            canonical_url=row.canonical_url,
+            visibility=row.visibility,
+        )
+        for row in parent_rows
+        if row.id in context_versions
+    }
+    roots_by_key: dict[tuple[str, str], list[Content]] = {}
+    for row in root_rows:
+        roots_by_key.setdefault((row.source, row.external_id), []).append(row)
+    root_contexts = {}
+    for key, rows in roots_by_key.items():
+        if len(rows) != 1 or rows[0].id not in context_versions:
+            continue
+        row = rows[0]
+        root_contexts[key] = AnalysisTextVersion(
+            content_id=row.id,
+            content_version_id=context_versions[row.id].id,
+            text=context_versions[row.id].text,
+            text_sha256=context_versions[row.id].text_sha256,
+            canonical_url=row.canonical_url,
+            visibility=row.visibility,
+        )
+
+    candidates: list[ContentAnalysisCandidate] = []
+    for row in candidate_rows:
+        version = latest[row.id]
+        own = AnalysisTextVersion(
+            content_id=row.id,
+            content_version_id=version.id,
+            text=version.text,
+            text_sha256=version.text_sha256,
+            canonical_url=row.canonical_url,
+            visibility=row.visibility,
+        )
+        candidates.append(
+            ContentAnalysisCandidate(
+                content_id=row.id,
+                content_version_id=version.id,
+                source=row.source,
+                kind=row.kind,
+                root_external_id=row.root_external_id,
+                published_at=version.published_at,
+                text_sha256=version.text_sha256,
+                raw_page_id=version.raw_page_id,
+                context=own,
+                parent_context=(
+                    parent_contexts.get(
+                        (row.source, row.provider_namespace, row.parent_external_id)
+                    )
+                    if row.parent_external_id is not None
+                    else None
+                ),
+                root_context=root_contexts.get((row.source, row.root_external_id)),
+            )
+        )
+    return sorted(
+        candidates,
+        key=lambda item: (
+            item.source,
+            item.root_external_id,
+            item.published_at,
+            item.content_version_id,
+        ),
+    )
+
+
 def content_trend_records(
     session: Session, identities: list[UUID], until: datetime
 ) -> list[ContentTrendRecord]:

@@ -67,6 +67,14 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
         ("/api/v1/events/{identity}/merge", "post"): "mergeEvent",
         ("/api/v1/events/{identity}/split", "post"): "splitEvent",
         ("/api/v1/events/{identity}/trends", "get"): "getEventTrends",
+        ("/api/v1/events/{identity}/analysis-runs", "post"): "createEventAnalysisRun",
+        ("/api/v1/events/{identity}/analysis-runs", "get"): "listEventAnalysisRuns",
+        ("/api/v1/analysis-runs/{identity}", "get"): "getAnalysisRun",
+        ("/api/v1/analysis-runs/{identity}/recompute", "post"): "recomputeAnalysisRun",
+        (
+            "/api/v1/analysis-runs/{identity}/samples/{sample_id}/label",
+            "put",
+        ): "labelAnalysisSample",
         ("/api/v1/notifications", "get"): "listNotifications",
         ("/api/v1/notifications/{identity}/read", "post"): "markNotificationRead",
         ("/api/v1/jobs", "get"): "listJobs",
@@ -81,6 +89,10 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
         for method, operation in methods.items()
     }
     assert actual == expected
+    assert (
+        document["paths"]["/api/v1/events"]["post"]["responses"]["413"]["description"]
+        == "Request content too large"
+    )
     assert document["info"]["title"] == "HotKey API"
     run_input = document["components"]["schemas"]["CollectionRunRequest"]
     run_view = document["components"]["schemas"]["CollectionRunView"]

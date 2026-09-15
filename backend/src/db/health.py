@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.schemas import HealthView
 
-SCHEMA_REVISION = "0014_collection_ingestion_mode"
+SCHEMA_REVISION = "0015_analysis_sample_baseline"
 
 
 def readiness(factory: sessionmaker[Session]) -> HealthView:

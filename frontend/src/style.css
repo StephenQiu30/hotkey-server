@@ -1,4 +1,8 @@
 :root {
+  --accent: #245d51;
+  --danger: #9a321f;
+  --line: #dce3db;
+  --surface-soft: #f8faf6;
   font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
   color: #172d2c;
   background: #f4f6f2;
@@ -266,6 +270,80 @@ section {
 .event-trends table {
   min-width: 720px;
 }
+
+.event-analysis {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.analysis-heading,
+.analysis-summary,
+.sample-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.analysis-heading {
+  justify-content: space-between;
+}
+
+.analysis-heading h4,
+.analysis-viewpoints h5 {
+  margin: 0;
+}
+
+.analysis-body,
+.analysis-samples,
+.analysis-viewpoints,
+.analysis-label-form {
+  display: grid;
+  gap: 12px;
+}
+
+.analysis-sample,
+.analysis-viewpoint {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.analysis-sample p,
+.analysis-viewpoint span,
+.analysis-viewpoint blockquote {
+  display: block;
+  margin: 8px 0 0;
+}
+
+.analysis-viewpoint blockquote {
+  padding-left: 12px;
+  border-left: 3px solid var(--accent);
+}
+
+.analysis-viewpoint a {
+  display: block;
+  margin-top: 6px;
+}
+
+.analysis-label-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.analysis-label-form button,
+.analysis-label-form .analysis-abstain,
+.analysis-label-form .error {
+  grid-column: 1 / -1;
+}
+
+.analysis-stale {
+  color: var(--danger);
+}
 .trend-source {
   margin-top: 14px;
 }
@@ -393,6 +471,9 @@ code {
   font-size: 12px;
 }
 @media (max-width: 640px) {
+  .analysis-label-form {
+    grid-template-columns: 1fr;
+  }
   main {
     padding: 28px 16px;
   }

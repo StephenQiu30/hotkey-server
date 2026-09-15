@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from api.routers import (
+    analysis,
     collection,
     contents,
     events,
@@ -15,6 +16,7 @@ from api.routers import (
 router = APIRouter()
 for child in (
     health.router,
+    analysis.router,
     identity.router,
     monitors.router,
     collection.router,

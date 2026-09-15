@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID, uuid4
@@ -33,6 +34,34 @@ from events.schemas import (
 )
 from evidence.services import raw_page_run_ids
 from notifications.services import record_event_change
+
+
+@dataclass(frozen=True)
+class EventAnalysisScope:
+    id: UUID
+    current_revision: int
+    member_content_ids: tuple[UUID, ...]
+
+
+def event_analysis_scope(
+    session: Session, identity: UUID, *, lock: bool = False
+) -> EventAnalysisScope:
+    query = select(Event).where(Event.id == identity)
+    event = session.scalar(query.with_for_update() if lock else query)
+    if event is None:
+        raise AppError("event_not_found", 404)
+    members = tuple(
+        session.scalars(
+            select(EventMember.content_id)
+            .where(EventMember.event_id == identity)
+            .order_by(EventMember.content_id)
+        )
+    )
+    return EventAnalysisScope(
+        id=event.id,
+        current_revision=event.current_revision,
+        member_content_ids=members,
+    )
 
 
 class EventService:

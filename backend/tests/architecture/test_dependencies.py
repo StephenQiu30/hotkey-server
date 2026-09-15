@@ -8,6 +8,7 @@ import pytest
 
 SOURCE = Path(__file__).resolve().parents[2] / "src"
 PACKAGES = {
+    "analysis",
     "api",
     "collection",
     "contents",
@@ -203,7 +204,7 @@ def test_services_reject_cross_domain_orm_examples():
     assert cross_domain_model_imports("contents/services.py", tree) == []
 
 
-@pytest.mark.parametrize("reserved", ["ai", "analysis", "knowledge"])
+@pytest.mark.parametrize("reserved", ["ai", "knowledge"])
 def test_future_modules_require_explicit_registration(reserved):
     assert unregistered_top_level_modules([SOURCE / reserved / "module.py"]) == {reserved}
 

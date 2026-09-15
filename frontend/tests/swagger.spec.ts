@@ -37,6 +37,17 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   expect(
     document.paths["/api/v1/events/{identity}/trends"].get.operationId,
   ).toBe("getEventTrends");
+  expect(
+    document.paths["/api/v1/events/{identity}/analysis-runs"].post.operationId,
+  ).toBe("createEventAnalysisRun");
+  expect(
+    document.paths["/api/v1/analysis-runs/{identity}/samples/{sample_id}/label"]
+      .put.operationId,
+  ).toBe("labelAnalysisSample");
+  expect(
+    document.paths["/api/v1/analysis-runs/{identity}/recompute"].post
+      .operationId,
+  ).toBe("recomputeAnalysisRun");
   expect(document.paths["/api/v1/notifications"].get.operationId).toBe(
     "listNotifications",
   );
@@ -59,6 +70,9 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
     "list_replies",
   ]);
   expect(runView.required).toContain("parent_run_id");
+  const analysisRun = document.components.schemas.AnalysisRunView;
+  expect(analysisRun.required).toContain("manifest_sha256");
+  expect(analysisRun.properties.token_budget.const).toBe(0);
   expect(document.components.schemas.SourceView.properties.pipeline).toBe(
     undefined,
   );

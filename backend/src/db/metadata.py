@@ -1,5 +1,6 @@
 """Explicit model registry used only for migration metadata discovery."""
 
+from analysis import models as analysis
 from audit import models as audit
 from collection import models as collection
 from contents import models as contents
@@ -13,6 +14,7 @@ from notifications import models as notifications
 
 __all__ = [
     "Base",
+    "analysis",
     "audit",
     "collection",
     "contents",

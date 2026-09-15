@@ -53,6 +53,14 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   await expect(
     eventCard.getByText("该事件还没有带原始证据的平台内容。"),
   ).toBeVisible();
+  await expect(
+    eventCard.getByRole("heading", { name: "评论观点样本" }),
+  ).toBeVisible();
+  await expect(eventCard.getByText("尚未冻结评论样本。")).toBeVisible();
+  await eventCard.getByRole("button", { name: "冻结新样本" }).click();
+  await expect(
+    eventCard.getByText("当前事件在所选范围没有可分析评论。"),
+  ).toBeVisible();
   const sourceEventTitle = `待合并-${Date.now()}`;
   await page.getByLabel("事件名称").fill(sourceEventTitle);
   await page.getByRole("button", { name: "创建事件" }).click();

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { EventAnalysis } from "./EventAnalysis";
 import { EventTrends } from "./EventTrends";
 
 type Event = API.EventView;
@@ -113,6 +114,10 @@ export function EventDossiers({
                   </div>
                 ))}
                 <EventTrends eventId={item.id} />
+                <EventAnalysis
+                  eventId={item.id}
+                  eventRevision={item.current_revision}
+                />
                 {item.status === "active" && targets.length > 0 && (
                   <div className="actions">
                     <select

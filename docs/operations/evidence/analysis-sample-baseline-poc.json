@@ -1,0 +1,87 @@
+{
+  "scope": "S04-T02A frozen comment sample and deterministic manual baseline",
+  "observed_at": "2026-09-16",
+  "external_network_accessed": false,
+  "existing_minio_connected": false,
+  "implementation": {
+    "method": "manual_baseline",
+    "analyzer_id": "manual",
+    "prompt_version": "none",
+    "token_budget": 0,
+    "label_schema_version": "analysis-label-v1",
+    "sampling_policy_version": "event-comment-stratified-v1",
+    "strata": ["platform", "UTC day", "root post", "ordering origin"],
+    "ordering_origin": "provider_default",
+    "exact_request_replay_returns_same_run": true,
+    "recompute_reads_frozen_manifest_only": true,
+    "manifest_includes_sample_parent_and_root_version_hashes": true,
+    "non_abstained_label_requires_frozen_citation": true,
+    "abstained_label_asserts_no_viewpoint": true,
+    "stale_on_event_revision_or_content_version_change": true,
+    "root_expansion_requires_resolved_relation": true,
+    "direct_event_comment_or_reply_can_be_sampled_explicitly": true,
+    "root_post_and_comment_provider_namespaces_resolved_by_source_and_root_external_id": true,
+    "new_runtime_dependencies": []
+  },
+  "migration": {
+    "from": "0014_collection_ingestion_mode",
+    "to": "0015_analysis_sample_baseline",
+    "preserved_event": "migration-preserved-analysis-event",
+    "analysis_runs_after_upgrade": 0,
+    "model_metadata_diff_count": 0
+  },
+  "contract_and_client": {
+    "openapi_generated_by_fastapi": true,
+    "runtime_openapi_matches_export_across_python_3_12_and_3_13": true,
+    "stable_error_descriptions_explicit": true,
+    "operations": [
+      "createEventAnalysisRun",
+      "listEventAnalysisRuns",
+      "getAnalysisRun",
+      "recomputeAnalysisRun",
+      "labelAnalysisSample"
+    ],
+    "umiopenapi_output": "frontend/src/api",
+    "generated_module": "frontend/src/api/analysis.ts",
+    "shared_or_shard_output": false,
+    "handwritten_business_request": false,
+    "axios_transport": "frontend/src/request.ts"
+  },
+  "synthetic_browser_poc": {
+    "event_id": "294f2527-ce5d-488d-a120-79d83865c978",
+    "analysis_run_id": "f55559e9-d69c-4ddb-b6c2-5355f0e25df4",
+    "platforms": ["bilibili", "bluesky"],
+    "root_posts": 2,
+    "frozen_samples": 4,
+    "valid_manual_labels": 2,
+    "abstentions": 2,
+    "aggregated_viewpoints": 1,
+    "viewpoint_citation_platforms": ["bilibili", "bluesky"],
+    "statistics_disclaimer_visible": true,
+    "desktop_card_readable": true,
+    "mobile_viewport": "390x844",
+    "mobile_document_overflow": false,
+    "source_urls": "synthetic example.test URLs"
+  },
+  "verification": {
+    "red": "The Swagger operation-id test failed because all five analysis operations were absent.",
+    "backend_tests": "131 passed with disposable PostgreSQL 16 and RabbitMQ 4.1; 2 upstream httpx deprecation warnings",
+    "ruff": "format and lint passed for backend source and tests",
+    "mypy": "strict check passed for 112 source files",
+    "frontend": "UmiOpenAPI drift, boundary, negative boundary, Prettier and TypeScript/Vite checks passed",
+    "dependency_audit": "pip-audit found no known vulnerabilities; npm production audit found 0 vulnerabilities",
+    "compose_schema_revision": "0015_analysis_sample_baseline",
+    "compose_pipeline": "real Celery diagnostic succeeded with attempts=1",
+    "browser_automation": "2 Playwright scenarios passed for generated Swagger UI and authenticated workspace",
+    "manual_browser_business_assertion": "A synthetic completed analysis showed fixed denominator 4, platform and root composition, 2 abstentions and one viewpoint with one citation from each platform on desktop and 390px mobile.",
+    "proxy_replacement": "web retained; backend replaced; proxied authentication response HTTP 401",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL or OOM"
+  },
+  "limitations": [
+    "All comments, accounts, events, raw page references and source URLs used by the browser POC were synthetic.",
+    "No external platform request, real event, account session or existing MinIO connection was used.",
+    "No model, embedding service or paid API was called; model quality and citation evaluation remain unmeasured.",
+    "The source adapters expose provider_default ordering only, so this slice does not claim hottest or newest comment sampling.",
+    "This slice establishes the evaluation substrate but does not complete EV-007-007, AC-007-009 or TASK-007-S04-T02."
+  ]
+}

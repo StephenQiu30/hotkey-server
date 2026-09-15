@@ -7,6 +7,214 @@ declare namespace API {
     identity: string;
   };
 
+  type AnalysisComposition = {
+    /** Ordering Origins */
+    ordering_origins: Record<string, any>;
+    /** Platforms */
+    platforms: Record<string, any>;
+    /** Roots */
+    roots: number;
+    /** Time Buckets */
+    time_buckets: Record<string, any>;
+  };
+
+  type AnalysisContextView = {
+    /** Available */
+    available: boolean;
+    /** Canonical Url */
+    canonical_url: string | null;
+    /** Content Id */
+    content_id: string;
+    /** Content Version Id */
+    content_version_id: string;
+    /** Role */
+    role: "sample" | "parent" | "root";
+    /** Text */
+    text: string | null;
+    /** Text Sha256 */
+    text_sha256: string;
+  };
+
+  type AnalysisLabelInput = {
+    /** Abstained */
+    abstained?: boolean;
+    /** Citation Content Version Ids */
+    citation_content_version_ids?: string[];
+    /** Request */
+    request?: string;
+    /** Sentiment */
+    sentiment: "positive" | "negative" | "neutral" | "mixed" | "unknown";
+    /** Stance */
+    stance: "support" | "oppose" | "neutral" | "mixed" | "unknown";
+    /** Target */
+    target?: string;
+    /** Topic */
+    topic?: string;
+  };
+
+  type AnalysisLabelView = {
+    /** Abstained */
+    abstained: boolean;
+    /** Citation Content Version Ids */
+    citation_content_version_ids: string[];
+    /** Created At */
+    created_at: string;
+    /** Id */
+    id: string;
+    /** Label Source */
+    label_source: string;
+    /** Request */
+    request: string;
+    /** Schema Version */
+    schema_version: string;
+    /** Sentiment */
+    sentiment: "positive" | "negative" | "neutral" | "mixed" | "unknown";
+    /** Stance */
+    stance: "support" | "oppose" | "neutral" | "mixed" | "unknown";
+    /** Target */
+    target: string;
+    /** Topic */
+    topic: string;
+  };
+
+  type AnalysisRunInput = {
+    /** Cutoff */
+    cutoff: string;
+    /** Expected Event Revision */
+    expected_event_revision: number;
+    /** Max Items */
+    max_items?: number;
+    /** Since */
+    since: string;
+    /** Until */
+    until: string;
+  };
+
+  type AnalysisRunPage = {
+    /** Items */
+    items: AnalysisRunSummary[];
+  };
+
+  type AnalysisRunSummary = {
+    /** Abstained Count */
+    abstained_count: number;
+    /** Created At */
+    created_at: string;
+    /** Event Id */
+    event_id: string;
+    /** Event Revision */
+    event_revision: number;
+    /** Id */
+    id: string;
+    /** Labeled Count */
+    labeled_count: number;
+    /** Manifest Sha256 */
+    manifest_sha256: string;
+    /** Sample Count */
+    sample_count: number;
+    /** Status */
+    status: "pending" | "succeeded" | "stale";
+  };
+
+  type AnalysisRunView = {
+    /** Abstained Count */
+    abstained_count: number;
+    /** Analyzer Id */
+    analyzer_id: string;
+    composition: AnalysisComposition;
+    /** Created At */
+    created_at: string;
+    /** Cutoff */
+    cutoff: string;
+    /** Event Id */
+    event_id: string;
+    /** Event Revision */
+    event_revision: number;
+    /** Id */
+    id: string;
+    /** Input Tokens */
+    input_tokens: number;
+    /** Label Schema Version */
+    label_schema_version: string;
+    /** Labeled Count */
+    labeled_count: number;
+    /** Manifest Sha256 */
+    manifest_sha256: string;
+    /** Max Items */
+    max_items: number;
+    /** Method */
+    method: string;
+    /** Output Tokens */
+    output_tokens: number;
+    /** Pending Count */
+    pending_count: number;
+    /** Prompt Version */
+    prompt_version: string;
+    /** Recomputed From Manifest */
+    recomputed_from_manifest?: boolean;
+    /** Sample Count */
+    sample_count: number;
+    /** Samples */
+    samples: AnalysisSampleView[];
+    /** Sampling Policy Version */
+    sampling_policy_version: string;
+    /** Since */
+    since: string;
+    /** Status */
+    status: "pending" | "succeeded" | "stale";
+    /** Token Budget */
+    token_budget: number;
+    /** Until */
+    until: string;
+    /** Updated At */
+    updated_at: string;
+    /** Valid Labeled Count */
+    valid_labeled_count: number;
+    /** Viewpoints */
+    viewpoints: AnalysisViewpoint[];
+  };
+
+  type AnalysisSampleView = {
+    /** Contexts */
+    contexts: AnalysisContextView[];
+    /** Id */
+    id: string;
+    /** Kind */
+    kind: "comment" | "reply";
+    label: AnalysisLabelView | null;
+    /** Ordering Origin */
+    ordering_origin: string;
+    /** Position */
+    position: number;
+    /** Published At */
+    published_at: string;
+    /** Root External Id */
+    root_external_id: string;
+    /** Selection Reason */
+    selection_reason: string;
+    /** Source */
+    source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
+    /** Time Bucket Start */
+    time_bucket_start: string;
+  };
+
+  type AnalysisViewpoint = {
+    /** Citations */
+    citations: AnalysisContextView[];
+    /** Request */
+    request: string;
+    /** Sample Count */
+    sample_count: number;
+    /** Sentiment */
+    sentiment: "positive" | "negative" | "neutral" | "mixed" | "unknown";
+    /** Stance */
+    stance: "support" | "oppose" | "neutral" | "mixed" | "unknown";
+    /** Target */
+    target: string;
+    /** Topic */
+    topic: string;
+  };
+
   type BudgetSpec = {
     /** Content Purchase Cost */
     content_purchase_cost?: number;
@@ -98,6 +306,10 @@ declare namespace API {
   };
 
   type createCollectionRunParams = {
+    identity: string;
+  };
+
+  type createEventAnalysisRunParams = {
     identity: string;
   };
 
@@ -273,6 +485,10 @@ declare namespace API {
     updated_at: string;
   };
 
+  type getAnalysisRunParams = {
+    identity: string;
+  };
+
   type getCollectionRunParams = {
     identity: string;
   };
@@ -365,9 +581,19 @@ declare namespace API {
     status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   };
 
+  type labelAnalysisSampleParams = {
+    identity: string;
+    sample_id: string;
+  };
+
   type listCollectionRunsParams = {
     limit?: number;
     cursor?: string | null;
+  };
+
+  type listEventAnalysisRunsParams = {
+    identity: string;
+    limit?: number;
   };
 
   type listEventRevisionsParams = {
@@ -581,6 +807,10 @@ declare namespace API {
     include_all?: string[];
     /** Include Any */
     include_any: string[];
+  };
+
+  type recomputeAnalysisRunParams = {
+    identity: string;
   };
 
   type removeEventMemberParams = {
