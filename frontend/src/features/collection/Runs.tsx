@@ -14,6 +14,7 @@ const operationLabels: Record<Run["operation"], string> = {
   search_posts: "搜索",
   fetch_post: "正文",
   list_comments: "根评论",
+  list_replies: "回复",
 };
 
 function time(value: string): string {

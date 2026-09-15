@@ -37,7 +37,7 @@ class CollectionExecutor:
                 request_value=run.request_value,
                 since=run.since,
                 until=run.until,
-                limit=20 if run.operation == "list_comments" else 1,
+                limit=20 if run.operation in {"list_comments", "list_replies"} else 1,
             )
         )
         if page.payload is None:

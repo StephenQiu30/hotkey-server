@@ -138,7 +138,8 @@ def upsert_content(
             index_elements=[ContentObservation.content_id, ContentObservation.raw_page_id]
         )
     )
-    return ContentWrite(content.id, new_content, new_version, root_content_id)
+    matched_root_content_id = root_content_id if content.relation_status == "resolved" else None
+    return ContentWrite(content.id, new_content, new_version, matched_root_content_id)
 
 
 class ContentService:

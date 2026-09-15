@@ -79,6 +79,7 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
         "search_posts",
         "fetch_post",
         "list_comments",
+        "list_replies",
     ]
     assert "parent_run_id" in run_view["required"]
 

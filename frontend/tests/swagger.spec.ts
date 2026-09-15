@@ -36,6 +36,7 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
     "search_posts",
     "fetch_post",
     "list_comments",
+    "list_replies",
   ]);
   expect(runView.required).toContain("parent_run_id");
   expect(document.components.schemas.SourceView.properties.pipeline).toBe(

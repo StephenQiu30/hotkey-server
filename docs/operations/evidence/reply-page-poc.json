@@ -1,0 +1,71 @@
+{
+  "scope": "S03-T01B root comment to one reply page",
+  "observed_at": "2026-09-15",
+  "external_network_accessed": false,
+  "existing_minio_connected": false,
+  "implementation": {
+    "operation_chain": [
+      "search_posts",
+      "fetch_post",
+      "list_comments",
+      "list_replies"
+    ],
+    "all_operations_require_exact_admission": true,
+    "reply_reference": "aid:<positive integer>/root:<positive integer>",
+    "reply_reference_requires_positive_reply_count": true,
+    "maximum_root_comments_expanded_per_page": 1,
+    "reply_page_number": 1,
+    "reply_page_limit": 20,
+    "next_page_behavior": "partial/page_limit",
+    "second_page_traversal": false,
+    "child_run_job_outbox_and_budget_created_atomically": true,
+    "new_monitor_default_daily_requests": 96,
+    "historical_budget_snapshots_rewritten": false,
+    "context_inheritance_requires_resolved_root_and_parent": true
+  },
+  "migration": {
+    "from": "0009_root_comments",
+    "to": "0010_reply_page",
+    "preserved_runs": [
+      ["search_posts", "AI", true],
+      ["fetch_post", "bvid:BV1BVFWeHEaV", false],
+      ["list_comments", "aid:113", false]
+    ],
+    "model_metadata_matches_database": true
+  },
+  "contract_and_client": {
+    "openapi_generated_by_fastapi": true,
+    "run_operations": [
+      "search_posts",
+      "fetch_post",
+      "list_comments",
+      "list_replies"
+    ],
+    "umiopenapi_output": "frontend/src/api",
+    "handwritten_business_request": false,
+    "axios_transport": "frontend/src/request.ts"
+  },
+  "verification": {
+    "red": "Configuring bilibili.list_replies as connected failed because the persistent operation was not implemented.",
+    "backend_tests": "114 passed with PostgreSQL 16 and RabbitMQ 4.1; 2 upstream deprecation warnings",
+    "ruff": "passed",
+    "mypy": "passed for 91 application and verification source files",
+    "frontend": "UmiOpenAPI drift, boundary, negative boundary, Prettier and TypeScript/Vite checks passed",
+    "compose_schema_revision": "0010_reply_page",
+    "compose_pipeline": "succeeded with attempts=1",
+    "runtime_openapi_matches_export": true,
+    "proxy_replacement": "web retained; backend replaced; proxied authentication response HTTP 401",
+    "browser": "2 Chromium scenarios passed",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL or OOM",
+    "dependency_audit": "pip-audit found no known vulnerabilities; npm production audit reported 0"
+  },
+  "limitations": [
+    "Synthetic provider responses and an in-memory evidence store were used for the four-level chain test.",
+    "No existing MinIO endpoint, bucket, credentials, permissions or lifecycle were exercised.",
+    "No external platform request, real content, account session or real use-right confirmation was used.",
+    "All production source operations remain not_connected by default.",
+    "Only one root comment and one reply page are expanded; later pages and other platforms remain unimplemented.",
+    "Events, analysis and knowledge remain unimplemented.",
+    "This does not satisfy EV-007-003 or TASK-007-S03-T01."
+  ]
+}

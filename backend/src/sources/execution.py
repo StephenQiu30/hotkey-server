@@ -6,6 +6,7 @@ from sources.contracts import FetchedPage
 from sources.schemas import (
     BilibiliCommentsInput,
     BilibiliPostInput,
+    BilibiliRepliesInput,
     BilibiliSearchInput,
     CollectionPageInput,
     SearchInput,
@@ -37,6 +38,16 @@ class PublicCollectionFetcher:
                     BilibiliCommentsInput(
                         aid=int(data.request_value.removeprefix("aid:")),
                         cursor=0,
+                        limit=data.limit,
+                    )
+                )
+            if data.source == "bilibili" and data.operation == "list_replies":
+                aid, root = data.request_value.split("/")
+                return Bilibili(client).replies_page(
+                    BilibiliRepliesInput(
+                        aid=int(aid.removeprefix("aid:")),
+                        root_id=int(root.removeprefix("root:")),
+                        page=1,
                         limit=data.limit,
                     )
                 )

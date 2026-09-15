@@ -45,6 +45,24 @@ class CollectionService:
     FOLLOWUP_OPERATION = {
         "search_posts": "fetch_post",
         "fetch_post": "list_comments",
+        "list_comments": "list_replies",
+    }
+    FOLLOWUP_STOP_REASONS = {
+        "fetch_post": {
+            "not_eligible": "detail_not_eligible",
+            "invalid_reference": "invalid_detail_reference",
+            "budget_exhausted": "detail_budget_exhausted",
+        },
+        "list_comments": {
+            "not_eligible": "comments_not_eligible",
+            "invalid_reference": "invalid_comment_reference",
+            "budget_exhausted": "comment_budget_exhausted",
+        },
+        "list_replies": {
+            "not_eligible": "replies_not_eligible",
+            "invalid_reference": "invalid_reply_reference",
+            "budget_exhausted": "reply_budget_exhausted",
+        },
     }
 
     def __init__(
@@ -369,10 +387,9 @@ class CollectionService:
             return 0, None
         if not monitor_version_is_active(session, parent.monitor_version_id):
             return 0, "monitor_inactive"
+        stop_reasons = self.FOLLOWUP_STOP_REASONS[operation]
         if self.sources.activation_issues([cast(SourceName, parent.source)], operation):
-            return 0, (
-                "detail_not_eligible" if operation == "fetch_post" else "comments_not_eligible"
-            )
+            return 0, stop_reasons["not_eligible"]
         usage = session.scalar(
             select(CollectionBudgetUsage)
             .where(
@@ -388,17 +405,9 @@ class CollectionService:
             if not self.sources.request_value_is_valid(
                 cast(SourceName, parent.source), operation, request_value
             ):
-                return created, (
-                    "invalid_detail_reference"
-                    if operation == "fetch_post"
-                    else "invalid_comment_reference"
-                )
+                return created, stop_reasons["invalid_reference"]
             if usage.reserved_requests >= usage.limit_requests:
-                return created, (
-                    "detail_budget_exhausted"
-                    if operation == "fetch_post"
-                    else "comment_budget_exhausted"
-                )
+                return created, stop_reasons["budget_exhausted"]
             child_id = uuid4()
             key = (
                 "followup:"

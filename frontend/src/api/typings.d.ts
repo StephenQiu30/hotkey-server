@@ -60,7 +60,7 @@ declare namespace API {
     /** Monitor Version Id */
     monitor_version_id: string;
     /** Operation */
-    operation: "search_posts" | "fetch_post" | "list_comments";
+    operation: "search_posts" | "fetch_post" | "list_comments" | "list_replies";
     /** Outcome */
     outcome: "ok" | "empty" | "partial" | "failed" | null;
     /** Pages Count */

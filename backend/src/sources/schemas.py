@@ -148,7 +148,7 @@ class QueryPreview(BaseModel):
 class CollectionPageInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     source: SourceName
-    operation: Literal["search_posts", "fetch_post", "list_comments"]
+    operation: Literal["search_posts", "fetch_post", "list_comments", "list_replies"]
     request_value: str = Field(min_length=1, max_length=100)
     since: AwareDatetime
     until: AwareDatetime
@@ -166,7 +166,11 @@ class CollectionPageInput(BaseModel):
             r"aid:[1-9][0-9]*", self.request_value
         ):
             raise ValueError("list_comments requires an aid reference")
-        expected_limit = 20 if self.operation == "list_comments" else 1
+        if self.operation == "list_replies" and not re.fullmatch(
+            r"aid:[1-9][0-9]*/root:[1-9][0-9]*", self.request_value
+        ):
+            raise ValueError("list_replies requires an aid and root reference")
+        expected_limit = 20 if self.operation in {"list_comments", "list_replies"} else 1
         if self.limit != expected_limit:
             raise ValueError(f"{self.operation} requires limit {expected_limit}")
         object.__setattr__(self, "since", self.since.astimezone(UTC))

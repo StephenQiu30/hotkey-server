@@ -141,11 +141,13 @@ def test_exact_search_admission_is_shared_by_api_and_monitor_activation(database
             "bilibili.search_posts",
             "bilibili.fetch_post",
             "bilibili.list_comments",
+            "bilibili.list_replies",
         ],
         source_pipelines_connected=[
             "bilibili.search_posts",
             "bilibili.fetch_post",
             "bilibili.list_comments",
+            "bilibili.list_replies",
         ],
     )
     with TestClient(create_app(settings)) as admitted:
@@ -161,6 +163,8 @@ def test_exact_search_admission_is_shared_by_api_and_monitor_activation(database
         assert operations["search_posts"]["eligible_for_collection"] is True
         assert operations["list_comments"]["pipeline"] == "connected"
         assert operations["list_comments"]["eligible_for_collection"] is True
+        assert operations["list_replies"]["pipeline"] == "connected"
+        assert operations["list_replies"]["eligible_for_collection"] is True
 
         created = admitted.post(
             "/api/v1/monitors",
@@ -169,7 +173,7 @@ def test_exact_search_admission_is_shared_by_api_and_monitor_activation(database
                 "query_spec": {"include_any": ["AI"]},
                 "source_ids": ["bilibili"],
                 "schedule": {"interval_minutes": 60, "retention_days": 7},
-                "budget": {"daily_requests": 72, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 96, "content_purchase_cost": 0},
             },
         ).json()
         activated = admitted.post(
@@ -278,7 +282,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
             "title": "受控启停",
             "query_spec": {"include_any": ["AI"]},
             "source_ids": ["bilibili"],
-            "budget": {"daily_requests": 71, "content_purchase_cost": 0},
+            "budget": {"daily_requests": 95, "content_purchase_cost": 0},
         },
     ).json()
     path = f"/api/v1/monitors/{created['id']}"
@@ -299,7 +303,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
             "title": "受控启停",
             "query_spec": {"include_any": ["AI"]},
             "source_ids": ["bilibili"],
-            "budget": {"daily_requests": 72, "content_purchase_cost": 0},
+            "budget": {"daily_requests": 96, "content_purchase_cost": 0},
             "expected_version": created["current_version"],
         },
     ).json()
@@ -362,7 +366,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
             "title": "暂停后修订",
             "query_spec": {"include_any": ["AI", "智能体"]},
             "source_ids": ["bilibili"],
-            "budget": {"daily_requests": 144, "content_purchase_cost": 0},
+            "budget": {"daily_requests": 192, "content_purchase_cost": 0},
             "expected_version": updated["current_version"],
         },
     ).json()

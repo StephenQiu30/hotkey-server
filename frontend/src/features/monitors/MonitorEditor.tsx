@@ -202,7 +202,7 @@ export function MonitorEditor({
               min={1}
               max={1000}
               required
-              defaultValue={monitor?.budget.daily_requests ?? 72}
+              defaultValue={monitor?.budget.daily_requests ?? 96}
             />
           </label>
           <label>

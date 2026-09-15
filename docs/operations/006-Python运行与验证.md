@@ -20,7 +20,7 @@ docker compose up -d --build
 docker compose exec backend python -m cli owner-init learner
 ```
 
-交互输入 12–128 位密码，不通过命令参数传入。owner 只能初始化一次，数据库唯一约束阻止并发创建第二账号。打开 http://localhost:8010；当前有监控草稿、只读监控收件箱和诊断任务。B站搜索、正文和一页根评论的持久链已实现但默认不准入；真实来源用途与现有MinIO完成验收前不会采集。回复、分析和报告尚未接入。
+交互输入 12–128 位密码，不通过命令参数传入。owner 只能初始化一次，数据库唯一约束阻止并发创建第二账号。打开 http://localhost:8010；当前有监控草稿、只读监控收件箱和诊断任务。B站搜索、正文、一页根评论和一页回复的持久链已实现但默认不准入；真实来源用途与现有MinIO完成验收前不会采集。多页展开、分析和报告尚未接入。
 
 本地默认地址：Web 8010、API 8867、PostgreSQL 15435、RabbitMQ AMQP 15673，全部绑定回环地址。默认数据服务凭据只用于本机学习；不生成默认应用账号。修改 Web 端口时必须同步 `HOTKEY_ALLOWED_ORIGINS`，它是精确 HTTP Origin 的 JSON 数组，不接受通配符或 URL 路径。
 
@@ -240,3 +240,15 @@ Red阶段在0008基线上把 `bilibili.list_comments` 声明为connected，服�
 独立迁移POC先把数据库停在0008，写入search_posts根运行及fetch_post子运行，再升级到 `0009_root_comments`；两条运行的operation、request_value和父子关系原样保留，Alembic与SQLAlchemy模型比较无差异。隔离 `hotkey-s03a` Compose迁移到0009，真实scheduler/RabbitMQ/Celery prefork诊断succeeded/attempts=1；运行时OpenAPI与发布快照完全相同。Chromium 2项通过，覆盖Swagger自动契约、默认零准入工作台和72次预算默认值。Web不替换、backend原地替换后代理返回401。正常停机worker=0、backend=143、scheduler=0，无SIGKILL/OOM；一次性容器、卷与迁移数据库均已删除。结构化证据见 [root-comment-page-poc.json](evidence/root-comment-page-poc.json)。
 
 父子评论链使用合成平台响应与内存EvidenceStore，没有访问外部平台、连接用户现有MinIO或取得真实用途确认。默认生产配置仍是0项eligible和0条采集运行；该结果只证明一页根评论的工程链路，不构成EV-007-003、真实平台收件箱、完整评论树或TASK-007-S03-T01完成证据。
+
+## 007 S03-T01B 根评论到首屏回复验证（2026-09-15）
+
+根评论页只选择一个平台明确标记存在回复的根评论，并生成精确 `aid:<正整数>/root:<正整数>` 引用。`list_replies` 消费者固定请求第1页、limit=20；响应仍有后页时以partial/page_limit结束，不遍历第二页或第二个根评论。非法、Unicode数字或缺少根评论ID的引用均在网络请求前拒绝。根评论页提交与回复子run、Job、Outbox和一次UTC日预算预留保持同一事务。
+
+来源依赖扩展为search_posts → fetch_post → list_comments → list_replies，四项操作必须分别通过技术support、用途rights和pipeline门禁。查询预览、启用校验和调度预算按每个关键词每周期最多4次请求计算；新监控每小时单关键词默认96次/日，历史快照不改写。回复只有在同来源根评论关系唯一解析且根帖已命中当前monitor version时才以 `root_context` 继承上下文；缺失父评论或关系不唯一时保持unresolved且不写入匹配收件箱。
+
+Red阶段把 `bilibili.list_replies` 配置为connected，持久来源操作门禁以“persistent source operation is not implemented”失败。Green阶段使用合成四段平台响应和内存EvidenceStore验证搜索、正文、根评论、回复各自保存原始页，且任务、预算、父子关系和上下文继承完整。真实PostgreSQL 16与RabbitMQ 4.1环境中114项pytest通过，保留2条上游弃用提示；Ruff和严格mypy（91个应用与验证源文件）、FastAPI OpenAPI快照、UmiOpenAPI漂移、前端目录与负向边界、Prettier、TypeScript/Vite、生产Compose解析均通过。`pip-audit`未发现已知漏洞，npm生产依赖审计为0。
+
+独立迁移POC先把数据库停在0009并写入search_posts、fetch_post和list_comments三层历史运行，再升级到 `0010_reply_page`；三条运行的operation、request_value和父子关系均保留，Alembic与SQLAlchemy模型比较无差异。隔离 `hotkey-s03b-stack` Compose迁移到0010，真实scheduler → RabbitMQ → Celery prefork → PostgreSQL诊断succeeded/attempts=1，空白业务库保持0条collection run；运行时OpenAPI与发布快照完全相同。Chromium 2项通过，覆盖Swagger自动契约、合成owner工作台和96次预算默认值。Web不替换、backend原地替换后代理返回401。正常停机worker=0、backend=143、scheduler=0，无SIGKILL或OOM。结构化证据见 [reply-page-poc.json](evidence/reply-page-poc.json)。
+
+本片没有访问外部平台、连接用户现有MinIO或取得真实用途确认。默认生产配置仍是0项eligible；只展开一个根评论的一页回复，后续分页及其他平台仍未实现。它证明首屏回复工程链路，不构成EV-007-003、真实平台收件箱、完整评论树、事件归档或TASK-007-S03-T01完成证据。

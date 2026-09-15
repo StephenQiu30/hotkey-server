@@ -88,11 +88,13 @@ def test_operation_admission_requires_rights_pipeline_and_implemented_consumer()
             "bilibili.search_posts",
             "bilibili.fetch_post",
             "bilibili.list_comments",
+            "bilibili.list_replies",
         },
         pipelines_connected={
             "bilibili.search_posts",
             "bilibili.fetch_post",
             "bilibili.list_comments",
+            "bilibili.list_replies",
         },
     )
     operations = {item.operation: item for item in admitted.catalog()[1].operations}
@@ -101,11 +103,16 @@ def test_operation_admission_requires_rights_pipeline_and_implemented_consumer()
     assert operations["search_posts"].pipeline == "connected"
     assert operations["fetch_post"].requires_operations == ["list_comments"]
     assert operations["fetch_post"].eligible_for_collection
+    assert operations["list_comments"].requires_operations == ["list_replies"]
     assert operations["list_comments"].eligible_for_collection
+    assert operations["list_replies"].eligible_for_collection
     assert not admitted.activation_issues(["bilibili"])
     assert admitted.request_value_is_valid("bilibili", "fetch_post", "bvid:BV1BVFWeHEaV")
     assert admitted.request_value_is_valid("bilibili", "list_comments", "aid:113")
+    assert admitted.request_value_is_valid("bilibili", "list_replies", "aid:113/root:201")
     assert not admitted.request_value_is_valid("bilibili", "fetch_post", "video:113")
+    assert not admitted.request_value_is_valid("bilibili", "list_replies", "113/root:201")
+    assert not admitted.request_value_is_valid("bilibili", "list_replies", "aid:١/root:201")
 
     missing_comments = SourceService(
         rights_allowed={"bilibili.search_posts", "bilibili.fetch_post"},
@@ -116,7 +123,7 @@ def test_operation_admission_requires_rights_pipeline_and_implemented_consumer()
     assert not missing_operations["search_posts"].eligible_for_collection
 
     with pytest.raises(ValueError, match="persistent source operation is not implemented"):
-        SourceService(pipelines_connected={"bilibili.list_replies"})
+        SourceService(pipelines_connected={"bluesky.fetch_post"})
     with pytest.raises(ValueError, match="unknown source operation"):
         SourceService(rights_allowed={"unknown.search_posts"})
 
@@ -170,7 +177,7 @@ def test_query_preview_compiles_without_network_and_exposes_rule_boundaries():
     }
     assert xiaohongshu.queries == []
     assert all(rule.mode == "unsupported" for rule in xiaohongshu.rules)
-    assert preview.estimated_requests == 9
+    assert preview.estimated_requests == 12
     assert all(not source.pipeline_connected for source in preview.sources)
 
     admitted = SourceService(
@@ -178,11 +185,13 @@ def test_query_preview_compiles_without_network_and_exposes_rule_boundaries():
             "bilibili.search_posts",
             "bilibili.fetch_post",
             "bilibili.list_comments",
+            "bilibili.list_replies",
         },
         pipelines_connected={
             "bilibili.search_posts",
             "bilibili.fetch_post",
             "bilibili.list_comments",
+            "bilibili.list_replies",
         },
     ).preview(
         QueryPreviewInput.model_validate(
@@ -234,6 +243,20 @@ def test_public_fetcher_rejects_invalid_bilibili_comment_reference_before_networ
                 source="bilibili",
                 operation="list_comments",
                 request_value="aid:0",
+                since="2026-09-01T00:00:00Z",
+                until="2026-09-09T00:00:00Z",
+                limit=20,
+            )
+        )
+
+
+def test_public_fetcher_rejects_invalid_bilibili_reply_reference_before_network():
+    with pytest.raises(ValidationError, match="list_replies requires an aid and root reference"):
+        PublicCollectionFetcher().fetch(
+            CollectionPageInput(
+                source="bilibili",
+                operation="list_replies",
+                request_value="aid:113/root:0",
                 since="2026-09-01T00:00:00Z",
                 until="2026-09-09T00:00:00Z",
                 limit=20,
@@ -461,14 +484,19 @@ def test_bilibili_bounded_search_post_comments_and_replies():
     comments = comments_page.result
     assert comments.cursor == "1"
     assert comments.items[0].kind == "comment"
+    assert [reference.external_id for reference in comments.references] == ["aid:113/root:201"]
     assert comments_page.payload is not None
     assert comments.response_sha256 == sha256(comments_page.payload).hexdigest()
     assert comments_page.page_key.startswith("comments:")
     assert comments.items[0].root_id == "video:113"
-    replies = source.replies(BilibiliRepliesInput(aid=113, root_id=201, page=1, limit=20))
+    replies_page = source.replies_page(BilibiliRepliesInput(aid=113, root_id=201, page=1, limit=20))
+    replies = replies_page.result
     assert replies.items[0].kind == "reply"
     assert replies.items[0].parent_id == "comment:201"
     assert replies.cursor is None
+    assert replies_page.payload is not None
+    assert replies.response_sha256 == sha256(replies_page.payload).hexdigest()
+    assert replies_page.page_key.startswith("replies:")
 
 
 def test_bilibili_post_without_replies_does_not_create_comment_reference():
@@ -491,6 +519,36 @@ def test_bilibili_post_without_replies_does_not_create_comment_reference():
         )
 
     result = bilibili_adapter(handler).post(BilibiliPostInput(bvid="BV1BVFWeHEaV"))
+    assert result.status == "ok"
+    assert result.items[0].reply_count == 0
+    assert result.references == []
+
+
+def test_bilibili_root_comment_without_replies_does_not_create_reply_reference():
+    def handler(request):
+        assert request.url.path == "/x/v2/reply/main"
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "cursor": {"next": 0, "is_end": True},
+                    "replies": [
+                        {
+                            "rpid": 201,
+                            "root": 0,
+                            "parent": 0,
+                            "ctime": 1789401700,
+                            "rcount": 0,
+                            "member": {"mid": "8"},
+                            "content": {"message": "synthetic root comment"},
+                        }
+                    ],
+                },
+            },
+        )
+
+    result = bilibili_adapter(handler).comments(BilibiliCommentsInput(aid=113))
     assert result.status == "ok"
     assert result.items[0].reply_count == 0
     assert result.references == []

@@ -45,11 +45,11 @@ FastAPI 从路由、状态码和 Pydantic 模型自动维护接口文档。服�
 来源准入使用两个JSON数组，元素必须是精确的 `source.operation`：
 
 ```sh
-HOTKEY_SOURCE_RIGHTS_ALLOWED='["bilibili.search_posts","bilibili.fetch_post","bilibili.list_comments"]'
-HOTKEY_SOURCE_PIPELINES_CONNECTED='["bilibili.search_posts","bilibili.fetch_post","bilibili.list_comments"]'
+HOTKEY_SOURCE_RIGHTS_ALLOWED='["bilibili.search_posts","bilibili.fetch_post","bilibili.list_comments","bilibili.list_replies"]'
+HOTKEY_SOURCE_PIPELINES_CONNECTED='["bilibili.search_posts","bilibili.fetch_post","bilibili.list_comments","bilibili.list_replies"]'
 ```
 
-第一项是部署者对采集、保存和派生用途的确认，第二项只在该操作的持久消费者与证据链通过POC后设置。两项默认空；connected还要求完整 `HOTKEY_S3_*`。API在lifespan启动时校验，scheduler与Worker读取同一Settings。当前版本实现 `bilibili.search_posts`、`bilibili.fetch_post` 与 `bilibili.list_comments` 持久入口；搜索依赖详情，详情依赖根评论，三项必须分别准入。回复、其他平台operation或未知键仍会启动失败。本示例仅说明格式，不能替代真实用途确认与现有MinIO验收。
+第一项是部署者对采集、保存和派生用途的确认，第二项只在该操作的持久消费者与证据链通过POC后设置。两项默认空；connected还要求完整 `HOTKEY_S3_*`。API在lifespan启动时校验，scheduler与Worker读取同一Settings。当前版本实现 `bilibili.search_posts`、`bilibili.fetch_post`、`bilibili.list_comments` 与 `bilibili.list_replies` 持久入口；四项形成传递依赖并必须分别准入。其他平台operation或未知键仍会启动失败。本示例仅说明格式，不能替代真实用途确认与现有MinIO验收。
 
 来源探测无需数据库或 RabbitMQ 配置，每次只发送一个有界请求：
 

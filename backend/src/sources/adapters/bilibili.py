@@ -282,6 +282,16 @@ class Bilibili:
                     result.items = [
                         object_from_reply(reply, request.aid, "comment") for reply in parsed
                     ]
+                    result.references = [
+                        SourceReference(
+                            external_id=f"aid:{request.aid}/root:{reply.rpid}",
+                            canonical_url=(
+                                f"https://www.bilibili.com/video/av{request.aid}#reply{reply.rpid}"
+                            ),
+                        )
+                        for reply in parsed
+                        if reply.rcount and reply.rcount > 0
+                    ]
                     cursor = data.get("cursor")
                     if cursor is not None and not isinstance(cursor, dict):
                         raise ValueError("invalid cursor")
@@ -308,48 +318,63 @@ class Bilibili:
     def comments(self, request: BilibiliCommentsInput) -> SourceResult:
         return self.comments_page(request).result
 
-    def replies(self, request: BilibiliRepliesInput) -> SourceResult:
+    def replies_page(self, request: BilibiliRepliesInput) -> FetchedPage:
+        parameters: dict[str, str | int] = {
+            "type": 1,
+            "oid": request.aid,
+            "root": request.root_id,
+            "pn": request.page,
+            "ps": request.limit,
+        }
         result, body = self._fetch(
             "list_replies",
             API_URL + "/x/v2/reply/reply",
-            {
-                "type": 1,
-                "oid": request.aid,
-                "root": request.root_id,
-                "pn": request.page,
-                "ps": request.limit,
-            },
+            parameters,
         )
-        if body is None:
-            return result
-        data = self._data(result, body)
-        if data is None:
-            return result
-        try:
-            if not isinstance(data, dict):
-                raise ValueError("invalid replies data")
-            replies = data.get("replies") or []
-            if not isinstance(replies, list) or len(replies) > request.limit:
-                raise ValueError("invalid replies page")
-            parsed = [Reply.model_validate(reply) for reply in replies]
-            if any(reply.root != request.root_id for reply in parsed):
-                raise ValueError("wrong reply root")
-            result.items = [object_from_reply(reply, request.aid, "reply") for reply in parsed]
-            page = data.get("page")
-            if page is not None and not isinstance(page, dict):
-                raise ValueError("invalid page")
-            if page:
-                number, size, count = page.get("num"), page.get("size"), page.get("count")
-                if (
-                    not isinstance(number, int)
-                    or not isinstance(size, int)
-                    or not isinstance(count, int)
-                ):
-                    raise ValueError("invalid page counts")
-                if number * size < count:
-                    result.cursor = str(number + 1)
-            result.status = "ok" if result.items else "empty"
-        except (ValidationError, ValueError, OSError):
-            result.items = []
-            result.code = "schema_changed"
-        return result
+        if body is not None:
+            data = self._data(result, body)
+            if data is not None:
+                try:
+                    if not isinstance(data, dict):
+                        raise ValueError("invalid replies data")
+                    replies = data.get("replies") or []
+                    if not isinstance(replies, list) or len(replies) > request.limit:
+                        raise ValueError("invalid replies page")
+                    parsed = [Reply.model_validate(reply) for reply in replies]
+                    if any(reply.root != request.root_id for reply in parsed):
+                        raise ValueError("wrong reply root")
+                    result.items = [
+                        object_from_reply(reply, request.aid, "reply") for reply in parsed
+                    ]
+                    page = data.get("page")
+                    if page is not None and not isinstance(page, dict):
+                        raise ValueError("invalid page")
+                    if page:
+                        number, size, count = (
+                            page.get("num"),
+                            page.get("size"),
+                            page.get("count"),
+                        )
+                        if (
+                            not isinstance(number, int)
+                            or not isinstance(size, int)
+                            or not isinstance(count, int)
+                        ):
+                            raise ValueError("invalid page counts")
+                        if number * size < count:
+                            result.cursor = str(number + 1)
+                    result.status = "ok" if result.items else "empty"
+                except (ValidationError, ValueError, OSError):
+                    result.items = []
+                    result.code = "schema_changed"
+        fingerprint = request_fingerprint("bilibili", "list_replies", parameters)
+        return FetchedPage(
+            result=result,
+            payload=body,
+            media_type="application/json",
+            request_fingerprint=fingerprint,
+            page_key=f"replies:{fingerprint[:32]}",
+        )
+
+    def replies(self, request: BilibiliRepliesInput) -> SourceResult:
+        return self.replies_page(request).result

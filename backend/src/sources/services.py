@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from core.config import Settings
 from sources.schemas import (
     BilibiliPostInput,
+    BilibiliRepliesInput,
     QueryPreview,
     QueryPreviewInput,
     QueryRuleExecution,
@@ -31,7 +32,12 @@ KNOWN_SOURCE_OPERATIONS = frozenset(
     f"{source}.{operation}" for source in SOURCE_IDS for operation in CATALOG_OPERATIONS
 )
 PERSISTENT_SOURCE_OPERATIONS = frozenset(
-    {"bilibili.search_posts", "bilibili.fetch_post", "bilibili.list_comments"}
+    {
+        "bilibili.search_posts",
+        "bilibili.fetch_post",
+        "bilibili.list_comments",
+        "bilibili.list_replies",
+    }
 )
 DISCOVERY_REFERENCE_LIMIT = 1
 
@@ -150,7 +156,9 @@ class SourceService:
                             "supported",
                             "public_web",
                             "无Cookie小样本可解析；长期保存与派生分析权限仍待核对。",
-                            ("list_comments",) if operation == "fetch_post" else (),
+                            ("list_comments",)
+                            if operation == "fetch_post"
+                            else (("list_replies",) if operation == "list_comments" else ()),
                         )
                         for operation in ("fetch_post", "list_comments", "list_replies")
                     ],
@@ -312,9 +320,24 @@ class SourceService:
                 identity = value.removeprefix("aid:")
                 if not identity.isascii() or not identity.isdigit() or int(identity) <= 0:
                     return False
+            elif operation == "list_replies":
+                aid, root = value.split("/")
+                if not aid.startswith("aid:") or not root.startswith("root:"):
+                    return False
+                aid_value = aid.removeprefix("aid:")
+                root_value = root.removeprefix("root:")
+                if any(
+                    not identity.isascii() or not identity.isdigit() or int(identity) <= 0
+                    for identity in (aid_value, root_value)
+                ):
+                    return False
+                BilibiliRepliesInput(
+                    aid=int(aid_value),
+                    root_id=int(root_value),
+                )
             else:
                 return False
-        except ValidationError:
+        except (ValidationError, ValueError):
             return False
         return True
 
