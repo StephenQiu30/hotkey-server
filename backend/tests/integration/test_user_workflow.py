@@ -148,3 +148,22 @@ def test_unexpected_error_is_sanitized(client, monkeypatch):
     assert result.status_code == 500
     assert result.json()["code"] == "internal_error"
     assert "private-credential" not in result.text
+
+
+def test_query_preview_auth_window_and_no_fake_connection(client):
+    path = "/api/v1/sources/bluesky/query-preview"
+    query = {
+        "keyword": "科学",
+        "since": "2026-09-01T08:00:00+08:00",
+        "until": "2026-09-08T00:00:00Z",
+    }
+    assert client.post(path, json=query).status_code == 401
+    login(client)
+    response = client.post(path, json=query)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["query"] == "科学" and data["since"] == "2026-09-01T00:00:00Z"
+    assert data["coverage"] == "unknown" and data["pipeline_connected"] is False
+    assert client.post(path, json=dict(query, until=query["since"])).status_code == 422
+    client.headers.pop("X-CSRF-Token")
+    assert client.post(path, json=query).status_code == 403

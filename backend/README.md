@@ -2,6 +2,8 @@
 
 后端直接作为 FastAPI 应用运行，代码统一放在 `backend/src/`，src 下不增加 hotkey 或 app 包装层。uv 管理依赖，不构建独立 wheel。SQLAlchemy 与 RabbitMQ 保持固定。
 
+下图描述现有目录。后续扩展与文件迁移先遵循[007目标目录与模块职责](../docs/design/007-热点事件与评论知识库设计.md#13-实现前目录规划与文件归属)及[007 S00计划](../docs/plans/007-热点事件与评论知识库计划.md)，完成所需选型和依赖门禁后再开始业务切片。计划目录尚未实际创建或迁移。
+
 ```text
 backend/
 ├── src/
@@ -9,6 +11,7 @@ backend/
 │   ├── api/                    # HTTP 路由和依赖
 │   ├── core/ / db/             # 配置、数据库资源
 │   ├── identity/ / monitors/ / jobs/  # 业务模块及任务状态机
+│   ├── sources/                # 查询预览、来源契约与有界适配器
 │   ├── worker/                 # app.py、messaging.py：Celery 与 RabbitMQ
 │   ├── cli/                    # __main__.py、commands.py：管理命令
 │   ├── audit/ / migrations/    # 审计、数据库迁移
@@ -33,4 +36,13 @@ docker compose exec backend python -m cli owner-init learner
 
 Python 运行工作目录为 backend/src，Docker 内为 /app/src。ASGI 入口 `main:create_app`，Worker 入口 `worker.app:app`，管理命令 `python -m cli`。迁移目录随应用复制进镜像；启动应用不自动改库。
 
-业务分层与命名规则见 [AGENTS](../AGENTS.md)，实际服务与浏览器验证见 [Operations](../docs/operations/006-Python运行与验证.md)。未配置测试数据库/vhost 时集成测试会 skip，不能视为完整通过。真实平台采集仍未实现。
+业务分层与命名规则见 [AGENTS](../AGENTS.md)，实际服务与浏览器验证见 [Operations](../docs/operations/006-Python运行与验证.md)。未配置测试数据库/vhost 时集成测试会 skip，不能视为完整通过。已增加 Bluesky CLI 来源探测；持久化平台采集任务仍未实现。
+
+来源探测无需数据库或 RabbitMQ 配置，每次只发送一个有界请求：
+
+```sh
+uv run --directory backend/src python -m cli source-probe search --keyword science --since 2026-09-01T00:00:00Z --until 2026-09-08T00:00:00Z --limit 20
+uv run --directory backend/src python -m cli source-probe thread --uri 'at://did:plc:YOUR_DID/app.bsky.feed.post/YOUR_RECORD_KEY' --depth 1 --max-nodes 20
+```
+
+线程示例中的 DID 和记录键需替换成真实帖子标识。CLI 输出 JSON；输入错误退出 2，来源失败退出 1，ok/empty/partial 退出 0，因此必须读取 status/code 判断是否部分结果。HTTP 查询预览为已认证的 `POST /api/v1/sources/bluesky/query-preview`，需要会话、Origin 与 CSRF；仅验证和规范化查询，不发起外部请求。

@@ -9,6 +9,7 @@ from identity.schemas import Principal
 from identity.services import IdentityService
 from jobs.services import JobService
 from monitors.services import MonitorService
+from sources.services import SourceService
 
 
 def identity_service(request: Request) -> IdentityService:
@@ -27,6 +28,11 @@ def health_status(request: Request) -> HealthView:
     return readiness(request.app.state.database.sessions)
 
 
+def source_service() -> SourceService:
+    return SourceService()
+
+
+Sources = Annotated[SourceService, Depends(source_service)]
 Identity = Annotated[IdentityService, Depends(identity_service)]
 Monitors = Annotated[MonitorService, Depends(monitor_service)]
 Jobs = Annotated[JobService, Depends(job_service)]

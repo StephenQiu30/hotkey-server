@@ -134,3 +134,14 @@ uv run --project backend python backend/scripts/verify_shutdown.py
 本轮 src 目录调整复验（2026-09-08）：40 项 pytest 全部通过，无跳过，包含真实 PostgreSQL/RabbitMQ；Ruff、严格 mypy（54 个源文件）、OpenAPI 漂移检查、前端契约检查与 TypeScript/Vite 构建通过。Compose prefork 诊断任务 succeeded，attempts=1；Chromium 登录、监控编辑、诊断和退出流程通过。容器工作目录 /app/src，worker/app.py、cli/__main__.py 与迁移目录均存在；原迁移文件和发布 OpenAPI 的 SHA-256 未变，HTTP 运行契约也与发布 JSON 相同。
 
 正常停机验证通过：worker/scheduler 退出码 0，backend 接收 SIGTERM 后退出码 143，均无 SIGKILL 或 OOM。已停止本轮测试容器并保留持久卷。测试有两条上游弃用提示，不影响结果；本轮没有提交或推送。
+
+
+## S01 来源探测验证（2026-09-08）
+
+先提交替换基线到本地 main：92569a49；未推送。随后来源切片新增 16 项来源单元测试和 1 项认证查询预览集成测试，另增加 2 项来源依赖边界检查，总计 59 项 pytest 通过（含真实 PostgreSQL/RabbitMQ，无跳过）。Ruff、严格 mypy 60 个文件、生成 OpenAPI、前端契约与构建通过。两个上游弃用提示保持可见。
+
+真实探测摘要见 [source-probe-summary.json](evidence/source-probe-summary.json)。search_posts 请求为 science、UTC 最近两天、limit=2，返回 HTTP 403/access_denied，CLI 退出 1。thread 从官方 bsky.app 公开作者流的首个帖子取得 URI，以 depth=1/max_nodes=20 调用，HTTP 200；返回体 289638 字节，输出 20 个节点，partial/node_limit，CLI 退出 0。coverage 始终 unknown；退出 0 不表示全量完成。记录只保留元数据，没有提交来源正文、作者标识或会话信息。
+
+使用方式见 backend/README.md。搜索失败未做自动重试或登录绕过；此切片不需要业务数据库/broker 凭据。没有新增迁移或将结果写入任务账本；国内来源、持续搜索准入、原始证据持久化和任务执行隔离仍待下一片验证。
+
+来源切片容器回归：实际 RabbitMQ/Celery prefork 诊断 succeeded、attempts=1；Chromium 登录、监控编辑、诊断与会话撤销通过。正常停机 worker/scheduler=0、backend=143，无 SIGKILL/OOM。测试容器已停止，持久卷保留。现有 HTTP 路径契约不变，仅新增 query-preview，迁移文件无改动。来源切片尚未提交，92569a49 基线仍仅在本地 main。

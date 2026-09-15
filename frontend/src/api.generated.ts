@@ -127,6 +127,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sources/bluesky/query-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Query Preview */
+        post: operations["query_preview_api_v1_sources_bluesky_query_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -291,6 +308,87 @@ export interface components {
         Principal: {
             /** Username */
             username: string;
+        };
+        /** QueryPreview */
+        QueryPreview: {
+            /**
+             * Adapter Version
+             * @default bluesky-v1
+             * @constant
+             */
+            adapter_version: "bluesky-v1";
+            /**
+             * Coverage
+             * @default unknown
+             * @constant
+             */
+            coverage: "unknown";
+            /** Limit */
+            limit: number;
+            /**
+             * Operation
+             * @default search_posts
+             * @constant
+             */
+            operation: "search_posts";
+            /**
+             * Pipeline Connected
+             * @default false
+             * @constant
+             */
+            pipeline_connected: false;
+            /** Query */
+            query: string;
+            /**
+             * Semantics
+             * @default provider_native_text
+             * @constant
+             */
+            semantics: "provider_native_text";
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Sort
+             * @default latest
+             * @constant
+             */
+            sort: "latest";
+            /**
+             * Source
+             * @default bluesky
+             * @constant
+             */
+            source: "bluesky";
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+        };
+        /** SearchInput */
+        SearchInput: {
+            /** Cursor */
+            cursor?: string | null;
+            /** Keyword */
+            keyword: string;
+            /**
+             * Limit
+             * @default 20
+             */
+            limit: number;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
         };
         /** SourceView */
         SourceView: {
@@ -1484,6 +1582,122 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceView"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorView"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorView"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorView"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorView"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorView"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorView"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorView"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorView"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorView"];
+                };
+            };
+        };
+    };
+    query_preview_api_v1_sources_bluesky_query_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueryPreview"];
                 };
             };
             /** @description Bad Request */

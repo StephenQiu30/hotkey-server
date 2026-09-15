@@ -8,6 +8,7 @@ from uuid import UUID
 from alembic import command
 from sqlalchemy import select
 
+from cli import sources
 from core.config import Settings
 from db.session import Database
 from jobs.execution import cancel, enqueue, reconcile
@@ -19,6 +20,7 @@ from worker.messaging import celery_app, dispatch_one
 def main() -> None:
     parser = argparse.ArgumentParser(description="HotKey Python foundation")
     sub = parser.add_subparsers(dest="command", required=True)
+    sources.register(sub.add_parser("source-probe"))
     sub.add_parser("migrate")
     sub.add_parser("dispatch")
     sub.add_parser("reconcile")
@@ -30,6 +32,9 @@ def main() -> None:
     owner.add_argument("username")
     owner.add_argument("--password-stdin", action="store_true")
     args = parser.parse_args()
+    if args.command == "source-probe":
+        sources.run(args)
+        return
     settings = Settings()
     if args.command == "migrate":
         command.upgrade(migration_config(settings.database_url.get_secret_value()), "head")

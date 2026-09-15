@@ -19,6 +19,7 @@ PACKAGES = {
     "tools",
     "worker",
     "cli",
+    "sources",
 }
 
 
@@ -39,6 +40,16 @@ def imports(tree):
 
 def forbidden_imports(relative, tree):
     dependencies = list(imports(tree))
+    if relative.startswith("sources/") and relative not in (
+        "sources/schemas.py",
+        "sources/services.py",
+    ):
+        return [
+            d
+            for d in dependencies
+            if d.split(".")[0]
+            in {"api", "main", "db", "sqlalchemy", "worker", "cli", "celery", "kombu"}
+        ]
     if relative.startswith("api/routers/"):
         return [
             d
@@ -63,7 +74,9 @@ def forbidden_imports(relative, tree):
         return [
             d
             for d in dependencies
-            if d.startswith(("sqlalchemy", "celery", "kombu", "api", "db", "worker", "cli"))
+            if d.startswith(
+                ("sqlalchemy", "celery", "kombu", "api", "db", "worker", "cli", "httpx")
+            )
             or d.endswith((".models", ".services", ".execution", ".messaging"))
         ]
     if relative.startswith("core/"):
@@ -123,6 +136,8 @@ def test_import_boundaries_and_no_hidden_initializer_logic():
         ("monitors/models.py", "monitors.services"),
         ("jobs/schemas.py", "jobs.models"),
         ("core/config.py", "identity.services"),
+        ("sources/bluesky.py", "db.session"),
+        ("sources/schemas.py", "httpx"),
     ],
 )
 def test_boundaries_reject_invalid_examples(module, dependency):

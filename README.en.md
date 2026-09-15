@@ -4,7 +4,9 @@ A personal, noncommercial learning project for social-media monitoring. The only
 
 Implemented: single-owner initialization, revocable cookie sessions, CSRF protection, versioned monitor drafts, and idempotent diagnostic jobs through a transactional Outbox and a real prefork worker.
 
-**Social keyword search, post/comment/reply collection, event grouping, analysis and reports are not implemented yet.** Saving a draft does not start collection. Diagnostic jobs do not produce social data.
+Bluesky query preview and bounded CLI source probes are implemented. Public thread reads preserve reply relationships and partial results; the September 8, 2026 search probe returned HTTP 403 in the tested environment. **Persistent collection jobs, domestic sources, event grouping, analysis and reports are not implemented yet.** Saving a draft does not start collection. Diagnostic jobs do not produce social data.
+
+The September 15 replanning defines **monitors → discovery inbox → comment tracking → event records → analysis and knowledge retrieval**. See the [007 requirements](docs/prd/007-热点事件与评论知识库.md), [data and technical design](docs/design/007-热点事件与评论知识库设计.md), and [delivery plan](docs/plans/007-热点事件与评论知识库计划.md). These are proposals, not implemented capabilities; they build on the current Python/React and persistent job foundation. The 006 documents retain the existing implementation and verification record.
 
 From the repository root, with Docker Compose v2.24.4+:
 
