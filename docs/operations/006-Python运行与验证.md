@@ -65,7 +65,7 @@ npm run build --prefix frontend
 npm audit --prefix frontend --omit=dev --audit-level=high
 ```
 
-修改 API 后执行 `uv run --directory backend/src python -m tools.export_openapi`，然后 `npm run generate --prefix frontend`，同时审查自动导出的 JSON 与生成客户端；不要手工编辑两类生成文件。FastAPI 运行时自动提供 `/docs`、`/redoc` 和 `/openapi.json`；Cookie 认证方案、CSRF Header、输入输出和稳定错误格式均包含在契约中。业务代码只调用 `frontend/src/generated/api/` 的端点函数，Axios 仅在 `frontend/src/shared/api/request.ts` 封装。
+修改 API 后执行 `uv run --directory backend/src python -m tools.export_openapi`，然后 `npm run generate --prefix frontend`，同时审查自动导出的 JSON 与生成客户端；不要手工编辑两类生成文件。FastAPI 运行时自动提供 `/docs`、`/redoc` 和 `/openapi.json`；Cookie 认证方案、CSRF Header、输入输出和稳定错误格式均包含在契约中。业务代码只调用 `frontend/src/api/` 的端点函数，Axios 仅在 `frontend/src/request.ts` 封装。
 
 迁移位于 `backend/src/migrations/versions/`，与生成模板一起复制进镜像。运行目录为 backend/src；升级使用 `python -m cli migrate`。生成候选迁移可在 `uv run --directory backend/src python` 中调用 `alembic.command.revision(migration_config(url), autogenerate=True, ...)`，必须审查 DDL、索引和数据转换后使用。迁移拒绝非空且无 Alembic 账本的数据库；不提供破坏性降级。
 
@@ -150,9 +150,9 @@ uv run --project backend python backend/scripts/verify_shutdown.py
 
 ## 007 S00 目录、Swagger与生成客户端验收（2026-09-15）
 
-S00 在先登记文件归属和技术选择后执行。来源 I/O 移到 `backend/src/sources/adapters/`；前端迁为 `app/features/generated/shared`。后端架构检查递归枚举整个 `backend/src`，前端脚本拒绝未知层级、反向依赖、越界导入和旧文件副本；对应违规样例先失败后转绿。
+S00 在先登记文件归属和技术选择后执行。来源 I/O 移到 `backend/src/sources/adapters/`；前端最终收敛为 `app/features/api` 加根级 `request.ts`，不设置shared层。后端架构检查递归枚举整个 `backend/src`，前端脚本拒绝未知层级、反向依赖、越界导入和旧文件副本；对应违规样例先失败后转绿。
 
-FastAPI 从路由和 Pydantic 模型运行时生成 `/openapi.json`、`/docs` 与 `/redoc`，14 个操作使用稳定 operationId。`tools.export_openapi` 只做确定性快照，运行时 JSON 与 `docs/openapi/openapi.json` 深度相等。`@umijs/openapi` 1.14.1 按 tag 生成 `frontend/src/generated/api/` 的端点函数和DTO；业务组件只引用这些方法。共享 `request.ts` 使用 Axios 1.20.0 处理同源Cookie、XSRF、重复查询参数和错误体，不维护业务URL或DTO。临时重新生成与仓库文件逐字节比较通过。
+FastAPI 从路由和 Pydantic 模型运行时生成 `/openapi.json`、`/docs` 与 `/redoc`，14 个操作使用稳定 operationId。`tools.export_openapi` 只做确定性快照，运行时 JSON 与 `docs/openapi/openapi.json` 深度相等。`@umijs/openapi` 1.14.1 按 tag 生成 `frontend/src/api/` 的端点函数和DTO；业务组件只引用这些方法。根级 `request.ts` 使用 Axios 1.20.0 处理同源Cookie、XSRF、重复查询参数和错误体，不维护业务URL或DTO。临时重新生成与仓库文件逐字节比较通过。
 
 本地静态检查结果：Ruff format/lint、严格 mypy（61个源文件）、OpenAPI漂移通过；一次性 `hotkey_test` PostgreSQL/RabbitMQ环境中64项pytest全部通过，保留两条上游弃用提示。前端生成、契约漂移、边界检查及负向样例、Prettier、TypeScript/Vite构建通过；运行时依赖 `npm audit --omit=dev --audit-level=high` 为0。
 

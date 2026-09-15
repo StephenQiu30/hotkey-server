@@ -1,6 +1,6 @@
 // @ts-ignore
 /* eslint-disable */
-import { request, type RequestOptions } from "../../shared/api/request";
+import { request, type RequestOptions } from "../request";
 
 /** Monitors GET /api/v1/monitors */
 export async function listMonitors(

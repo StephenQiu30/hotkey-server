@@ -1,6 +1,6 @@
 // @ts-ignore
 /* eslint-disable */
-import { request, type RequestOptions } from "../../shared/api/request";
+import { request, type RequestOptions } from "../request";
 
 /** Me GET /api/v1/session */
 export async function getSession(options?: RequestOptions) {

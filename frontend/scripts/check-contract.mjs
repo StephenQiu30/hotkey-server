@@ -23,7 +23,7 @@ try {
     stdio: "inherit",
   });
   const expected = join(temporary, "api");
-  const actual = "src/generated/api";
+  const actual = "src/api";
   if (!statSync(expected).isDirectory())
     throw new Error("OpenAPI generation failed");
   const expectedFiles = files(expected).sort();

@@ -1,17 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  createDiagnosticJob,
-  cancelJob,
-  listJobs,
-} from "../generated/api/jobs";
-import { getSession, logout } from "../generated/api/identity";
-import { listMonitors, listSources } from "../generated/api/monitoring";
+import { createDiagnosticJob, cancelJob, listJobs } from "../api/jobs";
+import { getSession, logout } from "../api/identity";
+import { listMonitors, listSources } from "../api/monitoring";
 import { Login } from "../features/identity/Login";
 import {
   MonitorEditor,
   sourceLabels,
 } from "../features/monitors/MonitorEditor";
-import { errorCode, message } from "../shared/api/errors";
+import { errorCode, message } from "../request";
 type Job = API.JobView;
 type Monitor = API.MonitorView;
 type Source = API.SourceView;

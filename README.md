@@ -22,7 +22,7 @@ docker compose exec backend python -m cli owner-init learner
 ## 工程与验证
 
 - `backend/src/`：main 应用工厂、api 协议层、identity/monitors/jobs/sources 业务模块、core/db 公共设施、worker/ 队列执行、cli/ 管理命令及应用迁移。目录规范见 [backend README](backend/README.md)。
-- `frontend/src/`：`app/features/shared` 工作台，以及 `@umijs/openapi` 自动生成的端点函数与类型。
+- `frontend/src/`：`app/features` 工作台、`api/` 自动生成端点，以及根级 `request.ts` Axios封装；不设置shared层。
 - `docs/openapi/openapi.json`：FastAPI 自动导出的唯一发布契约快照；运行时 Swagger UI 为 `http://localhost:8867/docs`，OpenAPI JSON 为 `http://localhost:8867/openapi.json`。
 - 根 Compose：唯一运行编排；生产使用覆盖文件。
 

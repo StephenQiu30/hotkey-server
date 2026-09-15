@@ -1,6 +1,6 @@
 // @ts-ignore
 /* eslint-disable */
-import { request, type RequestOptions } from "../../shared/api/request";
+import { request, type RequestOptions } from "../request";
 
 /** Jobs GET /api/v1/jobs */
 export async function listJobs(

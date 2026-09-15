@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { login } from "../../generated/api/identity";
-import { message } from "../../shared/api/errors";
+import { login } from "../../api/identity";
+import { message } from "../../request";
 
 export function Login({ onLogin }: { onLogin: () => void }) {
   const [error, setError] = useState("");

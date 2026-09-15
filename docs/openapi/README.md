@@ -14,4 +14,4 @@ uv run --directory backend/src python -m tools.export_openapi
 npm run generate --prefix frontend
 ```
 
-生成客户端位于 `frontend/src/generated/api/`。业务代码只调用其中的端点函数；`frontend/src/shared/api/request.ts` 是唯一 Axios 传输封装。CI 运行后端 OpenAPI 漂移检查与前端重新生成逐文件比较，任一手工改动都会失败。
+生成客户端位于 `frontend/src/api/`。业务代码只调用其中的端点函数；`frontend/src/request.ts` 是唯一 Axios 传输封装，不创建shared目录。CI 运行后端 OpenAPI 漂移检查与前端重新生成逐文件比较，任一手工改动都会失败。

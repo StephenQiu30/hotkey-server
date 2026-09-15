@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { createMonitor, updateMonitor } from "../../generated/api/monitoring";
-import { message } from "../../shared/api/errors";
+import { createMonitor, updateMonitor } from "../../api/monitoring";
+import { message } from "../../request";
 type Monitor = API.MonitorView;
 type Source = API.SourceView;
 export const sourceLabels: Record<Source["id"], string> = {

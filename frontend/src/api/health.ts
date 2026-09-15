@@ -1,6 +1,6 @@
 // @ts-ignore
 /* eslint-disable */
-import { request, type RequestOptions } from "../../shared/api/request";
+import { request, type RequestOptions } from "../request";
 
 /** Live GET /health/live */
 export async function healthLive(options?: RequestOptions) {

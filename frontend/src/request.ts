@@ -1,3 +1,15 @@
+import axios, { type AxiosRequestConfig } from "axios";
+
+export type RequestOptions = AxiosRequestConfig & {
+  requestType?: "form";
+};
+
+type ApiError = {
+  code?: string;
+  message?: string;
+  request_id?: string;
+};
+
 const messages: Record<string, string> = {
   authentication_required: "会话已失效，请重新登录。",
   invalid_credentials: "用户名或密码不正确。",
@@ -8,6 +20,31 @@ const messages: Record<string, string> = {
   database_unavailable: "数据库暂时不可用，请稍后重试。",
   origin_forbidden: "访问地址未被允许，请检查服务配置。",
 };
+
+const client = axios.create({
+  baseURL: "/",
+  withCredentials: true,
+  withXSRFToken: true,
+  xsrfCookieName: "hk_csrf",
+  xsrfHeaderName: "X-CSRF-Token",
+  paramsSerializer: { indexes: null },
+});
+
+export async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const { requestType: _requestType, ...config } = options;
+  try {
+    const response = await client.request<T>({ url: path, ...config });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError<ApiError>(error) && error.response?.data) {
+      throw error.response.data;
+    }
+    throw error;
+  }
+}
 
 export function errorCode(error: unknown): string | undefined {
   return error &&

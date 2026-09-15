@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 export default {
   schemaPath: resolve(process.cwd(), "../docs/openapi/openapi.json"),
-  serversPath: process.env.HOTKEY_OPENAPI_OUTPUT ?? "./src/generated",
+  serversPath: process.env.HOTKEY_OPENAPI_OUTPUT ?? "./src",
   projectName: "api",
   namespace: "API",
   isCamelCase: true,
@@ -10,7 +10,7 @@ export default {
   declareType: "type",
   requestOptionsType: "RequestOptions",
   requestImportStatement:
-    "import { request, type RequestOptions } from '../../shared/api/request';",
+    "import { request, type RequestOptions } from '../request';",
   hook: {
     afterOpenApiDataInited(document: {
       paths?: Record<

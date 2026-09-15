@@ -15,23 +15,26 @@ function verify(source) {
 const temporary = mkdtempSync(join(tmpdir(), "hotkey-boundaries-"));
 try {
   const valid = join(temporary, "valid");
-  mkdirSync(join(valid, "shared"), { recursive: true });
-  writeFileSync(join(valid, "main.tsx"), "import './shared/value';\n");
-  writeFileSync(join(valid, "shared/value.ts"), "export const value = 1;\n");
+  mkdirSync(join(valid, "api"), { recursive: true });
+  writeFileSync(join(valid, "main.tsx"), "import './api/jobs';\n");
+  writeFileSync(join(valid, "request.ts"), "export const request = 1;\n");
+  writeFileSync(
+    join(valid, "api/jobs.ts"),
+    "import { request } from '../request'; export { request };\n",
+  );
   assert.doesNotThrow(verify(valid));
 
   const invalidImport = join(temporary, "invalid-import");
-  mkdirSync(join(invalidImport, "shared"), { recursive: true });
   mkdirSync(join(invalidImport, "features"), { recursive: true });
   writeFileSync(
     join(invalidImport, "features/value.ts"),
     "export const value = 1;\n",
   );
   writeFileSync(
-    join(invalidImport, "shared/value.ts"),
-    "import { value } from '../features/value'; export { value };\n",
+    join(invalidImport, "request.ts"),
+    "import { value } from './features/value'; export { value };\n",
   );
-  assert.throws(verify(invalidImport), /shared cannot import features/);
+  assert.throws(verify(invalidImport), /request cannot import features/);
 
   const unknownLayer = join(temporary, "unknown-layer");
   mkdirSync(join(unknownLayer, "misc"), { recursive: true });

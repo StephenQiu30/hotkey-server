@@ -17,7 +17,7 @@ docker compose exec backend python -m cli owner-init learner
 
 Enter a password of at least 12 characters interactively and visit http://localhost:8010. No default owner exists. Ports bind to loopback only. Use the production override behind HTTPS for a production-like experiment.
 
-See the [Chinese README](README.md), [design and source research](docs/design/006-社交媒体关键词监控与评论分析设计.md), [implementation plan](docs/plans/006-社交媒体关键词监控与评论分析计划.md), and [operations](docs/operations/006-Python运行与验证.md). FastAPI generates the runtime OpenAPI document and Swagger UI. Its reproducible snapshot is `docs/openapi/openapi.json`; `@umijs/openapi` generates all frontend endpoint functions and types under `frontend/src/generated/api/`, while Axios is confined to the shared transport wrapper.
+See the [Chinese README](README.md), [design and source research](docs/design/006-社交媒体关键词监控与评论分析设计.md), [implementation plan](docs/plans/006-社交媒体关键词监控与评论分析计划.md), and [operations](docs/operations/006-Python运行与验证.md). FastAPI generates the runtime OpenAPI document and Swagger UI. Its reproducible snapshot is `docs/openapi/openapi.json`; `@umijs/openapi` generates all frontend endpoint functions and types under `frontend/src/api/`, while Axios is confined to `frontend/src/request.ts`.
 
 The previous implementation and contracts exist only in Git history. No legacy endpoints, accounts or databases are silently reused. Existing persistent volumes are preserved.
 
