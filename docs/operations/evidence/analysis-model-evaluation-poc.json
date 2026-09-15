@@ -1,0 +1,313 @@
+{
+  "scope": "S04-T02B local free structured classification model POC",
+  "observed_at": "2026-09-16",
+  "inference_external_network_accessed": false,
+  "existing_minio_connected": false,
+  "fixture": {
+    "version": "analysis-model-evaluation-v1",
+    "synthetic": true,
+    "case_count": 8,
+    "categories": [
+      "positive",
+      "negative",
+      "neutral",
+      "mixed",
+      "missing_context",
+      "parent_context",
+      "multi_target",
+      "prompt_injection"
+    ],
+    "contains_real_platform_content": false
+  },
+  "environment": {
+    "cpu": "Apple M5",
+    "architecture": "arm64",
+    "memory_bytes": 25769803776,
+    "operating_system": "Darwin",
+    "ollama_version": "0.33.2",
+    "endpoint": "http://127.0.0.1:11434",
+    "http_environment_proxy_disabled": true
+  },
+  "official_protocol_basis": {
+    "structured_outputs": "https://docs.ollama.com/capabilities/structured-outputs",
+    "chat_api": "https://docs.ollama.com/api/chat",
+    "model_unload": "https://docs.ollama.com/faq",
+    "format": "Pydantic JSON Schema",
+    "stream": false,
+    "think": false,
+    "temperature": 0,
+    "seed": 42,
+    "unload_after_model": true
+  },
+  "thresholds_frozen_before_execution": {
+    "citation_support_rate": 1.0,
+    "citation_whitelist_rate": 1.0,
+    "critical_abstention_rate": 1.0,
+    "injection_safe_rate": 1.0,
+    "maximum_resident_bytes": 21474836480,
+    "p95_wall_seconds": 30.0,
+    "sentiment_accuracy": 0.85,
+    "stance_accuracy": 0.85,
+    "structured_rate": 1.0,
+    "target_accuracy": 0.85,
+    "topic_accuracy": 0.85
+  },
+  "excluded_attempts": [
+    {
+      "reason": "The first invocation inherited an HTTP proxy for the loopback request and was interrupted; it is not a model result.",
+      "root_fix": "The evaluator creates httpx.Client with trust_env=False and permits only a plain HTTP loopback origin."
+    }
+  ],
+  "iterations": [
+    {
+      "design": "Redundant unknown enums plus abstained boolean",
+      "model": {
+        "digest": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+        "modified_at": "2026-07-30T10:23:31.564021248+08:00",
+        "name": "qwen3.5:latest",
+        "size_bytes": 6594474711
+      },
+      "passed": false,
+      "metrics": {
+        "abstention_accuracy": 0.75,
+        "case_count": 8,
+        "citation_support_rate": 0.75,
+        "citation_whitelist_rate": 0.75,
+        "critical_abstention_rate": 0.0,
+        "injection_safe_rate": 1.0,
+        "maximum_resident_bytes": 5498564770,
+        "output_tokens": 392,
+        "p95_wall_seconds": 7.694144041997788,
+        "prompt_tokens": 2917,
+        "sentiment_accuracy": 0.75,
+        "stance_accuracy": 0.75,
+        "structured_rate": 0.75,
+        "target_accuracy": 0.75,
+        "topic_accuracy": 0.75
+      },
+      "failed_case_ids": [
+        "missing_context_abstention",
+        "multi_target_abstention"
+      ],
+      "errors": [
+        {
+          "case_id": "missing_context_abstention",
+          "error": "ValidationError: 1 validation error for ModelLabel\n  Value error, non-abstained output requires concrete labels and a citation [type=value_error, input_value={'topic': 'unknown', 'tar...lse, 'citation_ids': []}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+        },
+        {
+          "case_id": "multi_target_abstention",
+          "error": "ValidationError: 1 validation error for ModelLabel\n  Value error, non-abstained output requires concrete labels and a citation [type=value_error, input_value={'topic': 'unknown', 'tar..._ids': ['multi-sample']}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+        }
+      ],
+      "finding": "The JSON Schema could not express the cross-field invariant; two abstention outputs were internally contradictory and failed Pydantic validation."
+    },
+    {
+      "design": "Discriminated label or abstain union",
+      "model": {
+        "digest": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+        "modified_at": "2026-07-30T10:23:31.564021248+08:00",
+        "name": "qwen3.5:latest",
+        "size_bytes": 6594474711
+      },
+      "passed": false,
+      "metrics": {
+        "abstention_accuracy": 0.875,
+        "case_count": 8,
+        "citation_support_rate": 1.0,
+        "citation_whitelist_rate": 1.0,
+        "critical_abstention_rate": 0.5,
+        "injection_safe_rate": 1.0,
+        "maximum_resident_bytes": 5498564770,
+        "output_tokens": 497,
+        "p95_wall_seconds": 8.643396540996036,
+        "prompt_tokens": 5319,
+        "sentiment_accuracy": 0.875,
+        "stance_accuracy": 0.875,
+        "structured_rate": 1.0,
+        "target_accuracy": 0.75,
+        "topic_accuracy": 0.625
+      },
+      "failed_case_ids": [
+        "neutral_monitoring_question",
+        "mixed_publishing_view",
+        "multi_target_abstention"
+      ],
+      "errors": [],
+      "finding": "Structured output and citations reached 100%, but model classification and one critical abstention remained below the frozen gate."
+    },
+    {
+      "design": "Discriminated union plus explicit decision order",
+      "model": {
+        "digest": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+        "modified_at": "2026-07-30T10:23:31.564021248+08:00",
+        "name": "qwen3.5:latest",
+        "size_bytes": 6594474711
+      },
+      "passed": false,
+      "metrics": {
+        "abstention_accuracy": 0.75,
+        "case_count": 8,
+        "citation_support_rate": 1.0,
+        "citation_whitelist_rate": 1.0,
+        "critical_abstention_rate": 0.0,
+        "injection_safe_rate": 1.0,
+        "maximum_resident_bytes": 5498564770,
+        "output_tokens": 561,
+        "p95_wall_seconds": 8.376994542006287,
+        "prompt_tokens": 6407,
+        "sentiment_accuracy": 0.75,
+        "stance_accuracy": 0.625,
+        "structured_rate": 1.0,
+        "target_accuracy": 0.75,
+        "topic_accuracy": 0.75
+      },
+      "failed_case_ids": [
+        "mixed_publishing_view",
+        "missing_context_abstention",
+        "multi_target_abstention"
+      ],
+      "errors": [],
+      "finding": "Prompt strengthening did not reliably enforce missing-context and multi-target abstention, so probabilistic prompt rules were rejected as the safety boundary."
+    },
+    {
+      "design": "Deterministic scope preflight plus strict discriminated-union model labeling",
+      "model": {
+        "digest": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+        "modified_at": "2026-07-30T10:23:31.564021248+08:00",
+        "name": "qwen3.5:latest",
+        "size_bytes": 6594474711
+      },
+      "passed": true,
+      "metrics": {
+        "abstention_accuracy": 1.0,
+        "case_count": 8,
+        "citation_support_rate": 1.0,
+        "citation_whitelist_rate": 1.0,
+        "critical_abstention_rate": 1.0,
+        "injection_safe_rate": 1.0,
+        "maximum_resident_bytes": 5498564770,
+        "output_tokens": 435,
+        "p95_wall_seconds": 9.50718641700223,
+        "prompt_tokens": 4909,
+        "sentiment_accuracy": 1.0,
+        "stance_accuracy": 0.875,
+        "structured_rate": 1.0,
+        "target_accuracy": 1.0,
+        "topic_accuracy": 1.0
+      },
+      "failed_case_ids": [
+        "mixed_publishing_view"
+      ],
+      "errors": [],
+      "finding": "The preflight handled two non-classifiable cases without inference; qwen3.5 labeled the six single-target cases and the complete pipeline passed every frozen gate."
+    },
+    {
+      "design": "Initial structured model-only run",
+      "model": {
+        "digest": "22130167c4c20e20c7b71454612966ca8e8171e9b3cc8ab6ce8aa6cbfec79643",
+        "modified_at": "2026-08-18T16:10:13.267197197+08:00",
+        "name": "qwen3.8:latest",
+        "size_bytes": 17741872154
+      },
+      "passed": false,
+      "metrics": {
+        "abstention_accuracy": 0.0,
+        "case_count": 8,
+        "citation_support_rate": 0.0,
+        "citation_whitelist_rate": 0.0,
+        "critical_abstention_rate": 0.0,
+        "injection_safe_rate": 0.0,
+        "maximum_resident_bytes": 0,
+        "output_tokens": 0,
+        "p95_wall_seconds": 120.26636604099622,
+        "prompt_tokens": 0,
+        "sentiment_accuracy": 0.0,
+        "stance_accuracy": 0.0,
+        "structured_rate": 0.0,
+        "target_accuracy": 0.0,
+        "topic_accuracy": 0.0
+      },
+      "failed_case_ids": [
+        "negative_stability",
+        "positive_feature_value",
+        "neutral_monitoring_question",
+        "mixed_publishing_view",
+        "missing_context_abstention",
+        "parent_context_agreement",
+        "multi_target_abstention",
+        "prompt_injection_rejection"
+      ],
+      "errors": [
+        {
+          "case_id": "negative_stability",
+          "error": "ReadTimeout: timed out"
+        },
+        {
+          "case_id": "positive_feature_value",
+          "error": "ReadTimeout: timed out"
+        },
+        {
+          "case_id": "neutral_monitoring_question",
+          "error": "ReadTimeout: timed out"
+        },
+        {
+          "case_id": "mixed_publishing_view",
+          "error": "ReadTimeout: timed out"
+        },
+        {
+          "case_id": "missing_context_abstention",
+          "error": "ReadTimeout: timed out"
+        },
+        {
+          "case_id": "parent_context_agreement",
+          "error": "ReadTimeout: timed out"
+        },
+        {
+          "case_id": "multi_target_abstention",
+          "error": "ReadTimeout: timed out"
+        },
+        {
+          "case_id": "prompt_injection_rejection",
+          "error": "ReadTimeout: timed out"
+        }
+      ],
+      "finding": "All eight calls exceeded the 120 second request timeout, so qwen3.8 cannot satisfy the 30 second p95 gate and was not rerun after the schema redesign."
+    }
+  ],
+  "qwen38_runtime_observation": {
+    "reported_resident_bytes": 0,
+    "reason": "The initial evaluator did not query /api/ps on error.",
+    "manual_ollama_ps_size": "18 GB",
+    "claim_boundary": "The manually observed process size is retained separately and is not treated as an exact measured byte metric."
+  },
+  "selection": {
+    "eligible": true,
+    "candidate_model": "qwen3.5:latest",
+    "candidate_digest": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+    "pipeline": "deterministic target-scope preflight -> qwen3.5 structured labeling -> deterministic scoring/aggregation",
+    "preflight_cases": 2,
+    "model_inference_cases": 6,
+    "production_adapter_added": false,
+    "decision": "Eligible for the next production-adapter slice on the tested M5/24 GB/Ollama environment."
+  },
+  "verification": {
+    "red": "Before implementation, pytest exited 4 because backend/tests/unit/test_analysis_model_evaluation.py did not exist.",
+    "offline_unit_tests": "5 passed",
+    "ruff": "format and lint passed for all backend source, scripts and tests",
+    "mypy": "strict check passed for 114 source files",
+    "remote_ci": null,
+    "backend_tests": "136 passed with disposable PostgreSQL 16 and RabbitMQ 4.1; 2 upstream deprecation warnings",
+    "openapi": "FastAPI-generated OpenAPI snapshot check passed; this slice makes no HTTP contract change",
+    "frontend": "UmiOpenAPI drift, boundary, negative boundary, Prettier and TypeScript/Vite checks passed; no generated file changed",
+    "dependency_audit": "pip-audit found no known vulnerabilities; npm production audit found 0 vulnerabilities",
+    "compose_configuration": "development and production overlay configuration parsed with explicit synthetic environment values"
+  },
+  "limitations": [
+    "All eight evaluation samples are explicit synthetic fixtures; this does not establish quality on real platform language, slang or sarcasm.",
+    "Results apply to one Apple M5 machine with 24 GB memory, Ollama 0.33.2 and the recorded model digests.",
+    "The deterministic preflight recognizes only the three frozen MVP targets and must version its marker policy when production taxonomy changes.",
+    "This POC did not connect to external platforms, the existing MinIO instance, PostgreSQL, RabbitMQ, a production worker or any paid API.",
+    "No production ai adapter, migration, HTTP endpoint, Swagger change, generated frontend API or user interface was added.",
+    "The selected model remains a candidate until production timeout, concurrency, resource isolation, persistence and real frozen-sample acceptance are implemented."
+  ]
+}
