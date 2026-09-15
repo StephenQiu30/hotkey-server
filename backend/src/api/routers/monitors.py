@@ -16,12 +16,16 @@ from monitors.schemas import (
 router = APIRouter(prefix="/api/v1")
 
 
-@router.get("/sources", response_model=list[SourceView], tags=["monitoring"])
+@router.get(
+    "/sources", response_model=list[SourceView], tags=["monitoring"], operation_id="listSources"
+)
 def sources(owner: Authenticated) -> list[SourceView]:
     return [SourceView(id=name) for name in SOURCE_NAMES]
 
 
-@router.get("/monitors", response_model=MonitorPage, tags=["monitoring"])
+@router.get(
+    "/monitors", response_model=MonitorPage, tags=["monitoring"], operation_id="listMonitors"
+)
 def monitors(
     service: Monitors,
     owner: Authenticated,
@@ -31,12 +35,23 @@ def monitors(
     return service.monitors(limit, cursor)
 
 
-@router.post("/monitors", response_model=MonitorView, status_code=201, tags=["monitoring"])
+@router.post(
+    "/monitors",
+    response_model=MonitorView,
+    status_code=201,
+    tags=["monitoring"],
+    operation_id="createMonitor",
+)
 def create_monitor(data: MonitorInput, service: Monitors, owner: Authenticated) -> MonitorView:
     return service.create_monitor(data)
 
 
-@router.patch("/monitors/{identity}", response_model=MonitorView, tags=["monitoring"])
+@router.patch(
+    "/monitors/{identity}",
+    response_model=MonitorView,
+    tags=["monitoring"],
+    operation_id="updateMonitor",
+)
 def update_monitor(
     identity: UUID, data: MonitorUpdate, service: Monitors, owner: Authenticated
 ) -> MonitorView:

@@ -23,3 +23,38 @@ def test_contract_declares_session_security():
     }
     assert document["paths"]["/api/v1/monitors"]["get"]["security"] == [{"OwnerSession": []}]
     assert "security" not in document["paths"]["/api/v1/session"]["post"]
+
+
+def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
+    monkeypatch.setenv("HOTKEY_DATABASE_URL", "postgresql+psycopg://u:p@127.0.0.1:1/db")
+    monkeypatch.setenv("HOTKEY_BROKER_URL", "amqp://u:p@127.0.0.1:1/test")
+    expected = {
+        ("/health/live", "get"): "healthLive",
+        ("/health/ready", "get"): "healthReady",
+        ("/api/v1/session", "post"): "login",
+        ("/api/v1/session", "get"): "getSession",
+        ("/api/v1/session", "delete"): "logout",
+        ("/api/v1/sources", "get"): "listSources",
+        ("/api/v1/sources/bluesky/query-preview", "post"): "previewBlueskyQuery",
+        ("/api/v1/monitors", "get"): "listMonitors",
+        ("/api/v1/monitors", "post"): "createMonitor",
+        ("/api/v1/monitors/{identity}", "patch"): "updateMonitor",
+        ("/api/v1/jobs", "get"): "listJobs",
+        ("/api/v1/jobs", "post"): "createDiagnosticJob",
+        ("/api/v1/jobs/{identity}", "get"): "getJob",
+        ("/api/v1/jobs/{identity}/cancel", "post"): "cancelJob",
+    }
+    document = create_app().openapi()
+    actual = {
+        (path, method): operation["operationId"]
+        for path, methods in document["paths"].items()
+        for method, operation in methods.items()
+    }
+    assert actual == expected
+    assert document["info"]["title"] == "HotKey API"
+
+    with TestClient(create_app()) as client:
+        swagger = client.get("/docs")
+        assert swagger.status_code == 200
+        assert "url: '/openapi.json'" in swagger.text
+        assert client.get("/openapi.json").json()["info"]["title"] == "HotKey API"

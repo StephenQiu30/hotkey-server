@@ -4,7 +4,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from sources.bluesky import Bluesky
+from sources.adapters.bluesky import Bluesky
 from sources.schemas import SearchInput, ThreadInput
 
 URI = "at://did:plc:sample/app.bsky.feed.post/root"

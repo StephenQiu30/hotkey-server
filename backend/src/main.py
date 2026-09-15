@@ -28,8 +28,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for status in (400, 401, 403, 404, 409, 413, 422, 429, 500, 503)
     }
     app = FastAPI(
-        title="HotKey",
+        title="HotKey API",
         version="0.2.0",
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
         lifespan=lifespan,
         responses=errors,
         description="Single-owner learning workspace. Unsafe requests require an exact allowed "

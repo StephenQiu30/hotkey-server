@@ -539,14 +539,14 @@
   },
   "info": {
     "description": "Single-owner learning workspace. Unsafe requests require an exact allowed Origin; authenticated writes also require a session-bound X-CSRF-Token. Monitor configurations are drafts; only verify_pipeline diagnostic jobs are available.",
-    "title": "HotKey",
+    "title": "HotKey API",
     "version": "0.2.0"
   },
   "openapi": "3.1.0",
   "paths": {
     "/api/v1/jobs": {
       "get": {
-        "operationId": "jobs_api_v1_jobs_get",
+        "operationId": "listJobs",
         "parameters": [
           {
             "in": "query",
@@ -718,7 +718,7 @@
         ]
       },
       "post": {
-        "operationId": "create_job_api_v1_jobs_post",
+        "operationId": "createDiagnosticJob",
         "parameters": [
           {
             "in": "header",
@@ -885,7 +885,7 @@
     },
     "/api/v1/jobs/{identity}": {
       "get": {
-        "operationId": "get_job_api_v1_jobs__identity__get",
+        "operationId": "getJob",
         "parameters": [
           {
             "in": "path",
@@ -1040,7 +1040,7 @@
     },
     "/api/v1/jobs/{identity}/cancel": {
       "post": {
-        "operationId": "cancel_job_api_v1_jobs__identity__cancel_post",
+        "operationId": "cancelJob",
         "parameters": [
           {
             "in": "path",
@@ -1195,7 +1195,7 @@
     },
     "/api/v1/monitors": {
       "get": {
-        "operationId": "monitors_api_v1_monitors_get",
+        "operationId": "listMonitors",
         "parameters": [
           {
             "in": "query",
@@ -1367,7 +1367,7 @@
         ]
       },
       "post": {
-        "operationId": "create_monitor_api_v1_monitors_post",
+        "operationId": "createMonitor",
         "parameters": [
           {
             "in": "header",
@@ -1522,7 +1522,7 @@
     },
     "/api/v1/monitors/{identity}": {
       "patch": {
-        "operationId": "update_monitor_api_v1_monitors__identity__patch",
+        "operationId": "updateMonitor",
         "parameters": [
           {
             "in": "path",
@@ -1687,7 +1687,7 @@
     },
     "/api/v1/session": {
       "delete": {
-        "operationId": "logout_api_v1_session_delete",
+        "operationId": "logout",
         "parameters": [
           {
             "in": "header",
@@ -1823,7 +1823,7 @@
         ]
       },
       "get": {
-        "operationId": "me_api_v1_session_get",
+        "operationId": "getSession",
         "parameters": [
           {
             "in": "header",
@@ -1966,7 +1966,7 @@
         ]
       },
       "post": {
-        "operationId": "login_api_v1_session_post",
+        "operationId": "login",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2097,7 +2097,7 @@
     },
     "/api/v1/sources": {
       "get": {
-        "operationId": "sources_api_v1_sources_get",
+        "operationId": "listSources",
         "parameters": [
           {
             "in": "header",
@@ -2125,7 +2125,7 @@
                   "items": {
                     "$ref": "#/components/schemas/SourceView"
                   },
-                  "title": "Response Sources Api V1 Sources Get",
+                  "title": "Response Listsources",
                   "type": "array"
                 }
               }
@@ -2246,7 +2246,7 @@
     },
     "/api/v1/sources/bluesky/query-preview": {
       "post": {
-        "operationId": "query_preview_api_v1_sources_bluesky_query_preview_post",
+        "operationId": "previewBlueskyQuery",
         "parameters": [
           {
             "in": "header",
@@ -2401,7 +2401,7 @@
     },
     "/health/live": {
       "get": {
-        "operationId": "live_health_live_get",
+        "operationId": "healthLive",
         "responses": {
           "200": {
             "content": {
@@ -2514,12 +2514,15 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Live"
+        "summary": "Live",
+        "tags": [
+          "health"
+        ]
       }
     },
     "/health/ready": {
       "get": {
-        "operationId": "ready_health_ready_get",
+        "operationId": "healthReady",
         "responses": {
           "200": {
             "content": {
@@ -2632,7 +2635,10 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Ready"
+        "summary": "Ready",
+        "tags": [
+          "health"
+        ]
       }
     }
   }

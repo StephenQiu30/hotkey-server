@@ -16,6 +16,11 @@ def test_canonical_backend_layout():
     assert not (ROOT / "backend/workspace").exists()
 
 
+def test_source_io_uses_the_registered_adapter_directory():
+    assert (ROOT / "backend/src/sources/adapters/bluesky.py").is_file()
+    assert not (ROOT / "backend/src/sources/bluesky.py").exists()
+
+
 def test_deployment_uses_canonical_backend_entrypoint():
     compose = (ROOT / "docker-compose.yml").read_text()
     assert "\n  backend:\n" in compose and "\n  api:\n" not in compose

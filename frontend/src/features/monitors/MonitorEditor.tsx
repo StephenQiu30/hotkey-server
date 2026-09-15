@@ -1,5 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { api, message, unwrap, type Monitor, type Source } from "./client";
+import { createMonitor, updateMonitor } from "../../generated/api/monitoring";
+import { message } from "../../shared/api/errors";
+type Monitor = API.MonitorView;
+type Source = API.SourceView;
 export const sourceLabels: Record<Source["id"], string> = {
   weibo: "微博",
   bilibili: "B站",
@@ -47,13 +50,11 @@ export function MonitorEditor({
     setError("");
     try {
       if (monitor)
-        unwrap(
-          await api.PATCH("/api/v1/monitors/{identity}", {
-            params: { path: { identity: monitor.id } },
-            body: { ...body, version: monitor.version },
-          }),
+        await updateMonitor(
+          { identity: monitor.id },
+          { ...body, version: monitor.version },
         );
-      else unwrap(await api.POST("/api/v1/monitors", { body }));
+      else await createMonitor(body);
       onSaved();
     } catch (error) {
       setError(message(error));

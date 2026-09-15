@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { api, message, unwrap } from "./client";
+import { login } from "../../generated/api/identity";
+import { message } from "../../shared/api/errors";
 
 export function Login({ onLogin }: { onLogin: () => void }) {
   const [error, setError] = useState("");
@@ -10,14 +11,10 @@ export function Login({ onLogin }: { onLogin: () => void }) {
     setPending(true);
     setError("");
     try {
-      unwrap(
-        await api.POST("/api/v1/session", {
-          body: {
-            username: String(values.get("username")),
-            password: String(values.get("password")),
-          },
-        }),
-      );
+      await login({
+        username: String(values.get("username")),
+        password: String(values.get("password")),
+      });
       onLogin();
     } catch (error) {
       setError(message(error));

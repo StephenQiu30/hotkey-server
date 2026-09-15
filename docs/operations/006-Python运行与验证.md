@@ -58,12 +58,14 @@ uv run --directory backend/src python -m tools.export_openapi --check
 uv run --project backend pip-audit
 npm ci --prefix frontend
 npm run check:contract --prefix frontend
+npm run check:boundaries --prefix frontend
+npm run test:boundaries --prefix frontend
 npm run format:check --prefix frontend
 npm run build --prefix frontend
-npm audit --prefix frontend --audit-level=high
+npm audit --prefix frontend --omit=dev --audit-level=high
 ```
 
-修改 API 后执行 `uv run --directory backend/src python -m tools.export_openapi`，然后 `npm run generate --prefix frontend`，同时审查 JSON 与生成类型；不要手工编辑生成文件。Cookie 认证方案、CSRF Header、输入输出和稳定错误格式均包含在契约中。
+修改 API 后执行 `uv run --directory backend/src python -m tools.export_openapi`，然后 `npm run generate --prefix frontend`，同时审查自动导出的 JSON 与生成客户端；不要手工编辑两类生成文件。FastAPI 运行时自动提供 `/docs`、`/redoc` 和 `/openapi.json`；Cookie 认证方案、CSRF Header、输入输出和稳定错误格式均包含在契约中。业务代码只调用 `frontend/src/generated/api/` 的端点函数，Axios 仅在 `frontend/src/shared/api/request.ts` 封装。
 
 迁移位于 `backend/src/migrations/versions/`，与生成模板一起复制进镜像。运行目录为 backend/src；升级使用 `python -m cli migrate`。生成候选迁移可在 `uv run --directory backend/src python` 中调用 `alembic.command.revision(migration_config(url), autogenerate=True, ...)`，必须审查 DDL、索引和数据转换后使用。迁移拒绝非空且无 Alembic 账本的数据库；不提供破坏性降级。
 
@@ -145,3 +147,15 @@ uv run --project backend python backend/scripts/verify_shutdown.py
 使用方式见 backend/README.md。搜索失败未做自动重试或登录绕过；此切片不需要业务数据库/broker 凭据。没有新增迁移或将结果写入任务账本；国内来源、持续搜索准入、原始证据持久化和任务执行隔离仍待下一片验证。
 
 来源切片容器回归：实际 RabbitMQ/Celery prefork 诊断 succeeded、attempts=1；Chromium 登录、监控编辑、诊断与会话撤销通过。正常停机 worker/scheduler=0、backend=143，无 SIGKILL/OOM。测试容器已停止，持久卷保留。现有 HTTP 路径契约不变，仅新增 query-preview，迁移文件无改动。来源切片尚未提交，92569a49 基线仍仅在本地 main。
+
+## 007 S00 目录、Swagger与生成客户端验收（2026-09-15）
+
+S00 在先登记文件归属和技术选择后执行。来源 I/O 移到 `backend/src/sources/adapters/`；前端迁为 `app/features/generated/shared`。后端架构检查递归枚举整个 `backend/src`，前端脚本拒绝未知层级、反向依赖、越界导入和旧文件副本；对应违规样例先失败后转绿。
+
+FastAPI 从路由和 Pydantic 模型运行时生成 `/openapi.json`、`/docs` 与 `/redoc`，14 个操作使用稳定 operationId。`tools.export_openapi` 只做确定性快照，运行时 JSON 与 `docs/openapi/openapi.json` 深度相等。`@umijs/openapi` 1.14.1 按 tag 生成 `frontend/src/generated/api/` 的端点函数和DTO；业务组件只引用这些方法。共享 `request.ts` 使用 Axios 1.20.0 处理同源Cookie、XSRF、重复查询参数和错误体，不维护业务URL或DTO。临时重新生成与仓库文件逐字节比较通过。
+
+本地静态检查结果：Ruff format/lint、严格 mypy（61个源文件）、OpenAPI漂移通过；一次性 `hotkey_test` PostgreSQL/RabbitMQ环境中64项pytest全部通过，保留两条上游弃用提示。前端生成、契约漂移、边界检查及负向样例、Prettier、TypeScript/Vite构建通过；运行时依赖 `npm audit --omit=dev --audit-level=high` 为0。
+
+隔离项目 `hotkey-s00` 完成镜像构建、迁移、真实 scheduler → RabbitMQ → Celery prefork → PostgreSQL 诊断，结果succeeded/attempts=1。Chromium两项通过：Swagger UI实际渲染并读到稳定operationId；owner登录、新建/编辑草稿、Axios提交诊断、刷新恢复、390px无横向溢出、退出和会话撤销通过。人工查看1440px与390px截图未发现目录迁移造成的视觉回归。停机结果worker=0、scheduler=0、backend=143，无SIGKILL/OOM；随后只删除本次隔离项目及其卷。
+
+开发工具依赖仍有2个high审计条目，均源于用户指定的 `@umijs/openapi` 间接依赖 `mockjs` 的同一原型污染公告，当前无可用修复。生成器不进入Nginx生产镜像运行阶段，只读取仓库内由FastAPI自动导出的可信契约；CI继续严格审计运行时依赖，并保留升级/移除该间接依赖的跟踪。以上完成AC-007-016与S00，不代表来源采集、MinIO证据链或完整007验收通过。

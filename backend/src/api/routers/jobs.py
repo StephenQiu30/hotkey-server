@@ -9,7 +9,7 @@ from jobs.schemas import DiagnosticInput, JobPage, JobView
 router = APIRouter(prefix="/api/v1")
 
 
-@router.get("/jobs", response_model=JobPage, tags=["jobs"])
+@router.get("/jobs", response_model=JobPage, tags=["jobs"], operation_id="listJobs")
 def jobs(
     service: Jobs,
     owner: Authenticated,
@@ -19,7 +19,13 @@ def jobs(
     return service.jobs(limit, cursor)
 
 
-@router.post("/jobs", response_model=JobView, status_code=202, tags=["jobs"])
+@router.post(
+    "/jobs",
+    response_model=JobView,
+    status_code=202,
+    tags=["jobs"],
+    operation_id="createDiagnosticJob",
+)
 def create_job(
     data: DiagnosticInput,
     service: Jobs,
@@ -31,11 +37,16 @@ def create_job(
     return service.create_job(idempotency_key)
 
 
-@router.get("/jobs/{identity}", response_model=JobView, tags=["jobs"])
+@router.get("/jobs/{identity}", response_model=JobView, tags=["jobs"], operation_id="getJob")
 def get_job(identity: UUID, service: Jobs, owner: Authenticated) -> JobView:
     return service.job(identity)
 
 
-@router.post("/jobs/{identity}/cancel", response_model=JobView, tags=["jobs"])
+@router.post(
+    "/jobs/{identity}/cancel",
+    response_model=JobView,
+    tags=["jobs"],
+    operation_id="cancelJob",
+)
 def cancel_job(identity: UUID, service: Jobs, owner: Authenticated) -> JobView:
     return service.cancel_job(identity)

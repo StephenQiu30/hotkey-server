@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  api,
-  message,
-  unwrap,
-  type Job,
-  type Monitor,
-  type Source,
-} from "./client";
-import { Login } from "./Login";
-import { MonitorEditor, sourceLabels } from "./MonitorEditor";
+  createDiagnosticJob,
+  cancelJob,
+  listJobs,
+} from "../generated/api/jobs";
+import { getSession, logout } from "../generated/api/identity";
+import { listMonitors, listSources } from "../generated/api/monitoring";
+import { Login } from "../features/identity/Login";
+import {
+  MonitorEditor,
+  sourceLabels,
+} from "../features/monitors/MonitorEditor";
+import { errorCode, message } from "../shared/api/errors";
+type Job = API.JobView;
+type Monitor = API.MonitorView;
+type Source = API.SourceView;
 const statuses: Record<Job["status"], string> = {
   queued: "排队中",
   running: "执行中",
@@ -35,28 +41,19 @@ export function App() {
     setError("");
     try {
       const [m, j, s] = await Promise.all([
-        api.GET("/api/v1/monitors"),
-        api.GET("/api/v1/jobs"),
-        api.GET("/api/v1/sources"),
+        listMonitors({}),
+        listJobs({}),
+        listSources(),
       ]);
-      const ms = unwrap(m),
-        js = unwrap(j),
-        ss = unwrap(s);
       if (current !== generation.current) return;
-      setMonitors(ms.items);
-      setMonitorCursor(ms.next_cursor);
-      setJobs(js.items);
-      setJobCursor(js.next_cursor);
-      setSources(ss);
+      setMonitors(m.items);
+      setMonitorCursor(m.next_cursor);
+      setJobs(j.items);
+      setJobCursor(j.next_cursor);
+      setSources(s);
     } catch (e) {
       if (current !== generation.current) return;
-      if (
-        e &&
-        typeof e === "object" &&
-        "code" in e &&
-        e.code === "authentication_required"
-      )
-        setSession("out");
+      if (errorCode(e) === "authentication_required") setSession("out");
       else setError(message(e));
     } finally {
       if (current === generation.current) setLoading(false);
@@ -64,20 +61,15 @@ export function App() {
   }, []);
   useEffect(() => {
     const abort = new AbortController();
-    api
-      .GET("/api/v1/session", { signal: abort.signal })
-      .then(({ data, error, response }) => {
+    getSession({ signal: abort.signal })
+      .then(() => {
         if (abort.signal.aborted) return;
-        if (data) setSession("in");
-        else if (response.status === 401) setSession("out");
-        else {
-          setError(message(error));
-          setSession("out");
-        }
+        setSession("in");
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!abort.signal.aborted) {
-          setError("服务连接失败。");
+          if (errorCode(error) !== "authentication_required")
+            setError(message(error));
           setSession("out");
         }
       });
@@ -103,19 +95,11 @@ export function App() {
   async function more(kind: "monitors" | "jobs") {
     await action(async () => {
       if (kind === "monitors" && monitorCursor) {
-        const page = unwrap(
-          await api.GET("/api/v1/monitors", {
-            params: { query: { cursor: monitorCursor } },
-          }),
-        );
+        const page = await listMonitors({ cursor: monitorCursor });
         setMonitors((old) => [...old, ...page.items]);
         setMonitorCursor(page.next_cursor);
       } else if (kind === "jobs" && jobCursor) {
-        const page = unwrap(
-          await api.GET("/api/v1/jobs", {
-            params: { query: { cursor: jobCursor } },
-          }),
-        );
+        const page = await listJobs({ cursor: jobCursor });
         setJobs((old) => [...old, ...page.items]);
         setJobCursor(page.next_cursor);
       }
@@ -154,8 +138,7 @@ export function App() {
           disabled={busy}
           onClick={() =>
             void action(async () => {
-              const result = await api.DELETE("/api/v1/session");
-              if (result.error) throw result.error;
+              await logout();
               generation.current++;
               setMonitors([]);
               setJobs([]);
@@ -265,13 +248,13 @@ export function App() {
               onClick={() =>
                 void action(async () => {
                   diagnosticKey.current ??= crypto.randomUUID();
-                  unwrap(
-                    await api.POST("/api/v1/jobs", {
-                      params: {
-                        header: { "idempotency-key": diagnosticKey.current },
+                  await createDiagnosticJob(
+                    { kind: "verify_pipeline" },
+                    {
+                      headers: {
+                        "Idempotency-Key": diagnosticKey.current,
                       },
-                      body: { kind: "verify_pipeline" },
-                    }),
+                    },
                   );
                   diagnosticKey.current = null;
                   await refresh();
@@ -307,12 +290,7 @@ export function App() {
                             disabled={busy}
                             onClick={() =>
                               void action(async () => {
-                                unwrap(
-                                  await api.POST(
-                                    "/api/v1/jobs/{identity}/cancel",
-                                    { params: { path: { identity: j.id } } },
-                                  ),
-                                );
+                                await cancelJob({ identity: j.id });
                                 await refresh();
                               })
                             }

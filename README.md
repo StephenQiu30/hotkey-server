@@ -6,7 +6,7 @@
 
 新增 Bluesky 查询预览和有界 CLI 来源探测，可读取公开线程并区分受限、空结果和部分结果。**持久化关键词采集、国内来源、事件归并、观点分析与报告尚未实现。** 草稿不会启动采集，诊断不会生成社交数据。当前实现进度见 [006 Plan](docs/plans/006-社交媒体关键词监控与评论分析计划.md)。
 
-2026-09-15 新规划：**监控主题 → 发现收件箱 → 评论追踪 → 事件档案 → 分析与知识库**。已形成 [007 产品需求](docs/prd/007-热点事件与评论知识库.md)、[信息模型与技术设计](docs/design/007-热点事件与评论知识库设计.md)、[实施计划](docs/plans/007-热点事件与评论知识库计划.md)，均为待实施规划；复用当前 Python/React 与可靠任务基础，按真实来源与数据闭环逐片交付。
+2026-09-15 新规划：**监控主题 → 发现收件箱 → 评论追踪 → 事件档案 → 分析与知识库**。已形成 [007 产品需求](docs/prd/007-热点事件与评论知识库.md)、[信息模型与技术设计](docs/design/007-热点事件与评论知识库设计.md)、[实施计划](docs/plans/007-热点事件与评论知识库计划.md)。S00 工程门禁已开始实施，复用当前 Python/React 与可靠任务基础，按真实来源与数据闭环逐片交付。
 
 ## 启动
 
@@ -22,8 +22,8 @@ docker compose exec backend python -m cli owner-init learner
 ## 工程与验证
 
 - `backend/src/`：main 应用工厂、api 协议层、identity/monitors/jobs/sources 业务模块、core/db 公共设施、worker/ 队列执行、cli/ 管理命令及应用迁移。目录规范见 [backend README](backend/README.md)。
-- `frontend/src/`：工作台及生成的 API 类型。
-- `docs/openapi/openapi.json`：唯一发布契约。
+- `frontend/src/`：`app/features/shared` 工作台，以及 `@umijs/openapi` 自动生成的端点函数与类型。
+- `docs/openapi/openapi.json`：FastAPI 自动导出的唯一发布契约快照；运行时 Swagger UI 为 `http://localhost:8867/docs`，OpenAPI JSON 为 `http://localhost:8867/openapi.json`。
 - 根 Compose：唯一运行编排；生产使用覆盖文件。
 
 ```sh
@@ -34,6 +34,8 @@ uv run --project backend pytest backend/tests
 uv run --directory backend/src python -m tools.export_openapi --check
 npm ci --prefix frontend
 npm run check:contract --prefix frontend
+npm run check:boundaries --prefix frontend
+npm run test:boundaries --prefix frontend
 npm run build --prefix frontend
 ```
 

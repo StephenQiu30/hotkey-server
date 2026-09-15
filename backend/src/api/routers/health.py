@@ -7,7 +7,13 @@ from core.schemas import HealthView
 router = APIRouter()
 
 
-@router.get("/health/live", response_model=HealthView, response_model_exclude_none=True)
+@router.get(
+    "/health/live",
+    response_model=HealthView,
+    response_model_exclude_none=True,
+    operation_id="healthLive",
+    tags=["health"],
+)
 def live() -> HealthView:
     return HealthView(status="alive")
 
@@ -17,6 +23,8 @@ def live() -> HealthView:
     response_model=HealthView,
     response_model_exclude_none=True,
     responses={503: {"model": HealthView}},
+    operation_id="healthReady",
+    tags=["health"],
 )
 def ready(result: Health) -> HealthView | JSONResponse:
     if result.status != "ready":

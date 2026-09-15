@@ -8,12 +8,20 @@ import pytest
 
 SOURCE = Path(__file__).resolve().parents[2] / "src"
 PACKAGES = {
+    "ai",
+    "analysis",
     "api",
+    "collection",
+    "contents",
     "core",
     "db",
+    "events",
+    "evidence",
     "identity",
+    "knowledge",
     "monitors",
     "jobs",
+    "notifications",
     "audit",
     "migrations",
     "tools",
@@ -24,9 +32,25 @@ PACKAGES = {
 
 
 def application_files():
-    yield from SOURCE.glob("*.py")
-    for package in sorted(PACKAGES):
-        yield from (SOURCE / package).rglob("*.py")
+    yield from (path for path in SOURCE.rglob("*.py") if "__pycache__" not in path.parts)
+
+
+def unregistered_top_level_modules(paths):
+    actual = {
+        path.relative_to(SOURCE).parts[0]
+        for path in paths
+        if len(path.relative_to(SOURCE).parts) > 1
+    }
+    return actual - PACKAGES
+
+
+def test_only_registered_top_level_modules_exist():
+    unregistered = unregistered_top_level_modules(application_files())
+    assert not unregistered, f"Register module boundaries for: {sorted(unregistered)}"
+
+
+def test_unknown_top_level_module_is_rejected():
+    assert unregistered_top_level_modules([SOURCE / "rogue" / "module.py"]) == {"rogue"}
 
 
 def imports(tree):
@@ -40,6 +64,13 @@ def imports(tree):
 
 def forbidden_imports(relative, tree):
     dependencies = list(imports(tree))
+    if relative.startswith("sources/adapters/"):
+        return [
+            d
+            for d in dependencies
+            if d.split(".")[0]
+            in {"api", "main", "db", "sqlalchemy", "worker", "cli", "celery", "kombu"}
+        ]
     if relative.startswith("sources/") and relative not in (
         "sources/schemas.py",
         "sources/services.py",
@@ -136,7 +167,8 @@ def test_import_boundaries_and_no_hidden_initializer_logic():
         ("monitors/models.py", "monitors.services"),
         ("jobs/schemas.py", "jobs.models"),
         ("core/config.py", "identity.services"),
-        ("sources/bluesky.py", "db.session"),
+        ("sources/adapters/bluesky.py", "db.session"),
+        ("sources/adapters/bluesky.py", "worker.app"),
         ("sources/schemas.py", "httpx"),
     ],
 )

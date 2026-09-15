@@ -6,7 +6,7 @@ Implemented: single-owner initialization, revocable cookie sessions, CSRF protec
 
 Bluesky query preview and bounded CLI source probes are implemented. Public thread reads preserve reply relationships and partial results; the September 8, 2026 search probe returned HTTP 403 in the tested environment. **Persistent collection jobs, domestic sources, event grouping, analysis and reports are not implemented yet.** Saving a draft does not start collection. Diagnostic jobs do not produce social data.
 
-The September 15 replanning defines **monitors → discovery inbox → comment tracking → event records → analysis and knowledge retrieval**. See the [007 requirements](docs/prd/007-热点事件与评论知识库.md), [data and technical design](docs/design/007-热点事件与评论知识库设计.md), and [delivery plan](docs/plans/007-热点事件与评论知识库计划.md). These are proposals, not implemented capabilities; they build on the current Python/React and persistent job foundation. The 006 documents retain the existing implementation and verification record.
+The September 15 replanning defines **monitors → discovery inbox → comment tracking → event records → analysis and knowledge retrieval**. See the [007 requirements](docs/prd/007-热点事件与评论知识库.md), [data and technical design](docs/design/007-热点事件与评论知识库设计.md), and [delivery plan](docs/plans/007-热点事件与评论知识库计划.md). The S00 engineering guardrails are in progress; product collection and knowledge capabilities remain planned. The 006 documents retain the existing implementation and verification record.
 
 From the repository root, with Docker Compose v2.24.4+:
 
@@ -17,7 +17,7 @@ docker compose exec backend python -m cli owner-init learner
 
 Enter a password of at least 12 characters interactively and visit http://localhost:8010. No default owner exists. Ports bind to loopback only. Use the production override behind HTTPS for a production-like experiment.
 
-See the [Chinese README](README.md), [design and source research](docs/design/006-社交媒体关键词监控与评论分析设计.md), [implementation plan](docs/plans/006-社交媒体关键词监控与评论分析计划.md), and [operations](docs/operations/006-Python运行与验证.md). The published API contract is `docs/openapi/openapi.json`; frontend types are generated from it.
+See the [Chinese README](README.md), [design and source research](docs/design/006-社交媒体关键词监控与评论分析设计.md), [implementation plan](docs/plans/006-社交媒体关键词监控与评论分析计划.md), and [operations](docs/operations/006-Python运行与验证.md). FastAPI generates the runtime OpenAPI document and Swagger UI. Its reproducible snapshot is `docs/openapi/openapi.json`; `@umijs/openapi` generates all frontend endpoint functions and types under `frontend/src/generated/api/`, while Axios is confined to the shared transport wrapper.
 
 The previous implementation and contracts exist only in Git history. No legacy endpoints, accounts or databases are silently reused. Existing persistent volumes are preserved.
 

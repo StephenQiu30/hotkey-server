@@ -6,7 +6,7 @@ import json
 import httpx
 from pydantic import ValidationError
 
-from sources.bluesky import Bluesky
+from sources.adapters.bluesky import Bluesky
 from sources.schemas import SearchInput, ThreadInput
 
 

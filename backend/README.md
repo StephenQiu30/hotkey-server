@@ -36,6 +36,8 @@ docker compose exec backend python -m cli owner-init learner
 
 Python 运行工作目录为 backend/src，Docker 内为 /app/src。ASGI 入口 `main:create_app`，Worker 入口 `worker.app:app`，管理命令 `python -m cli`。迁移目录随应用复制进镜像；启动应用不自动改库。
 
+FastAPI 从路由、状态码和 Pydantic 模型自动维护接口文档。服务启动后访问 `http://localhost:8867/docs` 查看 Swagger UI，`http://localhost:8867/openapi.json` 获取运行时契约。`docs/openapi/openapi.json` 只能由 `python -m tools.export_openapi` 导出，前端再由 `@umijs/openapi` 生成请求函数和类型；这些生成文件均禁止手写。
+
 业务分层与命名规则见 [AGENTS](../AGENTS.md)，实际服务与浏览器验证见 [Operations](../docs/operations/006-Python运行与验证.md)。未配置测试数据库/vhost 时集成测试会 skip，不能视为完整通过。已增加 Bluesky CLI 来源探测；持久化平台采集任务仍未实现。
 
 来源探测无需数据库或 RabbitMQ 配置，每次只发送一个有界请求：

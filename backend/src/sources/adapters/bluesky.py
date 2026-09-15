@@ -1,4 +1,4 @@
-"""One bounded public request per operation; no retries or persistent job state."""
+"""One bounded Bluesky request per operation; no retries or persistent job state."""
 
 import hashlib
 import json
