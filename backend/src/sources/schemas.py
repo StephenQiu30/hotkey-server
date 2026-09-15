@@ -148,11 +148,11 @@ class QueryPreview(BaseModel):
 class CollectionPageInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     source: SourceName
-    operation: Literal["search_posts", "fetch_post"]
+    operation: Literal["search_posts", "fetch_post", "list_comments"]
     request_value: str = Field(min_length=1, max_length=100)
     since: AwareDatetime
     until: AwareDatetime
-    limit: Literal[1] = 1
+    limit: int = Field(default=1, ge=1, le=20)
 
     @model_validator(mode="after")
     def valid_request(self) -> Self:
@@ -162,6 +162,13 @@ class CollectionPageInput(BaseModel):
             rf"bvid:{BILIBILI_BVID[1:-1]}", self.request_value
         ):
             raise ValueError("fetch_post requires a bvid reference")
+        if self.operation == "list_comments" and not re.fullmatch(
+            r"aid:[1-9][0-9]*", self.request_value
+        ):
+            raise ValueError("list_comments requires an aid reference")
+        expected_limit = 20 if self.operation == "list_comments" else 1
+        if self.limit != expected_limit:
+            raise ValueError(f"{self.operation} requires limit {expected_limit}")
         object.__setattr__(self, "since", self.since.astimezone(UTC))
         object.__setattr__(self, "until", self.until.astimezone(UTC))
         return self

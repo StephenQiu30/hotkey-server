@@ -30,7 +30,9 @@ CATALOG_OPERATIONS = ("search_posts", "fetch_post", "list_comments", "list_repli
 KNOWN_SOURCE_OPERATIONS = frozenset(
     f"{source}.{operation}" for source in SOURCE_IDS for operation in CATALOG_OPERATIONS
 )
-PERSISTENT_SOURCE_OPERATIONS = frozenset({"bilibili.search_posts", "bilibili.fetch_post"})
+PERSISTENT_SOURCE_OPERATIONS = frozenset(
+    {"bilibili.search_posts", "bilibili.fetch_post", "bilibili.list_comments"}
+)
 DISCOVERY_REFERENCE_LIMIT = 1
 
 
@@ -148,6 +150,7 @@ class SourceService:
                             "supported",
                             "public_web",
                             "无Cookie小样本可解析；长期保存与派生分析权限仍待核对。",
+                            ("list_comments",) if operation == "fetch_post" else (),
                         )
                         for operation in ("fetch_post", "list_comments", "list_replies")
                     ],
@@ -217,16 +220,25 @@ class SourceService:
         result = []
         for source, roles, source_operations in rows:
             admitted = [self._operation(source, operation) for operation in source_operations]
-            by_operation = {operation.operation: operation for operation in admitted}
+            by_operation: dict[str, SourceOperationCapability] = {
+                operation.operation: operation for operation in admitted
+            }
+
+            def eligible(
+                operation: SourceOperationCapability,
+                path: frozenset[str],
+                capabilities: dict[str, SourceOperationCapability] = by_operation,
+            ) -> bool:
+                if operation.operation in path or not operation.eligible_for_collection:
+                    return False
+                return all(
+                    eligible(capabilities[required], path | {operation.operation}, capabilities)
+                    for required in operation.requires_operations
+                )
+
             resolved = [
                 operation.model_copy(
-                    update={
-                        "eligible_for_collection": operation.eligible_for_collection
-                        and all(
-                            by_operation[required].eligible_for_collection
-                            for required in operation.requires_operations
-                        )
-                    }
+                    update={"eligible_for_collection": eligible(operation, frozenset())}
                 )
                 for operation in admitted
             ]
@@ -265,7 +277,7 @@ class SourceService:
                     queries=queries,
                     rules=rules,
                     estimated_requests=len(queries)
-                    * (1 + DISCOVERY_REFERENCE_LIMIT * len(search.requires_operations)),
+                    * self._request_cost(source.operations, "search_posts"),
                     pipeline_connected=search.pipeline == "connected",
                 )
             )
@@ -291,19 +303,40 @@ class SourceService:
 
     @staticmethod
     def request_value_is_valid(source: SourceName, operation: str, value: str) -> bool:
-        if source != "bilibili" or operation != "fetch_post" or not value.startswith("bvid:"):
+        if source != "bilibili":
             return False
         try:
-            BilibiliPostInput(bvid=value.removeprefix("bvid:"))
+            if operation == "fetch_post" and value.startswith("bvid:"):
+                BilibiliPostInput(bvid=value.removeprefix("bvid:"))
+            elif operation == "list_comments" and value.startswith("aid:"):
+                identity = value.removeprefix("aid:")
+                if not identity.isascii() or not identity.isdigit() or int(identity) <= 0:
+                    return False
+            else:
+                return False
         except ValidationError:
             return False
         return True
+
+    @staticmethod
+    def _request_cost(
+        operations: list[SourceOperationCapability],
+        operation_name: str,
+        path: frozenset[str] = frozenset(),
+    ) -> int:
+        if operation_name in path:
+            raise ValueError("cyclic source operation dependency")
+        operation = next(item for item in operations if item.operation == operation_name)
+        return 1 + DISCOVERY_REFERENCE_LIMIT * sum(
+            SourceService._request_cost(operations, required, path | {operation_name})
+            for required in operation.requires_operations
+        )
 
     def request_estimate(self, query_spec: QuerySpec, source_ids: list[SourceName]) -> int:
         terms = set([*query_spec.include_any, *query_spec.aliases])
         catalog = {source.id: source for source in self.catalog()}
         return sum(
-            len(terms) * (1 + DISCOVERY_REFERENCE_LIMIT * len(operation.requires_operations))
+            len(terms) * self._request_cost(catalog[source_id].operations, operation.operation)
             for source_id in source_ids
             if (
                 operation := next(

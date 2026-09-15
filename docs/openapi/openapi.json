@@ -10,7 +10,7 @@
             "type": "integer"
           },
           "daily_requests": {
-            "default": 48,
+            "default": 72,
             "maximum": 1000.0,
             "minimum": 1.0,
             "title": "Daily Requests",
@@ -169,7 +169,8 @@
           "operation": {
             "enum": [
               "search_posts",
-              "fetch_post"
+              "fetch_post",
+              "list_comments"
             ],
             "title": "Operation",
             "type": "string"

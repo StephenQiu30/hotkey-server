@@ -230,6 +230,15 @@ class Bilibili:
                             canonical_url=f"https://www.bilibili.com/video/{video.bvid}",
                         )
                     ]
+                    if video.stat.reply and video.stat.reply > 0:
+                        result.references = [
+                            SourceReference(
+                                external_id=f"aid:{video.aid}",
+                                canonical_url=(
+                                    f"https://www.bilibili.com/video/{video.bvid}#reply"
+                                ),
+                            )
+                        ]
                     result.status = "ok"
                 except (ValidationError, ValueError, OSError):
                     result.code = "schema_changed"
@@ -245,47 +254,59 @@ class Bilibili:
     def post(self, request: BilibiliPostInput) -> SourceResult:
         return self.post_page(request).result
 
-    def comments(self, request: BilibiliCommentsInput) -> SourceResult:
+    def comments_page(self, request: BilibiliCommentsInput) -> FetchedPage:
+        parameters: dict[str, str | int] = {
+            "type": 1,
+            "oid": request.aid,
+            "mode": 3,
+            "next": request.cursor,
+            "ps": request.limit,
+        }
         result, body = self._fetch(
             "list_comments",
             API_URL + "/x/v2/reply/main",
-            {
-                "type": 1,
-                "oid": request.aid,
-                "mode": 3,
-                "next": request.cursor,
-                "ps": request.limit,
-            },
+            parameters,
         )
-        if body is None:
-            return result
-        data = self._data(result, body)
-        if data is None:
-            return result
-        try:
-            if not isinstance(data, dict):
-                raise ValueError("invalid comments data")
-            replies = data.get("replies") or []
-            if not isinstance(replies, list) or len(replies) > request.limit:
-                raise ValueError("invalid comments page")
-            parsed = [Reply.model_validate(reply) for reply in replies]
-            if any(reply.root or reply.parent for reply in parsed):
-                raise ValueError("root page contains nested reply")
-            result.items = [object_from_reply(reply, request.aid, "comment") for reply in parsed]
-            cursor = data.get("cursor")
-            if cursor is not None and not isinstance(cursor, dict):
-                raise ValueError("invalid cursor")
-            if cursor and cursor.get("is_end") is False:
-                next_cursor = cursor.get("next")
-                if not isinstance(next_cursor, int) or next_cursor == request.cursor:
-                    result.status, result.code = "partial", "cursor_stalled"
-                    return result
-                result.cursor = str(next_cursor)
-            result.status = "ok" if result.items else "empty"
-        except (ValidationError, ValueError, OSError):
-            result.items = []
-            result.code = "schema_changed"
-        return result
+        if body is not None:
+            data = self._data(result, body)
+            if data is not None:
+                try:
+                    if not isinstance(data, dict):
+                        raise ValueError("invalid comments data")
+                    replies = data.get("replies") or []
+                    if not isinstance(replies, list) or len(replies) > request.limit:
+                        raise ValueError("invalid comments page")
+                    parsed = [Reply.model_validate(reply) for reply in replies]
+                    if any(reply.root or reply.parent for reply in parsed):
+                        raise ValueError("root page contains nested reply")
+                    result.items = [
+                        object_from_reply(reply, request.aid, "comment") for reply in parsed
+                    ]
+                    cursor = data.get("cursor")
+                    if cursor is not None and not isinstance(cursor, dict):
+                        raise ValueError("invalid cursor")
+                    if cursor and cursor.get("is_end") is False:
+                        next_cursor = cursor.get("next")
+                        if not isinstance(next_cursor, int) or next_cursor == request.cursor:
+                            result.status, result.code = "partial", "cursor_stalled"
+                        else:
+                            result.cursor = str(next_cursor)
+                    if result.code != "cursor_stalled":
+                        result.status = "ok" if result.items else "empty"
+                except (ValidationError, ValueError, OSError):
+                    result.items = []
+                    result.code = "schema_changed"
+        fingerprint = request_fingerprint("bilibili", "list_comments", parameters)
+        return FetchedPage(
+            result=result,
+            payload=body,
+            media_type="application/json",
+            request_fingerprint=fingerprint,
+            page_key=f"comments:{fingerprint[:32]}",
+        )
+
+    def comments(self, request: BilibiliCommentsInput) -> SourceResult:
+        return self.comments_page(request).result
 
     def replies(self, request: BilibiliRepliesInput) -> SourceResult:
         result, body = self._fetch(

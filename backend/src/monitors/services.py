@@ -60,6 +60,18 @@ def monitor_titles_for_content(session: Session, content_id: UUID) -> list[str]:
     return list(dict.fromkeys(titles))
 
 
+def content_is_matched(session: Session, monitor_version_id: UUID, content_id: UUID) -> bool:
+    return (
+        session.scalar(
+            select(MonitorMatch.id).where(
+                MonitorMatch.monitor_version_id == monitor_version_id,
+                MonitorMatch.content_id == content_id,
+            )
+        )
+        is not None
+    )
+
+
 def monitor_query_spec(session: Session, monitor_version_id: UUID) -> QuerySpec:
     version = session.get(MonitorVersion, monitor_version_id)
     if version is None:

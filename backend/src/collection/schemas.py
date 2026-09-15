@@ -42,7 +42,7 @@ class CollectionRunView(BaseModel):
     parent_run_id: UUID | None
     monitor_version_id: UUID
     source: SourceName
-    operation: Literal["search_posts", "fetch_post"]
+    operation: Literal["search_posts", "fetch_post", "list_comments"]
     request_value: str
     retention_days: int
     trigger: Literal["manual", "scheduled"]
@@ -93,7 +93,7 @@ class CollectionExecutionInput(BaseModel):
     parent_run_id: UUID | None
     fencing_token: int = Field(ge=1)
     source: SourceName
-    operation: Literal["search_posts", "fetch_post"]
+    operation: Literal["search_posts", "fetch_post", "list_comments"]
     request_value: str
     since: datetime
     until: datetime

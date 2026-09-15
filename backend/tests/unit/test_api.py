@@ -78,6 +78,7 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
     assert run_view["properties"]["operation"]["enum"] == [
         "search_posts",
         "fetch_post",
+        "list_comments",
     ]
     assert "parent_run_id" in run_view["required"]
 

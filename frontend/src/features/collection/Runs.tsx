@@ -10,6 +10,12 @@ const stateLabels: Record<Run["state"], string> = {
   cancelled: "已取消",
 };
 
+const operationLabels: Record<Run["operation"], string> = {
+  search_posts: "搜索",
+  fetch_post: "正文",
+  list_comments: "根评论",
+};
+
 function time(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
@@ -55,11 +61,10 @@ export function Runs({
                 </span>
               </div>
               <h3>
-                {run.operation === "search_posts" ? "搜索" : "正文"}：
-                {run.request_value}
+                {operationLabels[run.operation]}：{run.request_value}
               </h3>
               {run.parent_run_id && (
-                <p className="muted small">来自搜索运行 {run.parent_run_id}</p>
+                <p className="muted small">父运行 {run.parent_run_id}</p>
               )}
               <p className="muted small">
                 窗口 {time(run.window_since)} 至 {time(run.window_until)} · 页数{" "}

@@ -2,7 +2,7 @@
 
 后端直接作为 FastAPI 应用运行，代码统一放在 `backend/src/`，src 下不增加 hotkey 或 app 包装层。uv 管理依赖，不构建独立 wheel。SQLAlchemy 与 RabbitMQ 保持固定。
 
-下图描述现有目录。后续扩展与文件迁移先遵循[007目标目录与模块职责](../docs/design/007-热点事件与评论知识库设计.md#13-实现前目录规划与文件归属)及[007 S00计划](../docs/plans/007-热点事件与评论知识库计划.md)，完成所需选型和依赖门禁后再开始业务切片。计划目录尚未实际创建或迁移。
+下图描述现有目录。S00已完成来源适配器、采集、证据与内容模块的目录门禁；后续扩展与文件迁移继续先遵循[007目标目录与模块职责](../docs/design/007-热点事件与评论知识库设计.md#13-实现前目录规划与文件归属)及[007计划](../docs/plans/007-热点事件与评论知识库计划.md)，在业务切片开始前登记文件归属和技术选择。
 
 ```text
 backend/
@@ -45,11 +45,11 @@ FastAPI 从路由、状态码和 Pydantic 模型自动维护接口文档。服�
 来源准入使用两个JSON数组，元素必须是精确的 `source.operation`：
 
 ```sh
-HOTKEY_SOURCE_RIGHTS_ALLOWED='["bilibili.search_posts","bilibili.fetch_post"]'
-HOTKEY_SOURCE_PIPELINES_CONNECTED='["bilibili.search_posts","bilibili.fetch_post"]'
+HOTKEY_SOURCE_RIGHTS_ALLOWED='["bilibili.search_posts","bilibili.fetch_post","bilibili.list_comments"]'
+HOTKEY_SOURCE_PIPELINES_CONNECTED='["bilibili.search_posts","bilibili.fetch_post","bilibili.list_comments"]'
 ```
 
-第一项是部署者对采集、保存和派生用途的确认，第二项只在该操作的持久消费者与证据链通过POC后设置。两项默认空；connected还要求完整 `HOTKEY_S3_*`。API在lifespan启动时校验，scheduler与Worker读取同一Settings。当前版本实现 `bilibili.search_posts` 与 `bilibili.fetch_post` 持久入口；搜索依赖详情，两项必须分别准入。评论、回复、其他平台operation或未知键仍会启动失败。本示例仅说明格式，不能替代真实用途确认与现有MinIO验收。
+第一项是部署者对采集、保存和派生用途的确认，第二项只在该操作的持久消费者与证据链通过POC后设置。两项默认空；connected还要求完整 `HOTKEY_S3_*`。API在lifespan启动时校验，scheduler与Worker读取同一Settings。当前版本实现 `bilibili.search_posts`、`bilibili.fetch_post` 与 `bilibili.list_comments` 持久入口；搜索依赖详情，详情依赖根评论，三项必须分别准入。回复、其他平台operation或未知键仍会启动失败。本示例仅说明格式，不能替代真实用途确认与现有MinIO验收。
 
 来源探测无需数据库或 RabbitMQ 配置，每次只发送一个有界请求：
 

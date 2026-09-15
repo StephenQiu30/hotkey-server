@@ -433,6 +433,140 @@ def test_same_scheduled_detail_can_be_expanded_from_distinct_search_parents(data
         assert session.scalar(select(func.count()).select_from(Outbox)) == 4
 
 
+def test_post_detail_expands_one_root_comment_page_with_context_match(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "评论上下文", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    store = MemoryStore()
+    search = collection.create_run(
+        CollectionRunInput(
+            monitor_id=active.id,
+            expected_version=active.current_version,
+            source="bilibili",
+            request_value="AI",
+            since="2026-09-14T00:00:00Z",
+            until="2026-09-15T00:00:00Z",
+            idempotency_key="root-comment-search",
+            policy_version="synthetic-policy-v1",
+            retention_days=7,
+        )
+    )
+    search_payload = b'{"reference":"BV1BVFWeHEaV"}'
+    search_page = FetchedPage(
+        result=SourceResult(
+            source="bilibili",
+            adapter_version="synthetic-root-comment-poc",
+            operation="search_posts",
+            status="ok",
+            observed_at=utcnow(),
+            references=[
+                SourceReference(
+                    external_id="bvid:BV1BVFWeHEaV",
+                    canonical_url="https://www.bilibili.com/video/BV1BVFWeHEaV",
+                )
+            ],
+            response_bytes=len(search_payload),
+            response_sha256=sha256(search_payload).hexdigest(),
+        ),
+        payload=search_payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"root-comment-search-request").hexdigest(),
+        page_key="search:root-comment",
+    )
+    search_lease = claim(database, Dispatch(job_id=search.job_id, epoch=1))
+    assert search_lease is not None
+    assert CollectionExecutor(collection, sources, StaticFetcher(search_page), store).execute(
+        search_lease
+    )
+    assert complete(database, search_lease)
+
+    with database() as session:
+        detail = session.scalar(
+            select(CollectionRun).where(CollectionRun.operation == "fetch_post")
+        )
+        assert detail is not None
+        detail_job_id = detail.job_id
+    detail_payload = b'{"post":"video:113","reply_count":2}'
+    detail_result = result(
+        "AI 根帖",
+        2,
+        detail_payload,
+        external_id="video:113",
+        root_id="video:113",
+        operation="fetch_post",
+    ).model_copy(
+        update={
+            "adapter_version": "synthetic-root-comment-poc",
+            "references": [
+                SourceReference(
+                    external_id="aid:113",
+                    canonical_url="https://www.bilibili.com/video/BV1BVFWeHEaV#reply",
+                )
+            ],
+        }
+    )
+    detail_page = FetchedPage(
+        result=detail_result,
+        payload=detail_payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"root-comment-detail-request").hexdigest(),
+        page_key="post:root-comment",
+    )
+    detail_lease = claim(database, Dispatch(job_id=detail_job_id, epoch=1))
+    assert detail_lease is not None
+    assert CollectionExecutor(collection, sources, StaticFetcher(detail_page), store).execute(
+        detail_lease
+    )
+    assert complete(database, detail_lease)
+
+    with database() as session:
+        comments = session.scalar(
+            select(CollectionRun).where(CollectionRun.operation == "list_comments")
+        )
+        assert comments is not None
+        assert comments.parent_run_id == detail.id
+        assert comments.request_value == "aid:113"
+        comments_job_id = comments.job_id
+    comments_payload = b'{"comments":["comment:441"],"next":1}'
+    comments_result = result(
+        "关键词完全不同的观点",
+        0,
+        comments_payload,
+        external_id="comment:441",
+        provider_namespace="comment",
+        kind="comment",
+        root_id="video:113",
+        operation="list_comments",
+    ).model_copy(update={"cursor": "1"})
+    comments_page = FetchedPage(
+        result=comments_result,
+        payload=comments_payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"root-comment-page-request").hexdigest(),
+        page_key="comments:root-comment",
+    )
+    comments_lease = claim(database, Dispatch(job_id=comments_job_id, epoch=1))
+    assert comments_lease is not None
+    assert CollectionExecutor(collection, sources, StaticFetcher(comments_page), store).execute(
+        comments_lease
+    )
+    assert complete(database, comments_lease)
+
+    inbox = {item.external_id: item for item in ContentService(database).inbox(20, None).items}
+    assert set(inbox) == {"video:113", "comment:441"}
+    assert inbox["comment:441"].relation_status == "resolved"
+    assert inbox["comment:441"].monitor_titles == ["评论上下文"]
+    comment_run = collection.run(comments.id)
+    assert comment_run.outcome == "partial"
+    assert comment_run.stop_reason == "page_limit"
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 3
+        assert session.scalar(select(func.count()).select_from(Job)) == 3
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 3
+        assert session.scalar(select(func.count()).select_from(RawPage)) == 3
+        assert session.scalar(select(func.count()).select_from(CollectionCheckpoint)) == 3
+
+
 def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(database):
     sources = AdmittedSources()
     monitors = MonitorService(database, sources)
@@ -443,7 +577,7 @@ def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(datab
                 "query_spec": {"include_any": ["AI"]},
                 "source_ids": ["bilibili"],
                 "schedule": {"interval_minutes": 1440, "retention_days": 7},
-                "budget": {"daily_requests": 2, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 3, "content_purchase_cost": 0},
             }
         )
     )
@@ -471,6 +605,7 @@ def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(datab
 
     parent = create("budget-parent")
     create("budget-competing-run")
+    create("budget-second-competing-run")
     payload = b'{"references":["BV1BVFWeHEaV"]}'
     page = FetchedPage(
         result=SourceResult(
@@ -503,8 +638,8 @@ def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(datab
     assert persisted.outcome == "partial"
     assert persisted.stop_reason == "detail_budget_exhausted"
     with database() as session:
-        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 2
-        assert session.scalar(select(func.count()).select_from(Job)) == 2
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 3
+        assert session.scalar(select(func.count()).select_from(Job)) == 3
 
 
 def test_pausing_monitor_before_page_boundary_prevents_source_fetch(database):
@@ -840,6 +975,52 @@ def test_provider_namespace_is_part_of_content_identity(database):
     assert len(second_page.items) == 1
     assert second_page.items[0].id != first_page.items[0].id
     assert second_page.next_cursor is None
+
+
+def test_ambiguous_root_identity_stays_unresolved_and_does_not_inherit_match(database):
+    sources = AdmittedSources()
+    monitors = MonitorService(database, sources)
+    collection = CollectionService(database, sources, evidence_configured=True)
+    store = MemoryStore()
+    active = monitor(monitors, "歧义根关系", ["AI"])
+    for key, namespace in (("ambiguous-root-a", "video"), ("ambiguous-root-b", "article")):
+        run_and_commit(
+            collection,
+            store,
+            active.id,
+            active.current_version,
+            key,
+            "AI 根帖",
+            1,
+            external_id="same-root-id",
+            provider_namespace=namespace,
+        )
+    run_and_commit(
+        collection,
+        store,
+        active.id,
+        active.current_version,
+        "ambiguous-comment",
+        "不含主题词",
+        0,
+        external_id="comment:99",
+        provider_namespace="comment",
+        kind="comment",
+        root_id="same-root-id",
+    )
+
+    with database() as session:
+        comment = session.scalar(select(Content).where(Content.external_id == "comment:99"))
+        assert comment is not None and comment.relation_status == "unresolved"
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(MonitorMatch)
+                .where(MonitorMatch.content_id == comment.id)
+            )
+            == 0
+        )
+    assert len(ContentService(database).inbox(limit=20, cursor=None).items) == 2
 
 
 def test_top_level_comment_without_parent_remains_unresolved(database):

@@ -84,20 +84,39 @@ def test_operation_admission_requires_rights_pipeline_and_implemented_consumer()
     assert not search.eligible_for_collection
 
     admitted = SourceService(
-        rights_allowed={"bilibili.search_posts", "bilibili.fetch_post"},
-        pipelines_connected={"bilibili.search_posts", "bilibili.fetch_post"},
+        rights_allowed={
+            "bilibili.search_posts",
+            "bilibili.fetch_post",
+            "bilibili.list_comments",
+        },
+        pipelines_connected={
+            "bilibili.search_posts",
+            "bilibili.fetch_post",
+            "bilibili.list_comments",
+        },
     )
     operations = {item.operation: item for item in admitted.catalog()[1].operations}
     assert operations["search_posts"].eligible_for_collection
     assert operations["search_posts"].requires_operations == ["fetch_post"]
     assert operations["search_posts"].pipeline == "connected"
+    assert operations["fetch_post"].requires_operations == ["list_comments"]
     assert operations["fetch_post"].eligible_for_collection
+    assert operations["list_comments"].eligible_for_collection
     assert not admitted.activation_issues(["bilibili"])
     assert admitted.request_value_is_valid("bilibili", "fetch_post", "bvid:BV1BVFWeHEaV")
+    assert admitted.request_value_is_valid("bilibili", "list_comments", "aid:113")
     assert not admitted.request_value_is_valid("bilibili", "fetch_post", "video:113")
 
+    missing_comments = SourceService(
+        rights_allowed={"bilibili.search_posts", "bilibili.fetch_post"},
+        pipelines_connected={"bilibili.search_posts", "bilibili.fetch_post"},
+    )
+    missing_operations = {item.operation: item for item in missing_comments.catalog()[1].operations}
+    assert not missing_operations["fetch_post"].eligible_for_collection
+    assert not missing_operations["search_posts"].eligible_for_collection
+
     with pytest.raises(ValueError, match="persistent source operation is not implemented"):
-        SourceService(pipelines_connected={"bilibili.list_comments"})
+        SourceService(pipelines_connected={"bilibili.list_replies"})
     with pytest.raises(ValueError, match="unknown source operation"):
         SourceService(rights_allowed={"unknown.search_posts"})
 
@@ -151,12 +170,20 @@ def test_query_preview_compiles_without_network_and_exposes_rule_boundaries():
     }
     assert xiaohongshu.queries == []
     assert all(rule.mode == "unsupported" for rule in xiaohongshu.rules)
-    assert preview.estimated_requests == 6
+    assert preview.estimated_requests == 9
     assert all(not source.pipeline_connected for source in preview.sources)
 
     admitted = SourceService(
-        rights_allowed={"bilibili.search_posts", "bilibili.fetch_post"},
-        pipelines_connected={"bilibili.search_posts", "bilibili.fetch_post"},
+        rights_allowed={
+            "bilibili.search_posts",
+            "bilibili.fetch_post",
+            "bilibili.list_comments",
+        },
+        pipelines_connected={
+            "bilibili.search_posts",
+            "bilibili.fetch_post",
+            "bilibili.list_comments",
+        },
     ).preview(
         QueryPreviewInput.model_validate(
             {
@@ -196,6 +223,20 @@ def test_public_fetcher_rejects_invalid_bilibili_post_reference_before_network()
                 request_value="video:113",
                 since="2026-09-01T00:00:00Z",
                 until="2026-09-09T00:00:00Z",
+            )
+        )
+
+
+def test_public_fetcher_rejects_invalid_bilibili_comment_reference_before_network():
+    with pytest.raises(ValidationError, match="list_comments requires an aid reference"):
+        PublicCollectionFetcher().fetch(
+            CollectionPageInput(
+                source="bilibili",
+                operation="list_comments",
+                request_value="aid:0",
+                since="2026-09-01T00:00:00Z",
+                until="2026-09-09T00:00:00Z",
+                limit=20,
             )
         )
 
@@ -412,17 +453,47 @@ def test_bilibili_bounded_search_post_comments_and_replies():
     post_result = post_page.result
     assert post_result.items[0].external_id == "video:113"
     assert post_result.items[0].reply_count == 2
+    assert [reference.external_id for reference in post_result.references] == ["aid:113"]
     assert post_page.payload is not None
     assert post_result.response_sha256 == sha256(post_page.payload).hexdigest()
     assert post_page.page_key.startswith("post:")
-    comments = source.comments(BilibiliCommentsInput(aid=113, cursor=0, limit=20))
+    comments_page = source.comments_page(BilibiliCommentsInput(aid=113, cursor=0, limit=20))
+    comments = comments_page.result
     assert comments.cursor == "1"
     assert comments.items[0].kind == "comment"
+    assert comments_page.payload is not None
+    assert comments.response_sha256 == sha256(comments_page.payload).hexdigest()
+    assert comments_page.page_key.startswith("comments:")
     assert comments.items[0].root_id == "video:113"
     replies = source.replies(BilibiliRepliesInput(aid=113, root_id=201, page=1, limit=20))
     assert replies.items[0].kind == "reply"
     assert replies.items[0].parent_id == "comment:201"
     assert replies.cursor is None
+
+
+def test_bilibili_post_without_replies_does_not_create_comment_reference():
+    def handler(request):
+        assert request.url.path == "/x/web-interface/view"
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "aid": 113,
+                    "bvid": "BV1BVFWeHEaV",
+                    "title": "synthetic video",
+                    "desc": "synthetic description",
+                    "pubdate": 1789401600,
+                    "owner": {"mid": 7},
+                    "stat": {"reply": 0},
+                },
+            },
+        )
+
+    result = bilibili_adapter(handler).post(BilibiliPostInput(bvid="BV1BVFWeHEaV"))
+    assert result.status == "ok"
+    assert result.items[0].reply_count == 0
+    assert result.references == []
 
 
 def test_bilibili_challenge_and_schema_drift_are_not_empty_success():

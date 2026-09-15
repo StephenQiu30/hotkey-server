@@ -22,7 +22,7 @@ class AdmittedSources(SourceService):
         return []
 
 
-def active_monitor(database, *, daily_requests=2):
+def active_monitor(database, *, daily_requests=3):
     sources = AdmittedSources()
     service = MonitorService(database, sources)
     created = service.create_monitor(
@@ -74,19 +74,19 @@ def test_request_budget_is_atomic_across_concurrent_run_keys(database):
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(create, range(8)))
-    assert sum(not isinstance(result, str) for result in results) == 2
-    assert results.count("request_budget_exhausted") == 6
+    assert sum(not isinstance(result, str) for result in results) == 3
+    assert results.count("request_budget_exhausted") == 5
     with database() as session:
         usage = session.scalar(select(CollectionBudgetUsage))
-        assert usage is not None and usage.reserved_requests == 2
-        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 2
-        assert session.scalar(select(func.count()).select_from(Job)) == 2
-        assert session.scalar(select(func.count()).select_from(Outbox)) == 2
+        assert usage is not None and usage.reserved_requests == 3
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 3
+        assert session.scalar(select(func.count()).select_from(Job)) == 3
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 3
 
 
 def test_scheduler_creates_only_latest_completed_slot_and_is_idempotent(database):
     sources = AdmittedSources()
-    monitor = active_monitor(database, daily_requests=2)
+    monitor = active_monitor(database, daily_requests=3)
     scheduler = CollectionScheduler(database, sources, evidence_configured=True)
     now = datetime(2026, 9, 15, 12, 34, tzinfo=UTC)
 
@@ -128,7 +128,7 @@ def test_scheduler_skips_active_monitor_when_source_is_not_eligible(database):
 
 def test_run_list_uses_stable_keyset_cursor(database):
     sources = AdmittedSources()
-    monitor = active_monitor(database, daily_requests=2)
+    monitor = active_monitor(database, daily_requests=3)
     service = CollectionService(database, sources, evidence_configured=True)
     first_created = service.create_run(manual_run(monitor, "run-page-1"))
     second_created = service.create_run(manual_run(monitor, "run-page-2"))

@@ -20,6 +20,7 @@ class ContentWrite:
     content_id: UUID
     new_content: bool
     new_version: bool
+    root_content_id: UUID | None
 
 
 def upsert_content(
@@ -64,6 +65,37 @@ def upsert_content(
     content.last_seen_at = max(content.last_seen_at, observed_at)
     if item.canonical_url is not None:
         content.canonical_url = item.canonical_url
+    root_content_id = None
+    if item.kind != "post":
+        root_candidates = list(
+            session.scalars(
+                select(Content.id)
+                .where(
+                    Content.source == source,
+                    Content.kind == "post",
+                    Content.external_id == item.root_id,
+                )
+                .limit(2)
+            )
+        )
+        root_content_id = root_candidates[0] if len(root_candidates) == 1 else None
+        parent_exists = item.parent_id is None
+        if item.parent_id is not None:
+            parent_candidates = list(
+                session.scalars(
+                    select(Content.id)
+                    .where(
+                        Content.source == source,
+                        Content.kind.in_(("comment", "reply")),
+                        Content.external_id == item.parent_id,
+                    )
+                    .limit(2)
+                )
+            )
+            parent_exists = len(parent_candidates) == 1
+        content.relation_status = (
+            "resolved" if root_content_id is not None and parent_exists else "unresolved"
+        )
 
     text_hash = sha256(item.text.encode()).hexdigest()
     version = session.scalar(
@@ -106,7 +138,7 @@ def upsert_content(
             index_elements=[ContentObservation.content_id, ContentObservation.raw_page_id]
         )
     )
-    return ContentWrite(content.id, new_content, new_version)
+    return ContentWrite(content.id, new_content, new_version, root_content_id)
 
 
 class ContentService:

@@ -30,6 +30,7 @@ from evidence.services import (
 from jobs.execution import enqueue
 from monitors.services import (
     active_monitor_configuration,
+    content_is_matched,
     match_content,
     monitor_query_spec,
     monitor_version_identity,
@@ -41,6 +42,11 @@ from sources.services import DISCOVERY_REFERENCE_LIMIT, SourceService
 
 
 class CollectionService:
+    FOLLOWUP_OPERATION = {
+        "search_posts": "fetch_post",
+        "fetch_post": "list_comments",
+    }
+
     def __init__(
         self,
         factory: sessionmaker[Session],
@@ -358,12 +364,15 @@ class CollectionService:
         parent: CollectionRun,
         references: list[str],
     ) -> tuple[int, str | None]:
-        if parent.operation != "search_posts" or not references:
+        operation = self.FOLLOWUP_OPERATION.get(parent.operation)
+        if operation is None or not references:
             return 0, None
         if not monitor_version_is_active(session, parent.monitor_version_id):
             return 0, "monitor_inactive"
-        if self.sources.activation_issues([cast(SourceName, parent.source)], "fetch_post"):
-            return 0, "detail_not_eligible"
+        if self.sources.activation_issues([cast(SourceName, parent.source)], operation):
+            return 0, (
+                "detail_not_eligible" if operation == "fetch_post" else "comments_not_eligible"
+            )
         usage = session.scalar(
             select(CollectionBudgetUsage)
             .where(
@@ -377,14 +386,23 @@ class CollectionService:
         created = 0
         for request_value in list(dict.fromkeys(references))[:DISCOVERY_REFERENCE_LIMIT]:
             if not self.sources.request_value_is_valid(
-                cast(SourceName, parent.source), "fetch_post", request_value
+                cast(SourceName, parent.source), operation, request_value
             ):
-                return created, "invalid_detail_reference"
+                return created, (
+                    "invalid_detail_reference"
+                    if operation == "fetch_post"
+                    else "invalid_comment_reference"
+                )
             if usage.reserved_requests >= usage.limit_requests:
-                return created, "detail_budget_exhausted"
+                return created, (
+                    "detail_budget_exhausted"
+                    if operation == "fetch_post"
+                    else "comment_budget_exhausted"
+                )
             child_id = uuid4()
             key = (
-                "followup:" + sha256(f"{parent.id}|fetch_post|{request_value}".encode()).hexdigest()
+                "followup:"
+                + sha256(f"{parent.id}|{operation}|{request_value}".encode()).hexdigest()
             )
             job = enqueue(session, "collection:" + sha256(key.encode()).hexdigest(), "collect_page")
             session.add(
@@ -394,7 +412,7 @@ class CollectionService:
                     parent_run_id=parent.id,
                     monitor_version_id=parent.monitor_version_id,
                     source=parent.source,
-                    operation="fetch_post",
+                    operation=operation,
                     request_value=request_value,
                     idempotency_key=key,
                     policy_version=parent.policy_version,
@@ -471,6 +489,12 @@ class CollectionService:
                 new_contents += int(written.new_content)
                 new_versions += int(written.new_version)
                 reasons = query_match_reasons(query_spec, item.text)
+                if (
+                    not reasons
+                    and written.root_content_id is not None
+                    and content_is_matched(session, run.monitor_version_id, written.root_content_id)
+                ):
+                    reasons = ["root_context"]
                 if reasons:
                     match_content(
                         session,

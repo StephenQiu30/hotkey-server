@@ -3,7 +3,13 @@ import httpx
 from sources.adapters.bilibili import Bilibili
 from sources.adapters.bluesky import Bluesky
 from sources.contracts import FetchedPage
-from sources.schemas import BilibiliPostInput, BilibiliSearchInput, CollectionPageInput, SearchInput
+from sources.schemas import (
+    BilibiliCommentsInput,
+    BilibiliPostInput,
+    BilibiliSearchInput,
+    CollectionPageInput,
+    SearchInput,
+)
 
 
 class PublicCollectionFetcher:
@@ -25,5 +31,13 @@ class PublicCollectionFetcher:
             if data.source == "bilibili" and data.operation == "fetch_post":
                 return Bilibili(client).post_page(
                     BilibiliPostInput(bvid=data.request_value.removeprefix("bvid:"))
+                )
+            if data.source == "bilibili" and data.operation == "list_comments":
+                return Bilibili(client).comments_page(
+                    BilibiliCommentsInput(
+                        aid=int(data.request_value.removeprefix("aid:")),
+                        cursor=0,
+                        limit=data.limit,
+                    )
                 )
         raise ValueError("source operation adapter is unavailable")

@@ -20,7 +20,7 @@ docker compose up -d --build
 docker compose exec backend python -m cli owner-init learner
 ```
 
-交互输入 12–128 位密码，不通过命令参数传入。owner 只能初始化一次，数据库唯一约束阻止并发创建第二账号。打开 http://localhost:8010；当前有监控草稿、只读监控收件箱和诊断任务。真实来源采集、评论追踪、分析和报告尚未接入。
+交互输入 12–128 位密码，不通过命令参数传入。owner 只能初始化一次，数据库唯一约束阻止并发创建第二账号。打开 http://localhost:8010；当前有监控草稿、只读监控收件箱和诊断任务。B站搜索、正文和一页根评论的持久链已实现但默认不准入；真实来源用途与现有MinIO完成验收前不会采集。回复、分析和报告尚未接入。
 
 本地默认地址：Web 8010、API 8867、PostgreSQL 15435、RabbitMQ AMQP 15673，全部绑定回环地址。默认数据服务凭据只用于本机学习；不生成默认应用账号。修改 Web 端口时必须同步 `HOTKEY_ALLOWED_ORIGINS`，它是精确 HTTP Origin 的 JSON 数组，不接受通配符或 URL 路径。
 
@@ -226,3 +226,17 @@ B站搜索页现在只负责发现引用，最多选择一个合法bvid；搜索
 隔离 `hotkey-s02f` Compose迁移到0008并完成真实scheduler/RabbitMQ/Celery prefork诊断，attempts=1；运行时OpenAPI等于发布快照。后端容器替换时Web保持运行，代理认证端点返回401。Chromium 2项在文档端口通过，覆盖Swagger自动契约、默认零准入工作台和48次预算默认值。默认运行结果为6个平台、24个操作、0项eligible和0个collection run。正常停机worker=0、backend=143、scheduler=0，无SIGKILL/OOM；全部一次性资源已删除。结构化证据见 [search-reference-expansion-poc.json](evidence/search-reference-expansion-poc.json)。
 
 父子内容测试使用合成平台响应和内存EvidenceStore，没有访问外部平台或连接用户现有MinIO，也没有取得真实用途确认。它证明任务、预算、持久化与生成契约的工程闭环，不构成EV-007-003、真实平台收件箱、评论链或TASK-007-S02-T02完成证据。
+
+## 007 S03-T01A 正文到首屏根评论验证（2026-09-15）
+
+B站详情在平台明确返回评论数大于0时生成一个 `aid:<id>` 引用；详情页提交在同一数据库事务内预留一次预算并创建 `list_comments` 子run、Job和Outbox。评论消费者固定请求cursor=0、limit=20，只提交这一页原始JSON证据；响应仍有下一页时以partial/page_limit结束，不自动遍历。0评论正文不创建评论任务，非法aid在网络前拒绝。
+
+来源依赖现在是search_posts → fetch_post → list_comments的传递链，三项必须各自满足support、rights和pipeline。查询预览与启用预算按每个关键词每周期最多3次请求估算，新监控默认每小时单关键词为72次/日；历史monitor version快照不改写。页边界继续检查当前monitor version、精确操作准入和UTC日预算，停止原因区分详情与评论阶段。
+
+根评论以同来源post的外部身份解析关系。评论正文即使不含关键词，只要根帖已命中当前monitor version，就以 `root_context` 继承上下文并进入收件箱；跨来源或缺失根帖不会继承。运行列表明确区分搜索、正文和根评论。API路径未增加，FastAPI自动契约将运行操作扩为三种，`@umijs/openapi` 只更新 `frontend/src/api/typings.d.ts`，业务请求仍只经根级Axios `request.ts`。
+
+Red阶段在0008基线上把 `bilibili.list_comments` 声明为connected，服务以“persistent source operation is not implemented”失败。Green阶段在真实PostgreSQL 16和RabbitMQ 4.1下111项pytest全部通过，保留2条上游弃用提示；Ruff与严格mypy（86个源文件）、OpenAPI/UmiOpenAPI漂移、前端目录与负向边界、Prettier、TypeScript/Vite、生产Compose解析均通过。`pip-audit`未发现已知漏洞，npm生产依赖审计为0。
+
+独立迁移POC先把数据库停在0008，写入search_posts根运行及fetch_post子运行，再升级到 `0009_root_comments`；两条运行的operation、request_value和父子关系原样保留，Alembic与SQLAlchemy模型比较无差异。隔离 `hotkey-s03a` Compose迁移到0009，真实scheduler/RabbitMQ/Celery prefork诊断succeeded/attempts=1；运行时OpenAPI与发布快照完全相同。Chromium 2项通过，覆盖Swagger自动契约、默认零准入工作台和72次预算默认值。Web不替换、backend原地替换后代理返回401。正常停机worker=0、backend=143、scheduler=0，无SIGKILL/OOM；一次性容器、卷与迁移数据库均已删除。结构化证据见 [root-comment-page-poc.json](evidence/root-comment-page-poc.json)。
+
+父子评论链使用合成平台响应与内存EvidenceStore，没有访问外部平台、连接用户现有MinIO或取得真实用途确认。默认生产配置仍是0项eligible和0条采集运行；该结果只证明一页根评论的工程链路，不构成EV-007-003、真实平台收件箱、完整评论树或TASK-007-S03-T01完成证据。

@@ -45,12 +45,12 @@ class CollectionRun(Base):
         ),
         CheckConstraint("reserved_requests = 1", name="ck_collection_runs_reserved_requests"),
         CheckConstraint(
-            "operation IN ('search_posts', 'fetch_post')",
+            "operation IN ('search_posts', 'fetch_post', 'list_comments')",
             name="ck_collection_runs_operation",
         ),
         CheckConstraint(
             "(operation = 'search_posts' AND parent_run_id IS NULL) OR "
-            "(operation = 'fetch_post' AND parent_run_id IS NOT NULL)",
+            "(operation IN ('fetch_post', 'list_comments') AND parent_run_id IS NOT NULL)",
             name="ck_collection_runs_parent_operation",
         ),
         CheckConstraint(

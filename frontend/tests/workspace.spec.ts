@@ -33,7 +33,7 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
     page.getByRole("heading", { name: "还没有监控内容" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "新建监控", exact: true }).click();
-  await expect(page.getByLabel("每日请求上限")).toHaveValue("48");
+  await expect(page.getByLabel("每日请求上限")).toHaveValue("72");
   const title = `学习验证-${Date.now()}`;
   await page.getByLabel("监控名称").fill(title);
   await page
