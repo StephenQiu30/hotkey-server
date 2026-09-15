@@ -273,4 +273,4 @@ Red阶段因EventMergeInput/EventSplitInput不存在而在测试收集失败。G
 
 隔离 `hotkey-s04b-stack` Compose完成0012迁移与真实scheduler/RabbitMQ/Celery prefork诊断，succeeded/attempts=1。Chromium 2项通过：Swagger读取合并拆分端点，合成owner创建两个事件并在UI执行合并，数据库为1个active、1个archived，修订为2条create及各1条merge_in/merge_out。运行时OpenAPI等于发布快照；Web不替换、backend替换后代理返回401；关停worker=0、backend=143、scheduler=0，无SIGKILL/OOM。结构化证据见 [event-merge-split-poc.json](evidence/event-merge-split-poc.json)。
 
-拆分的浏览器交互因隔离栈没有合成收件箱内容，只由真实PostgreSQL服务测试覆盖；最终远程CI会复跑完整提交候选。趋势、提醒和分析失效仍未实现，因此本片推进AC-007-008但不构成完整EV-007-006或TASK-007-S04-T01完成证据。
+拆分的浏览器交互因隔离栈没有合成收件箱内容，只由真实PostgreSQL服务测试覆盖。远程CI已复跑完整提交候选：117项后端测试、2项Playwright、Compose、代理替换和无SIGKILL停机检查通过，见 [GitHub Actions #34991217129](https://github.com/StephenQiu30/hotkey-server/actions/runs/34991217129)。趋势、提醒和分析失效仍未实现，因此本片推进AC-007-008但不构成完整EV-007-006或TASK-007-S04-T01完成证据。
