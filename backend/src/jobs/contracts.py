@@ -1,8 +1,9 @@
-from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+JobKind = Literal["verify_pipeline", "collect_page"]
 
 
 class Dispatch(BaseModel):
@@ -12,8 +13,9 @@ class Dispatch(BaseModel):
     contract_version: Literal[1] = 1
 
 
-@dataclass(frozen=True)
-class Lease:
+class Lease(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     job_id: UUID
-    epoch: int
-    fencing_token: int
+    epoch: int = Field(ge=1, strict=True)
+    fencing_token: int = Field(ge=1, strict=True)
+    kind: JobKind = "verify_pipeline"

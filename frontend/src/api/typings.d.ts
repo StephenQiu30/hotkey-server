@@ -14,6 +14,64 @@ declare namespace API {
     identity: string;
   };
 
+  type CollectionRunRequest = {
+    /** Expected Version */
+    expected_version: number;
+    /** Operation */
+    operation?: string;
+    /** Policy Version */
+    policy_version: string;
+    /** Query Variant */
+    query_variant: string;
+    /** Retention Days */
+    retention_days: number;
+    /** Since */
+    since: string;
+    /** Source */
+    source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
+    /** Until */
+    until: string;
+  };
+
+  type CollectionRunView = {
+    /** Bytes Count */
+    bytes_count: number;
+    /** Completed At */
+    completed_at: string | null;
+    /** Created At */
+    created_at: string;
+    /** Fencing Token */
+    fencing_token: number;
+    /** Id */
+    id: string;
+    /** Items Count */
+    items_count: number;
+    /** Job Id */
+    job_id: string;
+    /** Monitor Version Id */
+    monitor_version_id: string;
+    /** Operation */
+    operation: string;
+    /** Outcome */
+    outcome: "ok" | "empty" | "partial" | "failed" | null;
+    /** Pages Count */
+    pages_count: number;
+    /** Query Variant */
+    query_variant: string;
+    /** Retention Days */
+    retention_days: number;
+    /** Source */
+    source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
+    /** State */
+    state: "queued" | "running" | "completed" | "failed" | "cancelled";
+    /** Stop Reason */
+    stop_reason: string | null;
+  };
+
+  type createCollectionRunParams = {
+    identity: string;
+  };
+
   type DiagnosticInput = {
     /** Kind */
     kind: string;
@@ -24,6 +82,10 @@ declare namespace API {
     code: string;
     /** Request Id */
     request_id: string;
+  };
+
+  type getCollectionRunParams = {
+    identity: string;
   };
 
   type getJobParams = {
@@ -98,7 +160,7 @@ declare namespace API {
     /** Id */
     id: string;
     /** Kind */
-    kind: string;
+    kind: "verify_pipeline" | "collect_page";
     /** Status */
     status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   };

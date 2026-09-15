@@ -10,7 +10,7 @@ from core.schemas import Input
 class JobView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
-    kind: Literal["verify_pipeline"]
+    kind: Literal["verify_pipeline", "collect_page"]
     status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
     attempts: int
     epoch: int

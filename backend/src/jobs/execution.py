@@ -6,11 +6,11 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.clock import utcnow
-from jobs.contracts import Dispatch, Lease
+from jobs.contracts import Dispatch, JobKind, Lease
 from jobs.models import Attempt, Job, JobResult, Outbox
 
 
-def enqueue(session: Session, key: str) -> Job:
+def enqueue(session: Session, key: str, kind: JobKind = "verify_pipeline") -> Job:
     if not key.strip() or len(key) > 128:
         raise ValueError("idempotency key must contain 1-128 characters")
     now = utcnow()
@@ -19,6 +19,7 @@ def enqueue(session: Session, key: str) -> Job:
         .values(
             id=uuid4(),
             key=key,
+            kind=kind,
             available_at=now,
             deadline=now + timedelta(hours=1),
         )
@@ -29,6 +30,8 @@ def enqueue(session: Session, key: str) -> Job:
         session.add(Outbox(id=uuid4(), job_id=job_id, epoch=1, due_at=now))
     job = session.scalar(select(Job).where(Job.key == key))
     assert job is not None
+    if job.kind != kind:
+        raise ValueError("idempotency key belongs to another job kind")
     session.flush()
     return job
 
@@ -54,7 +57,12 @@ def claim(factory: sessionmaker[Session], message: Dispatch, seconds: int = 30) 
         session.add(
             Attempt(id=uuid4(), job_id=job.id, fencing_token=job.fencing_token, started_at=now)
         )
-        return Lease(job.id, job.epoch, job.fencing_token)
+        return Lease(
+            job_id=job.id,
+            epoch=job.epoch,
+            fencing_token=job.fencing_token,
+            kind=job.kind,
+        )
 
 
 def finish_attempt(session: Session, job: Job, outcome: str, now: datetime) -> None:
@@ -74,14 +82,16 @@ def complete(factory: sessionmaker[Session], lease: Lease) -> bool:
             job is None
             or job.status != "running"
             or job.epoch != lease.epoch
+            or job.kind != lease.kind
             or job.fencing_token != lease.fencing_token
             or job.lease_until is None
             or job.lease_until <= now
             or job.deadline <= now
         ):
             return False
-        # This diagnostic is an actual durable side effect, never labelled source collection.
-        session.add(JobResult(job_id=job.id, completed_at=now, result="pipeline_verified"))
+        if lease.kind == "verify_pipeline":
+            # This diagnostic is an actual durable side effect, never labelled source collection.
+            session.add(JobResult(job_id=job.id, completed_at=now, result="pipeline_verified"))
         job.status = "succeeded"
         job.completed_at = now
         job.lease_until = None

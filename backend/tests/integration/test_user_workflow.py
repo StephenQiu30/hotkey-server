@@ -4,7 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from api.dependencies import collection_service
 from audit.models import Audit
+from collection.services import CollectionService
 from core.clock import utcnow
 from core.config import Settings
 from identity.services import IdentityService
@@ -121,7 +123,7 @@ def test_diagnostic_idempotency_and_cancellation(client):
     args = {"json": {"kind": "verify_pipeline"}, "headers": {"Idempotency-Key": "test-diagnostic"}}
     a = client.post("/api/v1/jobs", **args)
     b = client.post("/api/v1/jobs", **args)
-    assert a.status_code == 202 and a.json()["id"] == b.json()["id"]
+    assert a.status_code == 201 and a.json()["id"] == b.json()["id"]
     assert client.post("/api/v1/jobs", json={"kind": "collect"}).status_code == 422
     assert client.post("/api/v1/jobs/" + a.json()["id"] + "/cancel").json()["status"] == "cancelled"
 
@@ -206,7 +208,7 @@ def test_query_preview_auth_window_and_no_fake_connection(client):
     assert client.post(path, json=query).status_code == 403
 
 
-def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, monkeypatch):
+def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, database, monkeypatch):
     login(client)
     created = client.post(
         "/api/v1/monitors",
@@ -240,6 +242,41 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, mon
     state = {"expected_version": updated["current_version"]}
     activated = client.post(path + "/activate", json=state)
     assert activated.status_code == 200 and activated.json()["state"] == "active"
+    missing_store = client.post(
+        path + "/runs",
+        headers={"Idempotency-Key": "missing-store"},
+        json={
+            "expected_version": updated["current_version"],
+            "source": "bilibili",
+            "query_variant": "AI",
+            "since": "2026-09-14T00:00:00Z",
+            "until": "2026-09-15T00:00:00Z",
+            "policy_version": "user-confirmed-policy-v1",
+            "retention_days": 7,
+        },
+    )
+    assert missing_store.status_code == 409
+    assert missing_store.json()["code"] == "evidence_store_not_configured"
+    client.app.dependency_overrides[collection_service] = lambda: CollectionService(
+        database, evidence_configured=True
+    )
+    accepted = client.post(
+        path + "/runs",
+        headers={"Idempotency-Key": "accepted-run"},
+        json={
+            "expected_version": updated["current_version"],
+            "source": "bilibili",
+            "query_variant": "AI",
+            "since": "2026-09-14T00:00:00Z",
+            "until": "2026-09-15T00:00:00Z",
+            "policy_version": "user-confirmed-policy-v1",
+            "retention_days": 7,
+        },
+    )
+    assert accepted.status_code == 201
+    run = client.get(f"/api/v1/collection-runs/{accepted.json()['id']}")
+    assert run.status_code == 200 and run.json()["job_id"] == accepted.json()["job_id"]
+    client.app.dependency_overrides.pop(collection_service)
     assert (
         client.patch(
             path,

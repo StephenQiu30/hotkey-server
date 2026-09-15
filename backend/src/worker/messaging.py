@@ -6,11 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.clock import utcnow
-from core.config import Settings
+from core.config import JOB_HARD_TIME_LIMIT_SECONDS, Settings
 from jobs.contracts import Dispatch
 from jobs.models import Job, Outbox
 
-TASK_NAME = "hotkey.verify_pipeline"
+TASK_NAME = "hotkey.execute_job"
 QUEUE = "hotkey.control"
 
 
@@ -40,7 +40,8 @@ def celery_app(settings: Settings) -> Any:
         broker_heartbeat=10,
         broker_connection_retry_on_startup=True,
         broker_transport_options={"confirm_publish": True},
-        task_time_limit=20,
+        task_soft_time_limit=55,
+        task_time_limit=JOB_HARD_TIME_LIMIT_SECONDS,
         worker_max_tasks_per_child=100,
         worker_enable_remote_control=False,
     )

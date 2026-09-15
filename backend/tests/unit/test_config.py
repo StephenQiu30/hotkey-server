@@ -1,7 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from core.config import Settings
+from core.config import JOB_HARD_TIME_LIMIT_SECONDS, Settings
+from worker.messaging import celery_app
 
 
 def test_rejects_other_database_and_broker():
@@ -15,6 +16,18 @@ def test_settings_repr_hides_connection_credentials():
         broker_url="amqp://u:private@localhost//",
     )
     assert "private" not in repr(settings)
+
+
+def test_job_lease_always_exceeds_worker_hard_time_limit():
+    base = {
+        "database_url": "postgresql+psycopg://u:p@localhost/db",
+        "broker_url": "amqp://u:p@localhost/test",
+    }
+    settings = Settings(**base)
+    assert settings.lease_seconds > JOB_HARD_TIME_LIMIT_SECONDS
+    assert celery_app(settings).conf.task_time_limit == JOB_HARD_TIME_LIMIT_SECONDS
+    with pytest.raises(ValidationError):
+        Settings(**base, lease_seconds=JOB_HARD_TIME_LIMIT_SECONDS)
 
 
 def test_minio_configuration_is_all_or_none_and_hides_credentials():

@@ -41,6 +41,8 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
         ("/api/v1/monitors/{identity}", "patch"): "updateMonitor",
         ("/api/v1/monitors/{identity}/activate", "post"): "activateMonitor",
         ("/api/v1/monitors/{identity}/pause", "post"): "pauseMonitor",
+        ("/api/v1/monitors/{identity}/runs", "post"): "createCollectionRun",
+        ("/api/v1/collection-runs/{identity}", "get"): "getCollectionRun",
         ("/api/v1/contents", "get"): "listInboxContents",
         ("/api/v1/jobs", "get"): "listJobs",
         ("/api/v1/jobs", "post"): "createDiagnosticJob",

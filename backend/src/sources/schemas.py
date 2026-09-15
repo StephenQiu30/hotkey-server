@@ -141,6 +141,24 @@ class QueryPreview(BaseModel):
     network_accessed: Literal[False] = False
 
 
+class SearchPageInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    source: SourceName
+    keyword: str = Field(min_length=1, max_length=100)
+    since: AwareDatetime
+    until: AwareDatetime
+    limit: int = Field(default=20, ge=1, le=20)
+    cursor: str | None = Field(default=None, min_length=1, max_length=2048)
+
+    @model_validator(mode="after")
+    def valid_window(self) -> Self:
+        if self.since >= self.until:
+            raise ValueError("since must precede until")
+        object.__setattr__(self, "since", self.since.astimezone(UTC))
+        object.__setattr__(self, "until", self.until.astimezone(UTC))
+        return self
+
+
 class SocialObject(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider_namespace: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9._:-]+$")

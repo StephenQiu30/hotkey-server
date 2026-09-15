@@ -11,6 +11,7 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError
 
 from core.clock import utcnow
+from sources.contracts import FetchedPage, request_fingerprint
 from sources.schemas import (
     BILIBILI_BVID,
     BilibiliCommentsInput,
@@ -171,29 +172,42 @@ class Bilibili:
             result.code = "schema_changed"
             return None
 
-    def search(self, request: BilibiliSearchInput) -> SourceResult:
+    def search_page(self, request: BilibiliSearchInput) -> FetchedPage:
+        parameters: dict[str, str | int] = {
+            "keyword": request.keyword,
+            "page": request.page,
+        }
         result, body = self._fetch(
             "search_posts",
             SEARCH_URL,
-            {"keyword": request.keyword, "page": request.page},
+            parameters,
         )
-        if body is None:
-            return result
-        identities = list(dict.fromkeys(match.decode() for match in BVID_PATTERN.findall(body)))
-        if not identities:
-            result.code = "schema_changed"
-            return result
-        selected = identities[: request.limit]
-        result.references = [
-            SourceReference(
-                external_id=f"bvid:{identity}",
-                canonical_url=f"https://www.bilibili.com/video/{identity}",
-            )
-            for identity in selected
-        ]
-        result.cursor = str(request.page + 1) if len(identities) >= request.limit else None
-        result.status = "ok"
-        return result
+        if body is not None:
+            identities = list(dict.fromkeys(match.decode() for match in BVID_PATTERN.findall(body)))
+            if not identities:
+                result.code = "schema_changed"
+            else:
+                selected = identities[: request.limit]
+                result.references = [
+                    SourceReference(
+                        external_id=f"bvid:{identity}",
+                        canonical_url=f"https://www.bilibili.com/video/{identity}",
+                    )
+                    for identity in selected
+                ]
+                result.cursor = str(request.page + 1) if len(identities) >= request.limit else None
+                result.status = "ok"
+        fingerprint = request_fingerprint("bilibili", "search_posts", parameters)
+        return FetchedPage(
+            result=result,
+            payload=body,
+            media_type="text/html",
+            request_fingerprint=fingerprint,
+            page_key=f"search:{fingerprint[:32]}",
+        )
+
+    def search(self, request: BilibiliSearchInput) -> SourceResult:
+        return self.search_page(request).result
 
     def post(self, request: BilibiliPostInput) -> SourceResult:
         result, body = self._fetch(

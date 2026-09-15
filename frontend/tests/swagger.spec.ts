@@ -15,4 +15,10 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   expect(document.paths["/api/v1/monitors"].get.operationId).toBe(
     "listMonitors",
   );
+  expect(
+    document.paths["/api/v1/monitors/{identity}/runs"].post.operationId,
+  ).toBe("createCollectionRun");
+  expect(
+    document.paths["/api/v1/collection-runs/{identity}"].get.operationId,
+  ).toBe("getCollectionRun");
 });

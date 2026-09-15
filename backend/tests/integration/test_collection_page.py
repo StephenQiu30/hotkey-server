@@ -4,6 +4,7 @@ from hashlib import sha256
 import pytest
 from sqlalchemy import func, select
 
+from collection.execution import CollectionExecutor
 from collection.models import CollectionCheckpoint, CollectionRun
 from collection.schemas import CollectionRunInput, PageCommitInput
 from collection.services import CollectionService
@@ -13,9 +14,13 @@ from core.clock import utcnow
 from core.errors import AppError
 from evidence.contracts import StoredObject
 from evidence.models import RawPage
+from jobs.contracts import Dispatch
+from jobs.execution import claim, complete, reconcile
+from jobs.models import Job, JobResult, Outbox
 from monitors.models import MonitorMatch
 from monitors.schemas import MonitorInput, MonitorStateChange
 from monitors.services import MonitorService
+from sources.contracts import FetchedPage
 from sources.schemas import SocialObject, SourceResult
 from sources.services import SourceService
 
@@ -25,6 +30,11 @@ pytestmark = pytest.mark.integration
 class AdmittedSources(SourceService):
     def activation_issues(self, source_ids):
         return []
+
+
+class RevokedSources(SourceService):
+    def activation_issues(self, source_ids):
+        return ["source_not_eligible"]
 
 
 class MemoryStore:
@@ -59,6 +69,16 @@ class FenceChangingStore(MemoryStore):
             assert run is not None
             run.fencing_token += 1
         return stored
+
+
+class StaticFetcher:
+    def __init__(self, page: FetchedPage):
+        self.page = page
+        self.calls = 0
+
+    def fetch(self, data):
+        self.calls += 1
+        return self.page
 
 
 def monitor(service: MonitorService, title: str, terms: list[str]):
@@ -136,9 +156,10 @@ def run_and_commit(
             until="2026-09-15T00:00:00Z",
             idempotency_key=key,
             policy_version="synthetic-policy-v1",
+            retention_days=7,
         )
     )
-    lease = service.claim_run(started.id)
+    lease = service.claim_for_job(started.job_id, 1)
     assert lease is not None
     payload = ('{"page":"' + key + '"}').encode()
     page = PageCommitInput(
@@ -167,7 +188,7 @@ def run_and_commit(
 def test_page_commit_is_idempotent_and_preserves_versions_matches_and_zero(database):
     sources = AdmittedSources()
     monitors = MonitorService(database, sources)
-    collection = CollectionService(database, sources)
+    collection = CollectionService(database, sources, evidence_configured=True)
     store = MemoryStore()
     first = monitor(monitors, "主题一", ["AI"])
     committed, page = run_and_commit(
@@ -193,10 +214,217 @@ def test_page_commit_is_idempotent_and_preserves_versions_matches_and_zero(datab
         assert observations[-1].reply_count == 0
 
 
+def test_collection_run_and_job_are_atomic_and_executor_commits_one_page(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "执行", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    created = collection.create_run(
+        CollectionRunInput(
+            monitor_id=active.id,
+            expected_version=active.current_version,
+            source="bilibili",
+            query_variant="AI",
+            since="2026-09-14T00:00:00Z",
+            until="2026-09-15T00:00:00Z",
+            idempotency_key="executor-one-page",
+            policy_version="synthetic-policy-v1",
+            retention_days=7,
+        )
+    )
+    payload = b'{"page":"executor"}'
+    fetcher = StaticFetcher(
+        FetchedPage(
+            result=result("AI 可入库", 0, payload),
+            payload=payload,
+            media_type="application/json",
+            request_fingerprint=sha256(b"executor-request").hexdigest(),
+            page_key="search:executor",
+        )
+    )
+    lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert lease is not None and lease.kind == "collect_page"
+
+    assert CollectionExecutor(collection, sources, fetcher, MemoryStore()).execute(lease)
+    assert complete(database, lease)
+
+    persisted = collection.run(created.id)
+    assert persisted.state == "completed" and persisted.outcome == "ok"
+    assert persisted.pages_count == 1 and persisted.items_count == 1
+    assert fetcher.calls == 1
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(Job)) == 1
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 1
+        assert session.scalar(select(func.count()).select_from(JobResult)) == 0
+
+
+def test_worker_crash_after_page_commit_completes_job_without_refetch(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "提交后恢复", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    created = collection.create_run(
+        CollectionRunInput(
+            monitor_id=active.id,
+            expected_version=active.current_version,
+            source="bilibili",
+            query_variant="AI",
+            since="2026-09-14T00:00:00Z",
+            until="2026-09-15T00:00:00Z",
+            idempotency_key="crash-after-commit",
+            policy_version="synthetic-policy-v1",
+            retention_days=7,
+        )
+    )
+    payload = b'{"page":"committed-before-crash"}'
+    fetcher = StaticFetcher(
+        FetchedPage(
+            result=result("AI 已提交", 0, payload),
+            payload=payload,
+            media_type="application/json",
+            request_fingerprint=sha256(b"crash-after-commit-request").hexdigest(),
+            page_key="search:crash-after-commit",
+        )
+    )
+    executor = CollectionExecutor(collection, sources, fetcher, MemoryStore())
+    first = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert first is not None and executor.execute(first)
+    with database.begin() as session:
+        job = session.get(Job, created.job_id)
+        assert job is not None
+        job.lease_until = utcnow() - timedelta(seconds=1)
+    assert reconcile(database) == 1
+    with database.begin() as session:
+        job = session.get(Job, created.job_id)
+        assert job is not None
+        job.available_at = utcnow() - timedelta(seconds=1)
+    replacement = claim(database, Dispatch(job_id=created.job_id, epoch=2))
+    assert replacement is not None
+    assert executor.execute(replacement)
+    assert complete(database, replacement)
+    assert fetcher.calls == 1
+
+
+def test_missing_evidence_configuration_creates_no_run_or_job(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "无对象存储", ["AI"])
+    collection = CollectionService(database, sources)
+    with pytest.raises(AppError, match="evidence_store_not_configured"):
+        collection.create_run(
+            CollectionRunInput(
+                monitor_id=active.id,
+                expected_version=active.current_version,
+                source="bilibili",
+                query_variant="AI",
+                since="2026-09-14T00:00:00Z",
+                until="2026-09-15T00:00:00Z",
+                idempotency_key="missing-evidence",
+                policy_version="synthetic-policy-v1",
+                retention_days=7,
+            )
+        )
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 0
+        assert session.scalar(select(func.count()).select_from(Job)) == 0
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 0
+
+
+def test_idempotent_replay_returns_committed_run_after_admission_is_revoked(database):
+    admitted = AdmittedSources()
+    active = monitor(MonitorService(database, admitted), "幂等重放", ["AI"])
+    data = CollectionRunInput(
+        monitor_id=active.id,
+        expected_version=active.current_version,
+        source="bilibili",
+        query_variant="AI",
+        since="2026-09-14T00:00:00Z",
+        until="2026-09-15T00:00:00Z",
+        idempotency_key="replay-after-revocation",
+        policy_version="synthetic-policy-v1",
+        retention_days=7,
+    )
+    created = CollectionService(database, admitted, evidence_configured=True).create_run(data)
+
+    replayed = CollectionService(database, RevokedSources()).create_run(data)
+    assert replayed.id == created.id and replayed.job_id == created.job_id
+    with pytest.raises(AppError, match="idempotency_conflict"):
+        CollectionService(database, RevokedSources()).create_run(
+            data.model_copy(update={"retention_days": 8})
+        )
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 1
+        assert session.scalar(select(func.count()).select_from(Job)) == 1
+
+
+def test_concurrent_collection_run_creation_has_one_intent(database):
+    from concurrent.futures import ThreadPoolExecutor
+
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "并发幂等", ["AI"])
+    data = CollectionRunInput(
+        monitor_id=active.id,
+        expected_version=active.current_version,
+        source="bilibili",
+        query_variant="AI",
+        since="2026-09-14T00:00:00Z",
+        until="2026-09-15T00:00:00Z",
+        idempotency_key="concurrent-collection-run",
+        policy_version="synthetic-policy-v1",
+        retention_days=7,
+    )
+
+    def create(_):
+        return CollectionService(database, sources, evidence_configured=True).create_run(data)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        runs = list(pool.map(create, range(8)))
+    assert len({run.id for run in runs}) == 1
+    assert len({run.job_id for run in runs}) == 1
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 1
+        assert session.scalar(select(func.count()).select_from(Job)) == 1
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 1
+
+
+def test_executor_rechecks_source_eligibility_before_fetch(database):
+    admitted = AdmittedSources()
+    active = monitor(MonitorService(database, admitted), "撤权", ["AI"])
+    collection = CollectionService(database, admitted, evidence_configured=True)
+    created = collection.create_run(
+        CollectionRunInput(
+            monitor_id=active.id,
+            expected_version=active.current_version,
+            source="bilibili",
+            query_variant="AI",
+            since="2026-09-14T00:00:00Z",
+            until="2026-09-15T00:00:00Z",
+            idempotency_key="revoked-before-fetch",
+            policy_version="synthetic-policy-v1",
+            retention_days=7,
+        )
+    )
+    payload = b'{"must":"not be fetched"}'
+    fetcher = StaticFetcher(
+        FetchedPage(
+            result=result("AI", 0, payload),
+            payload=payload,
+            media_type="application/json",
+            request_fingerprint=sha256(b"must-not-fetch").hexdigest(),
+            page_key="search:must-not-fetch",
+        )
+    )
+    lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert lease is not None
+
+    assert CollectionExecutor(collection, RevokedSources(), fetcher, MemoryStore()).execute(lease)
+    assert complete(database, lease)
+    persisted = collection.run(created.id)
+    assert persisted.state == "failed" and persisted.stop_reason == "source_not_eligible"
+    assert fetcher.calls == 0
+
+
 def test_inbox_only_returns_matched_content_with_latest_observation(database):
     sources = AdmittedSources()
     monitors = MonitorService(database, sources)
-    collection = CollectionService(database, sources)
+    collection = CollectionService(database, sources, evidence_configured=True)
     store = MemoryStore()
     active = monitor(monitors, "AI 观察", ["AI"])
     run_and_commit(
@@ -236,7 +464,7 @@ def test_inbox_only_returns_matched_content_with_latest_observation(database):
 def test_provider_namespace_is_part_of_content_identity(database):
     sources = AdmittedSources()
     monitors = MonitorService(database, sources)
-    collection = CollectionService(database, sources)
+    collection = CollectionService(database, sources, evidence_configured=True)
     store = MemoryStore()
     active = monitor(monitors, "命名空间", ["AI"])
     for key, namespace in (("namespace-a", "video"), ("namespace-b", "article")):
@@ -266,7 +494,7 @@ def test_provider_namespace_is_part_of_content_identity(database):
 def test_top_level_comment_without_parent_remains_unresolved(database):
     sources = AdmittedSources()
     monitors = MonitorService(database, sources)
-    collection = CollectionService(database, sources)
+    collection = CollectionService(database, sources, evidence_configured=True)
     active = monitor(monitors, "评论", ["AI"])
     run_and_commit(
         collection,
@@ -291,7 +519,7 @@ def test_top_level_comment_without_parent_remains_unresolved(database):
 def test_invalid_page_is_rejected_before_object_upload(database):
     sources = AdmittedSources()
     monitors = MonitorService(database, sources)
-    collection = CollectionService(database, sources)
+    collection = CollectionService(database, sources, evidence_configured=True)
     store = MemoryStore()
     active = monitor(monitors, "预检", ["AI"])
     started = collection.create_run(
@@ -304,9 +532,10 @@ def test_invalid_page_is_rejected_before_object_upload(database):
             until="2026-09-15T00:00:00Z",
             idempotency_key="preflight-reject",
             policy_version="synthetic-policy-v1",
+            retention_days=7,
         )
     )
-    lease = collection.claim_run(started.id)
+    lease = collection.claim_for_job(started.job_id, 1)
     assert lease is not None
     payload = b'{"page":"wrong-source"}'
     page = PageCommitInput(
@@ -330,7 +559,7 @@ def test_invalid_page_is_rejected_before_object_upload(database):
 def test_old_fence_cannot_commit_and_stale_commit_leaves_orphan_object(database):
     sources = AdmittedSources()
     monitors = MonitorService(database, sources)
-    collection = CollectionService(database, sources)
+    collection = CollectionService(database, sources, evidence_configured=True)
     active = monitor(monitors, "隔离", ["AI"])
     started = collection.create_run(
         CollectionRunInput(
@@ -342,9 +571,10 @@ def test_old_fence_cannot_commit_and_stale_commit_leaves_orphan_object(database)
             until="2026-09-15T00:00:00Z",
             idempotency_key="old-fence",
             policy_version="synthetic-policy-v1",
+            retention_days=7,
         )
     )
-    lease = collection.claim_run(started.id)
+    lease = collection.claim_for_job(started.job_id, 1)
     assert lease is not None
     store = FenceChangingStore(database, started.id)
     payload = b'{"page":"old-fence"}'

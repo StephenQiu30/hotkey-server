@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.schemas import HealthView
 
-SCHEMA_REVISION = "0005_collection_page"
+SCHEMA_REVISION = "0006_collection_jobs"
 
 
 def readiness(factory: sessionmaker[Session]) -> HealthView:

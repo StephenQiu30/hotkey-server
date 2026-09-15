@@ -176,3 +176,15 @@ FastAPI 从路由和 Pydantic 模型运行时生成 `/openapi.json`、`/docs` �
 独立 `verify_minio.py` 只允许使用预先存在的bucket，写入一条合成JSON的确定性gzip对象。一次性 `minio/minio:RELEASE.2025-09-07T16-13-09Z` 容器中，首次上传与第二次幂等重投均成功，65字节对象SHA-256为 `7bedd8fc37c8cfb0b6c1457723d062fd393c2419ec8e9ff62afc7f709c5edbae`；读回校验通过，精确删除后bucket对象数为0，随后删除容器。25项配置/适配器/架构聚焦测试和真实PostgreSQL 16、RabbitMQ 4.1下82项全量后端测试通过，保留2条已知上游弃用提示；Ruff和严格mypy（81个源文件）通过。`pip-audit` 无已知漏洞；OpenAPI与UmiOpenAPI客户端无漂移，前端边界、格式、TypeScript/Vite和生产依赖审计通过。隔离Compose成功安装MinIO SDK并完成真实prefork诊断，attempts=1；backend原地替换后代理返回预期401，Chromium的Swagger UI与owner工作台2项通过。正常停机worker=0、backend=143、scheduler=0，无SIGKILL或OOM；隔离Compose及数据卷随后删除。结构化证据见 [minio-adapter-poc.json](evidence/minio-adapter-poc.json)。
 
 该容器仅验证客户端和对象协议，不是用户选择复用的现有MinIO。尚未取得现有实例的非敏感endpoint、TLS路径、bucket、最小权限凭据注入和服务端版本，因此未测试真实网络、权限、生命周期或孤儿对账，也不构成EV-007-003、真实采集或S02-T02完成证据。
+
+## 007 S02-T02C 采集任务与消费者基础验证（2026-09-15）
+
+本片将采集运行接入既有Job/Outbox/RabbitMQ/Celery账本。任务消息仍只含job_id、epoch和契约版本，白名单kind增加`collect_page`；Worker由租约kind选择诊断或单页采集执行器，采集结果只写collection_run及页事务，不借用短字符串JobResult。run、Job和Outbox同事务创建，执行前再次检查来源准入；来源撤权测试没有调用来源适配器。任务硬超时为60秒，租约必须严格大于硬超时且默认90秒，防止正常任务在提交前自行过租。
+
+新增`0006_collection_jobs`迁移。一次性数据库先升级至0005并写入一条queued和一条completed历史运行，再升级至0006：queued运行以`migration_boundary`终止并关联failed collect_page Job；completed/ok运行保持结果并关联succeeded Job；两者保留期均回填7天。全量迁移与SQLAlchemy模型比较无差异，readiness revision与Alembic唯一head增加静态一致性门禁。
+
+FastAPI自动发布`POST /api/v1/monitors/{id}/runs`和`GET /api/v1/collection-runs/{id}`。创建响应为HTTP 201，因为run与Job在响应前已持久化；异步进度由资源状态表达。此前为生成器改写202响应的hook已删除，`@umijs/openapi`直接生成`frontend/src/api/collection.ts`，业务请求仍只经根级Axios `request.ts`。运行时OpenAPI与发布快照相等。
+
+真实PostgreSQL 16和RabbitMQ 4.1环境中92项pytest通过，保留2条上游弃用提示；其中覆盖页提交后Worker崩溃的重领收口，确认不会二次抓取；也覆盖幂等重放在后续来源撤权和对象存储配置缺失时仍返回既有运行，以及8个并发同键请求只生成一组run/Job/Outbox。Ruff、严格mypy（82个源文件）、OpenAPI/UmiOpenAPI漂移、前端边界与负向样例、Prettier和TypeScript/Vite构建通过。隔离`hotkey-s02c` Compose完成迁移和真实scheduler → RabbitMQ → Celery prefork → PostgreSQL诊断，attempts=1；Web保持运行、替换backend后代理返回预期401。Chromium 2项通过，Swagger UI实际加载并核对两项collection operationId，owner工作台完成登录、草稿、查询预览、诊断、刷新、390px及退出流程。正常停机为worker=0、backend=143、scheduler=0，无SIGKILL/OOM；隔离资源随后删除。结构化证据见 [collection-job-foundation-poc.json](evidence/collection-job-foundation-poc.json)。
+
+本片使用注入的合成原始页和内存EvidenceStore验证消费者编排，没有访问外部来源，也没有连接用户现有MinIO。所有来源仍为not_connected且不具备产品采集准入；预算预留、按slot调度、分页、详情展开和评论任务仍待后续切片。因此本记录不构成EV-007-003、真实收件箱或TASK-007-S02-T02完成证据。

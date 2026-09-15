@@ -11,7 +11,7 @@ class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
         CheckConstraint("status IN ('queued','running','succeeded','failed','cancelled')"),
-        CheckConstraint("kind = 'verify_pipeline'"),
+        CheckConstraint("kind IN ('verify_pipeline','collect_page')", name="ck_jobs_kind"),
         CheckConstraint("epoch > 0 AND attempts >= 0 AND max_attempts > 0"),
         Index("ix_jobs_recovery", "status", "available_at"),
     )

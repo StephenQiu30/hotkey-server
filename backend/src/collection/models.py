@@ -24,8 +24,12 @@ class CollectionRun(Base):
             name="ck_collection_runs_counts",
         ),
         CheckConstraint("window_since < window_until", name="ck_collection_runs_window"),
+        CheckConstraint(
+            "retention_days BETWEEN 1 AND 365", name="ck_collection_runs_retention_days"
+        ),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("jobs.id"), unique=True)
     monitor_version_id: Mapped[UUID] = mapped_column(
         ForeignKey("monitor_versions.id", ondelete="CASCADE"), index=True
     )
@@ -34,6 +38,7 @@ class CollectionRun(Base):
     query_variant: Mapped[str] = mapped_column(String(100))
     idempotency_key: Mapped[str] = mapped_column(String(128))
     policy_version: Mapped[str] = mapped_column(String(64))
+    retention_days: Mapped[int] = mapped_column(Integer)
     state: Mapped[str] = mapped_column(String(16))
     outcome: Mapped[str | None] = mapped_column(String(16))
     fencing_token: Mapped[int] = mapped_column(Integer)

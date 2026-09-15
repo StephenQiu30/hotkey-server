@@ -9,6 +9,7 @@ import httpx
 from pydantic import AwareDatetime, BaseModel, Field, ValidationError
 
 from core.clock import utcnow
+from sources.contracts import FetchedPage, request_fingerprint
 from sources.schemas import (
     POST_URI,
     SearchInput,
@@ -79,7 +80,7 @@ class Bluesky:
         operation: Literal["search_posts", "fetch_thread"],
         endpoint: str,
         params: dict[str, str | int],
-    ) -> tuple[SourceResult, dict[str, Any] | None]:
+    ) -> tuple[SourceResult, bytes | None]:
         result = SourceResult(operation=operation, status="failed", observed_at=utcnow())
         deadline = time.monotonic() + 20
         try:
@@ -118,19 +119,25 @@ class Bluesky:
                         return result, None
                     body.extend(chunk)
                 result.response_sha256 = hashlib.sha256(body).hexdigest()
-                data = json.loads(body)
-                if not isinstance(data, dict):
-                    raise ValueError("expected object")
-                return result, data
+                return result, bytes(body)
         except httpx.TimeoutException:
             result.code = "timeout"
         except httpx.HTTPError:
             result.code = "network_error"
-        except (ValueError, RecursionError):
-            result.code = "schema_changed"
         return result, None
 
-    def search(self, request: SearchInput) -> SourceResult:
+    @staticmethod
+    def _decode(result: SourceResult, body: bytes) -> dict[str, Any] | None:
+        try:
+            data = json.loads(body)
+            if not isinstance(data, dict):
+                raise ValueError("expected object")
+            return data
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError):
+            result.code = "schema_changed"
+            return None
+
+    def search_page(self, request: SearchInput) -> FetchedPage:
         params: dict[str, str | int] = {
             "q": request.keyword,
             "since": request.since.isoformat(),
@@ -140,25 +147,40 @@ class Bluesky:
         }
         if request.cursor is not None:
             params["cursor"] = request.cursor
-        result, data = self._fetch("search_posts", "app.bsky.feed.searchPosts", params)
-        if data is None:
-            return result
-        try:
-            page = SearchPage.model_validate(data)
-            if len(page.posts) > request.limit:
-                raise ValueError("page exceeded requested limit")
-            result.items = [normalize(post) for post in page.posts]
-            result.cursor = page.cursor
-            result.total = page.hits_total
-            result.status = "ok" if result.items else "empty"
-            if page.cursor is not None and page.cursor == request.cursor:
-                result.status, result.code, result.cursor = "partial", "cursor_stalled", None
-        except (ValidationError, ValueError):
-            result.code = "schema_changed"
-        return result
+        result, body = self._fetch("search_posts", "app.bsky.feed.searchPosts", params)
+        if body is not None:
+            data = self._decode(result, body)
+            if data is not None:
+                try:
+                    page = SearchPage.model_validate(data)
+                    if len(page.posts) > request.limit:
+                        raise ValueError("page exceeded requested limit")
+                    result.items = [normalize(post) for post in page.posts]
+                    result.cursor = page.cursor
+                    result.total = page.hits_total
+                    result.status = "ok" if result.items else "empty"
+                    if page.cursor is not None and page.cursor == request.cursor:
+                        result.status, result.code, result.cursor = (
+                            "partial",
+                            "cursor_stalled",
+                            None,
+                        )
+                except (ValidationError, ValueError):
+                    result.code = "schema_changed"
+        fingerprint = request_fingerprint("bluesky", "search_posts", params)
+        return FetchedPage(
+            result=result,
+            payload=body,
+            media_type="application/json",
+            request_fingerprint=fingerprint,
+            page_key=f"search:{fingerprint[:32]}",
+        )
+
+    def search(self, request: SearchInput) -> SourceResult:
+        return self.search_page(request).result
 
     def thread(self, request: ThreadInput) -> SourceResult:
-        result, data = self._fetch(
+        result, body = self._fetch(
             "fetch_thread",
             "app.bsky.feed.getPostThread",
             {
@@ -167,6 +189,9 @@ class Bluesky:
                 "parentHeight": 0,
             },
         )
+        if body is None:
+            return result
+        data = self._decode(result, body)
         if data is None:
             return result
         try:

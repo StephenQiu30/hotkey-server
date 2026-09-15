@@ -66,6 +66,18 @@ def monitor_query_spec(session: Session, monitor_version_id: UUID) -> QuerySpec:
     return QuerySpec.model_validate(version.query_spec)
 
 
+def monitor_version_identity(session: Session, monitor_id: UUID, version: int) -> UUID:
+    identity = session.scalar(
+        select(MonitorVersion.id).where(
+            MonitorVersion.monitor_id == monitor_id,
+            MonitorVersion.version == version,
+        )
+    )
+    if identity is None:
+        raise AppError("version_conflict", 409)
+    return identity
+
+
 def active_monitor_configuration(
     session: Session, monitor_id: UUID, expected_version: int
 ) -> tuple[UUID, QuerySpec, list[SourceName]]:

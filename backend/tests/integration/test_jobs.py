@@ -38,6 +38,18 @@ def test_idempotent_enqueue_and_duplicate_delivery(database):
         assert session.scalar(select(func.count()).select_from(JobResult)) == 1
 
 
+def test_collection_job_kind_uses_same_ledger_without_diagnostic_result(database):
+    with database.begin() as session:
+        job = enqueue(session, "collection:one", kind="collect_page")
+        job_id = job.id
+    lease = claim(database, Dispatch(job_id=job_id, epoch=1))
+    assert lease is not None and lease.kind == "collect_page"
+    assert complete(database, lease)
+    with database() as session:
+        assert session.get(Job, job_id).status == "succeeded"
+        assert session.get(JobResult, job_id) is None
+
+
 def test_expired_lease_fences_old_result_and_caps_attempts(database):
     with database.begin() as session:
         job_id = enqueue(session, "recovery").id

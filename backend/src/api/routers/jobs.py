@@ -22,7 +22,7 @@ def jobs(
 @router.post(
     "/jobs",
     response_model=JobView,
-    status_code=202,
+    status_code=201,
     tags=["jobs"],
     operation_id="createDiagnosticJob",
 )

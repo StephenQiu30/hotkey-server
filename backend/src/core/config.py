@@ -7,6 +7,8 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
+JOB_HARD_TIME_LIMIT_SECONDS = 60
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -17,7 +19,7 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     database_url: SecretStr
     broker_url: SecretStr
-    lease_seconds: int = Field(default=30, ge=5, le=300)
+    lease_seconds: int = Field(default=90, gt=JOB_HARD_TIME_LIMIT_SECONDS, le=300)
     recovery_seconds: int = Field(default=120, ge=30, le=3600)
     s3_endpoint: str | None = None
     s3_access_key: SecretStr | None = None

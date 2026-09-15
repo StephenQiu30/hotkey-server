@@ -18,6 +18,7 @@ class CollectionRunInput(Input):
     until: AwareDatetime
     idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.:-]+$")
     policy_version: str = Field(min_length=1, max_length=64)
+    retention_days: int = Field(ge=1, le=365)
 
     @model_validator(mode="after")
     def valid_window(self) -> Self:
@@ -31,10 +32,12 @@ class CollectionRunInput(Input):
 class CollectionRunView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+    job_id: UUID
     monitor_version_id: UUID
     source: SourceName
     operation: Literal["search_posts"]
     query_variant: str
+    retention_days: int
     state: Literal["queued", "running", "completed", "failed", "cancelled"]
     outcome: Literal["ok", "empty", "partial", "failed"] | None
     fencing_token: int
@@ -44,6 +47,39 @@ class CollectionRunView(BaseModel):
     stop_reason: str | None
     created_at: datetime
     completed_at: datetime | None
+
+
+class CollectionRunRequest(Input):
+    expected_version: int = Field(ge=1)
+    source: SourceName
+    operation: Literal["search_posts"] = "search_posts"
+    query_variant: str = Field(min_length=1, max_length=100)
+    since: AwareDatetime
+    until: AwareDatetime
+    policy_version: str = Field(min_length=1, max_length=64)
+    retention_days: int = Field(ge=1, le=365)
+
+    @model_validator(mode="after")
+    def valid_window(self) -> Self:
+        if self.since >= self.until:
+            raise ValueError("since must precede until")
+        self.since = self.since.astimezone(UTC)
+        self.until = self.until.astimezone(UTC)
+        return self
+
+
+class CollectionExecutionInput(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    run_id: UUID
+    job_id: UUID
+    fencing_token: int = Field(ge=1)
+    source: SourceName
+    operation: Literal["search_posts"]
+    query_variant: str
+    since: datetime
+    until: datetime
+    policy_version: str
+    retention_days: int = Field(ge=1, le=365)
 
 
 class CollectionLease(BaseModel):

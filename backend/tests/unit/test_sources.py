@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from sources.adapters.bilibili import Bilibili
 from sources.adapters.bluesky import Bluesky
+from sources.execution import PublicSearchFetcher
 from sources.schemas import (
     BilibiliCommentsInput,
     BilibiliPostInput,
@@ -13,6 +14,7 @@ from sources.schemas import (
     BilibiliSearchInput,
     QueryPreviewInput,
     SearchInput,
+    SearchPageInput,
     SocialObject,
     ThreadInput,
 )
@@ -124,6 +126,26 @@ def test_window_validation():
         SearchInput(keyword="x", since="2026-09-01T00:00:00", until="2026-09-09T00:00:00Z")
     with pytest.raises(ValidationError):
         ThreadInput(uri="http://127.0.0.1/private")
+    with pytest.raises(ValidationError):
+        SearchPageInput(
+            source="bilibili",
+            keyword="x",
+            since="2026-09-09T00:00:00Z",
+            until="2026-09-01T00:00:00Z",
+        )
+
+
+def test_public_fetcher_rejects_invalid_bilibili_cursor_before_network():
+    with pytest.raises(ValueError, match="invalid bilibili page cursor"):
+        PublicSearchFetcher().fetch(
+            SearchPageInput(
+                source="bilibili",
+                keyword="人工智能",
+                since="2026-09-01T00:00:00Z",
+                until="2026-09-09T00:00:00Z",
+                cursor="1e2",
+            )
+        )
 
 
 def test_last_page_items_and_unknown_count_survive():
@@ -132,11 +154,14 @@ def test_last_page_items_and_unknown_count_survive():
         assert request.url.params["sort"] == "latest"
         return httpx.Response(200, json={"posts": [post()]})
 
-    result = adapter(handler).search(search())
+    page = adapter(handler).search_page(search())
+    result = page.result
     assert result.status == "ok" and len(result.items) == 1
     assert result.cursor is None and result.total is None
     assert result.coverage == "unknown"
     assert len(result.response_sha256) == 64
+    assert page.payload is not None and page.media_type == "application/json"
+    assert len(page.request_fingerprint) == 64 and page.page_key.startswith("search:")
 
 
 @pytest.mark.parametrize(

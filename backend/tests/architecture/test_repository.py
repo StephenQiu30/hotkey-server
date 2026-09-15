@@ -11,6 +11,9 @@ def test_single_runtime_stack():
 
 
 def test_migrations_are_available_in_application():
+    from alembic.script import ScriptDirectory
+
+    from db.health import SCHEMA_REVISION
     from migrations.config import migration_config
 
     config = migration_config("postgresql+psycopg://u:p@localhost/test")
@@ -18,3 +21,4 @@ def test_migrations_are_available_in_application():
         Path(config.get_main_option("script_location"))
         == Path(__file__).resolve().parents[2] / "src" / "migrations"
     )
+    assert ScriptDirectory.from_config(config).get_current_head() == SCHEMA_REVISION

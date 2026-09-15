@@ -1,12 +1,12 @@
 from hashlib import sha256
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from collection.models import CollectionCheckpoint, CollectionRun
 from collection.schemas import (
-    CollectionLease,
+    CollectionExecutionInput,
     CollectionRunInput,
     CollectionRunView,
     PageCommitInput,
@@ -23,10 +23,12 @@ from evidence.services import (
     record_raw_page,
     upload,
 )
+from jobs.execution import enqueue
 from monitors.services import (
     active_monitor_configuration,
     match_content,
     monitor_query_spec,
+    monitor_version_identity,
     query_match_reasons,
 )
 from sources.schemas import QueryPreviewInput
@@ -34,12 +36,57 @@ from sources.services import SourceService
 
 
 class CollectionService:
-    def __init__(self, factory: sessionmaker[Session], sources: SourceService | None = None):
+    def __init__(
+        self,
+        factory: sessionmaker[Session],
+        sources: SourceService | None = None,
+        *,
+        evidence_configured: bool = False,
+    ):
         self.factory = factory
         self.sources = sources or SourceService()
+        self.evidence_configured = evidence_configured
 
     def create_run(self, data: CollectionRunInput) -> CollectionRunView:
         with self.factory.begin() as session:
+            lock_key = int.from_bytes(
+                sha256(data.idempotency_key.encode()).digest()[:8],
+                byteorder="big",
+                signed=True,
+            )
+            session.execute(select(func.pg_advisory_xact_lock(lock_key)))
+            existing = session.scalar(
+                select(CollectionRun)
+                .where(CollectionRun.idempotency_key == data.idempotency_key)
+                .with_for_update()
+            )
+            if existing is not None:
+                version_id = monitor_version_identity(
+                    session, data.monitor_id, data.expected_version
+                )
+                expected = (
+                    version_id,
+                    data.source,
+                    data.operation,
+                    data.query_variant,
+                    data.since,
+                    data.until,
+                    data.policy_version,
+                    data.retention_days,
+                )
+                actual = (
+                    existing.monitor_version_id,
+                    existing.source,
+                    existing.operation,
+                    existing.query_variant,
+                    existing.window_since,
+                    existing.window_until,
+                    existing.policy_version,
+                    existing.retention_days,
+                )
+                if actual != expected:
+                    raise AppError("idempotency_conflict", 409)
+                return CollectionRunView.model_validate(existing)
             version_id, query_spec, source_ids = active_monitor_configuration(
                 session, data.monitor_id, data.expected_version
             )
@@ -47,6 +94,8 @@ class CollectionService:
                 raise AppError("source_not_in_monitor", 409)
             if self.sources.activation_issues([data.source]):
                 raise AppError("source_not_eligible", 409)
+            if not self.evidence_configured:
+                raise AppError("evidence_store_not_configured", 409)
             preview = self.sources.preview(
                 QueryPreviewInput(
                     query_spec=query_spec,
@@ -57,40 +106,23 @@ class CollectionService:
             )
             if data.query_variant not in preview.sources[0].queries:
                 raise AppError("query_variant_not_in_snapshot", 409)
-            existing = session.scalar(
-                select(CollectionRun).where(CollectionRun.idempotency_key == data.idempotency_key)
-            )
-            if existing is not None:
-                expected = (
-                    version_id,
-                    data.source,
-                    data.operation,
-                    data.query_variant,
-                    data.since,
-                    data.until,
-                    data.policy_version,
-                )
-                actual = (
-                    existing.monitor_version_id,
-                    existing.source,
-                    existing.operation,
-                    existing.query_variant,
-                    existing.window_since,
-                    existing.window_until,
-                    existing.policy_version,
-                )
-                if actual != expected:
-                    raise AppError("idempotency_conflict", 409)
-                return CollectionRunView.model_validate(existing)
             now = utcnow()
+            run_id = uuid4()
+            job = enqueue(
+                session,
+                "collection:" + sha256(data.idempotency_key.encode()).hexdigest(),
+                kind="collect_page",
+            )
             run = CollectionRun(
-                id=uuid4(),
+                id=run_id,
+                job_id=job.id,
                 monitor_version_id=version_id,
                 source=data.source,
                 operation=data.operation,
                 query_variant=data.query_variant,
                 idempotency_key=data.idempotency_key,
                 policy_version=data.policy_version,
+                retention_days=data.retention_days,
                 state="queued",
                 outcome=None,
                 fencing_token=0,
@@ -108,17 +140,55 @@ class CollectionService:
             session.flush()
             return CollectionRunView.model_validate(run)
 
-    def claim_run(self, identity: UUID) -> CollectionLease | None:
+    def run(self, identity: UUID) -> CollectionRunView:
+        with self.factory() as session:
+            run = session.get(CollectionRun, identity)
+            if run is None:
+                raise AppError("collection_run_not_found", 404)
+            return CollectionRunView.model_validate(run)
+
+    def claim_for_job(self, job_id: UUID, fencing_token: int) -> CollectionExecutionInput | None:
+        with self.factory.begin() as session:
+            run = session.scalar(
+                select(CollectionRun).where(CollectionRun.job_id == job_id).with_for_update()
+            )
+            if run is None or run.state not in {"queued", "running"}:
+                return None
+            run.state = "running"
+            run.fencing_token = fencing_token
+            run.started_at = run.started_at or utcnow()
+            return CollectionExecutionInput(
+                run_id=run.id,
+                job_id=run.job_id,
+                fencing_token=run.fencing_token,
+                source=run.source,
+                operation=run.operation,
+                query_variant=run.query_variant,
+                since=run.window_since,
+                until=run.window_until,
+                policy_version=run.policy_version,
+                retention_days=run.retention_days,
+            )
+
+    def result_committed_for_job(self, job_id: UUID) -> bool:
+        with self.factory() as session:
+            state = session.scalar(
+                select(CollectionRun.state).where(CollectionRun.job_id == job_id)
+            )
+            return state in {"completed", "failed"}
+
+    def fail_run(self, identity: UUID, fencing_token: int, reason: str) -> bool:
         with self.factory.begin() as session:
             run = session.scalar(
                 select(CollectionRun).where(CollectionRun.id == identity).with_for_update()
             )
-            if run is None or run.state != "queued":
-                return None
-            run.state = "running"
-            run.fencing_token += 1
-            run.started_at = utcnow()
-            return CollectionLease(run_id=run.id, fencing_token=run.fencing_token)
+            if run is None or run.state != "running" or run.fencing_token != fencing_token:
+                return False
+            run.state = "failed"
+            run.outcome = "failed"
+            run.stop_reason = reason[:80]
+            run.completed_at = utcnow()
+            return True
 
     @staticmethod
     def _page_state(
