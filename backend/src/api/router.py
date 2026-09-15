@@ -8,6 +8,7 @@ from api.routers import (
     health,
     identity,
     jobs,
+    knowledge,
     monitors,
     notifications,
     sources,
@@ -17,6 +18,7 @@ router = APIRouter()
 for child in (
     health.router,
     analysis.router,
+    knowledge.router,
     identity.router,
     monitors.router,
     collection.router,

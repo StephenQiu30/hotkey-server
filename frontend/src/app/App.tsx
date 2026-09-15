@@ -18,6 +18,7 @@ import { Login } from "../features/identity/Login";
 import { Runs } from "../features/collection/Runs";
 import { Inbox } from "../features/contents/Inbox";
 import { EventDossiers } from "../features/events/EventDossiers";
+import { KnowledgeSearch } from "../features/knowledge/KnowledgeSearch";
 import {
   MonitorEditor,
   sourceLabels,
@@ -349,6 +350,7 @@ export function App() {
           }}
           onMore={() => void more("events")}
         />
+        <KnowledgeSearch />
         <section>
           <div className="section-title">
             <h2>

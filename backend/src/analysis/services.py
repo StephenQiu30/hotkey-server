@@ -185,11 +185,12 @@ class AnalysisService:
             }
         )
 
+    @classmethod
     def _view(
-        self, session: Session, run: AnalysisRun, *, recomputed: bool = False
+        cls, session: Session, run: AnalysisRun, *, recomputed: bool = False
     ) -> AnalysisRunView:
-        samples = self._samples(session, run.id)
-        labels = self._labels(session, [sample.id for sample in samples])
+        samples = cls._samples(session, run.id)
+        labels = cls._labels(session, [sample.id for sample in samples])
         version_ids = {
             identity
             for sample in samples
@@ -216,14 +217,12 @@ class AnalysisService:
         context_by_id: dict[UUID, AnalysisContextView] = {}
         for sample in samples:
             frozen_contexts = [
-                self._context_view(
-                    "sample", sample.content_version_id, sample.text_sha256, contexts
-                )
+                cls._context_view("sample", sample.content_version_id, sample.text_sha256, contexts)
             ]
             if sample.parent_content_version_id is not None:
                 assert sample.parent_text_sha256 is not None
                 frozen_contexts.append(
-                    self._context_view(
+                    cls._context_view(
                         "parent",
                         sample.parent_content_version_id,
                         sample.parent_text_sha256,
@@ -237,7 +236,7 @@ class AnalysisService:
             ):
                 assert sample.root_text_sha256 is not None
                 frozen_contexts.append(
-                    self._context_view(
+                    cls._context_view(
                         "root",
                         sample.root_content_version_id,
                         sample.root_text_sha256,
@@ -260,7 +259,7 @@ class AnalysisService:
                         "selection_reason": sample.selection_reason,
                         "contexts": frozen_contexts,
                         "label": (
-                            self._label_view(labels[sample.id]) if sample.id in labels else None
+                            cls._label_view(labels[sample.id]) if sample.id in labels else None
                         ),
                     }
                 )
@@ -576,3 +575,15 @@ class AnalysisService:
             if manifest != run.manifest_sha256:
                 raise AppError("analysis_manifest_corrupt", 500)
             return self._view(session, run, recomputed=True)
+
+
+def analysis_knowledge_snapshot(
+    session: Session, identity: UUID, *, lock: bool = False
+) -> AnalysisRunView:
+    query = select(AnalysisRun).where(AnalysisRun.id == identity)
+    if lock:
+        query = query.with_for_update()
+    run = session.scalar(query)
+    if run is None:
+        raise AppError("analysis_run_not_found", 404)
+    return AnalysisService._view(session, run)

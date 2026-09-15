@@ -72,9 +72,15 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
         ("/api/v1/analysis-runs/{identity}", "get"): "getAnalysisRun",
         ("/api/v1/analysis-runs/{identity}/recompute", "post"): "recomputeAnalysisRun",
         (
+            "/api/v1/analysis-runs/{identity}/knowledge-entry",
+            "post",
+        ): "publishAnalysisKnowledge",
+        (
             "/api/v1/analysis-runs/{identity}/samples/{sample_id}/label",
             "put",
         ): "labelAnalysisSample",
+        ("/api/v1/knowledge", "get"): "searchKnowledge",
+        ("/api/v1/knowledge/{identity}", "get"): "getKnowledgeEntry",
         ("/api/v1/notifications", "get"): "listNotifications",
         ("/api/v1/notifications/{identity}/read", "post"): "markNotificationRead",
         ("/api/v1/jobs", "get"): "listJobs",

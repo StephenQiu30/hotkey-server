@@ -508,6 +508,10 @@ declare namespace API {
     identity: string;
   };
 
+  type getKnowledgeEntryParams = {
+    identity: string;
+  };
+
   type HealthView = {
     /** Code */
     code?: string | null;
@@ -579,6 +583,55 @@ declare namespace API {
     kind: "verify_pipeline" | "collect_page";
     /** Status */
     status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  };
+
+  type KnowledgeCitationView = {
+    /** Available */
+    available: boolean;
+    /** Canonical Url */
+    canonical_url: string | null;
+    /** Content Version Id */
+    content_version_id: string;
+    /** Text */
+    text: string | null;
+    /** Text Sha256 */
+    text_sha256: string;
+  };
+
+  type KnowledgeEntryView = {
+    /** Analysis Manifest Sha256 */
+    analysis_manifest_sha256: string;
+    /** Body */
+    body: string;
+    /** Citations */
+    citations: KnowledgeCitationView[];
+    /** Created At */
+    created_at: string;
+    /** Entry Type */
+    entry_type: string;
+    /** Event Id */
+    event_id: string;
+    /** Id */
+    id: string;
+    /** Source Analysis Run Id */
+    source_analysis_run_id: string;
+    /** Stale */
+    stale: boolean;
+    /** Title */
+    title: string;
+    /** Updated At */
+    updated_at: string;
+    /** Version */
+    version: number;
+  };
+
+  type KnowledgePage = {
+    /** Items */
+    items: KnowledgeEntryView[];
+    /** Query */
+    query: string;
+    /** Query Mode */
+    query_mode?: string;
   };
 
   type labelAnalysisSampleParams = {
@@ -759,6 +812,10 @@ declare namespace API {
     username: string;
   };
 
+  type publishAnalysisKnowledgeParams = {
+    identity: string;
+  };
+
   type QueryPreview = {
     /** Content Purchase Cost */
     content_purchase_cost?: number;
@@ -823,6 +880,12 @@ declare namespace API {
     interval_minutes?: number;
     /** Retention Days */
     retention_days?: number;
+  };
+
+  type searchKnowledgeParams = {
+    query?: string | null;
+    event_id?: string | null;
+    limit?: number;
   };
 
   type SourceOperationCapability = {

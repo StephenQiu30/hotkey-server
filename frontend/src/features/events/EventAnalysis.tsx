@@ -6,6 +6,7 @@ import {
   listEventAnalysisRuns,
   recomputeAnalysisRun,
 } from "../../api/analysis";
+import { publishAnalysisKnowledge } from "../../api/knowledge";
 import { message } from "../../request";
 
 type Props = {
@@ -179,6 +180,7 @@ export function EventAnalysis({ eventId, eventRevision }: Props) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [savedAnalysisId, setSavedAnalysisId] = useState<string | null>(null);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -238,6 +240,16 @@ export function EventAnalysis({ eventId, eventRevision }: Props) {
       .finally(() => setBusy(false));
   }
 
+  function publishKnowledge() {
+    if (!run) return;
+    setBusy(true);
+    setError("");
+    void publishAnalysisKnowledge({ identity: run.id })
+      .then(() => setSavedAnalysisId(run.id))
+      .catch((reason: unknown) => setError(message(reason)))
+      .finally(() => setBusy(false));
+  }
+
   return (
     <section className="event-analysis" aria-label="评论观点分析">
       <div className="analysis-heading">
@@ -273,9 +285,20 @@ export function EventAnalysis({ eventId, eventRevision }: Props) {
               {run.composition.ordering_origins.provider_default ?? 0}
             </span>
           </div>
-          <button className="secondary" disabled={busy} onClick={recompute}>
-            按冻结清单重算
-          </button>
+          <div className="actions">
+            <button className="secondary" disabled={busy} onClick={recompute}>
+              按冻结清单重算
+            </button>
+            {run.status === "succeeded" && (
+              <button
+                className="secondary"
+                disabled={busy || savedAnalysisId === run.id}
+                onClick={publishKnowledge}
+              >
+                {savedAnalysisId === run.id ? "已保存到知识库" : "保存到知识库"}
+              </button>
+            )}
+          </div>
           {run.viewpoints.length > 0 && (
             <div className="analysis-viewpoints">
               <h5>已支持的观点</h5>

@@ -48,6 +48,16 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
     document.paths["/api/v1/analysis-runs/{identity}/recompute"].post
       .operationId,
   ).toBe("recomputeAnalysisRun");
+  expect(
+    document.paths["/api/v1/analysis-runs/{identity}/knowledge-entry"].post
+      .operationId,
+  ).toBe("publishAnalysisKnowledge");
+  expect(document.paths["/api/v1/knowledge"].get.operationId).toBe(
+    "searchKnowledge",
+  );
+  expect(document.paths["/api/v1/knowledge/{identity}"].get.operationId).toBe(
+    "getKnowledgeEntry",
+  );
   expect(document.paths["/api/v1/notifications"].get.operationId).toBe(
     "listNotifications",
   );

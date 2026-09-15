@@ -9,6 +9,7 @@ from events import models as events
 from evidence import models as evidence
 from identity import models as identity
 from jobs import models as jobs
+from knowledge import models as knowledge
 from monitors import models as monitors
 from notifications import models as notifications
 
@@ -22,6 +23,7 @@ __all__ = [
     "events",
     "identity",
     "jobs",
+    "knowledge",
     "monitors",
     "notifications",
 ]

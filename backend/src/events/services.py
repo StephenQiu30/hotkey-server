@@ -64,6 +64,13 @@ def event_analysis_scope(
     )
 
 
+def event_title_for_knowledge(session: Session, identity: UUID) -> str:
+    title = session.scalar(select(Event.title).where(Event.id == identity))
+    if title is None:
+        raise AppError("event_not_found", 404)
+    return title
+
+
 class EventService:
     def __init__(self, factory: sessionmaker[Session]):
         self.factory = factory

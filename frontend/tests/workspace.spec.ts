@@ -35,6 +35,10 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   await expect(
     page.getByRole("heading", { name: "还没有事件档案" }),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: /知识库/ })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "还没有知识条目" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "还没有事件提醒" }),
   ).toBeVisible();

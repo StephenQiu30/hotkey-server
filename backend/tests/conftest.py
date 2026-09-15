@@ -21,7 +21,8 @@ def database():
     with engine.begin() as conn:
         conn.execute(
             text(
-                "TRUNCATE analysis_labels, analysis_samples, analysis_runs, notifications, "
+                "TRUNCATE knowledge_citations, knowledge_versions, knowledge_entries, "
+                "analysis_labels, analysis_samples, analysis_runs, notifications, "
                 "event_members, event_revisions, events, "
                 "collection_checkpoints, "
                 "collection_budget_usage, monitor_matches, "
