@@ -37,6 +37,7 @@
   "verification": {
     "red": "Test collection failed with ModuleNotFoundError because the registered notifications module did not exist.",
     "backend_tests": "127 passed with disposable PostgreSQL 16 and RabbitMQ 4.1",
+    "remote_ci": "https://github.com/StephenQiu30/hotkey-server/actions/runs/34995710640",
     "ruff": "passed for all backend source and tests",
     "mypy": "passed for 105 application and migration source files",
     "frontend": "UmiOpenAPI drift, boundary, negative boundary, Prettier and TypeScript/Vite checks passed",
