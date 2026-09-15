@@ -27,6 +27,16 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   const capability = document.components.schemas.SourceOperationCapability;
   expect(capability.required).toContain("pipeline");
   expect(capability.required).toContain("eligible_for_collection");
+  expect(capability.required).toContain("requires_operations");
+  const runInput = document.components.schemas.CollectionRunRequest;
+  const runView = document.components.schemas.CollectionRunView;
+  expect(runInput.required).toContain("request_value");
+  expect(runInput.properties.query_variant).toBe(undefined);
+  expect(runView.properties.operation.enum).toEqual([
+    "search_posts",
+    "fetch_post",
+  ]);
+  expect(runView.required).toContain("parent_run_id");
   expect(document.components.schemas.SourceView.properties.pipeline).toBe(
     undefined,
   );

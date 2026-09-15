@@ -214,3 +214,15 @@ scheduler只读取monitor模块提供的当前active配置DTO，按UTC周期边�
 隔离 `hotkey-s02e` Compose完成0007迁移、真实scheduler → RabbitMQ → Celery prefork → PostgreSQL诊断，结果succeeded/attempts=1。Web不替换、只重建backend后代理返回预期401。Chromium 2项通过：Swagger UI渲染自动契约，owner工作台在默认零准入状态展示逐操作“权限待核对 · 未连接”，并完成查询预览、草稿、诊断、390px检查和会话撤销。正常停机worker=0、backend=143、scheduler=0，无SIGKILL/OOM；全部一次性Compose和测试容器及卷已删除。结构化证据见 [source-operation-admission-poc.json](evidence/source-operation-admission-poc.json)。
 
 这一步关闭的是配置表达、跨进程一致性和误配置失败边界。它不证明用户现有MinIO可用，也不证明B站或其他平台已获实际用途授权；因此不构成EV-007-003、真实收件箱、评论链或TASK-007-S02-T02完成证据。
+
+## 007 S02-T02F 搜索引用到正文验证（2026-09-15）
+
+B站搜索页现在只负责发现引用，最多选择一个合法bvid；搜索页数据库提交会在同一事务内为详情预留一次UTC日预算，并创建 `fetch_post` 子run、Job和Outbox。搜索和详情各自保存原始页，详情规范化为post后再执行关键词匹配与收件箱写入。父子关系、允许操作和同一父任务下的目标唯一性由0008数据库约束保证；周期唯一索引只覆盖parent为空的根搜索，因此同周期不同关键词发现同一帖子时不会让第二个父页回滚。同页重投先命中checkpoint，不重复创建详情任务。
+
+页边界重新检查当前monitor version是否active和fetch_post是否仍eligible。预算不足、暂停或详情撤权分别留下 `detail_budget_exhausted`、`monitor_inactive` 或 `detail_not_eligible`，不会继续调用详情。B站search能力声明依赖fetch_post，所以只配置搜索操作也不能启用monitor。新监控默认日预算为48，可覆盖每小时一个关键词的搜索加一个详情上限；历史快照不改写。
+
+从 `0007_collection_budget` 到 `0008_reference_expansion` 的独立升级POC先写入 `query_variant=AI-migration-value` 的历史search运行，再升级并确认 `request_value` 原值保留、parent为空、旧列已删除。真实PostgreSQL 16和RabbitMQ 4.1下107项pytest通过；Ruff与严格mypy（85个源文件）、依赖审计、FastAPI OpenAPI快照、UmiOpenAPI漂移、前端目录/负向边界、Prettier和TypeScript/Vite构建均通过。
+
+隔离 `hotkey-s02f` Compose迁移到0008并完成真实scheduler/RabbitMQ/Celery prefork诊断，attempts=1；运行时OpenAPI等于发布快照。后端容器替换时Web保持运行，代理认证端点返回401。Chromium 2项在文档端口通过，覆盖Swagger自动契约、默认零准入工作台和48次预算默认值。默认运行结果为6个平台、24个操作、0项eligible和0个collection run。正常停机worker=0、backend=143、scheduler=0，无SIGKILL/OOM；全部一次性资源已删除。结构化证据见 [search-reference-expansion-poc.json](evidence/search-reference-expansion-poc.json)。
+
+父子内容测试使用合成平台响应和内存EvidenceStore，没有访问外部平台或连接用户现有MinIO，也没有取得真实用途确认。它证明任务、预算、持久化与生成契约的工程闭环，不构成EV-007-003、真实平台收件箱、评论链或TASK-007-S02-T02完成证据。

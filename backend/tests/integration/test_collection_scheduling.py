@@ -18,11 +18,11 @@ pytestmark = pytest.mark.integration
 
 
 class AdmittedSources(SourceService):
-    def activation_issues(self, source_ids):
+    def activation_issues(self, source_ids, operation="search_posts"):
         return []
 
 
-def active_monitor(database, *, daily_requests=1):
+def active_monitor(database, *, daily_requests=2):
     sources = AdmittedSources()
     service = MonitorService(database, sources)
     created = service.create_monitor(
@@ -51,7 +51,7 @@ def manual_run(monitor, key):
         monitor_id=monitor.id,
         expected_version=monitor.current_version,
         source="bilibili",
-        query_variant="AI",
+        request_value="AI",
         since="2026-09-14T00:00:00Z",
         until="2026-09-15T00:00:00Z",
         idempotency_key=key,
@@ -74,14 +74,14 @@ def test_request_budget_is_atomic_across_concurrent_run_keys(database):
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(create, range(8)))
-    assert sum(not isinstance(result, str) for result in results) == 1
-    assert results.count("request_budget_exhausted") == 7
+    assert sum(not isinstance(result, str) for result in results) == 2
+    assert results.count("request_budget_exhausted") == 6
     with database() as session:
         usage = session.scalar(select(CollectionBudgetUsage))
-        assert usage is not None and usage.reserved_requests == 1
-        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 1
-        assert session.scalar(select(func.count()).select_from(Job)) == 1
-        assert session.scalar(select(func.count()).select_from(Outbox)) == 1
+        assert usage is not None and usage.reserved_requests == 2
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 2
+        assert session.scalar(select(func.count()).select_from(Job)) == 2
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 2
 
 
 def test_scheduler_creates_only_latest_completed_slot_and_is_idempotent(database):

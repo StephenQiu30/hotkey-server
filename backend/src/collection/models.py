@@ -6,9 +6,11 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,23 +44,47 @@ class CollectionRun(Base):
             name="ck_collection_runs_schedule_slot",
         ),
         CheckConstraint("reserved_requests = 1", name="ck_collection_runs_reserved_requests"),
+        CheckConstraint(
+            "operation IN ('search_posts', 'fetch_post')",
+            name="ck_collection_runs_operation",
+        ),
+        CheckConstraint(
+            "(operation = 'search_posts' AND parent_run_id IS NULL) OR "
+            "(operation = 'fetch_post' AND parent_run_id IS NOT NULL)",
+            name="ck_collection_runs_parent_operation",
+        ),
+        CheckConstraint(
+            "parent_run_id IS NULL OR parent_run_id <> id",
+            name="ck_collection_runs_parent_not_self",
+        ),
         UniqueConstraint(
+            "parent_run_id",
+            "operation",
+            "request_value",
+            name="uq_collection_runs_parent_request",
+        ),
+        Index(
+            "uq_collection_runs_schedule_slot",
             "monitor_version_id",
             "source",
             "operation",
-            "query_variant",
+            "request_value",
             "schedule_slot",
-            name="uq_collection_runs_schedule_slot",
+            unique=True,
+            postgresql_where=text("parent_run_id IS NULL"),
         ),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True)
     job_id: Mapped[UUID] = mapped_column(ForeignKey("jobs.id"), unique=True)
+    parent_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("collection_runs.id", ondelete="CASCADE"), index=True
+    )
     monitor_version_id: Mapped[UUID] = mapped_column(
         ForeignKey("monitor_versions.id", ondelete="CASCADE"), index=True
     )
     source: Mapped[str] = mapped_column(String(32))
     operation: Mapped[str] = mapped_column(String(32))
-    query_variant: Mapped[str] = mapped_column(String(100))
+    request_value: Mapped[str] = mapped_column(String(100))
     idempotency_key: Mapped[str] = mapped_column(String(128))
     policy_version: Mapped[str] = mapped_column(String(64))
     retention_days: Mapped[int] = mapped_column(Integer)

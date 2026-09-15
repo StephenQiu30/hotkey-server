@@ -54,7 +54,13 @@ export function Runs({
                   {run.budget_day} / {run.reserved_requests} 次
                 </span>
               </div>
-              <h3>{run.query_variant}</h3>
+              <h3>
+                {run.operation === "search_posts" ? "搜索" : "正文"}：
+                {run.request_value}
+              </h3>
+              {run.parent_run_id && (
+                <p className="muted small">来自搜索运行 {run.parent_run_id}</p>
+              )}
               <p className="muted small">
                 窗口 {time(run.window_since)} 至 {time(run.window_until)} · 页数{" "}
                 {run.pages_count}· 内容 {run.items_count} · 证据{" "}

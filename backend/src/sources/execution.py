@@ -3,27 +3,27 @@ import httpx
 from sources.adapters.bilibili import Bilibili
 from sources.adapters.bluesky import Bluesky
 from sources.contracts import FetchedPage
-from sources.schemas import BilibiliSearchInput, SearchInput, SearchPageInput
+from sources.schemas import BilibiliPostInput, BilibiliSearchInput, CollectionPageInput, SearchInput
 
 
-class PublicSearchFetcher:
-    def fetch(self, data: SearchPageInput) -> FetchedPage:
+class PublicCollectionFetcher:
+    def fetch(self, data: CollectionPageInput) -> FetchedPage:
         with httpx.Client(trust_env=False) as client:
-            if data.source == "bluesky":
+            if data.source == "bluesky" and data.operation == "search_posts":
                 return Bluesky(client).search_page(
                     SearchInput(
-                        keyword=data.keyword,
+                        keyword=data.request_value,
                         since=data.since,
                         until=data.until,
                         limit=data.limit,
-                        cursor=data.cursor,
                     )
                 )
-            if data.source == "bilibili":
-                if data.cursor is not None and not data.cursor.isdigit():
-                    raise ValueError("invalid bilibili page cursor")
-                page = int(data.cursor) if data.cursor is not None else 1
+            if data.source == "bilibili" and data.operation == "search_posts":
                 return Bilibili(client).search_page(
-                    BilibiliSearchInput(keyword=data.keyword, page=page, limit=data.limit)
+                    BilibiliSearchInput(keyword=data.request_value, page=1, limit=data.limit)
                 )
-        raise ValueError("source search adapter is unavailable")
+            if data.source == "bilibili" and data.operation == "fetch_post":
+                return Bilibili(client).post_page(
+                    BilibiliPostInput(bvid=data.request_value.removeprefix("bvid:"))
+                )
+        raise ValueError("source operation adapter is unavailable")

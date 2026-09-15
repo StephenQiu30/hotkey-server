@@ -1,0 +1,62 @@
+{
+  "scope": "S02-T02F search reference to post detail expansion",
+  "observed_at": "2026-09-15",
+  "external_network_accessed": false,
+  "existing_minio_connected": false,
+  "implementation": {
+    "root_operation": "search_posts",
+    "child_operation": "fetch_post",
+    "maximum_children_per_search": 1,
+    "independent_request_budget_per_run": true,
+    "child_run_job_outbox_and_budget_created_atomically": true,
+    "page_replay_creates_duplicate_child": false,
+    "scheduled_root_uniqueness_scope": "parent_run_id IS NULL",
+    "same_detail_from_distinct_search_parents_allowed": true,
+    "page_boundary_checks": [
+      "monitor_active",
+      "fetch_post_eligible",
+      "daily_request_budget"
+    ],
+    "new_monitor_default_daily_requests": 48,
+    "historical_budget_snapshots_rewritten": false
+  },
+  "migration": {
+    "from": "0007_collection_budget",
+    "to": "0008_reference_expansion",
+    "query_variant_removed": true,
+    "request_value_preserved": "AI-migration-value",
+    "existing_search_parent_run_id": null,
+    "model_metadata_matches_database": true
+  },
+  "contract_and_client": {
+    "openapi_generated_by_fastapi": true,
+    "runtime_openapi_matches_export": true,
+    "run_operations": ["search_posts", "fetch_post"],
+    "parent_run_id_exposed": true,
+    "umiopenapi_output": "frontend/src/api",
+    "handwritten_business_request": false,
+    "axios_transport": "frontend/src/request.ts"
+  },
+  "verification": {
+    "red": "Bilibili search admission and reference persistence tests failed before fetch_post was a persistent operation and child expansion existed.",
+    "backend_tests": "107 passed with PostgreSQL 16 and RabbitMQ 4.1; 2 upstream deprecation warnings",
+    "ruff": "passed",
+    "mypy": "passed for 85 source files",
+    "dependency_audit": "pip-audit found no known vulnerabilities; npm production audit found 0 vulnerabilities",
+    "frontend": "UmiOpenAPI drift, boundary, negative boundary, Prettier and TypeScript/Vite checks passed",
+    "compose_schema_revision": "0008_reference_expansion",
+    "compose_pipeline": "succeeded; attempts=1 with real Celery prefork and RabbitMQ",
+    "default_runtime": "6 sources, 24 operations, 0 eligible operations and 0 collection runs",
+    "proxy_replacement": "web stayed running and reached the replacement backend with HTTP 401",
+    "browser": "2 Chromium tests passed for generated Swagger UI and the authenticated default zero-admission workspace on documented ports",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL or OOM; disposable resources removed"
+  },
+  "limitations": [
+    "Synthetic provider responses and an in-memory evidence store were used for the parent-child content test.",
+    "No existing MinIO endpoint, bucket, credentials, permissions or lifecycle were exercised.",
+    "No external platform request, real content, account session or real use-right confirmation was used.",
+    "All production source operations remain not_connected by default.",
+    "Comment and reply expansion, events, analysis and knowledge remain unimplemented.",
+    "This does not satisfy EV-007-003 or TASK-007-S02-T02."
+  ]
+}

@@ -10,7 +10,7 @@
             "type": "integer"
           },
           "daily_requests": {
-            "default": 24,
+            "default": 48,
             "maximum": 1000.0,
             "minimum": 1.0,
             "title": "Daily Requests",
@@ -68,10 +68,10 @@
             "title": "Policy Version",
             "type": "string"
           },
-          "query_variant": {
+          "request_value": {
             "maxLength": 100,
             "minLength": 1,
-            "title": "Query Variant",
+            "title": "Request Value",
             "type": "string"
           },
           "retention_days": {
@@ -106,7 +106,7 @@
         "required": [
           "expected_version",
           "source",
-          "query_variant",
+          "request_value",
           "since",
           "until",
           "policy_version",
@@ -167,7 +167,10 @@
             "type": "string"
           },
           "operation": {
-            "const": "search_posts",
+            "enum": [
+              "search_posts",
+              "fetch_post"
+            ],
             "title": "Operation",
             "type": "string"
           },
@@ -192,8 +195,20 @@
             "title": "Pages Count",
             "type": "integer"
           },
-          "query_variant": {
-            "title": "Query Variant",
+          "parent_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Run Id"
+          },
+          "request_value": {
+            "title": "Request Value",
             "type": "string"
           },
           "reserved_requests": {
@@ -272,10 +287,11 @@
         "required": [
           "id",
           "job_id",
+          "parent_run_id",
           "monitor_version_id",
           "source",
           "operation",
-          "query_variant",
+          "request_value",
           "retention_days",
           "trigger",
           "schedule_slot",
@@ -1091,6 +1107,19 @@
             "title": "Pipeline",
             "type": "string"
           },
+          "requires_operations": {
+            "items": {
+              "enum": [
+                "search_posts",
+                "fetch_post",
+                "list_comments",
+                "list_replies"
+              ],
+              "type": "string"
+            },
+            "title": "Requires Operations",
+            "type": "array"
+          },
           "rights": {
             "enum": [
               "unknown",
@@ -1122,6 +1151,7 @@
           "rights",
           "pipeline",
           "eligible_for_collection",
+          "requires_operations",
           "access_mode",
           "verified_at",
           "evidence_ref",

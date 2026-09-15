@@ -7,7 +7,7 @@ from db.session import Database
 from evidence.adapters.minio import MinioEvidenceStore
 from jobs.contracts import Dispatch
 from jobs.execution import claim, complete
-from sources.execution import PublicSearchFetcher
+from sources.execution import PublicCollectionFetcher
 from sources.services import SourceService
 from worker.messaging import TASK_NAME, celery_app
 
@@ -25,7 +25,7 @@ def initialize(**kwargs: object) -> None:
         _collection_executor = CollectionExecutor(
             CollectionService(_database.sessions, sources, evidence_configured=True),
             sources,
-            PublicSearchFetcher(),
+            PublicCollectionFetcher(),
             MinioEvidenceStore.from_settings(settings),
         )
 

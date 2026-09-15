@@ -209,34 +209,41 @@ class Bilibili:
     def search(self, request: BilibiliSearchInput) -> SourceResult:
         return self.search_page(request).result
 
-    def post(self, request: BilibiliPostInput) -> SourceResult:
-        result, body = self._fetch(
-            "fetch_post", API_URL + "/x/web-interface/view", {"bvid": request.bvid}
+    def post_page(self, request: BilibiliPostInput) -> FetchedPage:
+        parameters: dict[str, str | int] = {"bvid": request.bvid}
+        result, body = self._fetch("fetch_post", API_URL + "/x/web-interface/view", parameters)
+        if body is not None:
+            data = self._data(result, body)
+            if data is not None:
+                try:
+                    video = Video.model_validate(data)
+                    result.items = [
+                        SocialObject(
+                            provider_namespace="video",
+                            external_id=f"video:{video.aid}",
+                            kind="post",
+                            text="\n".join(value for value in (video.title, video.desc) if value),
+                            author_id=str(video.owner.mid),
+                            created_at=datetime.fromtimestamp(video.pubdate, tz=UTC),
+                            root_id=f"video:{video.aid}",
+                            reply_count=video.stat.reply,
+                            canonical_url=f"https://www.bilibili.com/video/{video.bvid}",
+                        )
+                    ]
+                    result.status = "ok"
+                except (ValidationError, ValueError, OSError):
+                    result.code = "schema_changed"
+        fingerprint = request_fingerprint("bilibili", "fetch_post", parameters)
+        return FetchedPage(
+            result=result,
+            payload=body,
+            media_type="application/json",
+            request_fingerprint=fingerprint,
+            page_key=f"post:{fingerprint[:32]}",
         )
-        if body is None:
-            return result
-        data = self._data(result, body)
-        if data is None:
-            return result
-        try:
-            video = Video.model_validate(data)
-            result.items = [
-                SocialObject(
-                    provider_namespace="video",
-                    external_id=f"video:{video.aid}",
-                    kind="post",
-                    text="\n".join(value for value in (video.title, video.desc) if value),
-                    author_id=str(video.owner.mid),
-                    created_at=datetime.fromtimestamp(video.pubdate, tz=UTC),
-                    root_id=f"video:{video.aid}",
-                    reply_count=video.stat.reply,
-                    canonical_url=f"https://www.bilibili.com/video/{video.bvid}",
-                )
-            ]
-            result.status = "ok"
-        except (ValidationError, ValueError, OSError):
-            result.code = "schema_changed"
-        return result
+
+    def post(self, request: BilibiliPostInput) -> SourceResult:
+        return self.post_page(request).result
 
     def comments(self, request: BilibiliCommentsInput) -> SourceResult:
         result, body = self._fetch(

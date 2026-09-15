@@ -21,20 +21,25 @@ from monitors.models import MonitorMatch
 from monitors.schemas import MonitorInput, MonitorStateChange
 from monitors.services import MonitorService
 from sources.contracts import FetchedPage
-from sources.schemas import SocialObject, SourceResult
+from sources.schemas import SocialObject, SourceReference, SourceResult
 from sources.services import SourceService
 
 pytestmark = pytest.mark.integration
 
 
 class AdmittedSources(SourceService):
-    def activation_issues(self, source_ids):
+    def activation_issues(self, source_ids, operation="search_posts"):
         return []
 
 
 class RevokedSources(SourceService):
-    def activation_issues(self, source_ids):
+    def activation_issues(self, source_ids, operation="search_posts"):
         return ["source_not_eligible"]
+
+
+class SearchOnlySources(SourceService):
+    def activation_issues(self, source_ids, operation="search_posts"):
+        return [] if operation == "search_posts" else ["source_not_eligible"]
 
 
 class MemoryStore:
@@ -106,11 +111,12 @@ def result(
     kind: str = "post",
     root_id: str | None = None,
     parent_id: str | None = None,
+    operation: str = "search_posts",
 ) -> SourceResult:
     return SourceResult(
         source="bilibili",
         adapter_version="synthetic-transaction-poc",
-        operation="search_posts",
+        operation=operation,
         status="ok",
         observed_at=utcnow(),
         items=[
@@ -151,7 +157,7 @@ def run_and_commit(
             monitor_id=monitor_id,
             expected_version=version,
             source="bilibili",
-            query_variant="AI",
+            request_value="AI",
             since="2026-09-14T00:00:00Z",
             until="2026-09-15T00:00:00Z",
             idempotency_key=key,
@@ -223,7 +229,7 @@ def test_collection_run_and_job_are_atomic_and_executor_commits_one_page(databas
             monitor_id=active.id,
             expected_version=active.current_version,
             source="bilibili",
-            query_variant="AI",
+            request_value="AI",
             since="2026-09-14T00:00:00Z",
             until="2026-09-15T00:00:00Z",
             idempotency_key="executor-one-page",
@@ -257,6 +263,351 @@ def test_collection_run_and_job_are_atomic_and_executor_commits_one_page(databas
         assert session.scalar(select(func.count()).select_from(JobResult)) == 0
 
 
+def test_search_reference_commit_atomically_creates_one_budgeted_detail_run(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "引用展开", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    created = collection.create_run(
+        CollectionRunInput(
+            monitor_id=active.id,
+            expected_version=active.current_version,
+            source="bilibili",
+            request_value="AI",
+            since="2026-09-14T00:00:00Z",
+            until="2026-09-15T00:00:00Z",
+            idempotency_key="reference-expansion",
+            policy_version="synthetic-policy-v1",
+            retention_days=7,
+        )
+    )
+    payload = b'{"references":["BV1BVFWeHEaV"]}'
+    page = FetchedPage(
+        result=SourceResult(
+            source="bilibili",
+            adapter_version="synthetic-reference-poc",
+            operation="search_posts",
+            status="ok",
+            observed_at=utcnow(),
+            references=[
+                SourceReference(
+                    external_id="bvid:BV1BVFWeHEaV",
+                    canonical_url="https://www.bilibili.com/video/BV1BVFWeHEaV",
+                )
+            ],
+            response_bytes=len(payload),
+            response_sha256=sha256(payload).hexdigest(),
+        ),
+        payload=payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"reference-expansion-request").hexdigest(),
+        page_key="search:reference-expansion",
+    )
+    lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert lease is not None
+    store = MemoryStore()
+    assert CollectionExecutor(collection, sources, StaticFetcher(page), store).execute(lease)
+    duplicate = collection.commit_page(
+        PageCommitInput(
+            run_id=created.id,
+            fencing_token=lease.fencing_token,
+            page_key=page.page_key,
+            request_fingerprint=page.request_fingerprint,
+            media_type=page.media_type,
+            payload=payload,
+            retention_until=page.result.observed_at + timedelta(days=7),
+            policy_version="synthetic-policy-v1",
+            result=page.result,
+        ),
+        store,
+    )
+    assert duplicate.duplicate is True
+    assert duplicate.followup_run_count == 0
+
+    with database() as session:
+        runs = list(session.scalars(select(CollectionRun).order_by(CollectionRun.created_at)))
+        assert len(runs) == 2
+        detail = runs[1]
+        assert detail.parent_run_id == created.id
+        assert detail.operation == "fetch_post"
+        assert detail.request_value == "bvid:BV1BVFWeHEaV"
+        assert session.scalar(select(func.count()).select_from(Job)) == 2
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 2
+        detail_job_id = detail.job_id
+    assert complete(database, lease)
+
+    detail_payload = b'{"post":"video:113"}'
+    detail_page = FetchedPage(
+        result=result(
+            "AI 详情正文",
+            2,
+            detail_payload,
+            external_id="video:113",
+            root_id="video:113",
+            operation="fetch_post",
+        ),
+        payload=detail_payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"detail-request").hexdigest(),
+        page_key="post:detail",
+    )
+    detail_lease = claim(database, Dispatch(job_id=detail_job_id, epoch=1))
+    assert detail_lease is not None
+    assert CollectionExecutor(
+        collection, sources, StaticFetcher(detail_page), MemoryStore()
+    ).execute(detail_lease)
+    assert complete(database, detail_lease)
+
+    inbox = ContentService(database).inbox(20, None)
+    assert len(inbox.items) == 1
+    assert inbox.items[0].text == "AI 详情正文"
+    assert inbox.items[0].external_id == "video:113"
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(RawPage)) == 2
+        assert session.scalar(select(func.count()).select_from(CollectionCheckpoint)) == 2
+
+
+def test_same_scheduled_detail_can_be_expanded_from_distinct_search_parents(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "同帖多关键词", ["AI", "人工智能"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    slot = datetime(2026, 9, 15, tzinfo=UTC)
+    parents = []
+    for index, term in enumerate(("AI", "人工智能"), start=1):
+        parent = collection.create_run(
+            CollectionRunInput(
+                monitor_id=active.id,
+                expected_version=active.current_version,
+                source="bilibili",
+                request_value=term,
+                since="2026-09-14T00:00:00Z",
+                until="2026-09-15T00:00:00Z",
+                idempotency_key=f"same-detail-parent-{index}",
+                policy_version="synthetic-policy-v1",
+                retention_days=7,
+                trigger="scheduled",
+                schedule_slot=slot,
+            )
+        )
+        execution = collection.claim_for_job(parent.job_id, index)
+        assert execution is not None
+        payload = f'{{"search":{index}}}'.encode()
+        committed = collection.commit_page(
+            PageCommitInput(
+                run_id=parent.id,
+                fencing_token=execution.fencing_token,
+                page_key=f"search:same-detail-{index}",
+                request_fingerprint=sha256(f"same-detail-{index}".encode()).hexdigest(),
+                media_type="application/json",
+                payload=payload,
+                retention_until=utcnow() + timedelta(days=7),
+                policy_version="synthetic-policy-v1",
+                result=SourceResult(
+                    source="bilibili",
+                    adapter_version="synthetic-reference-poc",
+                    operation="search_posts",
+                    status="ok",
+                    observed_at=utcnow(),
+                    references=[
+                        SourceReference(
+                            external_id="bvid:BV1BVFWeHEaV",
+                            canonical_url="https://www.bilibili.com/video/BV1BVFWeHEaV",
+                        )
+                    ],
+                    response_bytes=len(payload),
+                    response_sha256=sha256(payload).hexdigest(),
+                ),
+            ),
+            MemoryStore(),
+        )
+        assert committed.followup_run_count == 1
+        parents.append(parent.id)
+
+    with database() as session:
+        children = list(
+            session.scalars(select(CollectionRun).where(CollectionRun.operation == "fetch_post"))
+        )
+        assert len(children) == 2
+        assert {child.parent_run_id for child in children} == set(parents)
+        assert {child.request_value for child in children} == {"bvid:BV1BVFWeHEaV"}
+        assert session.scalar(select(func.count()).select_from(Job)) == 4
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 4
+
+
+def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(database):
+    sources = AdmittedSources()
+    monitors = MonitorService(database, sources)
+    created_monitor = monitors.create_monitor(
+        MonitorInput.model_validate(
+            {
+                "title": "详情预算",
+                "query_spec": {"include_any": ["AI"]},
+                "source_ids": ["bilibili"],
+                "schedule": {"interval_minutes": 1440, "retention_days": 7},
+                "budget": {"daily_requests": 2, "content_purchase_cost": 0},
+            }
+        )
+    )
+    active = monitors.change_state(
+        created_monitor.id,
+        MonitorStateChange(expected_version=created_monitor.current_version),
+        "active",
+    )
+    collection = CollectionService(database, sources, evidence_configured=True)
+
+    def create(key):
+        return collection.create_run(
+            CollectionRunInput(
+                monitor_id=active.id,
+                expected_version=active.current_version,
+                source="bilibili",
+                request_value="AI",
+                since="2026-09-14T00:00:00Z",
+                until="2026-09-15T00:00:00Z",
+                idempotency_key=key,
+                policy_version="synthetic-policy-v1",
+                retention_days=7,
+            )
+        )
+
+    parent = create("budget-parent")
+    create("budget-competing-run")
+    payload = b'{"references":["BV1BVFWeHEaV"]}'
+    page = FetchedPage(
+        result=SourceResult(
+            source="bilibili",
+            adapter_version="synthetic-reference-poc",
+            operation="search_posts",
+            status="ok",
+            observed_at=utcnow(),
+            references=[
+                SourceReference(
+                    external_id="bvid:BV1BVFWeHEaV",
+                    canonical_url="https://www.bilibili.com/video/BV1BVFWeHEaV",
+                )
+            ],
+            response_bytes=len(payload),
+            response_sha256=sha256(payload).hexdigest(),
+        ),
+        payload=payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"budget-reference-request").hexdigest(),
+        page_key="search:budget-reference",
+    )
+    lease = claim(database, Dispatch(job_id=parent.job_id, epoch=1))
+    assert lease is not None
+    assert CollectionExecutor(collection, sources, StaticFetcher(page), MemoryStore()).execute(
+        lease
+    )
+
+    persisted = collection.run(parent.id)
+    assert persisted.outcome == "partial"
+    assert persisted.stop_reason == "detail_budget_exhausted"
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 2
+        assert session.scalar(select(func.count()).select_from(Job)) == 2
+
+
+def test_pausing_monitor_before_page_boundary_prevents_source_fetch(database):
+    sources = AdmittedSources()
+    monitors = MonitorService(database, sources)
+    active = monitor(monitors, "暂停边界", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    created = collection.create_run(
+        CollectionRunInput(
+            monitor_id=active.id,
+            expected_version=active.current_version,
+            source="bilibili",
+            request_value="AI",
+            since="2026-09-14T00:00:00Z",
+            until="2026-09-15T00:00:00Z",
+            idempotency_key="pause-before-fetch",
+            policy_version="synthetic-policy-v1",
+            retention_days=7,
+        )
+    )
+    lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert lease is not None
+    monitors.change_state(
+        active.id,
+        MonitorStateChange(expected_version=active.current_version),
+        "paused",
+    )
+    payload = b'{"must":"not fetch"}'
+    fetcher = StaticFetcher(
+        FetchedPage(
+            result=result("AI", 0, payload),
+            payload=payload,
+            media_type="application/json",
+            request_fingerprint=sha256(b"pause-before-fetch").hexdigest(),
+            page_key="search:pause-before-fetch",
+        )
+    )
+    assert CollectionExecutor(collection, sources, fetcher, MemoryStore()).execute(lease)
+    assert complete(database, lease)
+    persisted = collection.run(created.id)
+    assert persisted.state == "cancelled"
+    assert persisted.outcome == "partial"
+    assert persisted.stop_reason == "monitor_inactive"
+    assert fetcher.calls == 0
+
+
+def test_detail_revocation_at_search_commit_creates_no_followup(database):
+    sources = SearchOnlySources()
+    active = monitor(MonitorService(database, sources), "详情撤权", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    created = collection.create_run(
+        CollectionRunInput(
+            monitor_id=active.id,
+            expected_version=active.current_version,
+            source="bilibili",
+            request_value="AI",
+            since="2026-09-14T00:00:00Z",
+            until="2026-09-15T00:00:00Z",
+            idempotency_key="detail-revoked",
+            policy_version="synthetic-policy-v1",
+            retention_days=7,
+        )
+    )
+    execution = collection.claim_for_job(created.job_id, 1)
+    assert execution is not None
+    payload = b'{"references":["BV1BVFWeHEaV"]}'
+    committed = collection.commit_page(
+        PageCommitInput(
+            run_id=created.id,
+            fencing_token=execution.fencing_token,
+            page_key="search:detail-revoked",
+            request_fingerprint=sha256(b"detail-revoked-request").hexdigest(),
+            media_type="application/json",
+            payload=payload,
+            retention_until=utcnow() + timedelta(days=7),
+            policy_version="synthetic-policy-v1",
+            result=SourceResult(
+                source="bilibili",
+                adapter_version="synthetic-reference-poc",
+                operation="search_posts",
+                status="ok",
+                observed_at=utcnow(),
+                references=[
+                    SourceReference(
+                        external_id="bvid:BV1BVFWeHEaV",
+                        canonical_url="https://www.bilibili.com/video/BV1BVFWeHEaV",
+                    )
+                ],
+                response_bytes=len(payload),
+                response_sha256=sha256(payload).hexdigest(),
+            ),
+        ),
+        MemoryStore(),
+    )
+    assert committed.followup_run_count == 0
+    persisted = collection.run(created.id)
+    assert persisted.outcome == "partial"
+    assert persisted.stop_reason == "detail_not_eligible"
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 1
+        assert session.scalar(select(func.count()).select_from(Job)) == 1
+
+
 def test_worker_crash_after_page_commit_completes_job_without_refetch(database):
     sources = AdmittedSources()
     active = monitor(MonitorService(database, sources), "提交后恢复", ["AI"])
@@ -266,7 +617,7 @@ def test_worker_crash_after_page_commit_completes_job_without_refetch(database):
             monitor_id=active.id,
             expected_version=active.current_version,
             source="bilibili",
-            query_variant="AI",
+            request_value="AI",
             since="2026-09-14T00:00:00Z",
             until="2026-09-15T00:00:00Z",
             idempotency_key="crash-after-commit",
@@ -313,7 +664,7 @@ def test_missing_evidence_configuration_creates_no_run_or_job(database):
                 monitor_id=active.id,
                 expected_version=active.current_version,
                 source="bilibili",
-                query_variant="AI",
+                request_value="AI",
                 since="2026-09-14T00:00:00Z",
                 until="2026-09-15T00:00:00Z",
                 idempotency_key="missing-evidence",
@@ -334,7 +685,7 @@ def test_idempotent_replay_returns_committed_run_after_admission_is_revoked(data
         monitor_id=active.id,
         expected_version=active.current_version,
         source="bilibili",
-        query_variant="AI",
+        request_value="AI",
         since="2026-09-14T00:00:00Z",
         until="2026-09-15T00:00:00Z",
         idempotency_key="replay-after-revocation",
@@ -363,7 +714,7 @@ def test_concurrent_collection_run_creation_has_one_intent(database):
         monitor_id=active.id,
         expected_version=active.current_version,
         source="bilibili",
-        query_variant="AI",
+        request_value="AI",
         since="2026-09-14T00:00:00Z",
         until="2026-09-15T00:00:00Z",
         idempotency_key="concurrent-collection-run",
@@ -393,7 +744,7 @@ def test_executor_rechecks_source_eligibility_before_fetch(database):
             monitor_id=active.id,
             expected_version=active.current_version,
             source="bilibili",
-            query_variant="AI",
+            request_value="AI",
             since="2026-09-14T00:00:00Z",
             until="2026-09-15T00:00:00Z",
             idempotency_key="revoked-before-fetch",
@@ -527,7 +878,7 @@ def test_invalid_page_is_rejected_before_object_upload(database):
             monitor_id=active.id,
             expected_version=active.current_version,
             source="bilibili",
-            query_variant="AI",
+            request_value="AI",
             since="2026-09-14T00:00:00Z",
             until="2026-09-15T00:00:00Z",
             idempotency_key="preflight-reject",
@@ -566,7 +917,7 @@ def test_old_fence_cannot_commit_and_stale_commit_leaves_orphan_object(database)
             monitor_id=active.id,
             expected_version=active.current_version,
             source="bilibili",
-            query_variant="AI",
+            request_value="AI",
             since="2026-09-14T00:00:00Z",
             until="2026-09-15T00:00:00Z",
             idempotency_key="old-fence",

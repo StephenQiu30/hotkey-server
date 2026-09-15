@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from hashlib import sha256
+from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import and_, func, or_, select
@@ -32,10 +33,11 @@ from monitors.services import (
     match_content,
     monitor_query_spec,
     monitor_version_identity,
+    monitor_version_is_active,
     query_match_reasons,
 )
-from sources.schemas import QueryPreviewInput
-from sources.services import SourceService
+from sources.schemas import QueryPreviewInput, SourceName
+from sources.services import DISCOVERY_REFERENCE_LIMIT, SourceService
 
 
 class CollectionService:
@@ -71,7 +73,7 @@ class CollectionService:
                     version_id,
                     data.source,
                     data.operation,
-                    data.query_variant,
+                    data.request_value,
                     data.since,
                     data.until,
                     data.policy_version,
@@ -83,7 +85,7 @@ class CollectionService:
                     existing.monitor_version_id,
                     existing.source,
                     existing.operation,
-                    existing.query_variant,
+                    existing.request_value,
                     existing.window_since,
                     existing.window_until,
                     existing.policy_version,
@@ -111,8 +113,8 @@ class CollectionService:
                     until=data.until,
                 )
             )
-            if data.query_variant not in preview.sources[0].queries:
-                raise AppError("query_variant_not_in_snapshot", 409)
+            if data.request_value not in preview.sources[0].queries:
+                raise AppError("request_value_not_in_snapshot", 409)
             now = utcnow()
             budget_day = now.date()
             session.execute(
@@ -157,10 +159,11 @@ class CollectionService:
             run = CollectionRun(
                 id=run_id,
                 job_id=job.id,
+                parent_run_id=None,
                 monitor_version_id=configuration.monitor_version_id,
                 source=data.source,
                 operation=data.operation,
-                query_variant=data.query_variant,
+                request_value=data.request_value,
                 idempotency_key=data.idempotency_key,
                 policy_version=data.policy_version,
                 retention_days=data.retention_days,
@@ -197,7 +200,7 @@ class CollectionService:
         monitor_version_id: UUID,
         source: str,
         operation: str,
-        query_variant: str,
+        request_value: str,
         schedule_slot: datetime,
     ) -> bool:
         with self.factory() as session:
@@ -207,7 +210,7 @@ class CollectionService:
                         CollectionRun.monitor_version_id == monitor_version_id,
                         CollectionRun.source == source,
                         CollectionRun.operation == operation,
-                        CollectionRun.query_variant == query_variant,
+                        CollectionRun.request_value == request_value,
                         CollectionRun.schedule_slot == schedule_slot,
                     )
                 )
@@ -258,16 +261,23 @@ class CollectionService:
             )
             if run is None or run.state not in {"queued", "running"}:
                 return None
+            if not monitor_version_is_active(session, run.monitor_version_id):
+                run.state = "cancelled"
+                run.outcome = "partial"
+                run.stop_reason = "monitor_inactive"
+                run.completed_at = utcnow()
+                return None
             run.state = "running"
             run.fencing_token = fencing_token
             run.started_at = run.started_at or utcnow()
             return CollectionExecutionInput(
                 run_id=run.id,
                 job_id=run.job_id,
+                parent_run_id=run.parent_run_id,
                 fencing_token=run.fencing_token,
                 source=run.source,
                 operation=run.operation,
-                query_variant=run.query_variant,
+                request_value=run.request_value,
                 since=run.window_since,
                 until=run.window_until,
                 policy_version=run.policy_version,
@@ -279,7 +289,7 @@ class CollectionService:
             state = session.scalar(
                 select(CollectionRun.state).where(CollectionRun.job_id == job_id)
             )
-            return state in {"completed", "failed"}
+            return state in {"completed", "failed", "cancelled"}
 
     def fail_run(self, identity: UUID, fencing_token: int, reason: str) -> bool:
         with self.factory.begin() as session:
@@ -338,8 +348,79 @@ class CollectionService:
             item_count=checkpoint.item_count,
             new_content_count=0,
             new_version_count=0,
+            followup_run_count=0,
             duplicate=True,
         )
+
+    def _create_reference_runs(
+        self,
+        session: Session,
+        parent: CollectionRun,
+        references: list[str],
+    ) -> tuple[int, str | None]:
+        if parent.operation != "search_posts" or not references:
+            return 0, None
+        if not monitor_version_is_active(session, parent.monitor_version_id):
+            return 0, "monitor_inactive"
+        if self.sources.activation_issues([cast(SourceName, parent.source)], "fetch_post"):
+            return 0, "detail_not_eligible"
+        usage = session.scalar(
+            select(CollectionBudgetUsage)
+            .where(
+                CollectionBudgetUsage.monitor_version_id == parent.monitor_version_id,
+                CollectionBudgetUsage.budget_day == parent.budget_day,
+            )
+            .with_for_update()
+        )
+        if usage is None:
+            raise AppError("collection_budget_missing", 500)
+        created = 0
+        for request_value in list(dict.fromkeys(references))[:DISCOVERY_REFERENCE_LIMIT]:
+            if not self.sources.request_value_is_valid(
+                cast(SourceName, parent.source), "fetch_post", request_value
+            ):
+                return created, "invalid_detail_reference"
+            if usage.reserved_requests >= usage.limit_requests:
+                return created, "detail_budget_exhausted"
+            child_id = uuid4()
+            key = (
+                "followup:" + sha256(f"{parent.id}|fetch_post|{request_value}".encode()).hexdigest()
+            )
+            job = enqueue(session, "collection:" + sha256(key.encode()).hexdigest(), "collect_page")
+            session.add(
+                CollectionRun(
+                    id=child_id,
+                    job_id=job.id,
+                    parent_run_id=parent.id,
+                    monitor_version_id=parent.monitor_version_id,
+                    source=parent.source,
+                    operation="fetch_post",
+                    request_value=request_value,
+                    idempotency_key=key,
+                    policy_version=parent.policy_version,
+                    retention_days=parent.retention_days,
+                    trigger=parent.trigger,
+                    schedule_slot=parent.schedule_slot,
+                    budget_day=parent.budget_day,
+                    reserved_requests=1,
+                    state="queued",
+                    outcome=None,
+                    fencing_token=0,
+                    window_since=parent.window_since,
+                    window_until=parent.window_until,
+                    pages_count=0,
+                    items_count=0,
+                    bytes_count=0,
+                    stop_reason=None,
+                    created_at=utcnow(),
+                    started_at=None,
+                    completed_at=None,
+                )
+            )
+            usage.reserved_requests += 1
+            usage.updated_at = utcnow()
+            created += 1
+        return created, None
 
     def commit_page(self, data: PageCommitInput, store: EvidenceStore) -> PageCommitView:
         if data.result.response_sha256 is None:
@@ -412,9 +493,15 @@ class CollectionService:
             run.items_count += len(data.result.items)
             run.bytes_count += data.result.response_bytes
             run.stop_reason = data.result.code
+            followup_count, followup_stop = self._create_reference_runs(
+                session,
+                run,
+                [reference.external_id for reference in data.result.references],
+            )
             if data.result.cursor is None:
                 run.state = "failed" if data.result.status == "failed" else "completed"
-                run.outcome = data.result.status
+                run.outcome = "partial" if followup_stop else data.result.status
+                run.stop_reason = followup_stop or run.stop_reason
                 run.completed_at = utcnow()
             session.flush()
             return PageCommitView(
@@ -424,5 +511,6 @@ class CollectionService:
                 item_count=len(data.result.items),
                 new_content_count=new_contents,
                 new_version_count=new_versions,
+                followup_run_count=followup_count,
                 duplicate=False,
             )

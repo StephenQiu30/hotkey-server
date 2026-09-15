@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, date, datetime
 from typing import Literal, Self
 
@@ -20,6 +21,9 @@ class SourceOperationCapability(BaseModel):
     rights: Literal["unknown", "allowed", "denied"]
     pipeline: Literal["not_connected", "connected", "degraded", "paused"]
     eligible_for_collection: bool
+    requires_operations: list[
+        Literal["search_posts", "fetch_post", "list_comments", "list_replies"]
+    ]
     access_mode: Literal["public_web", "public_api", "official_paid_api", "authorized_session"]
     content_purchase_cost: Literal[0] = 0
     verified_at: date
@@ -141,19 +145,23 @@ class QueryPreview(BaseModel):
     network_accessed: Literal[False] = False
 
 
-class SearchPageInput(BaseModel):
+class CollectionPageInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     source: SourceName
-    keyword: str = Field(min_length=1, max_length=100)
+    operation: Literal["search_posts", "fetch_post"]
+    request_value: str = Field(min_length=1, max_length=100)
     since: AwareDatetime
     until: AwareDatetime
-    limit: int = Field(default=20, ge=1, le=20)
-    cursor: str | None = Field(default=None, min_length=1, max_length=2048)
+    limit: Literal[1] = 1
 
     @model_validator(mode="after")
-    def valid_window(self) -> Self:
+    def valid_request(self) -> Self:
         if self.since >= self.until:
             raise ValueError("since must precede until")
+        if self.operation == "fetch_post" and not re.fullmatch(
+            rf"bvid:{BILIBILI_BVID[1:-1]}", self.request_value
+        ):
+            raise ValueError("fetch_post requires a bvid reference")
         object.__setattr__(self, "since", self.since.astimezone(UTC))
         object.__setattr__(self, "until", self.until.astimezone(UTC))
         return self

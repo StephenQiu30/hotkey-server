@@ -71,6 +71,15 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
     }
     assert actual == expected
     assert document["info"]["title"] == "HotKey API"
+    run_input = document["components"]["schemas"]["CollectionRunRequest"]
+    run_view = document["components"]["schemas"]["CollectionRunView"]
+    assert "request_value" in run_input["required"]
+    assert "query_variant" not in run_input["properties"]
+    assert run_view["properties"]["operation"]["enum"] == [
+        "search_posts",
+        "fetch_post",
+    ]
+    assert "parent_run_id" in run_view["required"]
 
     with TestClient(create_app()) as client:
         swagger = client.get("/docs")

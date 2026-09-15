@@ -137,8 +137,8 @@ def test_exact_search_admission_is_shared_by_api_and_monitor_activation(database
         s3_access_key="access",
         s3_secret_key="secret",
         s3_bucket="hotkey-evidence-test",
-        source_rights_allowed=["bilibili.search_posts"],
-        source_pipelines_connected=["bilibili.search_posts"],
+        source_rights_allowed=["bilibili.search_posts", "bilibili.fetch_post"],
+        source_pipelines_connected=["bilibili.search_posts", "bilibili.fetch_post"],
     )
     with TestClient(create_app(settings)) as admitted:
         admitted.headers["Origin"] = "http://testserver"
@@ -161,7 +161,7 @@ def test_exact_search_admission_is_shared_by_api_and_monitor_activation(database
                 "query_spec": {"include_any": ["AI"]},
                 "source_ids": ["bilibili"],
                 "schedule": {"interval_minutes": 60, "retention_days": 7},
-                "budget": {"daily_requests": 24, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 48, "content_purchase_cost": 0},
             },
         ).json()
         activated = admitted.post(
@@ -270,7 +270,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
             "title": "受控启停",
             "query_spec": {"include_any": ["AI"]},
             "source_ids": ["bilibili"],
-            "budget": {"daily_requests": 23, "content_purchase_cost": 0},
+            "budget": {"daily_requests": 47, "content_purchase_cost": 0},
         },
     ).json()
     path = f"/api/v1/monitors/{created['id']}"
@@ -279,7 +279,9 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
     assert refused.status_code == 409
     assert refused.json()["code"] == "source_not_eligible"
 
-    monkeypatch.setattr(SourceService, "activation_issues", lambda self, source_ids: [])
+    monkeypatch.setattr(
+        SourceService, "activation_issues", lambda self, source_ids, operation="search_posts": []
+    )
     budget_refused = client.post(path + "/activate", json=state)
     assert budget_refused.status_code == 409
     assert budget_refused.json()["code"] == "monitor_budget_insufficient"
@@ -289,7 +291,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
             "title": "受控启停",
             "query_spec": {"include_any": ["AI"]},
             "source_ids": ["bilibili"],
-            "budget": {"daily_requests": 24, "content_purchase_cost": 0},
+            "budget": {"daily_requests": 48, "content_purchase_cost": 0},
             "expected_version": created["current_version"],
         },
     ).json()
@@ -302,7 +304,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
         json={
             "expected_version": updated["current_version"],
             "source": "bilibili",
-            "query_variant": "AI",
+            "request_value": "AI",
             "since": "2026-09-14T00:00:00Z",
             "until": "2026-09-15T00:00:00Z",
             "policy_version": "user-confirmed-policy-v1",
@@ -320,7 +322,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
         json={
             "expected_version": updated["current_version"],
             "source": "bilibili",
-            "query_variant": "AI",
+            "request_value": "AI",
             "since": "2026-09-14T00:00:00Z",
             "until": "2026-09-15T00:00:00Z",
             "policy_version": "user-confirmed-policy-v1",
@@ -352,7 +354,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
             "title": "暂停后修订",
             "query_spec": {"include_any": ["AI", "智能体"]},
             "source_ids": ["bilibili"],
-            "budget": {"daily_requests": 48, "content_purchase_cost": 0},
+            "budget": {"daily_requests": 96, "content_purchase_cost": 0},
             "expected_version": updated["current_version"],
         },
     ).json()

@@ -94,7 +94,7 @@ class CollectionScheduler:
                                 monitor_id=configuration.monitor_id,
                                 expected_version=configuration.version,
                                 source=source.source,
-                                query_variant=query,
+                                request_value=query,
                                 since=since,
                                 until=until,
                                 idempotency_key=key,

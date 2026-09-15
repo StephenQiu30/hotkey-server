@@ -1,4 +1,5 @@
 import json
+from hashlib import sha256
 
 import httpx
 import pytest
@@ -6,15 +7,15 @@ from pydantic import ValidationError
 
 from sources.adapters.bilibili import Bilibili
 from sources.adapters.bluesky import Bluesky
-from sources.execution import PublicSearchFetcher
+from sources.execution import PublicCollectionFetcher
 from sources.schemas import (
     BilibiliCommentsInput,
     BilibiliPostInput,
     BilibiliRepliesInput,
     BilibiliSearchInput,
+    CollectionPageInput,
     QueryPreviewInput,
     SearchInput,
-    SearchPageInput,
     SocialObject,
     ThreadInput,
 )
@@ -83,14 +84,17 @@ def test_operation_admission_requires_rights_pipeline_and_implemented_consumer()
     assert not search.eligible_for_collection
 
     admitted = SourceService(
-        rights_allowed={"bilibili.search_posts"},
-        pipelines_connected={"bilibili.search_posts"},
+        rights_allowed={"bilibili.search_posts", "bilibili.fetch_post"},
+        pipelines_connected={"bilibili.search_posts", "bilibili.fetch_post"},
     )
     operations = {item.operation: item for item in admitted.catalog()[1].operations}
     assert operations["search_posts"].eligible_for_collection
+    assert operations["search_posts"].requires_operations == ["fetch_post"]
     assert operations["search_posts"].pipeline == "connected"
-    assert operations["fetch_post"].rights == "unknown"
+    assert operations["fetch_post"].eligible_for_collection
     assert not admitted.activation_issues(["bilibili"])
+    assert admitted.request_value_is_valid("bilibili", "fetch_post", "bvid:BV1BVFWeHEaV")
+    assert not admitted.request_value_is_valid("bilibili", "fetch_post", "video:113")
 
     with pytest.raises(ValueError, match="persistent source operation is not implemented"):
         SourceService(pipelines_connected={"bilibili.list_comments"})
@@ -147,12 +151,12 @@ def test_query_preview_compiles_without_network_and_exposes_rule_boundaries():
     }
     assert xiaohongshu.queries == []
     assert all(rule.mode == "unsupported" for rule in xiaohongshu.rules)
-    assert preview.estimated_requests == 3
+    assert preview.estimated_requests == 6
     assert all(not source.pipeline_connected for source in preview.sources)
 
     admitted = SourceService(
-        rights_allowed={"bilibili.search_posts"},
-        pipelines_connected={"bilibili.search_posts"},
+        rights_allowed={"bilibili.search_posts", "bilibili.fetch_post"},
+        pipelines_connected={"bilibili.search_posts", "bilibili.fetch_post"},
     ).preview(
         QueryPreviewInput.model_validate(
             {
@@ -174,23 +178,24 @@ def test_window_validation():
     with pytest.raises(ValidationError):
         ThreadInput(uri="http://127.0.0.1/private")
     with pytest.raises(ValidationError):
-        SearchPageInput(
+        CollectionPageInput(
             source="bilibili",
-            keyword="x",
+            operation="search_posts",
+            request_value="x",
             since="2026-09-09T00:00:00Z",
             until="2026-09-01T00:00:00Z",
         )
 
 
-def test_public_fetcher_rejects_invalid_bilibili_cursor_before_network():
-    with pytest.raises(ValueError, match="invalid bilibili page cursor"):
-        PublicSearchFetcher().fetch(
-            SearchPageInput(
+def test_public_fetcher_rejects_invalid_bilibili_post_reference_before_network():
+    with pytest.raises(ValidationError, match="fetch_post requires a bvid reference"):
+        PublicCollectionFetcher().fetch(
+            CollectionPageInput(
                 source="bilibili",
-                keyword="人工智能",
+                operation="fetch_post",
+                request_value="video:113",
                 since="2026-09-01T00:00:00Z",
                 until="2026-09-09T00:00:00Z",
-                cursor="1e2",
             )
         )
 
@@ -403,9 +408,13 @@ def test_bilibili_bounded_search_post_comments_and_replies():
     assert [reference.external_id for reference in search_result.references] == [
         "bvid:BV1BVFWeHEaV"
     ]
-    post_result = source.post(BilibiliPostInput(bvid="BV1BVFWeHEaV"))
+    post_page = source.post_page(BilibiliPostInput(bvid="BV1BVFWeHEaV"))
+    post_result = post_page.result
     assert post_result.items[0].external_id == "video:113"
     assert post_result.items[0].reply_count == 2
+    assert post_page.payload is not None
+    assert post_result.response_sha256 == sha256(post_page.payload).hexdigest()
+    assert post_page.page_key.startswith("post:")
     comments = source.comments(BilibiliCommentsInput(aid=113, cursor=0, limit=20))
     assert comments.cursor == "1"
     assert comments.items[0].kind == "comment"

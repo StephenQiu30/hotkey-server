@@ -79,6 +79,21 @@ def monitor_version_identity(session: Session, monitor_id: UUID, version: int) -
     return identity
 
 
+def monitor_version_is_active(session: Session, monitor_version_id: UUID) -> bool:
+    return (
+        session.scalar(
+            select(Monitor.id)
+            .join(MonitorVersion, MonitorVersion.monitor_id == Monitor.id)
+            .where(
+                MonitorVersion.id == monitor_version_id,
+                Monitor.current_version == MonitorVersion.version,
+                Monitor.state == "active",
+            )
+        )
+        is not None
+    )
+
+
 def active_monitor_configuration(
     session: Session, monitor_id: UUID, expected_version: int
 ) -> ActiveMonitorConfiguration:

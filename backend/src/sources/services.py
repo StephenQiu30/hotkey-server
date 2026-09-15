@@ -1,8 +1,11 @@
 from collections.abc import Iterable
 from datetime import date
 
+from pydantic import ValidationError
+
 from core.config import Settings
 from sources.schemas import (
+    BilibiliPostInput,
     QueryPreview,
     QueryPreviewInput,
     QueryRuleExecution,
@@ -27,7 +30,8 @@ CATALOG_OPERATIONS = ("search_posts", "fetch_post", "list_comments", "list_repli
 KNOWN_SOURCE_OPERATIONS = frozenset(
     f"{source}.{operation}" for source in SOURCE_IDS for operation in CATALOG_OPERATIONS
 )
-PERSISTENT_SOURCE_OPERATIONS = frozenset({"bilibili.search_posts"})
+PERSISTENT_SOURCE_OPERATIONS = frozenset({"bilibili.search_posts", "bilibili.fetch_post"})
+DISCOVERY_REFERENCE_LIMIT = 1
 
 
 def capability(
@@ -35,6 +39,7 @@ def capability(
     support: str,
     access_mode: str,
     note: str,
+    requires_operations: tuple[str, ...] = (),
 ) -> SourceOperationCapability:
     return SourceOperationCapability.model_validate(
         {
@@ -43,6 +48,7 @@ def capability(
             "rights": "unknown",
             "pipeline": "not_connected",
             "eligible_for_collection": False,
+            "requires_operations": list(requires_operations),
             "access_mode": access_mode,
             "content_purchase_cost": 0,
             "verified_at": VERIFIED_AT,
@@ -128,11 +134,24 @@ class SourceService:
             (
                 "bilibili",
                 ["discovery", "comments"],
-                operations(
-                    "supported",
-                    "public_web",
-                    "无Cookie小样本可解析；长期保存与派生分析权限仍待核对。",
-                ),
+                [
+                    capability(
+                        "search_posts",
+                        "supported",
+                        "public_web",
+                        "无Cookie小样本可解析；正文入箱还需要帖子详情操作。",
+                        ("fetch_post",),
+                    ),
+                    *[
+                        capability(
+                            operation,
+                            "supported",
+                            "public_web",
+                            "无Cookie小样本可解析；长期保存与派生分析权限仍待核对。",
+                        )
+                        for operation in ("fetch_post", "list_comments", "list_replies")
+                    ],
+                ],
             ),
             (
                 "weibo",
@@ -195,18 +214,24 @@ class SourceService:
                 ],
             ),
         )
-        return [
-            SourceView.model_validate(
-                {
-                    "id": source,
-                    "roles": roles,
-                    "operations": [
-                        self._operation(source, operation) for operation in source_operations
-                    ],
-                }
-            )
-            for source, roles, source_operations in rows
-        ]
+        result = []
+        for source, roles, source_operations in rows:
+            admitted = [self._operation(source, operation) for operation in source_operations]
+            by_operation = {operation.operation: operation for operation in admitted}
+            resolved = [
+                operation.model_copy(
+                    update={
+                        "eligible_for_collection": operation.eligible_for_collection
+                        and all(
+                            by_operation[required].eligible_for_collection
+                            for required in operation.requires_operations
+                        )
+                    }
+                )
+                for operation in admitted
+            ]
+            result.append(SourceView(id=source, roles=roles, operations=resolved))
+        return result
 
     def preview(self, data: QueryPreviewInput) -> QueryPreview:
         catalog = {source.id: source for source in self.catalog()}
@@ -239,7 +264,8 @@ class SourceService:
                     support=search.support,
                     queries=queries,
                     rules=rules,
-                    estimated_requests=len(queries),
+                    estimated_requests=len(queries)
+                    * (1 + DISCOVERY_REFERENCE_LIMIT * len(search.requires_operations)),
                     pipeline_connected=search.pipeline == "connected",
                 )
             )
@@ -263,16 +289,28 @@ class SourceService:
             )
         ]
 
+    @staticmethod
+    def request_value_is_valid(source: SourceName, operation: str, value: str) -> bool:
+        if source != "bilibili" or operation != "fetch_post" or not value.startswith("bvid:"):
+            return False
+        try:
+            BilibiliPostInput(bvid=value.removeprefix("bvid:"))
+        except ValidationError:
+            return False
+        return True
+
     def request_estimate(self, query_spec: QuerySpec, source_ids: list[SourceName]) -> int:
         terms = set([*query_spec.include_any, *query_spec.aliases])
         catalog = {source.id: source for source in self.catalog()}
         return sum(
-            len(terms)
+            len(terms) * (1 + DISCOVERY_REFERENCE_LIMIT * len(operation.requires_operations))
             for source_id in source_ids
-            if next(
-                operation
-                for operation in catalog[source_id].operations
-                if operation.operation == "search_posts"
+            if (
+                operation := next(
+                    operation
+                    for operation in catalog[source_id].operations
+                    if operation.operation == "search_posts"
+                )
             ).support
             in {"supported", "authorization_required"}
         )

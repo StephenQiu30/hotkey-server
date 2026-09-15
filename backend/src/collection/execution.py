@@ -4,8 +4,8 @@ from collection.schemas import PageCommitInput
 from collection.services import CollectionService
 from evidence.contracts import EvidenceStore
 from jobs.contracts import Lease
-from sources.contracts import SearchPageFetcher
-from sources.schemas import SearchPageInput
+from sources.contracts import CollectionPageFetcher
+from sources.schemas import CollectionPageInput
 from sources.services import SourceService
 
 
@@ -14,7 +14,7 @@ class CollectionExecutor:
         self,
         service: CollectionService,
         sources: SourceService,
-        fetcher: SearchPageFetcher,
+        fetcher: CollectionPageFetcher,
         store: EvidenceStore,
     ):
         self.service = service
@@ -28,12 +28,13 @@ class CollectionExecutor:
         run = self.service.claim_for_job(lease.job_id, lease.fencing_token)
         if run is None:
             return self.service.result_committed_for_job(lease.job_id)
-        if self.sources.activation_issues([run.source]):
+        if self.sources.activation_issues([run.source], run.operation):
             return self.service.fail_run(run.run_id, run.fencing_token, "source_not_eligible")
         page = self.fetcher.fetch(
-            SearchPageInput(
+            CollectionPageInput(
                 source=run.source,
-                keyword=run.query_variant,
+                operation=run.operation,
+                request_value=run.request_value,
                 since=run.since,
                 until=run.until,
             )

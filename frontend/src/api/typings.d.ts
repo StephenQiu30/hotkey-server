@@ -28,8 +28,8 @@ declare namespace API {
     operation?: string;
     /** Policy Version */
     policy_version: string;
-    /** Query Variant */
-    query_variant: string;
+    /** Request Value */
+    request_value: string;
     /** Retention Days */
     retention_days: number;
     /** Since */
@@ -60,13 +60,15 @@ declare namespace API {
     /** Monitor Version Id */
     monitor_version_id: string;
     /** Operation */
-    operation: string;
+    operation: "search_posts" | "fetch_post";
     /** Outcome */
     outcome: "ok" | "empty" | "partial" | "failed" | null;
     /** Pages Count */
     pages_count: number;
-    /** Query Variant */
-    query_variant: string;
+    /** Parent Run Id */
+    parent_run_id: string | null;
+    /** Request Value */
+    request_value: string;
     /** Reserved Requests */
     reserved_requests: number;
     /** Retention Days */
@@ -371,6 +373,13 @@ declare namespace API {
     operation: "search_posts" | "fetch_post" | "list_comments" | "list_replies";
     /** Pipeline */
     pipeline: "not_connected" | "connected" | "degraded" | "paused";
+    /** Requires Operations */
+    requires_operations: (
+      | "search_posts"
+      | "fetch_post"
+      | "list_comments"
+      | "list_replies"
+    )[];
     /** Rights */
     rights: "unknown" | "allowed" | "denied";
     /** Support */

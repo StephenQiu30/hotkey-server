@@ -5,7 +5,7 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from sources.schemas import SearchPageInput, SourceResult
+from sources.schemas import CollectionPageInput, SourceResult
 
 
 def request_fingerprint(source: str, operation: str, parameters: Mapping[str, object]) -> str:
@@ -27,5 +27,5 @@ class FetchedPage(BaseModel):
     page_key: str = Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.:-]+$")
 
 
-class SearchPageFetcher(Protocol):
-    def fetch(self, data: SearchPageInput) -> FetchedPage: ...
+class CollectionPageFetcher(Protocol):
+    def fetch(self, data: CollectionPageInput) -> FetchedPage: ...

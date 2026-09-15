@@ -13,7 +13,7 @@ class CollectionRunInput(Input):
     expected_version: int = Field(ge=1)
     source: SourceName
     operation: Literal["search_posts"] = "search_posts"
-    query_variant: str = Field(min_length=1, max_length=100)
+    request_value: str = Field(min_length=1, max_length=100)
     since: AwareDatetime
     until: AwareDatetime
     idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.:-]+$")
@@ -39,10 +39,11 @@ class CollectionRunView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     job_id: UUID
+    parent_run_id: UUID | None
     monitor_version_id: UUID
     source: SourceName
-    operation: Literal["search_posts"]
-    query_variant: str
+    operation: Literal["search_posts", "fetch_post"]
+    request_value: str
     retention_days: int
     trigger: Literal["manual", "scheduled"]
     schedule_slot: datetime | None
@@ -70,7 +71,7 @@ class CollectionRunRequest(Input):
     expected_version: int = Field(ge=1)
     source: SourceName
     operation: Literal["search_posts"] = "search_posts"
-    query_variant: str = Field(min_length=1, max_length=100)
+    request_value: str = Field(min_length=1, max_length=100)
     since: AwareDatetime
     until: AwareDatetime
     policy_version: str = Field(min_length=1, max_length=64)
@@ -89,10 +90,11 @@ class CollectionExecutionInput(BaseModel):
     model_config = ConfigDict(frozen=True)
     run_id: UUID
     job_id: UUID
+    parent_run_id: UUID | None
     fencing_token: int = Field(ge=1)
     source: SourceName
-    operation: Literal["search_posts"]
-    query_variant: str
+    operation: Literal["search_posts", "fetch_post"]
+    request_value: str
     since: datetime
     until: datetime
     policy_version: str
@@ -125,4 +127,5 @@ class PageCommitView(BaseModel):
     item_count: int
     new_content_count: int
     new_version_count: int
+    followup_run_count: int
     duplicate: bool
