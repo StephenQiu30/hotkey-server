@@ -31,6 +31,8 @@ const messages: Record<string, string> = {
   embedding_invalid_response: "语义模型返回的数据不符合已锁定协议。",
   knowledge_query_required: "语义检索需要输入查询内容。",
   knowledge_version_changed: "知识版本已经变化，请刷新后重新建立索引。",
+  knowledge_entry_stale: "知识引用已经变化或撤权，不能继续建立语义索引。",
+  content_not_found: "内容不存在或已被清理。",
 };
 
 const client = axios.create({

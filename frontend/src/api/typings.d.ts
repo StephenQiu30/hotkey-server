@@ -305,6 +305,52 @@ declare namespace API {
     window_until: string;
   };
 
+  type CommentCountQuestion = {
+    /** Event Id */
+    event_id: string;
+    /** Kind */
+    kind: string;
+    /** Question */
+    question: string;
+    /** Since */
+    since: string;
+    /** Until */
+    until: string;
+  };
+
+  type ContentWithdrawalInput = {
+    /** Reason */
+    reason: "deleted" | "purpose_revoked";
+  };
+
+  type ContentWithdrawalView = {
+    /** Affected Knowledge Entries */
+    affected_knowledge_entries: number;
+    /** Id */
+    id: string;
+    /** Visibility */
+    visibility: "unavailable" | "deleted";
+  };
+
+  type ControlledCommentStatistics = {
+    /** By Kind */
+    by_kind: Record<string, any>;
+    /** By Source */
+    by_source: Record<string, any>;
+    /** Event Id */
+    event_id: string;
+    /** Event Revision */
+    event_revision: number;
+    /** Rule Version */
+    rule_version?: string;
+    /** Since */
+    since: string;
+    /** Total */
+    total: number;
+    /** Until */
+    until: string;
+  };
+
   type createCollectionRunParams = {
     identity: string;
   };
@@ -485,6 +531,19 @@ declare namespace API {
     updated_at: string;
   };
 
+  type EvidenceQuestion = {
+    /** Event Id */
+    event_id?: string | null;
+    /** Kind */
+    kind: string;
+    /** Limit */
+    limit?: number;
+    /** Mode */
+    mode?: "exact_substring" | "semantic";
+    /** Question */
+    question: string;
+  };
+
   type getAnalysisRunParams = {
     identity: string;
   };
@@ -587,6 +646,26 @@ declare namespace API {
     kind: "verify_pipeline" | "collect_page";
     /** Status */
     status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  };
+
+  type KnowledgeAnswer = {
+    /** Answer */
+    answer: string;
+    /** Citations */
+    citations?: KnowledgeCitationView[];
+    /** Kind */
+    kind: "comment_count" | "evidence";
+    /** Knowledge Entry Ids */
+    knowledge_entry_ids?: string[];
+    /** Method */
+    method: "controlled_statistics_v1" | "deterministic_retrieval_v1";
+    /** Question */
+    question: string;
+    statistics?: ControlledCommentStatistics | null;
+    /** Status */
+    status: "answered" | "unknown";
+    /** Unknown Reason */
+    unknown_reason?: string | null;
   };
 
   type KnowledgeCitationView = {
@@ -966,6 +1045,10 @@ declare namespace API {
   type TrendBucketHours = 1 | 6 | 24;
 
   type updateMonitorParams = {
+    identity: string;
+  };
+
+  type withdrawContentParams = {
     identity: string;
   };
 }

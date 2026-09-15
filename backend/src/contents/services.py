@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
+from typing import Literal
 from uuid import UUID, uuid4
 
 from sqlalchemy import and_, func, or_, select
@@ -71,6 +72,13 @@ class ContentAnalysisCandidate:
     context: AnalysisTextVersion
     parent_context: AnalysisTextVersion | None
     root_context: AnalysisTextVersion | None
+
+
+@dataclass(frozen=True)
+class WithdrawnContent:
+    id: UUID
+    visibility: str
+    version_ids: tuple[UUID, ...]
 
 
 def _latest_versions(
@@ -358,6 +366,31 @@ def content_references(
     }
 
 
+def withdraw_content(
+    session: Session,
+    identity: UUID,
+    reason: Literal["deleted", "purpose_revoked"],
+) -> WithdrawnContent:
+    content = session.scalar(select(Content).where(Content.id == identity).with_for_update())
+    if content is None:
+        raise AppError("content_not_found", 404)
+    requested_visibility = "deleted" if reason == "deleted" else "unavailable"
+    if content.visibility != "deleted":
+        content.visibility = requested_visibility
+    version_ids = tuple(
+        session.scalars(
+            select(ContentVersion.id)
+            .where(ContentVersion.content_id == identity)
+            .order_by(ContentVersion.version)
+        )
+    )
+    return WithdrawnContent(
+        id=content.id,
+        visibility=content.visibility,
+        version_ids=version_ids,
+    )
+
+
 def upsert_content(
     session: Session,
     item: SocialObject,
@@ -500,7 +533,10 @@ class ContentService:
         with self.factory() as session:
             query = (
                 select(Content)
-                .where(Content.id.in_(matched_content_ids_query()))
+                .where(
+                    Content.id.in_(matched_content_ids_query()),
+                    Content.visibility == "available",
+                )
                 .order_by(Content.first_seen_at.desc(), Content.id.desc())
             )
             if cursor is not None:

@@ -19,6 +19,7 @@ from analysis.schemas import (
     AnalysisRunView,
     AnalysisSampleView,
     AnalysisViewpoint,
+    ControlledCommentStatistics,
 )
 from audit.services import audit
 from contents.services import (
@@ -587,3 +588,29 @@ def analysis_knowledge_snapshot(
     if run is None:
         raise AppError("analysis_run_not_found", 404)
     return AnalysisService._view(session, run)
+
+
+def controlled_comment_statistics(
+    session: Session,
+    event_id: UUID,
+    since: datetime,
+    until: datetime,
+) -> ControlledCommentStatistics:
+    scope = event_analysis_scope(session, event_id)
+    candidates = content_analysis_candidates(
+        session,
+        scope.member_content_ids,
+        since,
+        until,
+        until,
+    )
+    unique = {candidate.content_id: candidate for candidate in candidates}
+    return ControlledCommentStatistics(
+        event_id=scope.id,
+        event_revision=scope.current_revision,
+        since=since,
+        until=until,
+        total=len(unique),
+        by_source=dict(sorted(Counter(item.source for item in unique.values()).items())),
+        by_kind=dict(sorted(Counter(item.kind for item in unique.values()).items())),
+    )

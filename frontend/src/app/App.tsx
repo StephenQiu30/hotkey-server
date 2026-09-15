@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listCollectionRuns } from "../api/collection";
-import { listInboxContents } from "../api/contents";
+import { listInboxContents, withdrawContent } from "../api/contents";
 import {
   addEventMember,
   createEvent,
@@ -282,6 +282,15 @@ export function App() {
               await refresh();
             });
           }}
+          onWithdraw={async (contentId) => {
+            await action(async () => {
+              await withdrawContent(
+                { identity: contentId },
+                { reason: "purpose_revoked" },
+              );
+              await refresh();
+            });
+          }}
           onMore={() => void more("contents")}
         />
         <NotificationInbox
@@ -350,7 +359,7 @@ export function App() {
           }}
           onMore={() => void more("events")}
         />
-        <KnowledgeSearch />
+        <KnowledgeSearch events={events} />
         <section>
           <div className="section-title">
             <h2>

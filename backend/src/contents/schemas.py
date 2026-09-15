@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from core.schemas import Input
 from sources.schemas import SourceName
 
 
@@ -29,3 +30,13 @@ class InboxItem(BaseModel):
 class InboxPage(BaseModel):
     items: list[InboxItem]
     next_cursor: str | None
+
+
+class ContentWithdrawalInput(Input):
+    reason: Literal["deleted", "purpose_revoked"]
+
+
+class ContentWithdrawalView(BaseModel):
+    id: UUID
+    visibility: Literal["unavailable", "deleted"]
+    affected_knowledge_entries: int

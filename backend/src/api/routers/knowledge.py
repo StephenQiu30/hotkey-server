@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query
 
 from api.dependencies import Authenticated, Knowledge
 from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
-from knowledge.schemas import KnowledgeEntryView, KnowledgePage
+from knowledge.schemas import KnowledgeAnswer, KnowledgeEntryView, KnowledgePage, KnowledgeQuestion
 
 router = APIRouter(tags=["knowledge"])
 
@@ -40,6 +40,20 @@ def search_knowledge(
     limit: Annotated[int, Query(ge=1, le=20)] = 20,
 ) -> KnowledgePage:
     return service.search(query, event_id, limit, mode)
+
+
+@router.post(
+    "/api/v1/knowledge/query",
+    response_model=KnowledgeAnswer,
+    responses=error_responses(*WRITE_ERROR_CODES, 404, 422),
+    operation_id="queryKnowledge",
+)
+def query_knowledge(
+    data: KnowledgeQuestion,
+    service: Knowledge,
+    owner: Authenticated,
+) -> KnowledgeAnswer:
+    return service.query(data)
 
 
 @router.post(

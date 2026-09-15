@@ -153,3 +153,14 @@ class AnalysisRunView(BaseModel):
     created_at: datetime
     updated_at: datetime
     recomputed_from_manifest: bool = False
+
+
+class ControlledCommentStatistics(BaseModel):
+    event_id: UUID
+    event_revision: int = Field(ge=1)
+    since: datetime
+    until: datetime
+    rule_version: Literal["event-comment-count-v1"] = "event-comment-count-v1"
+    total: int = Field(ge=0)
+    by_source: dict[str, int]
+    by_kind: dict[str, int]

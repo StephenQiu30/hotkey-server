@@ -10,6 +10,7 @@ type InboxProps = {
   busy: boolean;
   events: API.EventView[];
   onAssign: (eventId: string, contentId: string) => Promise<void>;
+  onWithdraw: (contentId: string) => Promise<void>;
   onMore: () => void;
 };
 
@@ -32,6 +33,7 @@ export function Inbox({
   busy,
   events,
   onAssign,
+  onWithdraw,
   onMore,
 }: InboxProps) {
   const [selected, setSelected] = useState<Record<string, string>>({});
@@ -115,6 +117,14 @@ export function Inbox({
                   </div>
                 );
               })()}
+              <button
+                className="secondary"
+                disabled={busy}
+                aria-label={`撤销 ${item.external_id} 的分析与检索用途`}
+                onClick={() => void onWithdraw(item.id)}
+              >
+                撤销分析与检索用途
+              </button>
             </article>
           ))}
         </div>

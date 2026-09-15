@@ -68,3 +68,18 @@ export async function indexKnowledgeEntry(
     }
   );
 }
+
+/** Query Knowledge POST /api/v1/knowledge/query */
+export async function queryKnowledge(
+  body: API.CommentCountQuestion | API.EvidenceQuestion,
+  options?: RequestOptions
+) {
+  return request<API.KnowledgeAnswer>("/api/v1/knowledge/query", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    data: body,
+    ...(options || {}),
+  });
+}

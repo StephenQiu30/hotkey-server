@@ -354,6 +354,45 @@ section {
 .knowledge-search-form label {
   margin: 0;
 }
+.knowledge-question-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.knowledge-question-form > div:first-child,
+.knowledge-question-form > button,
+.knowledge-question-form > [role="alert"],
+.knowledge-answer {
+  grid-column: 1 / -1;
+}
+.knowledge-question-form label {
+  margin: 0;
+}
+.knowledge-question-window {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.knowledge-answer,
+.knowledge-statistics {
+  display: grid;
+  gap: 8px;
+}
+.knowledge-answer {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.knowledge-answer .badge {
+  justify-self: start;
+}
+.knowledge-answer p {
+  white-space: pre-wrap;
+}
+.knowledge-statistics span {
+  color: #607068;
+  font-size: 13px;
+}
 .knowledge-list {
   display: grid;
   gap: 16px;
@@ -525,7 +564,9 @@ code {
 }
 @media (max-width: 640px) {
   .analysis-label-form,
-  .knowledge-search-form {
+  .knowledge-search-form,
+  .knowledge-question-form,
+  .knowledge-question-window {
     grid-template-columns: 1fr;
   }
   .knowledge-entry-heading {

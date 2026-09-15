@@ -14,6 +14,7 @@ from collection.models import CollectionRun
 from collection.schemas import CollectionRunInput
 from collection.services import CollectionService
 from contents.models import Content, ContentVersion
+from contents.schemas import ContentWithdrawalInput
 from core.config import Settings
 from core.errors import AppError
 from events.schemas import EventInput, EventMemberInput
@@ -21,10 +22,12 @@ from events.services import EventService
 from evidence.models import RawPage
 from identity.services import IdentityService
 from knowledge.models import KnowledgeChunk, KnowledgeCitation, KnowledgeEntry, KnowledgeVersion
+from knowledge.schemas import CommentCountQuestion, EvidenceQuestion
 from knowledge.services import KnowledgeService
 from main import create_app
 from monitors.schemas import MonitorInput, MonitorStateChange
 from monitors.services import MonitorService
+from sources.schemas import SourceName
 from sources.services import SourceService
 
 pytestmark = pytest.mark.integration
@@ -51,7 +54,7 @@ class FailingEmbeddingProvider:
         raise EmbeddingProviderError("embedding_unavailable")
 
 
-def _raw_page(database, start: datetime) -> UUID:
+def _raw_page(database, start: datetime, source: SourceName = "bilibili") -> UUID:
     sources = AdmittedSources()
     monitors = MonitorService(database, sources)
     draft = monitors.create_monitor(
@@ -59,7 +62,7 @@ def _raw_page(database, start: datetime) -> UUID:
             {
                 "title": "知识检索测试",
                 "query_spec": {"include_any": ["热点"]},
-                "source_ids": ["bilibili"],
+                "source_ids": [source],
                 "budget": {"daily_requests": 100, "content_purchase_cost": 0},
             }
         )
@@ -73,11 +76,11 @@ def _raw_page(database, start: datetime) -> UUID:
         CollectionRunInput(
             monitor_id=monitor.id,
             expected_version=monitor.current_version,
-            source="bilibili",
+            source=source,
             request_value="热点",
             since=start,
             until=start + timedelta(days=3),
-            idempotency_key="knowledge-bilibili",
+            idempotency_key=f"knowledge-{source}",
             policy_version="knowledge-policy-v1",
             retention_days=7,
             ingestion_mode="live",
@@ -96,11 +99,11 @@ def _raw_page(database, start: datetime) -> UUID:
             RawPage(
                 id=raw_page_id,
                 run_id=run.id,
-                source="bilibili",
+                source=source,
                 operation="list_comments",
                 request_fingerprint=digest,
                 bucket="synthetic",
-                object_key="raw/synthetic/knowledge-bilibili.json.gz",
+                object_key=f"raw/synthetic/knowledge-{source}.json.gz",
                 payload_sha256=digest,
                 object_sha256=digest,
                 response_bytes=1,
@@ -123,17 +126,18 @@ def _content(
     root_external_id: str,
     text: str,
     published_at: datetime,
+    source: SourceName = "bilibili",
 ) -> UUID:
     content_id = uuid4()
     with database.begin() as session:
         session.add(
             Content(
                 id=content_id,
-                source="bilibili",
+                source=source,
                 provider_namespace="video" if kind == "post" else "comment",
                 external_id=external_id,
                 kind=kind,
-                canonical_url=f"https://example.test/bilibili/{external_id}",
+                canonical_url=f"https://example.test/{source}/{external_id}",
                 author_ref="synthetic-author",
                 root_external_id=root_external_id,
                 parent_external_id=None,
@@ -265,7 +269,7 @@ def test_analysis_snapshot_can_be_published_found_and_marked_stale(database):
     stale = service.get(published.id)
     assert stale.stale
     assert any(not citation.available and citation.text is None for citation in stale.citations)
-    assert service.search("修复稳定性", None, 20).items[0].stale
+    assert service.search("修复稳定性", None, 20).items == []
 
 
 def test_pending_analysis_cannot_be_published(database):
@@ -286,7 +290,7 @@ def test_pending_analysis_cannot_be_published(database):
 
 
 def test_authenticated_http_can_publish_and_search_analysis_snapshot(database):
-    _, analysis, _ = _completed_analysis(database)
+    event, analysis, _ = _completed_analysis(database)
     IdentityService(database).bootstrap("knowledge-owner", "Test-password-123!")
     settings = Settings(
         database_url=os.environ["HOTKEY_TEST_DATABASE_URL"],
@@ -315,9 +319,41 @@ def test_authenticated_http_can_publish_and_search_analysis_snapshot(database):
         detail = client.get(f"/api/v1/knowledge/{first.json()['id']}")
         assert detail.status_code == 200
         assert len(detail.json()["citations"]) == 2
+        statistics = client.post(
+            "/api/v1/knowledge/query",
+            json={
+                "kind": "comment_count",
+                "question": "这次事件有多少条评论？",
+                "event_id": str(event.id),
+                "since": analysis.since.isoformat(),
+                "until": analysis.until.isoformat(),
+            },
+        )
+        assert statistics.status_code == 200
+        assert statistics.json()["statistics"]["total"] == 2
+        evidence = client.post(
+            "/api/v1/knowledge/query",
+            json={
+                "kind": "evidence",
+                "question": "修复稳定性",
+                "event_id": str(event.id),
+                "mode": "exact_substring",
+                "limit": 3,
+            },
+        )
+        assert evidence.status_code == 200
+        assert evidence.json()["status"] == "answered"
+        content_id = analysis.samples[0].contexts[0].content_id
+        withdrawn = client.post(
+            f"/api/v1/contents/{content_id}/withdraw",
+            json={"reason": "purpose_revoked"},
+        )
+        assert withdrawn.status_code == 200
+        assert withdrawn.json()["visibility"] == "unavailable"
+        assert client.get("/api/v1/knowledge", params={"query": "修复稳定性"}).json()["items"] == []
         unavailable = client.post(f"/api/v1/knowledge/{first.json()['id']}/semantic-index")
-        assert unavailable.status_code == 503
-        assert unavailable.json()["code"] == "embedding_not_configured"
+        assert unavailable.status_code == 409
+        assert unavailable.json()["code"] == "knowledge_entry_stale"
         semantic = client.get(
             "/api/v1/knowledge", params={"query": "release outage", "mode": "semantic"}
         )
@@ -345,3 +381,197 @@ def test_semantic_index_failure_can_be_retried_and_filtered_by_event(database):
     assert page.items[0].id == published.id
     assert page.items[0].similarity == pytest.approx(1.0)
     assert service.search("release outage", uuid4(), 20, "semantic").items == []
+
+
+def test_controlled_query_and_withdrawal_propagate_to_all_online_reads(database):
+    event, analysis, _ = _completed_analysis(database)
+    service = KnowledgeService(database, StaticEmbeddingProvider())
+    published = service.publish_analysis(analysis.id)
+    service.index(published.id)
+
+    statistics = service.query(
+        CommentCountQuestion(
+            kind="comment_count",
+            question="这次事件一共采到了多少条评论？",
+            event_id=event.id,
+            since=analysis.since,
+            until=analysis.until,
+        )
+    )
+    assert statistics.status == "answered"
+    assert statistics.method == "controlled_statistics_v1"
+    assert statistics.statistics is not None
+    assert statistics.statistics.total == 2
+    assert statistics.statistics.by_source == {"bilibili": 2}
+    assert statistics.statistics.by_kind == {"comment": 2}
+    assert statistics.citations == []
+
+    evidence = service.query(
+        EvidenceQuestion(
+            kind="evidence",
+            question="修复稳定性",
+            event_id=event.id,
+            mode="exact_substring",
+            limit=3,
+        )
+    )
+    assert evidence.status == "answered"
+    assert evidence.method == "deterministic_retrieval_v1"
+    assert evidence.statistics is None
+    assert evidence.knowledge_entry_ids == [published.id]
+    assert len(evidence.citations) == 2
+    assert all(citation.available for citation in evidence.citations)
+
+    unknown = service.query(
+        EvidenceQuestion(
+            kind="evidence",
+            question="完全不存在的事实",
+            event_id=event.id,
+            mode="exact_substring",
+            limit=3,
+        )
+    )
+    assert unknown.status == "unknown"
+    assert unknown.knowledge_entry_ids == []
+    assert unknown.citations == []
+    assert unknown.unknown_reason == "no_supported_evidence"
+
+    withdrawn_content_id = analysis.samples[0].contexts[0].content_id
+    withdrawn = service.withdraw_content(
+        withdrawn_content_id,
+        ContentWithdrawalInput(reason="purpose_revoked"),
+    )
+    replayed = service.withdraw_content(
+        withdrawn_content_id,
+        ContentWithdrawalInput(reason="purpose_revoked"),
+    )
+    assert withdrawn == replayed
+    assert withdrawn.visibility == "unavailable"
+    assert withdrawn.affected_knowledge_entries == 1
+
+    after_statistics = service.query(
+        CommentCountQuestion(
+            kind="comment_count",
+            question="撤权后还剩多少条评论？",
+            event_id=event.id,
+            since=analysis.since,
+            until=analysis.until,
+        )
+    )
+    assert after_statistics.statistics is not None
+    assert after_statistics.statistics.total == 1
+    assert service.search("修复稳定性", event.id, 20).items == []
+    assert service.search("release outage", event.id, 20, "semantic").items == []
+    assert (
+        service.query(
+            EvidenceQuestion(
+                kind="evidence",
+                question="修复稳定性",
+                event_id=event.id,
+                mode="exact_substring",
+                limit=3,
+            )
+        ).status
+        == "unknown"
+    )
+
+    detail = service.get(published.id)
+    assert detail.stale
+    assert any(not citation.available and citation.text is None for citation in detail.citations)
+    with database() as session:
+        chunk = session.scalar(select(KnowledgeChunk))
+        content = session.get(Content, withdrawn_content_id)
+        assert chunk is not None and chunk.index_state == "stale"
+        assert chunk.embedding is None
+        assert content is not None and content.visibility == "unavailable"
+
+    deleted = service.withdraw_content(
+        withdrawn_content_id,
+        ContentWithdrawalInput(reason="deleted"),
+    )
+    deleted_replay = service.withdraw_content(
+        withdrawn_content_id,
+        ContentWithdrawalInput(reason="deleted"),
+    )
+    assert deleted == deleted_replay
+    assert deleted.visibility == "deleted"
+    with database() as session:
+        chunk = session.scalar(select(KnowledgeChunk))
+        content = session.get(Content, withdrawn_content_id)
+        assert chunk is not None and chunk.index_state == "deleted"
+        assert chunk.embedding is None
+        assert content is not None and content.visibility == "deleted"
+
+
+def test_controlled_statistics_use_event_window_and_deduplicate_cross_platform_comments(database):
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    bilibili_page = _raw_page(database, start, "bilibili")
+    bluesky_page = _raw_page(database, start, "bluesky")
+    members = [
+        _content(
+            database,
+            bilibili_page,
+            external_id="stat-bili-1",
+            kind="comment",
+            root_external_id="stat-root-bili",
+            text="合成评论一",
+            published_at=start + timedelta(hours=1),
+        ),
+        _content(
+            database,
+            bilibili_page,
+            external_id="stat-bili-2",
+            kind="comment",
+            root_external_id="stat-root-bili",
+            text="合成评论二",
+            published_at=start + timedelta(hours=2),
+        ),
+        _content(
+            database,
+            bluesky_page,
+            external_id="stat-blue-reply",
+            kind="reply",
+            root_external_id="stat-root-blue",
+            text="synthetic reply",
+            published_at=start + timedelta(hours=3),
+            source="bluesky",
+        ),
+        _content(
+            database,
+            bilibili_page,
+            external_id="stat-outside",
+            kind="comment",
+            root_external_id="stat-root-bili",
+            text="窗口外评论",
+            published_at=start + timedelta(days=2),
+        ),
+        _content(
+            database,
+            bilibili_page,
+            external_id="stat-root",
+            kind="post",
+            root_external_id="stat-root",
+            text="根帖不进入评论分母",
+            published_at=start + timedelta(hours=1),
+        ),
+    ]
+    events = EventService(database)
+    event = events.create(EventInput(title="跨平台统计事件"))
+    for content_id in members:
+        event = events.add_member(event.id, EventMemberInput(content_id=content_id))
+
+    answer = KnowledgeService(database).query(
+        CommentCountQuestion(
+            kind="comment_count",
+            question="一天内采到了多少条评论？",
+            event_id=event.id,
+            since=start,
+            until=start + timedelta(days=1),
+        )
+    )
+    assert answer.statistics is not None
+    assert answer.statistics.total == 3
+    assert answer.statistics.by_source == {"bilibili": 2, "bluesky": 1}
+    assert answer.statistics.by_kind == {"comment": 2, "reply": 1}
+    assert sum(answer.statistics.by_source.values()) == answer.statistics.total
+    assert sum(answer.statistics.by_kind.values()) == answer.statistics.total

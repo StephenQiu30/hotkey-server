@@ -1026,6 +1026,152 @@
         "title": "CollectionRunView",
         "type": "object"
       },
+      "CommentCountQuestion": {
+        "additionalProperties": false,
+        "properties": {
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "comment_count",
+            "title": "Kind",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 300,
+            "minLength": 2,
+            "title": "Question",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "question",
+          "event_id",
+          "since",
+          "until"
+        ],
+        "title": "CommentCountQuestion",
+        "type": "object"
+      },
+      "ContentWithdrawalInput": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "enum": [
+              "deleted",
+              "purpose_revoked"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ContentWithdrawalInput",
+        "type": "object"
+      },
+      "ContentWithdrawalView": {
+        "properties": {
+          "affected_knowledge_entries": {
+            "title": "Affected Knowledge Entries",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "unavailable",
+              "deleted"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "visibility",
+          "affected_knowledge_entries"
+        ],
+        "title": "ContentWithdrawalView",
+        "type": "object"
+      },
+      "ControlledCommentStatistics": {
+        "properties": {
+          "by_kind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Kind",
+            "type": "object"
+          },
+          "by_source": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Source",
+            "type": "object"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_revision": {
+            "minimum": 1.0,
+            "title": "Event Revision",
+            "type": "integer"
+          },
+          "rule_version": {
+            "const": "event-comment-count-v1",
+            "default": "event-comment-count-v1",
+            "title": "Rule Version",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_revision",
+          "since",
+          "until",
+          "total",
+          "by_source",
+          "by_kind"
+        ],
+        "title": "ControlledCommentStatistics",
+        "type": "object"
+      },
       "DiagnosticInput": {
         "additionalProperties": false,
         "properties": {
@@ -1574,6 +1720,56 @@
         "title": "EventView",
         "type": "object"
       },
+      "EvidenceQuestion": {
+        "additionalProperties": false,
+        "properties": {
+          "event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "kind": {
+            "const": "evidence",
+            "title": "Kind",
+            "type": "string"
+          },
+          "limit": {
+            "default": 3,
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "exact_substring",
+            "enum": [
+              "exact_substring",
+              "semantic"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 300,
+            "minLength": 2,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "question"
+        ],
+        "title": "EvidenceQuestion",
+        "type": "object"
+      },
       "HealthView": {
         "properties": {
           "code": {
@@ -1849,6 +2045,88 @@
           "deadline"
         ],
         "title": "JobView",
+        "type": "object"
+      },
+      "KnowledgeAnswer": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeCitationView"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "comment_count",
+              "evidence"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "knowledge_entry_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Knowledge Entry Ids",
+            "type": "array"
+          },
+          "method": {
+            "enum": [
+              "controlled_statistics_v1",
+              "deterministic_retrieval_v1"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "statistics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ControlledCommentStatistics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "answered",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unknown_reason": {
+            "anyOf": [
+              {
+                "const": "no_supported_evidence",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unknown Reason"
+          }
+        },
+        "required": [
+          "kind",
+          "status",
+          "question",
+          "answer",
+          "method"
+        ],
+        "title": "KnowledgeAnswer",
         "type": "object"
       },
       "KnowledgeCitationView": {
@@ -3698,6 +3976,141 @@
           }
         ],
         "summary": "Inbox Contents",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/contents/{identity}/withdraw": {
+      "post": {
+        "operationId": "withdrawContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentWithdrawalInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentWithdrawalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request content too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Withdraw Content",
         "tags": [
           "contents"
         ]
@@ -5808,6 +6221,146 @@
           }
         ],
         "summary": "Search Knowledge",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/knowledge/query": {
+      "post": {
+        "operationId": "queryKnowledge",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "mapping": {
+                    "comment_count": "#/components/schemas/CommentCountQuestion",
+                    "evidence": "#/components/schemas/EvidenceQuestion"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CommentCountQuestion"
+                  },
+                  {
+                    "$ref": "#/components/schemas/EvidenceQuestion"
+                  }
+                ],
+                "title": "Data"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeAnswer"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request content too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Query Knowledge",
         "tags": [
           "knowledge"
         ]

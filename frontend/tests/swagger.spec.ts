@@ -55,6 +55,12 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   expect(document.paths["/api/v1/knowledge"].get.operationId).toBe(
     "searchKnowledge",
   );
+  expect(document.paths["/api/v1/knowledge/query"].post.operationId).toBe(
+    "queryKnowledge",
+  );
+  expect(
+    document.paths["/api/v1/contents/{identity}/withdraw"].post.operationId,
+  ).toBe("withdrawContent");
   expect(document.paths["/api/v1/knowledge/{identity}"].get.operationId).toBe(
     "getKnowledgeEntry",
   );
@@ -87,6 +93,12 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   const analysisRun = document.components.schemas.AnalysisRunView;
   expect(analysisRun.required).toContain("manifest_sha256");
   expect(analysisRun.properties.token_budget.const).toBe(0);
+  expect(document.components.schemas.KnowledgeAnswer.required).toContain(
+    "method",
+  );
+  expect(
+    document.components.schemas.ControlledCommentStatistics.required,
+  ).toContain("event_revision");
   expect(document.components.schemas.SourceView.properties.pipeline).toBe(
     undefined,
   );

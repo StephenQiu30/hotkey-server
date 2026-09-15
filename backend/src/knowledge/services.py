@@ -10,14 +10,27 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from ai.contracts import EmbeddingProvider, EmbeddingProviderError
 from analysis.schemas import AnalysisRunView
-from analysis.services import analysis_knowledge_snapshot
+from analysis.services import analysis_knowledge_snapshot, controlled_comment_statistics
 from audit.services import audit
-from contents.services import content_version_contexts, current_content_version_ids
+from contents.schemas import ContentWithdrawalInput, ContentWithdrawalView
+from contents.services import (
+    content_version_contexts,
+    current_content_version_ids,
+    withdraw_content,
+)
 from core.clock import utcnow
 from core.errors import AppError
 from events.services import event_title_for_knowledge
 from knowledge.models import KnowledgeChunk, KnowledgeCitation, KnowledgeEntry, KnowledgeVersion
-from knowledge.schemas import KnowledgeCitationView, KnowledgeEntryView, KnowledgePage
+from knowledge.schemas import (
+    CommentCountQuestion,
+    EvidenceQuestion,
+    KnowledgeAnswer,
+    KnowledgeCitationView,
+    KnowledgeEntryView,
+    KnowledgePage,
+    KnowledgeQuestion,
+)
 
 
 def normalize_search_text(value: str) -> str:
@@ -241,11 +254,54 @@ class KnowledgeService:
         with self.factory() as session:
             return self._view(session, self._entry(session, identity))
 
+    def withdraw_content(
+        self,
+        identity: UUID,
+        data: ContentWithdrawalInput,
+    ) -> ContentWithdrawalView:
+        with self.factory.begin() as session:
+            withdrawn = withdraw_content(session, identity, data.reason)
+            affected_entry_ids: set[UUID] = set()
+            if withdrawn.version_ids:
+                rows = session.execute(
+                    select(KnowledgeChunk, KnowledgeVersion.entry_id)
+                    .join(KnowledgeVersion, KnowledgeVersion.id == KnowledgeChunk.version_id)
+                    .join(
+                        KnowledgeCitation,
+                        KnowledgeCitation.version_id == KnowledgeVersion.id,
+                    )
+                    .where(KnowledgeCitation.content_version_id.in_(withdrawn.version_ids))
+                    .with_for_update()
+                )
+                for chunk, entry_id in rows:
+                    chunk.embedding = None
+                    chunk.embedding_model = None
+                    chunk.embedding_model_digest = None
+                    chunk.embedding_dimensions = None
+                    chunk.index_state = "deleted" if withdrawn.visibility == "deleted" else "stale"
+                    chunk.error_code = (
+                        "content_deleted"
+                        if withdrawn.visibility == "deleted"
+                        else "content_purpose_revoked"
+                    )
+                    chunk.indexed_at = None
+                    affected_entry_ids.add(entry_id)
+            audit(
+                session,
+                "content_withdrawn",
+                f"{identity}:{data.reason}:{len(affected_entry_ids)}",
+            )
+            return ContentWithdrawalView(
+                id=withdrawn.id,
+                visibility=withdrawn.visibility,
+                affected_knowledge_entries=len(affected_entry_ids),
+            )
+
     def index(self, identity: UUID) -> KnowledgeEntryView:
-        if self.embedding_provider is None:
-            raise AppError("embedding_not_configured", 503)
         with self.factory() as session:
             entry = self._entry(session, identity)
+            if self._view(session, entry).stale:
+                raise AppError("knowledge_entry_stale", 409)
             version = self._version(session, entry)
             chunk = session.scalar(
                 select(KnowledgeChunk).where(KnowledgeChunk.version_id == version.id)
@@ -258,6 +314,8 @@ class KnowledgeService:
             chunk_id = chunk.id
             text = chunk.text
             text_sha256 = chunk.text_sha256
+        if self.embedding_provider is None:
+            raise AppError("embedding_not_configured", 503)
         try:
             batch = self.embedding_provider.embed([text])
         except EmbeddingProviderError as error:
@@ -293,6 +351,15 @@ class KnowledgeService:
                     chunk.error_code = "knowledge_version_changed"
                     chunk.indexed_at = None
                 raise AppError("knowledge_version_changed", 409)
+            if self._view(session, entry).stale:
+                chunk.embedding = None
+                chunk.embedding_model = None
+                chunk.embedding_model_digest = None
+                chunk.embedding_dimensions = None
+                chunk.index_state = "stale"
+                chunk.error_code = "knowledge_entry_stale"
+                chunk.indexed_at = None
+                raise AppError("knowledge_entry_stale", 409)
             chunk.embedding = batch.vectors[0]
             chunk.embedding_model = batch.model
             chunk.embedding_model_digest = batch.model_digest
@@ -327,7 +394,6 @@ class KnowledgeService:
                     & (KnowledgeVersion.version == KnowledgeEntry.current_version),
                 )
                 .order_by(KnowledgeEntry.created_at.desc(), KnowledgeEntry.id.desc())
-                .limit(limit)
             )
             if event_id is not None:
                 statement = statement.where(KnowledgeEntry.event_id == event_id)
@@ -336,10 +402,18 @@ class KnowledgeService:
                     KnowledgeVersion.search_text.contains(normalized, autoescape=True)
                 )
             entries = list(session.scalars(statement))
+            items: list[KnowledgeEntryView] = []
+            for entry in entries:
+                view = self._view(session, entry)
+                if view.stale:
+                    continue
+                items.append(view)
+                if len(items) == limit:
+                    break
             return KnowledgePage(
                 query_mode="exact_substring",
                 query=normalized,
-                items=[self._view(session, entry) for entry in entries],
+                items=items,
             )
 
     def _semantic_search(self, query: str, event_id: UUID | None, limit: int) -> KnowledgePage:
@@ -369,20 +443,80 @@ class KnowledgeService:
                     KnowledgeChunk.embedding_dimensions == batch.dimensions,
                 )
                 .order_by(distance, KnowledgeEntry.id)
-                .limit(limit)
             )
             if event_id is not None:
                 statement = statement.where(KnowledgeEntry.event_id == event_id)
             rows = session.execute(statement).all()
+            items = []
+            for entry, row_distance in rows:
+                view = self._view(
+                    session,
+                    entry,
+                    similarity=max(-1.0, min(1.0, 1.0 - float(row_distance))),
+                )
+                if view.stale:
+                    continue
+                items.append(view)
+                if len(items) == limit:
+                    break
             return KnowledgePage(
                 query_mode="semantic",
                 query=query,
-                items=[
-                    self._view(
-                        session,
-                        entry,
-                        similarity=max(-1.0, min(1.0, 1.0 - float(row_distance))),
-                    )
-                    for entry, row_distance in rows
-                ],
+                items=items,
             )
+
+    def query(self, data: KnowledgeQuestion) -> KnowledgeAnswer:
+        if isinstance(data, CommentCountQuestion):
+            with self.factory() as session:
+                statistics = controlled_comment_statistics(
+                    session,
+                    data.event_id,
+                    data.since,
+                    data.until,
+                )
+            return KnowledgeAnswer(
+                kind="comment_count",
+                status="answered",
+                question=data.question,
+                answer=(
+                    f"{statistics.since.isoformat()} 至 {statistics.until.isoformat()}，"
+                    f"事件范围内共有 {statistics.total} 条可见评论或回复。"
+                ),
+                method="controlled_statistics_v1",
+                statistics=statistics,
+            )
+
+        assert isinstance(data, EvidenceQuestion)
+        page = self.search(data.question, data.event_id, data.limit, data.mode)
+        if not page.items:
+            return KnowledgeAnswer(
+                kind="evidence",
+                status="unknown",
+                question=data.question,
+                answer="当前有效证据中没有找到可支持该问题的内容。",
+                method="deterministic_retrieval_v1",
+                unknown_reason="no_supported_evidence",
+            )
+        citations: dict[UUID, KnowledgeCitationView] = {}
+        for entry in page.items:
+            for citation in entry.citations:
+                if citation.available:
+                    citations.setdefault(citation.content_version_id, citation)
+        if not citations:
+            return KnowledgeAnswer(
+                kind="evidence",
+                status="unknown",
+                question=data.question,
+                answer="当前有效证据中没有找到可支持该问题的内容。",
+                method="deterministic_retrieval_v1",
+                unknown_reason="no_supported_evidence",
+            )
+        return KnowledgeAnswer(
+            kind="evidence",
+            status="answered",
+            question=data.question,
+            answer=page.items[0].body,
+            method="deterministic_retrieval_v1",
+            knowledge_entry_ids=[entry.id for entry in page.items],
+            citations=list(citations.values()),
+        )
