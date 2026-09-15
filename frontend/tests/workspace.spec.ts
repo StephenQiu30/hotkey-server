@@ -43,6 +43,17 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
     page.getByRole("heading", { name: eventTitle, exact: true }),
   ).toBeVisible();
   await expect(page.getByText("修订 v1 · 0 条内容")).toBeVisible();
+  const sourceEventTitle = `待合并-${Date.now()}`;
+  await page.getByLabel("事件名称").fill(sourceEventTitle);
+  await page.getByRole("button", { name: "创建事件" }).click();
+  const sourceEvent = page.getByRole("article").filter({
+    has: page.getByRole("heading", { name: sourceEventTitle, exact: true }),
+  });
+  await sourceEvent
+    .getByLabel(`选择 ${sourceEventTitle} 的合并目标`)
+    .selectOption({ label: eventTitle });
+  await sourceEvent.getByRole("button", { name: "合并到所选事件" }).click();
+  await expect(sourceEvent.getByText(/已归档 · 修订 v2/)).toBeVisible();
   await page.getByRole("button", { name: "新建监控", exact: true }).click();
   await expect(page.getByLabel("每日请求上限")).toHaveValue("96");
   const title = `学习验证-${Date.now()}`;

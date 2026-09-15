@@ -243,6 +243,11 @@ section {
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
+.split-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
 label {
   display: flex;
   flex-direction: column;

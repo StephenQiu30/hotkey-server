@@ -136,6 +136,15 @@ declare namespace API {
     source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
   };
 
+  type EventMergeInput = {
+    /** Expected Source Revision */
+    expected_source_revision: number;
+    /** Expected Target Revision */
+    expected_target_revision: number;
+    /** Source Event Id */
+    source_event_id: string;
+  };
+
   type EventPage = {
     /** Items */
     items: EventView[];
@@ -145,9 +154,18 @@ declare namespace API {
 
   type EventRevisionView = {
     /** Change Type */
-    change_type: "create" | "add_member" | "remove_member";
+    change_type:
+      | "create"
+      | "add_member"
+      | "remove_member"
+      | "merge_in"
+      | "merge_out"
+      | "split_in"
+      | "split_out";
     /** Created At */
     created_at: string;
+    /** Related Event Id */
+    related_event_id: string | null;
     /** Revision */
     revision: number;
     snapshot: EventSnapshot;
@@ -160,6 +178,17 @@ declare namespace API {
     status: "active" | "archived";
     /** Summary */
     summary: string;
+    /** Title */
+    title: string;
+  };
+
+  type EventSplitInput = {
+    /** Content Ids */
+    content_ids: string[];
+    /** Expected Revision */
+    expected_revision: number;
+    /** Summary */
+    summary?: string;
     /** Title */
     title: string;
   };
@@ -302,6 +331,10 @@ declare namespace API {
     password: string;
     /** Username */
     username: string;
+  };
+
+  type mergeEventParams = {
+    identity: string;
   };
 
   type MonitorInput = {
@@ -510,6 +543,10 @@ declare namespace API {
     operations: SourceOperationCapability[];
     /** Roles */
     roles: ("discovery" | "comments" | "supplement")[];
+  };
+
+  type splitEventParams = {
+    identity: string;
   };
 
   type updateMonitorParams = {

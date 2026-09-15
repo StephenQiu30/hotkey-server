@@ -7,8 +7,10 @@ from api.dependencies import Authenticated, Events
 from events.schemas import (
     EventInput,
     EventMemberInput,
+    EventMergeInput,
     EventPage,
     EventRevisionView,
+    EventSplitInput,
     EventView,
 )
 
@@ -62,3 +64,19 @@ def event_revisions(
     identity: UUID, service: Events, owner: Authenticated
 ) -> list[EventRevisionView]:
     return service.revisions(identity)
+
+
+@router.post("/{identity}/merge", response_model=EventView, operation_id="mergeEvent")
+def merge_event(
+    identity: UUID, data: EventMergeInput, service: Events, owner: Authenticated
+) -> EventView:
+    return service.merge(identity, data)
+
+
+@router.post(
+    "/{identity}/split", response_model=EventView, status_code=201, operation_id="splitEvent"
+)
+def split_event(
+    identity: UUID, data: EventSplitInput, service: Events, owner: Authenticated
+) -> EventView:
+    return service.split(identity, data)

@@ -264,3 +264,13 @@ Red阶段因events模块不存在而在测试收集阶段失败。Green阶段真
 隔离 `hotkey-s04a-stack` Compose首次拉取基础镜像token遇到一次EOF，未运行项目代码；同一锁定镜像重试后完成构建与0011迁移。真实scheduler/RabbitMQ/Celery prefork诊断succeeded/attempts=1。Chromium 2项通过，Swagger读取到事件端点，合成owner在工作台创建事件、刷新恢复，并完成既有监控与诊断流程。运行时OpenAPI与发布快照相等；Web保持运行而backend替换后代理返回401。正常停机worker=0、backend=143、scheduler=0，无SIGKILL/OOM。结构化证据见 [event-dossier-poc.json](evidence/event-dossier-poc.json)。
 
 本片使用合成账号、合成事件和测试内容，没有连接外部平台或现有MinIO。它只完成事件人工整理基础；合并、拆分、分析过期、趋势和提醒仍未实现，因此不构成EV-007-006或TASK-007-S04-T01完成证据。
+
+## 007 S04-T01B 事件合并拆分验证（2026-09-16）
+
+合并请求同时携带目标和源事件期望修订，服务按UUID顺序锁定两行后再校验状态与修订；所有源成员移动到目标，源事件归档，双方各增加一条关联修订。拆分请求携带源事件期望修订和唯一成员ID清单，只允许当前成员的非空真子集；选中成员移动到同事务创建的新事件，原事件写split_out，新事件首条修订为split_in。event_members的content_id唯一约束继续保证当前单一归属，总成员数不因合并拆分改变。
+
+Red阶段因EventMergeInput/EventSplitInput不存在而在测试收集失败。Green聚焦测试在真实PostgreSQL上验证三成员合并再拆分、双边related_event_id、源归档、快照、旧修订409和零部分写入。0011→ `0012_event_merge_split` 迁移保留既有create修订，related_event_id回填为空，Alembic与SQLAlchemy模型比较无差异。FastAPI自动增加mergeEvent和splitEvent，UmiOpenAPI更新生成客户端；工作台只调用生成函数。
+
+隔离 `hotkey-s04b-stack` Compose完成0012迁移与真实scheduler/RabbitMQ/Celery prefork诊断，succeeded/attempts=1。Chromium 2项通过：Swagger读取合并拆分端点，合成owner创建两个事件并在UI执行合并，数据库为1个active、1个archived，修订为2条create及各1条merge_in/merge_out。运行时OpenAPI等于发布快照；Web不替换、backend替换后代理返回401；关停worker=0、backend=143、scheduler=0，无SIGKILL/OOM。结构化证据见 [event-merge-split-poc.json](evidence/event-merge-split-poc.json)。
+
+拆分的浏览器交互因隔离栈没有合成收件箱内容，只由真实PostgreSQL服务测试覆盖；最终远程CI会复跑完整提交候选。趋势、提醒和分析失效仍未实现，因此本片推进AC-007-008但不构成完整EV-007-006或TASK-007-S04-T01完成证据。

@@ -12,8 +12,10 @@ from events.models import Event, EventMember, EventRevision
 from events.schemas import (
     EventInput,
     EventMemberInput,
+    EventMergeInput,
     EventPage,
     EventRevisionView,
+    EventSplitInput,
     EventView,
 )
 
@@ -51,7 +53,16 @@ class EventService:
         cls,
         session: Session,
         event: Event,
-        change_type: Literal["create", "add_member", "remove_member"],
+        change_type: Literal[
+            "create",
+            "add_member",
+            "remove_member",
+            "merge_in",
+            "merge_out",
+            "split_in",
+            "split_out",
+        ],
+        related_event_id: UUID | None = None,
     ) -> None:
         session.add(
             EventRevision(
@@ -59,6 +70,7 @@ class EventService:
                 event_id=event.id,
                 revision=event.current_revision,
                 change_type=change_type,
+                related_event_id=related_event_id,
                 snapshot=cls._snapshot(session, event),
                 created_at=event.updated_at,
             )
@@ -185,9 +197,98 @@ class EventService:
                     {
                         "revision": row.revision,
                         "change_type": row.change_type,
+                        "related_event_id": row.related_event_id,
                         "snapshot": row.snapshot,
                         "created_at": row.created_at,
                     }
                 )
                 for row in rows
             ]
+
+    def merge(self, target_id: UUID, data: EventMergeInput) -> EventView:
+        if target_id == data.source_event_id:
+            raise AppError("event_merge_same_event", 422)
+        with self.factory.begin() as session:
+            identities = sorted((target_id, data.source_event_id))
+            locked = list(
+                session.scalars(
+                    select(Event)
+                    .where(Event.id.in_(identities))
+                    .order_by(Event.id)
+                    .with_for_update()
+                )
+            )
+            by_id = {event.id: event for event in locked}
+            if len(by_id) != 2:
+                raise AppError("event_not_found", 404)
+            target = by_id[target_id]
+            source = by_id[data.source_event_id]
+            if (
+                target.current_revision != data.expected_target_revision
+                or source.current_revision != data.expected_source_revision
+            ):
+                raise AppError("version_conflict", 409)
+            if target.status != "active" or source.status != "active":
+                raise AppError("event_not_active", 409)
+            members = list(
+                session.scalars(
+                    select(EventMember).where(EventMember.event_id == source.id).with_for_update()
+                )
+            )
+            now = utcnow()
+            for member in members:
+                member.event_id = target.id
+            session.flush()
+            target.current_revision += 1
+            target.updated_at = now
+            source.current_revision += 1
+            source.updated_at = now
+            source.status = "archived"
+            self._revise(session, target, "merge_in", source.id)
+            self._revise(session, source, "merge_out", target.id)
+            audit(session, "event_merged", f"{source.id}:{target.id}")
+            return self._view(session, target)
+
+    def split(self, source_id: UUID, data: EventSplitInput) -> EventView:
+        with self.factory.begin() as session:
+            source = self._event(session, source_id, lock=True)
+            if source.current_revision != data.expected_revision:
+                raise AppError("version_conflict", 409)
+            if source.status != "active":
+                raise AppError("event_not_active", 409)
+            members = list(
+                session.scalars(
+                    select(EventMember)
+                    .where(EventMember.event_id == source.id)
+                    .order_by(EventMember.content_id)
+                    .with_for_update()
+                )
+            )
+            selected = set(data.content_ids)
+            current = {member.content_id for member in members}
+            if not selected.issubset(current):
+                raise AppError("event_member_not_found", 404)
+            if selected == current:
+                raise AppError("event_split_requires_remaining_member", 409)
+            now = utcnow()
+            created = Event(
+                id=uuid4(),
+                title=data.title,
+                summary=data.summary,
+                status="active",
+                current_revision=1,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(created)
+            session.flush()
+            for member in members:
+                if member.content_id in selected:
+                    member.event_id = created.id
+            session.flush()
+            source.current_revision += 1
+            source.updated_at = now
+            self._revise(session, source, "split_out", created.id)
+            self._revise(session, created, "split_in", source.id)
+            audit(session, "event_split", f"{source.id}:{created.id}")
+            return self._view(session, created)

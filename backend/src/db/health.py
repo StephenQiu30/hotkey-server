@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.schemas import HealthView
 
-SCHEMA_REVISION = "0011_event_dossiers"
+SCHEMA_REVISION = "0012_event_merge_split"
 
 
 def readiness(factory: sessionmaker[Session]) -> HealthView:

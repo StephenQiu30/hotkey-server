@@ -1,0 +1,50 @@
+{
+  "scope": "S04-T01B event merge and split",
+  "observed_at": "2026-09-16",
+  "external_network_accessed": false,
+  "existing_minio_connected": false,
+  "implementation": {
+    "optimistic_revision_required": true,
+    "deterministic_lock_order": true,
+    "merge_archives_source": true,
+    "split_requires_nonempty_proper_member_subset": true,
+    "member_total_preserved": true,
+    "single_current_event_per_content": true,
+    "linked_revision_snapshots": true
+  },
+  "migration": {
+    "from": "0011_event_dossiers",
+    "to": "0012_event_merge_split",
+    "preserved_change_type": "create",
+    "historical_related_event_id": null,
+    "model_metadata_matches_database": true
+  },
+  "contract_and_client": {
+    "openapi_generated_by_fastapi": true,
+    "runtime_openapi_matches_export": true,
+    "generated_operations": ["mergeEvent", "splitEvent"],
+    "umiopenapi_output": "frontend/src/api/events.ts",
+    "handwritten_business_request": false,
+    "axios_transport": "frontend/src/request.ts"
+  },
+  "verification": {
+    "red": "Test collection failed because EventMergeInput and EventSplitInput did not exist.",
+    "focused_database_tests": "merge, split, revision links and stale revision passed on PostgreSQL 16",
+    "candidate_test_count": "117 tracked tests expected; authoritative count pending remote CI",
+    "ruff": "changed application and owned test files passed; unrelated pre-existing worktree test edit is not included",
+    "mypy": "passed for 98 application and verification source files",
+    "frontend": "UmiOpenAPI drift, boundary, negative boundary, Prettier and TypeScript/Vite checks passed",
+    "compose_schema_revision": "0012_event_merge_split",
+    "compose_pipeline": "succeeded with attempts=1",
+    "proxy_replacement": "web retained; backend replaced; proxied authentication response HTTP 401",
+    "browser": "2 Chromium scenarios passed; two events merged and archived state persisted",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL or OOM"
+  },
+  "limitations": [
+    "Synthetic owner, events and content data were used.",
+    "No external platform request or existing MinIO connection was used.",
+    "Browser covered merge; split was covered by PostgreSQL service tests.",
+    "Trend comparison, analysis invalidation and alerts remain unimplemented.",
+    "This does not satisfy the complete EV-007-006 or TASK-007-S04-T01."
+  ]
+}

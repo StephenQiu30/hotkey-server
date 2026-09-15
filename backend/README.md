@@ -41,7 +41,7 @@ Python 运行工作目录为 backend/src，Docker 内为 /app/src。ASGI 入口 
 
 FastAPI 从路由、状态码和 Pydantic 模型自动维护接口文档。服务启动后访问 `http://localhost:8867/docs` 查看 Swagger UI，`http://localhost:8867/openapi.json` 获取运行时契约。`docs/openapi/openapi.json` 只能由 `python -m tools.export_openapi` 导出，前端再由 `@umijs/openapi` 生成请求函数和类型；这些生成文件均禁止手写。
 
-事件接口提供创建、分页读取、详情、加入/移出成员和修订读取。每条内容当前只能属于一个事件；数据库唯一约束与内容行锁共同保证并发归属，重复加入同一事件幂等。事件合并拆分、趋势和提醒尚未实现。
+事件接口提供创建、分页读取、详情、加入/移出成员、合并、拆分和修订读取。每条内容当前只能属于一个事件；数据库唯一约束与内容行锁共同保证并发归属，重复加入同一事件幂等。合并和拆分要求期望修订号并对涉及事件固定顺序加锁，每个受影响事件保存关联修订。趋势和提醒尚未实现。
 
 业务分层与命名规则见 [AGENTS](../AGENTS.md)，实际服务与浏览器验证见 [Operations](../docs/operations/006-Python运行与验证.md)。未配置测试数据库/vhost 时集成测试会 skip，不能视为完整通过。`collect_page` 已接入同一 Job/Outbox/Celery 账本；scheduler为active配置生成最近一个已结束周期槽，并在创建任务前按monitor version与UTC日期原子预留一次请求。`POST /api/v1/monitors/{id}/runs` 创建持久运行，`GET /api/v1/collection-runs` 分页列出运行，`GET /api/v1/collection-runs/{id}` 查询状态。创建操作仍受来源用途准入和完整 MinIO 配置双门禁；当前来源目录均未准入，所以这些接口和scheduler不会对真实平台发起请求。
 

@@ -5,7 +5,9 @@ import {
   addEventMember,
   createEvent,
   listEvents,
+  mergeEvent,
   removeEventMember,
+  splitEvent,
 } from "../api/events";
 import { createDiagnosticJob, cancelJob, listJobs } from "../api/jobs";
 import { getSession, logout } from "../api/identity";
@@ -277,6 +279,37 @@ export function App() {
                 identity: eventId,
                 content_id: contentId,
               });
+              await refresh();
+            });
+          }}
+          onMerge={async (
+            sourceId,
+            targetId,
+            sourceRevision,
+            targetRevision,
+          ) => {
+            await action(async () => {
+              await mergeEvent(
+                { identity: targetId },
+                {
+                  source_event_id: sourceId,
+                  expected_source_revision: sourceRevision,
+                  expected_target_revision: targetRevision,
+                },
+              );
+              await refresh();
+            });
+          }}
+          onSplit={async (sourceId, title, contentIds, revision) => {
+            await action(async () => {
+              await splitEvent(
+                { identity: sourceId },
+                {
+                  title,
+                  content_ids: contentIds,
+                  expected_revision: revision,
+                },
+              );
               await refresh();
             });
           }}

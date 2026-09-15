@@ -49,7 +49,8 @@ class EventRevision(Base):
         UniqueConstraint("event_id", "revision", name="uq_event_revisions_number"),
         CheckConstraint("revision > 0", name="ck_event_revisions_revision"),
         CheckConstraint(
-            "change_type IN ('create', 'add_member', 'remove_member')",
+            "change_type IN ('create', 'add_member', 'remove_member', "
+            "'merge_in', 'merge_out', 'split_in', 'split_out')",
             name="ck_event_revisions_change_type",
         ),
     )
@@ -57,5 +58,6 @@ class EventRevision(Base):
     event_id: Mapped[UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
     revision: Mapped[int] = mapped_column(Integer)
     change_type: Mapped[str] = mapped_column(String(32))
+    related_event_id: Mapped[UUID | None] = mapped_column(ForeignKey("events.id"))
     snapshot: Mapped[dict[str, object]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -210,6 +210,17 @@ def test_event_api_creates_a_revisioned_empty_dossier(client):
         json={"content_id": "00000000-0000-0000-0000-000000000001"},
     )
     assert missing.status_code == 404 and missing.json()["code"] == "content_not_found"
+    source = client.post("/api/v1/events", json={"title": "待合并事件"}).json()
+    merged = client.post(
+        f"/api/v1/events/{event['id']}/merge",
+        json={
+            "source_event_id": source["id"],
+            "expected_target_revision": event["current_revision"],
+            "expected_source_revision": source["current_revision"],
+        },
+    )
+    assert merged.status_code == 200 and merged.json()["current_revision"] == 2
+    assert client.get(f"/api/v1/events/{source['id']}").json()["status"] == "archived"
 
 
 def test_login_throttle_persists_failures(client):

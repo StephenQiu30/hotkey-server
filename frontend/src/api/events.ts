@@ -81,6 +81,25 @@ export async function removeEventMember(
   });
 }
 
+/** Merge Event POST /api/v1/events/${param0}/merge */
+export async function mergeEvent(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.mergeEventParams,
+  body: API.EventMergeInput,
+  options?: RequestOptions
+) {
+  const { identity: param0, ...queryParams } = params;
+  return request<API.EventView>(`/api/v1/events/${param0}/merge`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    params: { ...queryParams },
+    data: body,
+    ...(options || {}),
+  });
+}
+
 /** Event Revisions GET /api/v1/events/${param0}/revisions */
 export async function listEventRevisions(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -96,4 +115,23 @@ export async function listEventRevisions(
       ...(options || {}),
     }
   );
+}
+
+/** Split Event POST /api/v1/events/${param0}/split */
+export async function splitEvent(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.splitEventParams,
+  body: API.EventSplitInput,
+  options?: RequestOptions
+) {
+  const { identity: param0, ...queryParams } = params;
+  return request<API.EventView>(`/api/v1/events/${param0}/split`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    params: { ...queryParams },
+    data: body,
+    ...(options || {}),
+  });
 }
