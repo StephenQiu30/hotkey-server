@@ -1,0 +1,50 @@
+{
+  "scope": "S02-T02B MinIO adapter and isolated object protocol",
+  "observed_at": "2026-09-15",
+  "client": {
+    "package": "minio",
+    "version": "7.2.20",
+    "official_release": "https://github.com/minio/minio-py/releases/tag/7.2.20"
+  },
+  "server_fixture": {
+    "image": "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+    "disposable": true,
+    "part_of_product_compose": false,
+    "bucket_precreated_by_fixture": true
+  },
+  "object_protocol": {
+    "payload": "synthetic JSON compressed with deterministic gzip",
+    "object_bytes": 65,
+    "object_sha256": "7bedd8fc37c8cfb0b6c1457723d062fd393c2419ec8e9ff62afc7f709c5edbae",
+    "idempotent_put": true,
+    "full_readback_sha256_verified": true,
+    "etag_used_as_content_hash": false,
+    "isolated_object_removed": true,
+    "objects_after_cleanup": 0,
+    "container_removed": true
+  },
+  "configuration": {
+    "all_connection_values_required_together": true,
+    "credentials_use_secret_types": true,
+    "bucket_must_exist": true,
+    "bucket_or_policy_created_by_application": false,
+    "minio_service_added_to_product_compose": false
+  },
+  "verification": {
+    "focused_tests": "25 passed",
+    "full_backend_tests": "82 passed with disposable PostgreSQL 16 and RabbitMQ 4.1; 2 upstream deprecation warnings",
+    "ruff": "passed",
+    "mypy": "passed for 81 source files",
+    "dependency_audit": "pip-audit found no known vulnerabilities; npm production audit found 0 vulnerabilities",
+    "openapi_and_frontend": "OpenAPI and UmiOpenAPI client drift checks passed; TypeScript and Vite build passed",
+    "compose_pipeline": "succeeded; attempts=1 with real Celery prefork and RabbitMQ",
+    "browser": "2 Chromium tests passed for Swagger UI and the authenticated workspace",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL or OOM"
+  },
+  "limitations": [
+    "This is an SDK and object-protocol POC against a disposable MinIO fixture, not the selected existing MinIO instance.",
+    "The existing endpoint, TLS path, bucket permissions, lifecycle rules and deployed server version remain unverified.",
+    "This is not EV-007-003 and does not demonstrate a real source collection or inbox item.",
+    "No external platform content, account session or production credential was used."
+  ]
+}

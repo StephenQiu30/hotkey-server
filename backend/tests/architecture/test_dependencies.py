@@ -64,6 +64,13 @@ def imports(tree):
 
 def forbidden_imports(relative, tree):
     dependencies = list(imports(tree))
+    if relative.startswith("evidence/adapters/"):
+        return [
+            d
+            for d in dependencies
+            if d.split(".")[0]
+            in {"api", "main", "db", "sqlalchemy", "worker", "cli", "celery", "kombu"}
+        ]
     if relative.startswith("sources/adapters/"):
         return [
             d
@@ -169,6 +176,8 @@ def test_import_boundaries_and_no_hidden_initializer_logic():
         ("core/config.py", "identity.services"),
         ("sources/adapters/bluesky.py", "db.session"),
         ("sources/adapters/bluesky.py", "worker.app"),
+        ("evidence/adapters/minio.py", "db.session"),
+        ("evidence/adapters/minio.py", "worker.app"),
         ("sources/schemas.py", "httpx"),
     ],
 )

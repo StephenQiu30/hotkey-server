@@ -9,6 +9,11 @@ x-app: &app
     HOTKEY_DATABASE_URL: postgresql+psycopg://hotkey:learning@postgres:5432/hotkey
     HOTKEY_BROKER_URL: amqp://hotkey:learning@rabbitmq:5672/hotkey
     HOTKEY_ALLOWED_ORIGINS: '["http://localhost:8010","http://127.0.0.1:8010"]'
+    HOTKEY_S3_ENDPOINT: ${HOTKEY_S3_ENDPOINT:-}
+    HOTKEY_S3_ACCESS_KEY: ${HOTKEY_S3_ACCESS_KEY:-}
+    HOTKEY_S3_SECRET_KEY: ${HOTKEY_S3_SECRET_KEY:-}
+    HOTKEY_S3_BUCKET: ${HOTKEY_S3_BUCKET:-}
+    HOTKEY_S3_SECURE: ${HOTKEY_S3_SECURE:-true}
   depends_on:
     migrate: {condition: service_completed_successfully}
     rabbitmq: {condition: service_healthy}

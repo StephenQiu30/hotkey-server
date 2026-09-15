@@ -49,3 +49,11 @@ uv run --directory backend/src python -m cli source-probe bilibili search --keyw
 ```
 
 线程示例中的 DID 和记录键需替换成真实帖子标识。CLI 输出 JSON；输入错误退出 2，来源失败退出 1，ok/empty/partial 退出 0，因此必须读取 status/code 判断是否部分结果。HTTP 查询预览为已认证的 `POST /api/v1/sources/bluesky/query-preview`，需要会话、Origin 与 CSRF；仅验证和规范化查询，不发起外部请求。
+
+MinIO 只连接已存在的私有实例和 bucket。设置全部 `HOTKEY_S3_*` 连接变量后，可执行隔离对象协议验证：
+
+```sh
+PYTHONPATH=backend/src uv run --project backend python backend/scripts/verify_minio.py
+```
+
+脚本要求应用的 PostgreSQL/RabbitMQ 配置同时有效，但不会连接它们。它只在现有 bucket 的 `raw/poc/` 前缀写入合成对象，验证上传、完整读回与幂等重投后删除该对象；不会创建 bucket、修改策略或清理其他对象。

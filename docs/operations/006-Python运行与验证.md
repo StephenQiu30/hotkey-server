@@ -168,3 +168,11 @@ FastAPI 从路由和 Pydantic 模型运行时生成 `/openapi.json`、`/docs` �
 真实PostgreSQL 16和RabbitMQ测试环境中76项pytest通过，无跳过，保留两条上游弃用提示；迁移/模型比较为空。额外的一次性数据库从 `0004_monitor_versions` 升至 `0005_collection_page`，已有monitor version保留且5张新增核心表存在。隔离 `hotkey-s02a` Compose从迁移服务到0005，真实scheduler、RabbitMQ、Celery prefork和数据库诊断成功，attempts=1。运行时OpenAPI与发布JSON相等。生成客户端漂移、前端边界/负向样例、Prettier、TypeScript/Vite和开发/生产Compose解析通过。
 
 首次最终镜像重建时，Web未被Compose替换而backend获得新IP，静态解析的Nginx upstream继续连接旧IP并使登录返回502。`frontend/nginx.conf` 改为通过Docker内置DNS在请求期解析backend；Nginx配置检查通过。`verify_proxy_replacement.py` 已接入CI：它保持Web容器ID不变、强制替换backend，在后端ready后要求经Web访问认证端点返回401。随后Chromium共2项通过：Swagger UI渲染自动契约；合成owner登录后经生成接口读取合法空收件箱，随后完成监控草稿和真实诊断流程。1440px和390px截图人工检查未发现横向溢出或布局遮挡。本片结构化证据见 [collection-page-foundation-poc.json](evidence/collection-page-foundation-poc.json)。测试内 `MemoryStore` 只验证对象协议、hash和上传先于数据库提交的边界；没有连接MinIO，没有访问外部平台，也没有把合成内容作为真实采集结果，因此不构成EV-007-003或S02-T02完成证据。
+
+## 007 S02-T02B MinIO适配器与隔离协议验证（2026-09-15）
+
+本片锁定官方 `minio-py 7.2.20`，将SDK限制在 `evidence/adapters/minio.py`。应用配置新增 `HOTKEY_S3_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET/SECURE`：四项连接值必须同时存在，密钥使用 `SecretStr`，endpoint明确使用 `host[:port]` 及独立TLS开关。根Compose只透传外部配置，没有增加MinIO服务或持久卷。对象已存在时只有大小和SHA-256都相同才视为幂等；冲突拒绝覆盖。新上传通过stat和完整读回验收，不使用ETag代替内容hash。
+
+独立 `verify_minio.py` 只允许使用预先存在的bucket，写入一条合成JSON的确定性gzip对象。一次性 `minio/minio:RELEASE.2025-09-07T16-13-09Z` 容器中，首次上传与第二次幂等重投均成功，65字节对象SHA-256为 `7bedd8fc37c8cfb0b6c1457723d062fd393c2419ec8e9ff62afc7f709c5edbae`；读回校验通过，精确删除后bucket对象数为0，随后删除容器。25项配置/适配器/架构聚焦测试和真实PostgreSQL 16、RabbitMQ 4.1下82项全量后端测试通过，保留2条已知上游弃用提示；Ruff和严格mypy（81个源文件）通过。`pip-audit` 无已知漏洞；OpenAPI与UmiOpenAPI客户端无漂移，前端边界、格式、TypeScript/Vite和生产依赖审计通过。隔离Compose成功安装MinIO SDK并完成真实prefork诊断，attempts=1；backend原地替换后代理返回预期401，Chromium的Swagger UI与owner工作台2项通过。正常停机worker=0、backend=143、scheduler=0，无SIGKILL或OOM；隔离Compose及数据卷随后删除。结构化证据见 [minio-adapter-poc.json](evidence/minio-adapter-poc.json)。
+
+该容器仅验证客户端和对象协议，不是用户选择复用的现有MinIO。尚未取得现有实例的非敏感endpoint、TLS路径、bucket、最小权限凭据注入和服务端版本，因此未测试真实网络、权限、生命周期或孤儿对账，也不构成EV-007-003、真实采集或S02-T02完成证据。
