@@ -64,6 +64,13 @@
     "source_urls": "synthetic example.test URLs"
   },
   "verification": {
+    "remote_ci": {
+      "commit": "8e1886f92e85468f4b124425e4ed22a11f7da918",
+      "run_id": 35003487831,
+      "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35003487831",
+      "conclusion": "success",
+      "duration": "2m40s"
+    },
     "red": "The Swagger operation-id test failed because all five analysis operations were absent.",
     "backend_tests": "131 passed with disposable PostgreSQL 16 and RabbitMQ 4.1; 2 upstream httpx deprecation warnings",
     "ruff": "format and lint passed for backend source and tests",
