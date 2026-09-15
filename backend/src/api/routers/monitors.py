@@ -7,6 +7,7 @@ from api.dependencies import Authenticated, Monitors
 from monitors.schemas import (
     MonitorInput,
     MonitorPage,
+    MonitorStateChange,
     MonitorUpdate,
     MonitorView,
 )
@@ -47,3 +48,27 @@ def update_monitor(
     identity: UUID, data: MonitorUpdate, service: Monitors, owner: Authenticated
 ) -> MonitorView:
     return service.update_monitor(identity, data)
+
+
+@router.post(
+    "/monitors/{identity}/activate",
+    response_model=MonitorView,
+    tags=["monitoring"],
+    operation_id="activateMonitor",
+)
+def activate_monitor(
+    identity: UUID, data: MonitorStateChange, service: Monitors, owner: Authenticated
+) -> MonitorView:
+    return service.change_state(identity, data, "active")
+
+
+@router.post(
+    "/monitors/{identity}/pause",
+    response_model=MonitorView,
+    tags=["monitoring"],
+    operation_id="pauseMonitor",
+)
+def pause_monitor(
+    identity: UUID, data: MonitorStateChange, service: Monitors, owner: Authenticated
+) -> MonitorView:
+    return service.change_state(identity, data, "paused")

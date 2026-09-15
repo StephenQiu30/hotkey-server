@@ -1,6 +1,25 @@
 {
   "components": {
     "schemas": {
+      "BudgetSpec": {
+        "properties": {
+          "content_purchase_cost": {
+            "const": 0,
+            "default": 0,
+            "title": "Content Purchase Cost",
+            "type": "integer"
+          },
+          "daily_requests": {
+            "default": 24,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Daily Requests",
+            "type": "integer"
+          }
+        },
+        "title": "BudgetSpec",
+        "type": "object"
+      },
       "DiagnosticInput": {
         "additionalProperties": false,
         "properties": {
@@ -175,16 +194,16 @@
       "MonitorInput": {
         "additionalProperties": false,
         "properties": {
-          "keywords": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 20,
-            "minItems": 1,
-            "title": "Keywords",
-            "type": "array"
+          "budget": {
+            "$ref": "#/components/schemas/BudgetSpec"
           },
-          "sources": {
+          "query_spec": {
+            "$ref": "#/components/schemas/QuerySpec"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ScheduleSpec"
+          },
+          "source_ids": {
             "items": {
               "enum": [
                 "x",
@@ -198,7 +217,7 @@
             },
             "maxItems": 6,
             "minItems": 1,
-            "title": "Sources",
+            "title": "Source Ids",
             "type": "array"
           },
           "title": {
@@ -210,8 +229,8 @@
         },
         "required": [
           "title",
-          "keywords",
-          "sources"
+          "query_spec",
+          "source_ids"
         ],
         "title": "MonitorInput",
         "type": "object"
@@ -245,19 +264,39 @@
         "title": "MonitorPage",
         "type": "object"
       },
+      "MonitorStateChange": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "MonitorStateChange",
+        "type": "object"
+      },
       "MonitorUpdate": {
         "additionalProperties": false,
         "properties": {
-          "keywords": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 20,
-            "minItems": 1,
-            "title": "Keywords",
-            "type": "array"
+          "budget": {
+            "$ref": "#/components/schemas/BudgetSpec"
           },
-          "sources": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "query_spec": {
+            "$ref": "#/components/schemas/QuerySpec"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ScheduleSpec"
+          },
+          "source_ids": {
             "items": {
               "enum": [
                 "x",
@@ -271,7 +310,7 @@
             },
             "maxItems": 6,
             "minItems": 1,
-            "title": "Sources",
+            "title": "Source Ids",
             "type": "array"
           },
           "title": {
@@ -279,70 +318,87 @@
             "minLength": 1,
             "title": "Title",
             "type": "string"
-          },
-          "version": {
-            "minimum": 1.0,
-            "title": "Version",
-            "type": "integer"
           }
         },
         "required": [
           "title",
-          "keywords",
-          "sources",
-          "version"
+          "query_spec",
+          "source_ids",
+          "expected_version"
         ],
         "title": "MonitorUpdate",
         "type": "object"
       },
       "MonitorView": {
         "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/BudgetSpec"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "current_version": {
+            "title": "Current Version",
+            "type": "integer"
           },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
           },
-          "keywords": {
+          "query_spec": {
+            "$ref": "#/components/schemas/QuerySpec"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ScheduleSpec"
+          },
+          "source_ids": {
             "items": {
+              "enum": [
+                "x",
+                "bilibili",
+                "weibo",
+                "xiaohongshu",
+                "douyin",
+                "bluesky"
+              ],
               "type": "string"
             },
-            "title": "Keywords",
+            "title": "Source Ids",
             "type": "array"
           },
-          "sources": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Sources",
-            "type": "array"
-          },
-          "status": {
-            "const": "draft",
-            "default": "draft",
-            "title": "Status",
+          "state": {
+            "enum": [
+              "draft",
+              "active",
+              "paused"
+            ],
+            "title": "State",
             "type": "string"
           },
           "title": {
             "title": "Title",
             "type": "string"
           },
-          "version": {
-            "title": "Version",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
           }
         },
         "required": [
           "id",
           "title",
-          "keywords",
-          "sources",
-          "version",
-          "created_at"
+          "state",
+          "current_version",
+          "query_spec",
+          "source_ids",
+          "schedule",
+          "budget",
+          "created_at",
+          "updated_at"
         ],
         "title": "MonitorView",
         "type": "object"
@@ -362,60 +418,34 @@
       },
       "QueryPreview": {
         "properties": {
-          "adapter_version": {
-            "const": "bluesky-v1",
-            "default": "bluesky-v1",
-            "title": "Adapter Version",
-            "type": "string"
-          },
-          "coverage": {
-            "const": "unknown",
-            "default": "unknown",
-            "title": "Coverage",
-            "type": "string"
-          },
-          "limit": {
-            "title": "Limit",
+          "content_purchase_cost": {
+            "const": 0,
+            "default": 0,
+            "title": "Content Purchase Cost",
             "type": "integer"
           },
-          "operation": {
-            "const": "search_posts",
-            "default": "search_posts",
-            "title": "Operation",
-            "type": "string"
+          "estimated_requests": {
+            "minimum": 0.0,
+            "title": "Estimated Requests",
+            "type": "integer"
           },
-          "pipeline_connected": {
+          "network_accessed": {
             "const": false,
             "default": false,
-            "title": "Pipeline Connected",
+            "title": "Network Accessed",
             "type": "boolean"
-          },
-          "query": {
-            "title": "Query",
-            "type": "string"
-          },
-          "semantics": {
-            "const": "provider_native_text",
-            "default": "provider_native_text",
-            "title": "Semantics",
-            "type": "string"
           },
           "since": {
             "format": "date-time",
             "title": "Since",
             "type": "string"
           },
-          "sort": {
-            "const": "latest",
-            "default": "latest",
-            "title": "Sort",
-            "type": "string"
-          },
-          "source": {
-            "const": "bluesky",
-            "default": "bluesky",
-            "title": "Source",
-            "type": "string"
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceQueryPreview"
+            },
+            "title": "Sources",
+            "type": "array"
           },
           "until": {
             "format": "date-time",
@@ -424,47 +454,41 @@
           }
         },
         "required": [
-          "query",
           "since",
           "until",
-          "limit"
+          "sources",
+          "estimated_requests"
         ],
         "title": "QueryPreview",
         "type": "object"
       },
-      "SearchInput": {
+      "QueryPreviewInput": {
         "additionalProperties": false,
         "properties": {
-          "cursor": {
-            "anyOf": [
-              {
-                "maxLength": 2048,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cursor"
-          },
-          "keyword": {
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Keyword",
-            "type": "string"
-          },
-          "limit": {
-            "default": 20,
-            "maximum": 100.0,
-            "minimum": 1.0,
-            "title": "Limit",
-            "type": "integer"
+          "query_spec": {
+            "$ref": "#/components/schemas/QuerySpec"
           },
           "since": {
             "format": "date-time",
             "title": "Since",
             "type": "string"
+          },
+          "source_ids": {
+            "items": {
+              "enum": [
+                "x",
+                "bilibili",
+                "weibo",
+                "xiaohongshu",
+                "douyin",
+                "bluesky"
+              ],
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Source Ids",
+            "type": "array"
           },
           "until": {
             "format": "date-time",
@@ -473,11 +497,96 @@
           }
         },
         "required": [
-          "keyword",
+          "query_spec",
+          "source_ids",
           "since",
           "until"
         ],
-        "title": "SearchInput",
+        "title": "QueryPreviewInput",
+        "type": "object"
+      },
+      "QueryRuleExecution": {
+        "properties": {
+          "mode": {
+            "enum": [
+              "native",
+              "local_filter",
+              "unsupported"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "rule": {
+            "enum": [
+              "include_any",
+              "include_all",
+              "exclude",
+              "aliases"
+            ],
+            "title": "Rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule",
+          "mode"
+        ],
+        "title": "QueryRuleExecution",
+        "type": "object"
+      },
+      "QuerySpec": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Aliases",
+            "type": "array"
+          },
+          "exclude": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Exclude",
+            "type": "array"
+          },
+          "include_all": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Include All",
+            "type": "array"
+          },
+          "include_any": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Include Any",
+            "type": "array"
+          }
+        },
+        "required": [
+          "include_any"
+        ],
+        "title": "QuerySpec",
+        "type": "object"
+      },
+      "ScheduleSpec": {
+        "properties": {
+          "interval_minutes": {
+            "default": 60,
+            "maximum": 1440.0,
+            "minimum": 15.0,
+            "title": "Interval Minutes",
+            "type": "integer"
+          }
+        },
+        "title": "ScheduleSpec",
         "type": "object"
       },
       "SourceOperationCapability": {
@@ -557,6 +666,78 @@
         "title": "SourceOperationCapability",
         "type": "object"
       },
+      "SourceQueryPreview": {
+        "properties": {
+          "content_purchase_cost": {
+            "const": 0,
+            "default": 0,
+            "title": "Content Purchase Cost",
+            "type": "integer"
+          },
+          "estimated_requests": {
+            "minimum": 0.0,
+            "title": "Estimated Requests",
+            "type": "integer"
+          },
+          "operation": {
+            "const": "search_posts",
+            "default": "search_posts",
+            "title": "Operation",
+            "type": "string"
+          },
+          "pipeline_connected": {
+            "const": false,
+            "default": false,
+            "title": "Pipeline Connected",
+            "type": "boolean"
+          },
+          "queries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Queries",
+            "type": "array"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/QueryRuleExecution"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "x",
+              "bilibili",
+              "weibo",
+              "xiaohongshu",
+              "douyin",
+              "bluesky"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "support": {
+            "enum": [
+              "unknown",
+              "supported",
+              "unsupported",
+              "authorization_required"
+            ],
+            "title": "Support",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "support",
+          "queries",
+          "rules",
+          "estimated_requests"
+        ],
+        "title": "SourceQueryPreview",
+        "type": "object"
+      },
       "SourceView": {
         "properties": {
           "eligible_for_collection": {
@@ -625,7 +806,7 @@
     }
   },
   "info": {
-    "description": "Single-owner learning workspace. Unsafe requests require an exact allowed Origin; authenticated writes also require a session-bound X-CSRF-Token. Monitor configurations are drafts; only verify_pipeline diagnostic jobs are available.",
+    "description": "Single-owner learning workspace. Unsafe requests require an exact allowed Origin; authenticated writes also require a session-bound X-CSRF-Token. Monitor configuration history and zero-network query previews are available; collection remains disabled until a source passes rights and pipeline admission.",
     "title": "HotKey API",
     "version": "0.2.0"
   },
@@ -1772,6 +1953,336 @@
         ]
       }
     },
+    "/api/v1/monitors/{identity}/activate": {
+      "post": {
+        "operationId": "activateMonitor",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonitorStateChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Activate Monitor",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/v1/monitors/{identity}/pause": {
+      "post": {
+        "operationId": "pauseMonitor",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonitorStateChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Pause Monitor",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
     "/api/v1/session": {
       "delete": {
         "operationId": "logout",
@@ -2331,9 +2842,9 @@
         ]
       }
     },
-    "/api/v1/sources/bluesky/query-preview": {
+    "/api/v1/sources/query-preview": {
       "post": {
-        "operationId": "previewBlueskyQuery",
+        "operationId": "previewSourceQueries",
         "parameters": [
           {
             "in": "header",
@@ -2357,7 +2868,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SearchInput"
+                "$ref": "#/components/schemas/QueryPreviewInput"
               }
             }
           },

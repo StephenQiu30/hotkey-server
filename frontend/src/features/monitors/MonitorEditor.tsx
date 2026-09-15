@@ -1,8 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { createMonitor, updateMonitor } from "../../api/monitoring";
+import { previewSourceQueries } from "../../api/sources";
 import { message } from "../../request";
+
 type Monitor = API.MonitorView;
 type Source = API.SourceView;
+
 export const sourceLabels: Record<Source["id"], string> = {
   x: "X",
   bilibili: "B站",
@@ -11,6 +14,44 @@ export const sourceLabels: Record<Source["id"], string> = {
   douyin: "抖音",
   bluesky: "Bluesky",
 };
+
+const modeLabels: Record<API.QueryRuleExecution["mode"], string> = {
+  native: "平台查询",
+  local_filter: "入库前过滤",
+  unsupported: "当前不支持",
+};
+
+function lines(value: FormDataEntryValue | null) {
+  return String(value ?? "")
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function input(form: HTMLFormElement, sources: Source[]): API.MonitorInput {
+  const values = new FormData(form);
+  const selected = sources
+    .filter((source) => values.getAll("source_ids").includes(source.id))
+    .map((source) => source.id);
+  return {
+    title: String(values.get("title")),
+    query_spec: {
+      include_any: lines(values.get("include_any")),
+      include_all: lines(values.get("include_all")),
+      exclude: lines(values.get("exclude")),
+      aliases: lines(values.get("aliases")),
+    },
+    source_ids: selected,
+    schedule: {
+      interval_minutes: Number(values.get("interval_minutes")),
+    },
+    budget: {
+      daily_requests: Number(values.get("daily_requests")),
+      content_purchase_cost: 0,
+    },
+  };
+}
+
 export function MonitorEditor({
   monitor,
   sources,
@@ -24,30 +65,22 @@ export function MonitorEditor({
 }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<API.QueryPreview | null>(null);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const values = new FormData(event.currentTarget);
-    const selected = sources
-      .filter((s) => values.getAll("sources").includes(s.id))
-      .map((s) => s.id);
-    if (!selected.length) {
+    const body = input(event.currentTarget, sources);
+    if (!body.source_ids.length) {
       setError("请至少选择一个来源。");
       return;
     }
-    const body = {
-      title: String(values.get("title")),
-      keywords: String(values.get("keywords"))
-        .split("\n")
-        .filter((v) => v.trim()),
-      sources: selected,
-    };
     setBusy(true);
     setError("");
     try {
       if (monitor)
         await updateMonitor(
           { identity: monitor.id },
-          { ...body, version: monitor.version },
+          { ...body, expected_version: monitor.current_version },
         );
       else await createMonitor(body);
       onSaved();
@@ -57,6 +90,33 @@ export function MonitorEditor({
       setBusy(false);
     }
   }
+
+  async function showPreview(form: HTMLFormElement) {
+    const body = input(form, sources);
+    if (!body.query_spec.include_any.length || !body.source_ids.length) {
+      setError("请先填写关键词并选择来源。");
+      return;
+    }
+    const until = new Date();
+    const since = new Date(until.getTime() - 24 * 60 * 60 * 1000);
+    setBusy(true);
+    setError("");
+    try {
+      setPreview(
+        await previewSourceQueries({
+          query_spec: body.query_spec,
+          source_ids: body.source_ids,
+          since: since.toISOString(),
+          until: until.toISOString(),
+        }),
+      );
+    } catch (error) {
+      setError(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="panel editor" aria-labelledby="editor-title">
       <h2 id="editor-title">{monitor ? "编辑监控草稿" : "新建监控草稿"}</h2>
@@ -71,34 +131,116 @@ export function MonitorEditor({
           />
         </label>
         <label>
-          关键词（每行一个，最多 20 个）
+          任一关键词（每行一个，最多 20 个）
           <textarea
-            name="keywords"
+            name="include_any"
             required
             rows={4}
-            defaultValue={monitor?.keywords.join("\n")}
+            defaultValue={monitor?.query_spec.include_any.join("\n")}
           />
         </label>
+        <div className="form-grid">
+          <label>
+            必须同时包含
+            <textarea
+              name="include_all"
+              rows={3}
+              defaultValue={monitor?.query_spec.include_all?.join("\n")}
+            />
+          </label>
+          <label>
+            排除词
+            <textarea
+              name="exclude"
+              rows={3}
+              defaultValue={monitor?.query_spec.exclude?.join("\n")}
+            />
+          </label>
+          <label>
+            别名
+            <textarea
+              name="aliases"
+              rows={3}
+              defaultValue={monitor?.query_spec.aliases?.join("\n")}
+            />
+          </label>
+        </div>
         <fieldset>
           <legend>关注来源</legend>
           <div className="checks">
-            {sources.map((s) => (
-              <label key={s.id}>
+            {sources.map((source) => (
+              <label key={source.id}>
                 <input
                   type="checkbox"
-                  name="sources"
-                  value={s.id}
-                  defaultChecked={monitor?.sources.includes(s.id)}
+                  name="source_ids"
+                  value={source.id}
+                  defaultChecked={monitor?.source_ids.includes(source.id)}
                 />
-                {sourceLabels[s.id]}
+                {sourceLabels[source.id]}
               </label>
             ))}
           </div>
         </fieldset>
-        <p className="notice">当前保存为草稿；来源连接完成后才能开启采集。</p>
+        <div className="form-grid">
+          <label>
+            检查周期（分钟）
+            <input
+              name="interval_minutes"
+              type="number"
+              min={15}
+              max={1440}
+              required
+              defaultValue={monitor?.schedule.interval_minutes ?? 60}
+            />
+          </label>
+          <label>
+            每日请求上限
+            <input
+              name="daily_requests"
+              type="number"
+              min={1}
+              max={1000}
+              required
+              defaultValue={monitor?.budget.daily_requests ?? 24}
+            />
+          </label>
+        </div>
+        <p className="notice">
+          内容采购预算固定为 0；查询预览不会访问外部平台。
+        </p>
+        {preview && (
+          <div className="query-preview" aria-live="polite">
+            <h3>查询预览 · 预计 {preview.estimated_requests} 次请求</h3>
+            {preview.sources.map((source) => (
+              <div key={source.source}>
+                <strong>{sourceLabels[source.source]}</strong>
+                <p>{source.queries.join(" / ") || "当前无法编译查询"}</p>
+                <small>
+                  {source.rules
+                    .map((rule) => modeLabels[rule.mode])
+                    .filter(
+                      (label, index, labels) => labels.indexOf(label) === index,
+                    )
+                    .join(" · ")}
+                </small>
+              </div>
+            ))}
+          </div>
+        )}
         {error && <p role="alert">{error}</p>}
         <div className="actions">
-          <button disabled={busy}>{busy ? "正在保存…" : "保存草稿"}</button>
+          <button disabled={busy}>{busy ? "正在处理…" : "保存草稿"}</button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={(event) => {
+              const form = event.currentTarget.form;
+              if (form) void showPreview(form);
+            }}
+          >
+            预览查询
+          </button>
           <button
             type="button"
             className="secondary"

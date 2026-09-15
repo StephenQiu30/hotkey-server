@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createDiagnosticJob, cancelJob, listJobs } from "../api/jobs";
 import { getSession, logout } from "../api/identity";
-import { listMonitors } from "../api/monitoring";
+import { activateMonitor, listMonitors, pauseMonitor } from "../api/monitoring";
 import { listSources } from "../api/sources";
 import { Login } from "../features/identity/Login";
 import {
@@ -19,6 +19,11 @@ const statuses: Record<Job["status"], string> = {
   succeeded: "已完成",
   failed: "失败",
   cancelled: "已取消",
+};
+const monitorStates: Record<Monitor["state"], string> = {
+  draft: "草稿",
+  active: "运行中",
+  paused: "已暂停",
 };
 export function App() {
   const [session, setSession] = useState<"loading" | "in" | "out">("loading");
@@ -164,14 +169,16 @@ export function App() {
         </div>
         <div className="notice">
           学习版本 ·
-          目前支持监控草稿与任务链路诊断。各平台关键词和评论采集尚未接入。
+          配置历史与查询预览已接入。来源通过用途权限和采集连接检查后才能启用。
         </div>
         {loading && <p role="status">正在加载工作台数据…</p>}
         {error && <p role="alert">{error}</p>}
         {editor && (
           <MonitorEditor
             key={
-              typeof editor === "string" ? "new" : editor.id + editor.version
+              typeof editor === "string"
+                ? "new"
+                : editor.id + editor.current_version
             }
             monitor={editor === "new" ? undefined : editor}
             sources={sources}
@@ -186,7 +193,7 @@ export function App() {
         <section>
           <div className="section-title">
             <h2>
-              监控草稿 <span className="count">{monitors.length}</span>
+              监控配置 <span className="count">{monitors.length}</span>
             </h2>
             <button
               className="secondary"
@@ -200,37 +207,93 @@ export function App() {
             <div className="cards">
               {monitors.map((m) => (
                 <article className="panel" key={m.id}>
-                  <span className="badge">草稿 · v{m.version}</span>
+                  <span className="badge">
+                    {monitorStates[m.state]} · v{m.current_version}
+                  </span>
                   <h3>{m.title}</h3>
                   <div className="tags">
-                    {m.keywords.map((k) => (
+                    {m.query_spec.include_any.map((k) => (
                       <span key={k}>{k}</span>
                     ))}
                   </div>
                   <p className="muted">
-                    {m.sources
-                      .map((s) => sourceLabels[s as Source["id"]] ?? s)
-                      .join(" / ")}
+                    {m.source_ids.map((s) => sourceLabels[s] ?? s).join(" / ")}
+                    {" · "}每 {m.schedule.interval_minutes} 分钟 · 每日最多{" "}
+                    {m.budget.daily_requests} 次请求
                   </p>
-                  <button
-                    className="secondary"
-                    aria-label={`编辑 ${m.title}`}
-                    onClick={() => setEditor(m)}
-                  >
-                    编辑草稿
-                  </button>
+                  <div className="actions">
+                    {m.state !== "active" && (
+                      <button
+                        className="secondary"
+                        aria-label={`编辑 ${m.title}`}
+                        onClick={() => setEditor(m)}
+                      >
+                        编辑草稿
+                      </button>
+                    )}
+                    {m.state !== "active" ? (
+                      <button
+                        className="secondary"
+                        aria-label={`启用 ${m.title}`}
+                        disabled={
+                          busy ||
+                          m.source_ids.some(
+                            (id) =>
+                              !sources.find((source) => source.id === id)
+                                ?.eligible_for_collection,
+                          )
+                        }
+                        onClick={() =>
+                          void action(async () => {
+                            await activateMonitor(
+                              { identity: m.id },
+                              { expected_version: m.current_version },
+                            );
+                            await refresh();
+                          })
+                        }
+                      >
+                        启用监控
+                      </button>
+                    ) : (
+                      <button
+                        className="secondary"
+                        aria-label={`暂停 ${m.title}`}
+                        disabled={busy}
+                        onClick={() =>
+                          void action(async () => {
+                            await pauseMonitor(
+                              { identity: m.id },
+                              { expected_version: m.current_version },
+                            );
+                            await refresh();
+                          })
+                        }
+                      >
+                        暂停监控
+                      </button>
+                    )}
+                  </div>
+                  {m.state !== "active" &&
+                    m.source_ids.some(
+                      (id) =>
+                        !sources.find((source) => source.id === id)
+                          ?.eligible_for_collection,
+                    ) && (
+                      <p className="muted small">来源未准入，暂不能启用。</p>
+                    )}
                 </article>
               ))}
             </div>
           ) : (
             <div className="empty">
               <h3>从一个你关心的话题开始</h3>
-              <p>创建草稿，选定关键词与国内外信息来源。</p>
+              <p>创建配置，预览关键词如何映射到各信息来源。</p>
             </div>
           )}
           {monitorCursor && (
             <button disabled={busy} onClick={() => void more("monitors")}>
-              更多草稿
+              更多配置
             </button>
           )}
         </section>

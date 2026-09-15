@@ -37,7 +37,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         responses=errors,
         description="Single-owner learning workspace. Unsafe requests require an exact allowed "
         "Origin; authenticated writes also require a session-bound X-CSRF-Token. "
-        "Monitor configurations are drafts; only verify_pipeline diagnostic jobs are available.",
+        "Monitor configuration history and zero-network query previews are available; "
+        "collection remains disabled until a source passes rights and pipeline admission.",
     )
     app.add_middleware(Boundary)
 

@@ -21,7 +21,7 @@ def database():
     with engine.begin() as conn:
         conn.execute(
             text(
-                "TRUNCATE login_sessions, owners, monitors, audit_events, "
+                "TRUNCATE login_sessions, owners, monitor_versions, monitors, audit_events, "
                 "job_results, outbox, job_attempts, jobs"
             )
         )

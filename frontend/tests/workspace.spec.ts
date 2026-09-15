@@ -25,9 +25,17 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   await page.getByRole("button", { name: "新建监控", exact: true }).click();
   const title = `学习验证-${Date.now()}`;
   await page.getByLabel("监控名称").fill(title);
-  await page.getByLabel("关键词（每行一个，最多 20 个）").fill("人工智能\nAI");
+  await page
+    .getByLabel("任一关键词（每行一个，最多 20 个）")
+    .fill("人工智能\nAI");
+  await page.getByLabel("必须同时包含").fill("监管");
+  await page.getByLabel("排除词").fill("广告");
+  await page.getByLabel("别名").fill("生成式AI");
   await page.getByLabel("微博", { exact: true }).check();
   await page.getByLabel("B站", { exact: true }).check();
+  await page.getByRole("button", { name: "预览查询" }).click();
+  await expect(page.getByRole("heading", { name: /查询预览/ })).toBeVisible();
+  await expect(page.getByText("平台查询 · 入库前过滤").first()).toBeVisible();
   await page.getByRole("button", { name: "保存草稿" }).click();
   await expect(
     page.getByRole("heading", { name: title, exact: true }),
@@ -39,6 +47,10 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
     has: page.getByRole("heading", { name: title + "-更新", exact: true }),
   });
   await expect(card.getByText("草稿 · v2")).toBeVisible();
+  await expect(card.getByText("来源未准入，暂不能启用。")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: `启用 ${title}-更新` }),
+  ).toBeDisabled();
   const jobResponse = page.waitForResponse(
     (r) => r.url().endsWith("/api/v1/jobs") && r.request().method() === "POST",
   );

@@ -52,3 +52,41 @@ export async function updateMonitor(
     ...(options || {}),
   });
 }
+
+/** Activate Monitor POST /api/v1/monitors/${param0}/activate */
+export async function activateMonitor(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.activateMonitorParams,
+  body: API.MonitorStateChange,
+  options?: RequestOptions
+) {
+  const { identity: param0, ...queryParams } = params;
+  return request<API.MonitorView>(`/api/v1/monitors/${param0}/activate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    params: { ...queryParams },
+    data: body,
+    ...(options || {}),
+  });
+}
+
+/** Pause Monitor POST /api/v1/monitors/${param0}/pause */
+export async function pauseMonitor(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.pauseMonitorParams,
+  body: API.MonitorStateChange,
+  options?: RequestOptions
+) {
+  const { identity: param0, ...queryParams } = params;
+  return request<API.MonitorView>(`/api/v1/monitors/${param0}/pause`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    params: { ...queryParams },
+    data: body,
+    ...(options || {}),
+  });
+}

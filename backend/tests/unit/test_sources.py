@@ -11,6 +11,7 @@ from sources.schemas import (
     BilibiliPostInput,
     BilibiliRepliesInput,
     BilibiliSearchInput,
+    QueryPreviewInput,
     SearchInput,
     ThreadInput,
 )
@@ -61,6 +62,38 @@ def test_priority_source_catalog_separates_support_rights_and_pipeline():
     assert x_search.support == "authorization_required"
     assert x_search.content_purchase_cost == 0
     assert x_search.evidence_ref.endswith("EV-007-001-source-poc.json")
+
+
+def test_query_preview_compiles_without_network_and_exposes_rule_boundaries():
+    preview = SourceService().preview(
+        QueryPreviewInput.model_validate(
+            {
+                "query_spec": {
+                    "include_any": [" AI ", "人工智能"],
+                    "include_all": ["监管"],
+                    "exclude": ["招聘"],
+                    "aliases": ["生成式AI", "AI"],
+                },
+                "source_ids": ["bilibili", "xiaohongshu", "bilibili"],
+                "since": "2026-09-01T08:00:00+08:00",
+                "until": "2026-09-08T00:00:00Z",
+            }
+        )
+    )
+    assert preview.network_accessed is False
+    assert preview.since.isoformat() == "2026-09-01T00:00:00+00:00"
+    assert [source.source for source in preview.sources] == ["bilibili", "xiaohongshu"]
+    bilibili, xiaohongshu = preview.sources
+    assert bilibili.queries == ["AI", "人工智能", "生成式AI"]
+    assert {rule.rule: rule.mode for rule in bilibili.rules} == {
+        "include_any": "native",
+        "include_all": "local_filter",
+        "exclude": "local_filter",
+        "aliases": "native",
+    }
+    assert xiaohongshu.queries == []
+    assert all(rule.mode == "unsupported" for rule in xiaohongshu.rules)
+    assert preview.estimated_requests == 3
 
 
 def test_window_validation():

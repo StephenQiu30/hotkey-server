@@ -250,6 +250,30 @@ legend {
 .editor h2 {
   margin-bottom: 25px;
 }
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+.query-preview {
+  border-left: 3px solid #245d51;
+  padding: 2px 0 2px 16px;
+  margin: 20px 0;
+}
+.query-preview h3 {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+.query-preview div {
+  margin: 10px 0;
+}
+.query-preview p {
+  margin: 3px 0;
+  overflow-wrap: anywhere;
+}
+.query-preview small {
+  color: #607068;
+}
 .editor .notice {
   margin-bottom: 20px;
 }

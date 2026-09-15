@@ -1,4 +1,15 @@
 declare namespace API {
+  type activateMonitorParams = {
+    identity: string;
+  };
+
+  type BudgetSpec = {
+    /** Content Purchase Cost */
+    content_purchase_cost?: number;
+    /** Daily Requests */
+    daily_requests?: number;
+  };
+
   type cancelJobParams = {
     identity: string;
   };
@@ -68,10 +79,11 @@ declare namespace API {
   };
 
   type MonitorInput = {
-    /** Keywords */
-    keywords: string[];
-    /** Sources */
-    sources: (
+    budget?: BudgetSpec;
+    query_spec: QuerySpec;
+    schedule?: ScheduleSpec;
+    /** Source Ids */
+    source_ids: (
       | "x"
       | "bilibili"
       | "weibo"
@@ -90,11 +102,19 @@ declare namespace API {
     next_cursor: string | null;
   };
 
+  type MonitorStateChange = {
+    /** Expected Version */
+    expected_version: number;
+  };
+
   type MonitorUpdate = {
-    /** Keywords */
-    keywords: string[];
-    /** Sources */
-    sources: (
+    budget?: BudgetSpec;
+    /** Expected Version */
+    expected_version: number;
+    query_spec: QuerySpec;
+    schedule?: ScheduleSpec;
+    /** Source Ids */
+    source_ids: (
       | "x"
       | "bilibili"
       | "weibo"
@@ -104,25 +124,37 @@ declare namespace API {
     )[];
     /** Title */
     title: string;
-    /** Version */
-    version: number;
   };
 
   type MonitorView = {
+    budget: BudgetSpec;
     /** Created At */
     created_at: string;
+    /** Current Version */
+    current_version: number;
     /** Id */
     id: string;
-    /** Keywords */
-    keywords: string[];
-    /** Sources */
-    sources: string[];
-    /** Status */
-    status?: string;
+    query_spec: QuerySpec;
+    schedule: ScheduleSpec;
+    /** Source Ids */
+    source_ids: (
+      | "x"
+      | "bilibili"
+      | "weibo"
+      | "xiaohongshu"
+      | "douyin"
+      | "bluesky"
+    )[];
+    /** State */
+    state: "draft" | "active" | "paused";
     /** Title */
     title: string;
-    /** Version */
-    version: number;
+    /** Updated At */
+    updated_at: string;
+  };
+
+  type pauseMonitorParams = {
+    identity: string;
   };
 
   type Principal = {
@@ -131,41 +163,58 @@ declare namespace API {
   };
 
   type QueryPreview = {
-    /** Adapter Version */
-    adapter_version?: string;
-    /** Coverage */
-    coverage?: string;
-    /** Limit */
-    limit: number;
-    /** Operation */
-    operation?: string;
-    /** Pipeline Connected */
-    pipeline_connected?: boolean;
-    /** Query */
-    query: string;
-    /** Semantics */
-    semantics?: string;
+    /** Content Purchase Cost */
+    content_purchase_cost?: number;
+    /** Estimated Requests */
+    estimated_requests: number;
+    /** Network Accessed */
+    network_accessed?: boolean;
     /** Since */
     since: string;
-    /** Sort */
-    sort?: string;
-    /** Source */
-    source?: string;
+    /** Sources */
+    sources: SourceQueryPreview[];
     /** Until */
     until: string;
   };
 
-  type SearchInput = {
-    /** Cursor */
-    cursor?: string | null;
-    /** Keyword */
-    keyword: string;
-    /** Limit */
-    limit?: number;
+  type QueryPreviewInput = {
+    query_spec: QuerySpec;
     /** Since */
     since: string;
+    /** Source Ids */
+    source_ids: (
+      | "x"
+      | "bilibili"
+      | "weibo"
+      | "xiaohongshu"
+      | "douyin"
+      | "bluesky"
+    )[];
     /** Until */
     until: string;
+  };
+
+  type QueryRuleExecution = {
+    /** Mode */
+    mode: "native" | "local_filter" | "unsupported";
+    /** Rule */
+    rule: "include_any" | "include_all" | "exclude" | "aliases";
+  };
+
+  type QuerySpec = {
+    /** Aliases */
+    aliases?: string[];
+    /** Exclude */
+    exclude?: string[];
+    /** Include All */
+    include_all?: string[];
+    /** Include Any */
+    include_any: string[];
+  };
+
+  type ScheduleSpec = {
+    /** Interval Minutes */
+    interval_minutes?: number;
   };
 
   type SourceOperationCapability = {
@@ -189,6 +238,25 @@ declare namespace API {
     support: "unknown" | "supported" | "unsupported" | "authorization_required";
     /** Verified At */
     verified_at: string;
+  };
+
+  type SourceQueryPreview = {
+    /** Content Purchase Cost */
+    content_purchase_cost?: number;
+    /** Estimated Requests */
+    estimated_requests: number;
+    /** Operation */
+    operation?: string;
+    /** Pipeline Connected */
+    pipeline_connected?: boolean;
+    /** Queries */
+    queries: string[];
+    /** Rules */
+    rules: QueryRuleExecution[];
+    /** Source */
+    source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
+    /** Support */
+    support: "unknown" | "supported" | "unsupported" | "authorization_required";
   };
 
   type SourceView = {

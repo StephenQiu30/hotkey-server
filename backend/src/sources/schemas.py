@@ -78,18 +78,67 @@ class BilibiliRepliesInput(Input):
     limit: int = Field(default=20, ge=1, le=20)
 
 
-class QueryPreview(BaseModel):
-    source: Literal["bluesky"] = "bluesky"
+class QuerySpec(BaseModel):
+    include_any: list[str] = Field(min_length=1, max_length=20)
+    include_all: list[str] = Field(default_factory=list, max_length=10)
+    exclude: list[str] = Field(default_factory=list, max_length=20)
+    aliases: list[str] = Field(default_factory=list, max_length=20)
+
+    @classmethod
+    def _clean_terms(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values]
+        if any(not value or len(value) > 100 for value in cleaned):
+            raise ValueError("query terms must contain 1 to 100 characters")
+        return list(dict.fromkeys(cleaned))
+
+    @model_validator(mode="after")
+    def valid_terms(self) -> Self:
+        self.include_any = self._clean_terms(self.include_any)
+        self.include_all = self._clean_terms(self.include_all)
+        self.exclude = self._clean_terms(self.exclude)
+        self.aliases = self._clean_terms(self.aliases)
+        return self
+
+
+class QueryPreviewInput(Input):
+    query_spec: QuerySpec
+    source_ids: list[SourceName] = Field(min_length=1, max_length=6)
+    since: AwareDatetime
+    until: AwareDatetime
+
+    @model_validator(mode="after")
+    def valid_preview(self) -> Self:
+        if self.since >= self.until:
+            raise ValueError("since must precede until")
+        self.since = self.since.astimezone(UTC)
+        self.until = self.until.astimezone(UTC)
+        self.source_ids = list(dict.fromkeys(self.source_ids))
+        return self
+
+
+class QueryRuleExecution(BaseModel):
+    rule: Literal["include_any", "include_all", "exclude", "aliases"]
+    mode: Literal["native", "local_filter", "unsupported"]
+
+
+class SourceQueryPreview(BaseModel):
+    source: SourceName
     operation: Literal["search_posts"] = "search_posts"
-    adapter_version: Literal["bluesky-v1"] = "bluesky-v1"
-    query: str
+    support: Literal["unknown", "supported", "unsupported", "authorization_required"]
+    queries: list[str]
+    rules: list[QueryRuleExecution]
+    estimated_requests: int = Field(ge=0)
+    content_purchase_cost: Literal[0] = 0
+    pipeline_connected: Literal[False] = False
+
+
+class QueryPreview(BaseModel):
     since: datetime
     until: datetime
-    sort: Literal["latest"] = "latest"
-    limit: int
-    semantics: Literal["provider_native_text"] = "provider_native_text"
-    coverage: Literal["unknown"] = "unknown"
-    pipeline_connected: Literal[False] = False
+    sources: list[SourceQueryPreview]
+    estimated_requests: int = Field(ge=0)
+    content_purchase_cost: Literal[0] = 0
+    network_accessed: Literal[False] = False
 
 
 class SocialObject(BaseModel):

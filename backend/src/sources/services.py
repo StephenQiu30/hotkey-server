@@ -2,9 +2,12 @@ from datetime import date
 
 from sources.schemas import (
     QueryPreview,
-    SearchInput,
+    QueryPreviewInput,
+    QueryRuleExecution,
+    QuerySpec,
     SourceName,
     SourceOperationCapability,
+    SourceQueryPreview,
     SourceView,
 )
 
@@ -146,7 +149,63 @@ class SourceService:
             for source, roles, source_operations in rows
         ]
 
-    def preview(self, data: SearchInput) -> QueryPreview:
+    def preview(self, data: QueryPreviewInput) -> QueryPreview:
+        catalog = {source.id: source for source in self.catalog()}
+        previews: list[SourceQueryPreview] = []
+        terms = list(dict.fromkeys([*data.query_spec.include_any, *data.query_spec.aliases]))
+        for source_id in data.source_ids:
+            source = catalog[source_id]
+            search = next(
+                operation
+                for operation in source.operations
+                if operation.operation == "search_posts"
+            )
+            compilable = search.support in {"supported", "authorization_required"}
+            queries = terms if compilable else []
+            rules = [
+                QueryRuleExecution(
+                    rule="include_any", mode="native" if compilable else "unsupported"
+                ),
+                QueryRuleExecution(
+                    rule="include_all", mode="local_filter" if compilable else "unsupported"
+                ),
+                QueryRuleExecution(
+                    rule="exclude", mode="local_filter" if compilable else "unsupported"
+                ),
+                QueryRuleExecution(rule="aliases", mode="native" if compilable else "unsupported"),
+            ]
+            previews.append(
+                SourceQueryPreview(
+                    source=source_id,
+                    support=search.support,
+                    queries=queries,
+                    rules=rules,
+                    estimated_requests=len(queries),
+                )
+            )
         return QueryPreview(
-            query=data.keyword, since=data.since, until=data.until, limit=data.limit
+            since=data.since,
+            until=data.until,
+            sources=previews,
+            estimated_requests=sum(source.estimated_requests for source in previews),
+        )
+
+    def activation_issues(self, source_ids: list[SourceName]) -> list[SourceName]:
+        catalog = {source.id: source for source in self.catalog()}
+        return [
+            source_id for source_id in source_ids if not catalog[source_id].eligible_for_collection
+        ]
+
+    def request_estimate(self, query_spec: QuerySpec, source_ids: list[SourceName]) -> int:
+        terms = set([*query_spec.include_any, *query_spec.aliases])
+        catalog = {source.id: source for source in self.catalog()}
+        return sum(
+            len(terms)
+            for source_id in source_ids
+            if next(
+                operation
+                for operation in catalog[source_id].operations
+                if operation.operation == "search_posts"
+            ).support
+            in {"supported", "authorization_required"}
         )

@@ -10,12 +10,12 @@ export async function listSources(options?: RequestOptions) {
   });
 }
 
-/** Query Preview POST /api/v1/sources/bluesky/query-preview */
-export async function previewBlueskyQuery(
-  body: API.SearchInput,
+/** Query Preview POST /api/v1/sources/query-preview */
+export async function previewSourceQueries(
+  body: API.QueryPreviewInput,
   options?: RequestOptions
 ) {
-  return request<API.QueryPreview>("/api/v1/sources/bluesky/query-preview", {
+  return request<API.QueryPreview>("/api/v1/sources/query-preview", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

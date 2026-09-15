@@ -9,7 +9,9 @@ from core.clock import utcnow
 from core.config import Settings
 from identity.services import IdentityService
 from main import create_app
+from monitors.models import MonitorVersion
 from monitors.services import MonitorService
+from sources.services import SourceService
 
 pytestmark = pytest.mark.integration
 
@@ -64,16 +66,24 @@ def test_monitor_version_conflict_and_no_fake_collection(client, database):
     login(client)
     body = {
         "title": "AI 观察",
-        "keywords": ["AI", " AI ", "人工智能"],
-        "sources": ["weibo", "bilibili"],
+        "query_spec": {
+            "include_any": ["AI", " AI ", "人工智能"],
+            "include_all": ["监管"],
+            "exclude": [],
+            "aliases": ["生成式AI"],
+        },
+        "source_ids": ["weibo", "bilibili"],
+        "schedule": {"interval_minutes": 60},
+        "budget": {"daily_requests": 24, "content_purchase_cost": 0},
     }
     result = client.post("/api/v1/monitors", json=body)
     assert result.status_code == 201
     monitor = result.json()
-    assert monitor["keywords"] == ["AI", "人工智能"] and monitor["status"] == "draft"
+    assert monitor["query_spec"]["include_any"] == ["AI", "人工智能"]
+    assert monitor["state"] == "draft" and monitor["current_version"] == 1
     path = "/api/v1/monitors/" + monitor["id"]
-    update = dict(body, title="更新", version=1)
-    assert client.patch(path, json=update).json()["version"] == 2
+    update = dict(body, title="更新", expected_version=1)
+    assert client.patch(path, json=update).json()["current_version"] == 2
     assert client.patch(path, json=update).status_code == 409
     assert client.get("/api/v1/monitors?limit=101").status_code == 422
     sources = client.get("/api/v1/sources").json()
@@ -87,6 +97,14 @@ def test_monitor_version_conflict_and_no_fake_collection(client, database):
         "list_replies",
     }
     with database() as session:
+        versions = list(
+            session.scalars(
+                select(MonitorVersion)
+                .where(MonitorVersion.monitor_id == monitor["id"])
+                .order_by(MonitorVersion.version)
+            )
+        )
+        assert [version.title for version in versions] == ["AI 观察", "更新"]
         assert (
             session.scalar(
                 select(func.count()).select_from(Audit).where(Audit.action == "monitor_updated")
@@ -131,7 +149,11 @@ def test_expired_session_and_pagination(client, database):
         assert (
             client.post(
                 "/api/v1/monitors",
-                json={"title": title, "keywords": ["AI"], "sources": ["bilibili"]},
+                json={
+                    "title": title,
+                    "query_spec": {"include_any": ["AI"]},
+                    "source_ids": ["bilibili"],
+                },
             ).status_code
             == 201
         )
@@ -160,9 +182,10 @@ def test_unexpected_error_is_sanitized(client, monkeypatch):
 
 
 def test_query_preview_auth_window_and_no_fake_connection(client):
-    path = "/api/v1/sources/bluesky/query-preview"
+    path = "/api/v1/sources/query-preview"
     query = {
-        "keyword": "科学",
+        "query_spec": {"include_any": ["科学"], "exclude": ["广告"]},
+        "source_ids": ["bilibili", "xiaohongshu"],
         "since": "2026-09-01T08:00:00+08:00",
         "until": "2026-09-08T00:00:00Z",
     }
@@ -171,8 +194,76 @@ def test_query_preview_auth_window_and_no_fake_connection(client):
     response = client.post(path, json=query)
     assert response.status_code == 200
     data = response.json()
-    assert data["query"] == "科学" and data["since"] == "2026-09-01T00:00:00Z"
-    assert data["coverage"] == "unknown" and data["pipeline_connected"] is False
+    assert data["since"] == "2026-09-01T00:00:00Z"
+    assert data["sources"][0]["queries"] == ["科学"]
+    assert data["sources"][1]["queries"] == []
+    assert data["network_accessed"] is False
     assert client.post(path, json=dict(query, until=query["since"])).status_code == 422
     client.headers.pop("X-CSRF-Token")
     assert client.post(path, json=query).status_code == 403
+
+
+def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, monkeypatch):
+    login(client)
+    created = client.post(
+        "/api/v1/monitors",
+        json={
+            "title": "受控启停",
+            "query_spec": {"include_any": ["AI"]},
+            "source_ids": ["bilibili"],
+            "budget": {"daily_requests": 23, "content_purchase_cost": 0},
+        },
+    ).json()
+    path = f"/api/v1/monitors/{created['id']}"
+    state = {"expected_version": created["current_version"]}
+    refused = client.post(path + "/activate", json=state)
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "source_not_eligible"
+
+    monkeypatch.setattr(SourceService, "activation_issues", lambda self, source_ids: [])
+    budget_refused = client.post(path + "/activate", json=state)
+    assert budget_refused.status_code == 409
+    assert budget_refused.json()["code"] == "monitor_budget_insufficient"
+    updated = client.patch(
+        path,
+        json={
+            "title": "受控启停",
+            "query_spec": {"include_any": ["AI"]},
+            "source_ids": ["bilibili"],
+            "budget": {"daily_requests": 24, "content_purchase_cost": 0},
+            "expected_version": created["current_version"],
+        },
+    ).json()
+    state = {"expected_version": updated["current_version"]}
+    activated = client.post(path + "/activate", json=state)
+    assert activated.status_code == 200 and activated.json()["state"] == "active"
+    assert (
+        client.patch(
+            path,
+            json={
+                "title": "不能覆盖运行快照",
+                "query_spec": {"include_any": ["AI"]},
+                "source_ids": ["bilibili"],
+                "expected_version": updated["current_version"],
+            },
+        ).json()["code"]
+        == "monitor_not_editable"
+    )
+    paused = client.post(path + "/pause", json=state)
+    assert paused.status_code == 200 and paused.json()["state"] == "paused"
+    assert client.post(path + "/pause", json=state).json()["code"] == "monitor_state_conflict"
+    revised = client.patch(
+        path,
+        json={
+            "title": "暂停后修订",
+            "query_spec": {"include_any": ["AI", "智能体"]},
+            "source_ids": ["bilibili"],
+            "budget": {"daily_requests": 48, "content_purchase_cost": 0},
+            "expected_version": updated["current_version"],
+        },
+    ).json()
+    assert revised["state"] == "paused" and revised["current_version"] == 3
+    reactivated = client.post(
+        path + "/activate", json={"expected_version": revised["current_version"]}
+    )
+    assert reactivated.status_code == 200 and reactivated.json()["state"] == "active"
