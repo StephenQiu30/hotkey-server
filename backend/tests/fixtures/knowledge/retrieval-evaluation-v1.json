@@ -1,0 +1,32 @@
+{
+  "version": "knowledge-retrieval-evaluation-v1",
+  "synthetic": true,
+  "documents": [
+    {"id": "release_outage", "event": "product", "text": "版本发布后登录和上传功能持续失败，工程团队正在回滚并排查服务稳定性。"},
+    {"id": "customer_response", "event": "product", "text": "客服公开道歉，公布退款、补偿安排和后续沟通时间。"},
+    {"id": "privacy_leak", "event": "security", "text": "平台确认部分账号资料遭未授权访问，正在通知受影响用户并重置凭据。"},
+    {"id": "price_increase", "event": "business", "text": "会员套餐调整定价，下个结算周期开始采用新的收费标准。"},
+    {"id": "regulation_policy", "event": "policy", "text": "监管机构发布新规，要求网络平台限期完成合规整改并提交报告。"},
+    {"id": "supply_shortage", "event": "operations", "text": "核心零件供应不足造成库存紧张，多批订单预计推迟交付。"},
+    {"id": "creator_apology", "event": "creator", "text": "内容创作者就争议言论发布致歉声明，承认表达不当并暂停更新。"},
+    {"id": "product_recall", "event": "safety", "text": "厂商因潜在安全隐患主动撤回相关批次商品，并提供免费检修。"}
+  ],
+  "queries": [
+    {"id": "q01", "text": "应用崩了以后怎么处理", "expected": "release_outage"},
+    {"id": "q02", "text": "service outage after deployment", "expected": "release_outage"},
+    {"id": "q03", "text": "售后给了什么赔偿方案", "expected": "customer_response"},
+    {"id": "q04", "text": "how did customer support respond", "expected": "customer_response"},
+    {"id": "q05", "text": "用户个人信息外泄", "expected": "privacy_leak"},
+    {"id": "q06", "text": "personal data exposure incident", "expected": "privacy_leak"},
+    {"id": "q07", "text": "订阅费用上调", "expected": "price_increase"},
+    {"id": "q08", "text": "subscription became more expensive", "expected": "price_increase"},
+    {"id": "q09", "text": "新政策要求平台改正", "expected": "regulation_policy"},
+    {"id": "q10", "text": "regulator compliance order", "expected": "regulation_policy"},
+    {"id": "q11", "text": "缺货导致发货延期", "expected": "supply_shortage"},
+    {"id": "q12", "text": "inventory shortage delayed delivery", "expected": "supply_shortage"},
+    {"id": "q13", "text": "主播公开认错", "expected": "creator_apology"},
+    {"id": "q14", "text": "influencer public apology", "expected": "creator_apology"},
+    {"id": "q15", "text": "有危险的商品被下架召回", "expected": "product_recall"},
+    {"id": "q16", "text": "unsafe product withdrawal", "expected": "product_recall"}
+  ]
+}
