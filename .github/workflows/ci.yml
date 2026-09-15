@@ -57,6 +57,7 @@ jobs:
       - run: docker compose config --quiet
       - run: docker compose up -d --build
       - run: uv run --project backend python backend/scripts/verify_compose.py
+      - run: uv run --project backend python backend/scripts/verify_proxy_replacement.py
       - run: |
           python - <<'PY'
           import os, subprocess

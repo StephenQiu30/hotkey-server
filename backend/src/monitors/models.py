@@ -38,3 +38,32 @@ class MonitorVersion(Base):
     schedule: Mapped[dict[str, int]] = mapped_column(JSONB)
     budget: Mapped[dict[str, int]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class MonitorMatch(Base):
+    __tablename__ = "monitor_matches"
+    __table_args__ = (
+        UniqueConstraint(
+            "monitor_version_id", "content_id", name="uq_monitor_matches_version_content"
+        ),
+        CheckConstraint(
+            "relevance_status IN ('pending', 'accepted', 'rejected', 'needs_review')",
+            name="ck_monitor_matches_relevance",
+        ),
+        CheckConstraint(
+            "review_state IN ('new', 'ignored', 'following')",
+            name="ck_monitor_matches_review_state",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    monitor_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("monitor_versions.id", ondelete="CASCADE"), index=True
+    )
+    content_id: Mapped[UUID] = mapped_column(
+        ForeignKey("contents.id", ondelete="CASCADE"), index=True
+    )
+    match_reason: Mapped[list[str]] = mapped_column(JSONB)
+    relevance_status: Mapped[str] = mapped_column(String(20))
+    review_state: Mapped[str] = mapped_column(String(16))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

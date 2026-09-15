@@ -1,0 +1,49 @@
+{
+  "scope": "S02-T02A synthetic page transaction foundation",
+  "observed_at": "2026-09-15",
+  "external_network_accessed": false,
+  "source": {
+    "implementation": "synthetic SourceResult",
+    "platform_label": "bilibili",
+    "real_platform_collection": false
+  },
+  "evidence_store": {
+    "implementation": "MemoryStore protocol test double",
+    "deterministic_gzip_verified": true,
+    "sha256_and_size_verified": true,
+    "minio_connected": false
+  },
+  "database": {
+    "engine": "PostgreSQL 16 disposable database",
+    "alembic_revision": "0005_collection_page",
+    "upgrade_path": "0004_monitor_versions to 0005_collection_page preserved an existing monitor version",
+    "model_migration_diff": "empty"
+  },
+  "assertions": [
+    "duplicate page commit returns the existing checkpoint",
+    "provider namespace is part of content identity",
+    "post and reply relationship invariants are rejected at the normalized source boundary",
+    "one provider identity is shared across two monitor versions",
+    "changed text creates an immutable second content version",
+    "missing reply count remains null while a measured zero remains zero",
+    "only content with a monitor match appears in the inbox",
+    "the inbox uses an opaque first_seen_at and id keyset cursor",
+    "an invalid source result is rejected before object upload",
+    "a stale fencing token cannot create database evidence or advance a checkpoint",
+    "an object uploaded before a rejected database commit remains an explicit orphan for later reconciliation"
+  ],
+  "verification": {
+    "backend_tests": "76 passed with PostgreSQL and RabbitMQ; 2 upstream deprecation warnings",
+    "compose_pipeline": "succeeded; attempts=1; Celery prefork and RabbitMQ",
+    "proxy_replacement": "web container stayed running while backend container was replaced; the next proxied authenticated endpoint request reached the new backend and returned the expected 401",
+    "openapi": "runtime document equals docs/openapi/openapi.json; listInboxContents generated",
+    "frontend": "UmiOpenAPI client drift check and TypeScript/Vite build passed",
+    "browser": "2 Chromium tests passed; Swagger UI and authenticated empty inbox at desktop and 390px"
+  },
+  "limitations": [
+    "This is not EV-007-003 and does not satisfy the real inbox acceptance criterion.",
+    "No MinIO endpoint, bucket, credential reference, upload, readback, lifecycle, or orphan cleanup was exercised.",
+    "No external source request, collection worker, scheduler, budget reservation, or source admission was implemented.",
+    "No real post, comment, reply, author, or user session data was stored."
+  ]
+}

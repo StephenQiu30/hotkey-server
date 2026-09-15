@@ -40,9 +40,12 @@ def login(client):
 
 def test_auth_csrf_revocation_and_no_password_echo(client):
     assert client.get("/api/v1/monitors").status_code == 401
+    assert client.get("/api/v1/contents").status_code == 401
     result = client.post("/api/v1/session", json={"username": "learner", "password": "secret"})
     assert result.status_code == 422 and "secret" not in result.text
     login(client)
+    assert client.get("/api/v1/contents").json() == {"items": [], "next_cursor": None}
+    assert client.get("/api/v1/contents?cursor=bad").status_code == 422
     old_token = client.cookies["hk_session"]
     client.headers.pop("X-CSRF-Token")
     assert client.delete("/api/v1/session").status_code == 403

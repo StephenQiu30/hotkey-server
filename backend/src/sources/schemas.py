@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
 from typing import Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from core.schemas import Input
 
@@ -142,15 +142,25 @@ class QueryPreview(BaseModel):
 
 
 class SocialObject(BaseModel):
-    external_id: str
+    model_config = ConfigDict(extra="forbid")
+    provider_namespace: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9._:-]+$")
+    external_id: str = Field(min_length=1, max_length=1024)
     kind: Literal["post", "comment", "reply"]
-    text: str
-    author_id: str
+    text: str = Field(max_length=10000)
+    author_id: str = Field(min_length=1, max_length=1024)
     created_at: AwareDatetime
-    root_id: str
-    parent_id: str | None = None
-    reply_count: int | None = None
-    canonical_url: str | None = None
+    root_id: str = Field(min_length=1, max_length=1024)
+    parent_id: str | None = Field(default=None, min_length=1, max_length=1024)
+    reply_count: int | None = Field(default=None, ge=0)
+    canonical_url: str | None = Field(default=None, min_length=1, max_length=2048)
+
+    @model_validator(mode="after")
+    def valid_relationship(self) -> Self:
+        if self.kind == "post" and (self.parent_id is not None or self.root_id != self.external_id):
+            raise ValueError("post must be its own root and cannot have a parent")
+        if self.kind == "reply" and self.parent_id is None:
+            raise ValueError("reply requires a parent")
+        return self
 
 
 class SourceReference(BaseModel):

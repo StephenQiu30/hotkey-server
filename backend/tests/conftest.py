@@ -21,8 +21,10 @@ def database():
     with engine.begin() as conn:
         conn.execute(
             text(
-                "TRUNCATE login_sessions, owners, monitor_versions, monitors, audit_events, "
-                "job_results, outbox, job_attempts, jobs"
+                "TRUNCATE collection_checkpoints, monitor_matches, content_observations, "
+                "content_versions, contents, raw_pages, collection_runs, login_sessions, "
+                "owners, monitor_versions, monitors, audit_events, job_results, outbox, "
+                "job_attempts, jobs"
             )
         )
     yield sessionmaker(engine, expire_on_commit=False)

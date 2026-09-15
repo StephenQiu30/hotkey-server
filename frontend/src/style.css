@@ -199,6 +199,27 @@ section {
 .empty h3 {
   color: #324f40;
 }
+.inbox-list {
+  display: grid;
+  gap: 14px;
+}
+.inbox-item {
+  min-width: 0;
+}
+.inbox-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.inbox-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+.inbox-item a {
+  color: #245d51;
+  font-weight: 600;
+}
 .actions {
   display: flex;
   gap: 12px;
@@ -332,7 +353,8 @@ code {
     font-size: 28px;
   }
   .intro,
-  .section-title {
+  .section-title,
+  .inbox-meta {
     align-items: flex-start;
     flex-direction: column;
   }

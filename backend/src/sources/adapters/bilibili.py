@@ -77,6 +77,7 @@ def object_from_reply(reply: Reply, aid: int, kind: str) -> SocialObject:
     parent = reply.parent or reply.root
     return SocialObject.model_validate(
         {
+            "provider_namespace": "comment",
             "external_id": f"comment:{reply.rpid}",
             "kind": kind,
             "text": reply.content.message,
@@ -207,6 +208,7 @@ class Bilibili:
             video = Video.model_validate(data)
             result.items = [
                 SocialObject(
+                    provider_namespace="video",
                     external_id=f"video:{video.aid}",
                     kind="post",
                     text="\n".join(value for value in (video.title, video.desc) if value),

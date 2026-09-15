@@ -1,13 +1,15 @@
+from datetime import datetime
 from typing import Literal, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import and_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from audit.services import audit
 from core.clock import utcnow
 from core.errors import AppError
-from monitors.models import Monitor, MonitorVersion
+from monitors.models import Monitor, MonitorMatch, MonitorVersion
 from monitors.schemas import (
     MonitorInput,
     MonitorPage,
@@ -15,8 +17,81 @@ from monitors.schemas import (
     MonitorUpdate,
     MonitorView,
 )
-from sources.schemas import SourceName
+from sources.schemas import QuerySpec, SourceName
 from sources.services import SourceService
+
+
+def match_content(
+    session: Session,
+    monitor_version_id: UUID,
+    content_id: UUID,
+    reasons: list[str],
+    observed_at: datetime,
+) -> None:
+    statement = insert(MonitorMatch).values(
+        id=uuid4(),
+        monitor_version_id=monitor_version_id,
+        content_id=content_id,
+        match_reason=reasons,
+        relevance_status="pending",
+        review_state="new",
+        first_seen_at=observed_at,
+        last_seen_at=observed_at,
+    )
+    session.execute(
+        statement.on_conflict_do_update(
+            index_elements=[MonitorMatch.monitor_version_id, MonitorMatch.content_id],
+            set_={
+                "match_reason": statement.excluded.match_reason,
+                "last_seen_at": statement.excluded.last_seen_at,
+            },
+        )
+    )
+
+
+def monitor_titles_for_content(session: Session, content_id: UUID) -> list[str]:
+    titles = session.scalars(
+        select(MonitorVersion.title)
+        .join(MonitorMatch, MonitorMatch.monitor_version_id == MonitorVersion.id)
+        .where(MonitorMatch.content_id == content_id)
+        .order_by(MonitorVersion.title)
+    )
+    return list(dict.fromkeys(titles))
+
+
+def monitor_query_spec(session: Session, monitor_version_id: UUID) -> QuerySpec:
+    version = session.get(MonitorVersion, monitor_version_id)
+    if version is None:
+        raise AppError("monitor_version_missing", 500)
+    return QuerySpec.model_validate(version.query_spec)
+
+
+def active_monitor_configuration(
+    session: Session, monitor_id: UUID, expected_version: int
+) -> tuple[UUID, QuerySpec, list[SourceName]]:
+    monitor = session.scalar(select(Monitor).where(Monitor.id == monitor_id).with_for_update())
+    if monitor is None:
+        raise AppError("monitor_not_found", 404)
+    if monitor.current_version != expected_version:
+        raise AppError("version_conflict", 409)
+    if monitor.state != "active":
+        raise AppError("monitor_not_active", 409)
+    version = MonitorService._current(session, monitor)
+    return (
+        version.id,
+        QuerySpec.model_validate(version.query_spec),
+        cast(list[SourceName], version.source_ids),
+    )
+
+
+def query_match_reasons(query: QuerySpec, text: str) -> list[str]:
+    normalized = text.casefold()
+    if any(term.casefold() in normalized for term in query.exclude):
+        return []
+    if any(term.casefold() not in normalized for term in query.include_all):
+        return []
+    candidates = [*query.include_any, *query.aliases]
+    return list(dict.fromkeys(term for term in candidates if term.casefold() in normalized))
 
 
 class MonitorService:

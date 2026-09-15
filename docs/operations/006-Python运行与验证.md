@@ -20,7 +20,7 @@ docker compose up -d --build
 docker compose exec backend python -m cli owner-init learner
 ```
 
-交互输入 12–128 位密码，不通过命令参数传入。owner 只能初始化一次，数据库唯一约束阻止并发创建第二账号。打开 http://localhost:8010；当前只有监控草稿和诊断任务。来源、评论、分析和报告尚未接入。
+交互输入 12–128 位密码，不通过命令参数传入。owner 只能初始化一次，数据库唯一约束阻止并发创建第二账号。打开 http://localhost:8010；当前有监控草稿、只读监控收件箱和诊断任务。真实来源采集、评论追踪、分析和报告尚未接入。
 
 本地默认地址：Web 8010、API 8867、PostgreSQL 15435、RabbitMQ AMQP 15673，全部绑定回环地址。默认数据服务凭据只用于本机学习；不生成默认应用账号。修改 Web 端口时必须同步 `HOTKEY_ALLOWED_ORIGINS`，它是精确 HTTP Origin 的 JSON 数组，不接受通配符或 URL 路径。
 
@@ -90,6 +90,7 @@ uv run --project backend pytest backend/tests -q
 
 ```sh
 uv run --project backend python backend/scripts/verify_compose.py
+uv run --project backend python backend/scripts/verify_proxy_replacement.py
 cd frontend
 npx playwright install chromium
 # 在当前进程环境中设置 HOTKEY_E2E_USERNAME 与 HOTKEY_E2E_PASSWORD，勿提交凭据。
@@ -159,3 +160,11 @@ FastAPI 从路由和 Pydantic 模型运行时生成 `/openapi.json`、`/docs` �
 隔离项目 `hotkey-s00` 完成镜像构建、迁移、真实 scheduler → RabbitMQ → Celery prefork → PostgreSQL 诊断，结果succeeded/attempts=1。Chromium两项通过：Swagger UI实际渲染并读到稳定operationId；owner登录、新建/编辑草稿、Axios提交诊断、刷新恢复、390px无横向溢出、退出和会话撤销通过。人工查看1440px与390px截图未发现目录迁移造成的视觉回归。停机结果worker=0、scheduler=0、backend=143，无SIGKILL/OOM；随后只删除本次隔离项目及其卷。
 
 开发工具依赖仍有2个high审计条目，均源于用户指定的 `@umijs/openapi` 间接依赖 `mockjs` 的同一原型污染公告，当前无可用修复。生成器不进入Nginx生产镜像运行阶段，只读取仓库内由FastAPI自动导出的可信契约；CI继续严格审计运行时依赖，并保留升级/移除该间接依赖的跟踪。以上完成AC-007-016与S00，不代表来源采集、MinIO证据链或完整007验收通过。
+
+## 007 S02-T02A 页事务与收件箱基础验证（2026-09-15）
+
+本片在MinIO连接参数和来源用途准入尚未具备时，只实现可独立验证的事务内核。`collection` 负责运行、fencing和页检查点，`evidence` 负责确定性gzip、对象协议及raw page元数据，`contents` 负责规范身份、不可变正文版本、观察值和只读收件箱，`monitors` 负责版本级内容命中。API增加认证只读 `GET /api/v1/contents`；FastAPI自动生成Swagger/OpenAPI，UmiOpenAPI在 `frontend/src/api/contents.ts` 生成调用，页面仍只经根级Axios `request.ts` 发请求。
+
+真实PostgreSQL 16和RabbitMQ测试环境中76项pytest通过，无跳过，保留两条上游弃用提示；迁移/模型比较为空。额外的一次性数据库从 `0004_monitor_versions` 升至 `0005_collection_page`，已有monitor version保留且5张新增核心表存在。隔离 `hotkey-s02a` Compose从迁移服务到0005，真实scheduler、RabbitMQ、Celery prefork和数据库诊断成功，attempts=1。运行时OpenAPI与发布JSON相等。生成客户端漂移、前端边界/负向样例、Prettier、TypeScript/Vite和开发/生产Compose解析通过。
+
+首次最终镜像重建时，Web未被Compose替换而backend获得新IP，静态解析的Nginx upstream继续连接旧IP并使登录返回502。`frontend/nginx.conf` 改为通过Docker内置DNS在请求期解析backend；Nginx配置检查通过。`verify_proxy_replacement.py` 已接入CI：它保持Web容器ID不变、强制替换backend，在后端ready后要求经Web访问认证端点返回401。随后Chromium共2项通过：Swagger UI渲染自动契约；合成owner登录后经生成接口读取合法空收件箱，随后完成监控草稿和真实诊断流程。1440px和390px截图人工检查未发现横向溢出或布局遮挡。本片结构化证据见 [collection-page-foundation-poc.json](evidence/collection-page-foundation-poc.json)。测试内 `MemoryStore` 只验证对象协议、hash和上传先于数据库提交的边界；没有连接MinIO，没有访问外部平台，也没有把合成内容作为真实采集结果，因此不构成EV-007-003或S02-T02完成证据。

@@ -56,6 +56,7 @@ class SearchPage(BaseModel):
 def normalize(post: Post) -> SocialObject:
     reply = post.record.reply
     return SocialObject(
+        provider_namespace="app.bsky.feed.post",
         external_id=post.uri,
         kind="post"
         if reply is None

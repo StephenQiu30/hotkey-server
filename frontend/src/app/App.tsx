@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { listInboxContents } from "../api/contents";
 import { createDiagnosticJob, cancelJob, listJobs } from "../api/jobs";
 import { getSession, logout } from "../api/identity";
 import { activateMonitor, listMonitors, pauseMonitor } from "../api/monitoring";
 import { listSources } from "../api/sources";
 import { Login } from "../features/identity/Login";
+import { Inbox } from "../features/contents/Inbox";
 import {
   MonitorEditor,
   sourceLabels,
@@ -13,6 +15,7 @@ import { errorCode, message } from "../request";
 type Job = API.JobView;
 type Monitor = API.MonitorView;
 type Source = API.SourceView;
+type Content = API.InboxItem;
 const statuses: Record<Job["status"], string> = {
   queued: "排队中",
   running: "执行中",
@@ -31,11 +34,13 @@ export function App() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
+  const [contents, setContents] = useState<Content[]>([]);
   const [editor, setEditor] = useState<Monitor | "new" | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [monitorCursor, setMonitorCursor] = useState<string | null>(null);
   const [jobCursor, setJobCursor] = useState<string | null>(null);
+  const [contentCursor, setContentCursor] = useState<string | null>(null);
   const generation = useRef(0);
   const diagnosticKey = useRef<string | null>(null);
   const refresh = useCallback(async () => {
@@ -43,10 +48,11 @@ export function App() {
     setLoading(true);
     setError("");
     try {
-      const [m, j, s] = await Promise.all([
+      const [m, j, s, c] = await Promise.all([
         listMonitors({}),
         listJobs({}),
         listSources(),
+        listInboxContents({}),
       ]);
       if (current !== generation.current) return;
       setMonitors(m.items);
@@ -54,6 +60,8 @@ export function App() {
       setJobs(j.items);
       setJobCursor(j.next_cursor);
       setSources(s);
+      setContents(c.items);
+      setContentCursor(c.next_cursor);
     } catch (e) {
       if (current !== generation.current) return;
       if (errorCode(e) === "authentication_required") setSession("out");
@@ -95,7 +103,7 @@ export function App() {
       setBusy(false);
     }
   }
-  async function more(kind: "monitors" | "jobs") {
+  async function more(kind: "monitors" | "jobs" | "contents") {
     await action(async () => {
       if (kind === "monitors" && monitorCursor) {
         const page = await listMonitors({ cursor: monitorCursor });
@@ -105,6 +113,10 @@ export function App() {
         const page = await listJobs({ cursor: jobCursor });
         setJobs((old) => [...old, ...page.items]);
         setJobCursor(page.next_cursor);
+      } else if (kind === "contents" && contentCursor) {
+        const page = await listInboxContents({ cursor: contentCursor });
+        setContents((old) => [...old, ...page.items]);
+        setContentCursor(page.next_cursor);
       }
     });
   }
@@ -145,6 +157,7 @@ export function App() {
               generation.current++;
               setMonitors([]);
               setJobs([]);
+              setContents([]);
               setEditor(null);
               setSession("out");
             })
@@ -190,6 +203,12 @@ export function App() {
           />
         )}
         <SourceCapabilities sources={sources} />
+        <Inbox
+          items={contents}
+          nextCursor={contentCursor}
+          busy={busy}
+          onMore={() => void more("contents")}
+        />
         <section>
           <div className="section-title">
             <h2>

@@ -13,6 +13,7 @@ from sources.schemas import (
     BilibiliSearchInput,
     QueryPreviewInput,
     SearchInput,
+    SocialObject,
     ThreadInput,
 )
 from sources.services import SourceService
@@ -62,6 +63,26 @@ def test_priority_source_catalog_separates_support_rights_and_pipeline():
     assert x_search.support == "authorization_required"
     assert x_search.content_purchase_cost == 0
     assert x_search.evidence_ref.endswith("EV-007-001-source-poc.json")
+
+
+def test_normalized_object_rejects_invalid_relationships_and_unknown_fields():
+    base = {
+        "provider_namespace": "video",
+        "external_id": "video:1",
+        "kind": "post",
+        "text": "AI",
+        "author_id": "author:1",
+        "created_at": "2026-09-15T00:00:00Z",
+        "root_id": "video:1",
+    }
+    with pytest.raises(ValidationError):
+        SocialObject.model_validate(dict(base, root_id="video:2"))
+    with pytest.raises(ValidationError):
+        SocialObject.model_validate(
+            dict(base, provider_namespace="comment", kind="reply", parent_id=None)
+        )
+    with pytest.raises(ValidationError):
+        SocialObject.model_validate(dict(base, legacy_identity="ignored"))
 
 
 def test_query_preview_compiles_without_network_and_exposes_rule_boundaries():

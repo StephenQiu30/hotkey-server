@@ -39,6 +39,48 @@ declare namespace API {
     status: string;
   };
 
+  type InboxItem = {
+    /** Canonical Url */
+    canonical_url: string | null;
+    /** External Id */
+    external_id: string;
+    /** First Seen At */
+    first_seen_at: string;
+    /** Id */
+    id: string;
+    /** Kind */
+    kind: "post" | "comment" | "reply";
+    /** Last Seen At */
+    last_seen_at: string;
+    /** Monitor Titles */
+    monitor_titles: string[];
+    /** Parent External Id */
+    parent_external_id: string | null;
+    /** Provider Namespace */
+    provider_namespace: string;
+    /** Published At */
+    published_at: string;
+    /** Relation Status */
+    relation_status: "root" | "unresolved" | "resolved";
+    /** Reply Count */
+    reply_count: number | null;
+    /** Root External Id */
+    root_external_id: string;
+    /** Source */
+    source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
+    /** Text */
+    text: string;
+    /** Version */
+    version: number;
+  };
+
+  type InboxPage = {
+    /** Items */
+    items: InboxItem[];
+    /** Next Cursor */
+    next_cursor: string | null;
+  };
+
   type JobPage = {
     /** Items */
     items: JobView[];
@@ -59,6 +101,11 @@ declare namespace API {
     kind: string;
     /** Status */
     status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  };
+
+  type listInboxContentsParams = {
+    limit?: number;
+    cursor?: string | null;
   };
 
   type listJobsParams = {

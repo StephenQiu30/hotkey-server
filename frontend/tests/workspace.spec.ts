@@ -22,6 +22,10 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   await expect(
     sources.getByText("技术可读 · 权限待核对").first(),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: /监控收件箱/ })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "还没有监控内容" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "新建监控", exact: true }).click();
   const title = `学习验证-${Date.now()}`;
   await page.getByLabel("监控名称").fill(title);
