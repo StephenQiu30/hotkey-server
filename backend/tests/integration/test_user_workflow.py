@@ -43,11 +43,13 @@ def login(client):
 def test_auth_csrf_revocation_and_no_password_echo(client):
     assert client.get("/api/v1/monitors").status_code == 401
     assert client.get("/api/v1/contents").status_code == 401
+    assert client.get("/api/v1/events").status_code == 401
     assert client.get("/api/v1/collection-runs").status_code == 401
     result = client.post("/api/v1/session", json={"username": "learner", "password": "secret"})
     assert result.status_code == 422 and "secret" not in result.text
     login(client)
     assert client.get("/api/v1/contents").json() == {"items": [], "next_cursor": None}
+    assert client.get("/api/v1/events").json() == {"items": [], "next_cursor": None}
     assert client.get("/api/v1/collection-runs").json() == {
         "items": [],
         "next_cursor": None,
@@ -192,6 +194,22 @@ def test_diagnostic_idempotency_and_cancellation(client):
     assert a.status_code == 201 and a.json()["id"] == b.json()["id"]
     assert client.post("/api/v1/jobs", json={"kind": "collect"}).status_code == 422
     assert client.post("/api/v1/jobs/" + a.json()["id"] + "/cancel").json()["status"] == "cancelled"
+
+
+def test_event_api_creates_a_revisioned_empty_dossier(client):
+    login(client)
+    created = client.post("/api/v1/events", json={"title": "品牌发布会", "summary": "人工整理"})
+    assert created.status_code == 201
+    event = created.json()
+    assert event["current_revision"] == 1 and event["members"] == []
+    assert client.get("/api/v1/events").json()["items"][0]["id"] == event["id"]
+    revisions = client.get(f"/api/v1/events/{event['id']}/revisions").json()
+    assert [revision["change_type"] for revision in revisions] == ["create"]
+    missing = client.post(
+        f"/api/v1/events/{event['id']}/members",
+        json={"content_id": "00000000-0000-0000-0000-000000000001"},
+    )
+    assert missing.status_code == 404 and missing.json()["code"] == "content_not_found"
 
 
 def test_login_throttle_persists_failures(client):

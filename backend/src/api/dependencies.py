@@ -7,6 +7,7 @@ from collection.services import CollectionService
 from contents.services import ContentService
 from core.schemas import HealthView
 from db.health import readiness
+from events.services import EventService
 from identity.schemas import Principal
 from identity.services import IdentityService
 from jobs.services import JobService
@@ -37,6 +38,10 @@ def content_service(request: Request) -> ContentService:
     return ContentService(request.app.state.database.sessions)
 
 
+def event_service(request: Request) -> EventService:
+    return EventService(request.app.state.database.sessions)
+
+
 def collection_service(request: Request, sources: Sources) -> CollectionService:
     return CollectionService(
         request.app.state.database.sessions,
@@ -53,6 +58,7 @@ Identity = Annotated[IdentityService, Depends(identity_service)]
 Monitors = Annotated[MonitorService, Depends(monitor_service)]
 Jobs = Annotated[JobService, Depends(job_service)]
 Contents = Annotated[ContentService, Depends(content_service)]
+Events = Annotated[EventService, Depends(event_service)]
 Collections = Annotated[CollectionService, Depends(collection_service)]
 Health = Annotated[HealthView, Depends(health_status)]
 session_cookie = APIKeyCookie(name="hk_session", scheme_name="OwnerSession", auto_error=False)

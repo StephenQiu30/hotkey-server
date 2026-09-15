@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.schemas import HealthView
 
-SCHEMA_REVISION = "0010_reply_page"
+SCHEMA_REVISION = "0011_event_dossiers"
 
 
 def readiness(factory: sessionmaker[Session]) -> HealthView:

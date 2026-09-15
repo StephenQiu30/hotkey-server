@@ -1,0 +1,55 @@
+{
+  "scope": "S04-T01A manual event dossier",
+  "observed_at": "2026-09-15",
+  "external_network_accessed": false,
+  "existing_minio_connected": false,
+  "implementation": {
+    "operations": [
+      "create",
+      "list",
+      "get",
+      "add_member",
+      "remove_member",
+      "list_revisions"
+    ],
+    "single_current_event_per_content": true,
+    "same_event_replay_is_idempotent": true,
+    "revision_snapshot_after_each_change": true,
+    "merge_split_implemented": false,
+    "trend_alerts_implemented": false
+  },
+  "migration": {
+    "from": "0010_reply_page",
+    "to": "0011_event_dossiers",
+    "preserved_content": "video:migration",
+    "created_tables": ["events", "event_members", "event_revisions"],
+    "model_metadata_matches_database": true
+  },
+  "contract_and_client": {
+    "openapi_generated_by_fastapi": true,
+    "runtime_openapi_matches_export": true,
+    "umiopenapi_output": "frontend/src/api/events.ts",
+    "handwritten_business_request": false,
+    "axios_transport": "frontend/src/request.ts"
+  },
+  "verification": {
+    "red": "Test collection failed with ModuleNotFoundError because the registered events module did not exist.",
+    "backend_tests": "116 passed with PostgreSQL 16 and RabbitMQ 4.1; 2 upstream deprecation warnings",
+    "ruff": "passed",
+    "mypy": "passed for 97 application and verification source files",
+    "frontend": "UmiOpenAPI drift, boundary, negative boundary, Prettier and TypeScript/Vite checks passed",
+    "compose_schema_revision": "0011_event_dossiers",
+    "compose_pipeline": "succeeded with attempts=1",
+    "compose_build_attempts": 2,
+    "first_compose_failure": "Docker Hub OAuth token request returned EOF before project code ran",
+    "proxy_replacement": "web retained; backend replaced; proxied authentication response HTTP 401",
+    "browser": "2 Chromium scenarios passed; one synthetic event persisted across refresh",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL or OOM"
+  },
+  "limitations": [
+    "Synthetic owner, event and content data were used.",
+    "No external platform request or existing MinIO connection was used.",
+    "Merge, split, trend comparison, analysis invalidation and alerts remain unimplemented.",
+    "This does not satisfy EV-007-006 or TASK-007-S04-T01."
+  ]
+}

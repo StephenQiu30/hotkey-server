@@ -252,3 +252,15 @@ Red阶段把 `bilibili.list_replies` 配置为connected，持久来源操作门�
 独立迁移POC先把数据库停在0009并写入search_posts、fetch_post和list_comments三层历史运行，再升级到 `0010_reply_page`；三条运行的operation、request_value和父子关系均保留，Alembic与SQLAlchemy模型比较无差异。隔离 `hotkey-s03b-stack` Compose迁移到0010，真实scheduler → RabbitMQ → Celery prefork → PostgreSQL诊断succeeded/attempts=1，空白业务库保持0条collection run；运行时OpenAPI与发布快照完全相同。Chromium 2项通过，覆盖Swagger自动契约、合成owner工作台和96次预算默认值。Web不替换、backend原地替换后代理返回401。正常停机worker=0、backend=143、scheduler=0，无SIGKILL或OOM。结构化证据见 [reply-page-poc.json](evidence/reply-page-poc.json)。
 
 本片没有访问外部平台、连接用户现有MinIO或取得真实用途确认。默认生产配置仍是0项eligible；只展开一个根评论的一页回复，后续分页及其他平台仍未实现。它证明首屏回复工程链路，不构成EV-007-003、真实平台收件箱、完整评论树、事件归档或TASK-007-S03-T01完成证据。
+
+## 007 S04-T01A 人工事件档案验证（2026-09-15）
+
+本片新增events当前档案、event_members当前归属与event_revisions不可变快照。创建事件写入revision 1；加入和移出成员分别递增revision并保存变化后的成员ID清单。每条内容当前最多属于一个事件：服务锁定内容行后检查归属，数据库对content_id设置唯一约束；同事件重复加入幂等，跨事件加入返回content_already_assigned且不改写修订。事件接口均要求现有owner会话与CSRF。
+
+FastAPI自动生成创建/列表/详情、加入/移出成员和修订读取6个端点，`@umijs/openapi` 只在 `frontend/src/api` 生成events.ts、index.ts和类型，Axios仍只位于根级request.ts。工作台事件区可创建档案并查看修订/成员数，收件箱使用生成端点选择事件，成员可移出；没有手写业务URL或DTO。
+
+Red阶段因events模块不存在而在测试收集阶段失败。Green阶段真实PostgreSQL 16与RabbitMQ 4.1下116项pytest通过，保留2条上游弃用提示；Ruff、严格mypy（97个应用与验证源文件）、OpenAPI/UmiOpenAPI漂移、前端目录与负向边界、Prettier及TypeScript/Vite构建通过。独立迁移POC从0010升级到 `0011_event_dossiers`，保留历史内容 `video:migration`，新增三表且SQLAlchemy模型比较无差异。
+
+隔离 `hotkey-s04a-stack` Compose首次拉取基础镜像token遇到一次EOF，未运行项目代码；同一锁定镜像重试后完成构建与0011迁移。真实scheduler/RabbitMQ/Celery prefork诊断succeeded/attempts=1。Chromium 2项通过，Swagger读取到事件端点，合成owner在工作台创建事件、刷新恢复，并完成既有监控与诊断流程。运行时OpenAPI与发布快照相等；Web保持运行而backend替换后代理返回401。正常停机worker=0、backend=143、scheduler=0，无SIGKILL/OOM。结构化证据见 [event-dossier-poc.json](evidence/event-dossier-poc.json)。
+
+本片使用合成账号、合成事件和测试内容，没有连接外部平台或现有MinIO。它只完成事件人工整理基础；合并、拆分、分析过期、趋势和提醒仍未实现，因此不构成EV-007-006或TASK-007-S04-T01完成证据。

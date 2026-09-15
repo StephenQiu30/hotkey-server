@@ -224,6 +224,25 @@ section {
   display: flex;
   gap: 12px;
 }
+
+.compact-form,
+.event-member {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.compact-form label {
+  flex: 1 1 240px;
+}
+
+.event-member {
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
 label {
   display: flex;
   flex-direction: column;

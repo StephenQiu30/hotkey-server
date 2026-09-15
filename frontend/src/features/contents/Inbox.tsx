@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { sourceLabels } from "../monitors/MonitorEditor";
 
 type Content = API.InboxItem;
@@ -6,6 +8,8 @@ type InboxProps = {
   items: Content[];
   nextCursor: string | null;
   busy: boolean;
+  events: API.EventView[];
+  onAssign: (eventId: string, contentId: string) => Promise<void>;
   onMore: () => void;
 };
 
@@ -22,7 +26,15 @@ function time(value: string): string {
   }).format(new Date(value));
 }
 
-export function Inbox({ items, nextCursor, busy, onMore }: InboxProps) {
+export function Inbox({
+  items,
+  nextCursor,
+  busy,
+  events,
+  onAssign,
+  onMore,
+}: InboxProps) {
+  const [selected, setSelected] = useState<Record<string, string>>({});
   return (
     <section aria-labelledby="inbox-heading">
       <div className="section-title">
@@ -62,6 +74,47 @@ export function Inbox({ items, nextCursor, busy, onMore }: InboxProps) {
                   查看来源
                 </a>
               )}
+              {(() => {
+                const assigned = events.find((event) =>
+                  event.members.some((member) => member.content_id === item.id),
+                );
+                if (assigned)
+                  return <span className="badge">已归入 {assigned.title}</span>;
+                if (!events.length)
+                  return (
+                    <span className="muted small">
+                      先创建事件，再归入内容。
+                    </span>
+                  );
+                return (
+                  <div className="actions">
+                    <select
+                      aria-label={`选择 ${item.external_id} 的事件`}
+                      value={selected[item.id] ?? ""}
+                      onChange={(event) =>
+                        setSelected((old) => ({
+                          ...old,
+                          [item.id]: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">选择事件</option>
+                      {events.map((event) => (
+                        <option key={event.id} value={event.id}>
+                          {event.title}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="secondary"
+                      disabled={busy || !selected[item.id]}
+                      onClick={() => void onAssign(selected[item.id], item.id)}
+                    >
+                      加入事件
+                    </button>
+                  </div>
+                );
+              })()}
             </article>
           ))}
         </div>

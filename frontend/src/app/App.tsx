@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listCollectionRuns } from "../api/collection";
 import { listInboxContents } from "../api/contents";
+import {
+  addEventMember,
+  createEvent,
+  listEvents,
+  removeEventMember,
+} from "../api/events";
 import { createDiagnosticJob, cancelJob, listJobs } from "../api/jobs";
 import { getSession, logout } from "../api/identity";
 import { activateMonitor, listMonitors, pauseMonitor } from "../api/monitoring";
@@ -8,6 +14,7 @@ import { listSources } from "../api/sources";
 import { Login } from "../features/identity/Login";
 import { Runs } from "../features/collection/Runs";
 import { Inbox } from "../features/contents/Inbox";
+import { EventDossiers } from "../features/events/EventDossiers";
 import {
   MonitorEditor,
   sourceLabels,
@@ -22,6 +29,7 @@ type Monitor = API.MonitorView;
 type Source = API.SourceView;
 type Content = API.InboxItem;
 type CollectionRun = API.CollectionRunView;
+type EventDossier = API.EventView;
 const statuses: Record<Job["status"], string> = {
   queued: "排队中",
   running: "执行中",
@@ -42,6 +50,7 @@ export function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [contents, setContents] = useState<Content[]>([]);
   const [runs, setRuns] = useState<CollectionRun[]>([]);
+  const [events, setEvents] = useState<EventDossier[]>([]);
   const [editor, setEditor] = useState<Monitor | "new" | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -49,6 +58,7 @@ export function App() {
   const [jobCursor, setJobCursor] = useState<string | null>(null);
   const [contentCursor, setContentCursor] = useState<string | null>(null);
   const [runCursor, setRunCursor] = useState<string | null>(null);
+  const [eventCursor, setEventCursor] = useState<string | null>(null);
   const generation = useRef(0);
   const diagnosticKey = useRef<string | null>(null);
   const refresh = useCallback(async () => {
@@ -56,12 +66,13 @@ export function App() {
     setLoading(true);
     setError("");
     try {
-      const [m, j, s, c, r] = await Promise.all([
+      const [m, j, s, c, r, e] = await Promise.all([
         listMonitors({}),
         listJobs({}),
         listSources(),
         listInboxContents({}),
         listCollectionRuns({}),
+        listEvents({}),
       ]);
       if (current !== generation.current) return;
       setMonitors(m.items);
@@ -73,6 +84,8 @@ export function App() {
       setContentCursor(c.next_cursor);
       setRuns(r.items);
       setRunCursor(r.next_cursor);
+      setEvents(e.items);
+      setEventCursor(e.next_cursor);
     } catch (e) {
       if (current !== generation.current) return;
       if (errorCode(e) === "authentication_required") setSession("out");
@@ -114,7 +127,9 @@ export function App() {
       setBusy(false);
     }
   }
-  async function more(kind: "monitors" | "jobs" | "contents" | "runs") {
+  async function more(
+    kind: "monitors" | "jobs" | "contents" | "runs" | "events",
+  ) {
     await action(async () => {
       if (kind === "monitors" && monitorCursor) {
         const page = await listMonitors({ cursor: monitorCursor });
@@ -132,6 +147,10 @@ export function App() {
         const page = await listCollectionRuns({ cursor: runCursor });
         setRuns((old) => [...old, ...page.items]);
         setRunCursor(page.next_cursor);
+      } else if (kind === "events" && eventCursor) {
+        const page = await listEvents({ cursor: eventCursor });
+        setEvents((old) => [...old, ...page.items]);
+        setEventCursor(page.next_cursor);
       }
     });
   }
@@ -174,6 +193,7 @@ export function App() {
               setJobs([]);
               setContents([]);
               setRuns([]);
+              setEvents([]);
               setEditor(null);
               setSession("out");
             })
@@ -229,7 +249,38 @@ export function App() {
           items={contents}
           nextCursor={contentCursor}
           busy={busy}
+          events={events}
+          onAssign={async (eventId, contentId) => {
+            await action(async () => {
+              await addEventMember(
+                { identity: eventId },
+                { content_id: contentId },
+              );
+              await refresh();
+            });
+          }}
           onMore={() => void more("contents")}
+        />
+        <EventDossiers
+          items={events}
+          nextCursor={eventCursor}
+          busy={busy}
+          onCreate={async (title, summary) => {
+            await action(async () => {
+              await createEvent({ title, summary });
+              await refresh();
+            });
+          }}
+          onRemove={async (eventId, contentId) => {
+            await action(async () => {
+              await removeEventMember({
+                identity: eventId,
+                content_id: contentId,
+              });
+              await refresh();
+            });
+          }}
+          onMore={() => void more("events")}
         />
         <section>
           <div className="section-title">

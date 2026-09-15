@@ -3,6 +3,10 @@ declare namespace API {
     identity: string;
   };
 
+  type addEventMemberParams = {
+    identity: string;
+  };
+
   type BudgetSpec = {
     /** Content Purchase Cost */
     content_purchase_cost?: number;
@@ -105,7 +109,85 @@ declare namespace API {
     request_id: string;
   };
 
+  type EventInput = {
+    /** Summary */
+    summary?: string;
+    /** Title */
+    title: string;
+  };
+
+  type EventMemberInput = {
+    /** Content Id */
+    content_id: string;
+  };
+
+  type EventMemberView = {
+    /** Added At */
+    added_at: string;
+    /** Canonical Url */
+    canonical_url: string | null;
+    /** Content Id */
+    content_id: string;
+    /** External Id */
+    external_id: string;
+    /** Kind */
+    kind: "post" | "comment" | "reply";
+    /** Source */
+    source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
+  };
+
+  type EventPage = {
+    /** Items */
+    items: EventView[];
+    /** Next Cursor */
+    next_cursor: string | null;
+  };
+
+  type EventRevisionView = {
+    /** Change Type */
+    change_type: "create" | "add_member" | "remove_member";
+    /** Created At */
+    created_at: string;
+    /** Revision */
+    revision: number;
+    snapshot: EventSnapshot;
+  };
+
+  type EventSnapshot = {
+    /** Member Content Ids */
+    member_content_ids: string[];
+    /** Status */
+    status: "active" | "archived";
+    /** Summary */
+    summary: string;
+    /** Title */
+    title: string;
+  };
+
+  type EventView = {
+    /** Created At */
+    created_at: string;
+    /** Current Revision */
+    current_revision: number;
+    /** Id */
+    id: string;
+    /** Members */
+    members: EventMemberView[];
+    /** Status */
+    status: "active" | "archived";
+    /** Summary */
+    summary: string;
+    /** Title */
+    title: string;
+    /** Updated At */
+    updated_at: string;
+  };
+
   type getCollectionRunParams = {
+    identity: string;
+  };
+
+  type getEventParams = {
     identity: string;
   };
 
@@ -187,6 +269,15 @@ declare namespace API {
   };
 
   type listCollectionRunsParams = {
+    limit?: number;
+    cursor?: string | null;
+  };
+
+  type listEventRevisionsParams = {
+    identity: string;
+  };
+
+  type listEventsParams = {
     limit?: number;
     cursor?: string | null;
   };
@@ -345,6 +436,11 @@ declare namespace API {
     include_all?: string[];
     /** Include Any */
     include_any: string[];
+  };
+
+  type removeEventMemberParams = {
+    identity: string;
+    content_id: string;
   };
 
   type ScheduleSpec = {

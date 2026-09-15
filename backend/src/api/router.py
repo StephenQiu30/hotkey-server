@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from api.routers import collection, contents, health, identity, jobs, monitors, sources
+from api.routers import collection, contents, events, health, identity, jobs, monitors, sources
 
 router = APIRouter()
 for child in (
@@ -9,6 +9,7 @@ for child in (
     monitors.router,
     collection.router,
     contents.router,
+    events.router,
     jobs.router,
     sources.router,
 ):
