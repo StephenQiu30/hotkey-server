@@ -63,6 +63,13 @@
     "production_changes_added": false
   },
   "verification": {
+    "remote_ci": {
+      "commit": "0067fe80c1c93375f1cd5f3122d6a551ba22a54a",
+      "run_id": 35013379297,
+      "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35013379297",
+      "conclusion": "success",
+      "duration": "2m35s"
+    },
     "red": "Before implementation, pytest exited 4 because the target evaluation test file did not exist.",
     "offline_unit_tests": "4 passed",
     "backend_tests": "142 passed with disposable PostgreSQL 16 and RabbitMQ 4.1; 2 upstream deprecation warnings",
