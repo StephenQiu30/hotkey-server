@@ -1,7 +1,8 @@
-from typing import Annotated
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Query
+from pydantic import AwareDatetime
 
 from api.dependencies import Authenticated, Events
 from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
@@ -12,7 +13,9 @@ from events.schemas import (
     EventPage,
     EventRevisionView,
     EventSplitInput,
+    EventTrendView,
     EventView,
+    TrendBucketHours,
 )
 
 router = APIRouter(prefix="/api/v1/events", tags=["events"])
@@ -88,6 +91,23 @@ def event_revisions(
     identity: UUID, service: Events, owner: Authenticated
 ) -> list[EventRevisionView]:
     return service.revisions(identity)
+
+
+@router.get(
+    "/{identity}/trends",
+    response_model=EventTrendView,
+    responses=error_responses(*READ_ERROR_CODES, 404, 422),
+    operation_id="getEventTrends",
+)
+def event_trends(
+    identity: UUID,
+    service: Events,
+    owner: Authenticated,
+    since: Annotated[AwareDatetime, Query()],
+    until: Annotated[AwareDatetime, Query()],
+    bucket_hours: TrendBucketHours = TrendBucketHours.daily,
+) -> EventTrendView:
+    return service.trends(identity, since, until, cast(Literal[1, 6, 24], int(bucket_hours)))
 
 
 @router.post(

@@ -17,6 +17,11 @@ const operationLabels: Record<Run["operation"], string> = {
   list_replies: "回复",
 };
 
+const ingestionModes: Record<Run["ingestion_mode"], string> = {
+  live: "实时",
+  backfill: "历史回填",
+};
+
 function time(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
@@ -57,8 +62,9 @@ export function Runs({
                   {sourceLabels[run.source] ?? run.source}
                 </span>
                 <span className="muted small">
-                  {run.trigger === "scheduled" ? "周期任务" : "手动任务"} · 预算{" "}
-                  {run.budget_day} / {run.reserved_requests} 次
+                  {run.trigger === "scheduled" ? "周期任务" : "手动任务"} ·{" "}
+                  {ingestionModes[run.ingestion_mode]} · 预算 {run.budget_day} /{" "}
+                  {run.reserved_requests} 次
                 </span>
               </div>
               <h3>

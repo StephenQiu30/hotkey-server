@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import cast
@@ -39,6 +40,69 @@ from monitors.services import (
 )
 from sources.schemas import QueryPreviewInput, SourceName
 from sources.services import DISCOVERY_REFERENCE_LIMIT, SourceService
+
+
+@dataclass(frozen=True)
+class CollectionTrendRun:
+    id: UUID
+    source: str
+    ingestion_mode: str
+    policy_version: str
+    state: str
+    outcome: str | None
+    window_since: datetime
+    window_until: datetime
+
+
+def collection_run_contexts(
+    session: Session, identities: set[UUID]
+) -> dict[UUID, CollectionTrendRun]:
+    if not identities:
+        return {}
+    rows = session.scalars(select(CollectionRun).where(CollectionRun.id.in_(identities)))
+    return {
+        run.id: CollectionTrendRun(
+            id=run.id,
+            source=run.source,
+            ingestion_mode=run.ingestion_mode,
+            policy_version=run.policy_version,
+            state=run.state,
+            outcome=run.outcome,
+            window_since=run.window_since,
+            window_until=run.window_until,
+        )
+        for run in rows
+    }
+
+
+def collection_coverage_runs(
+    session: Session,
+    sources: set[str],
+    since: datetime,
+    until: datetime,
+) -> list[CollectionTrendRun]:
+    if not sources:
+        return []
+    rows = session.scalars(
+        select(CollectionRun).where(
+            CollectionRun.source.in_(sources),
+            CollectionRun.window_since < until,
+            CollectionRun.window_until > since,
+        )
+    )
+    return [
+        CollectionTrendRun(
+            id=run.id,
+            source=run.source,
+            ingestion_mode=run.ingestion_mode,
+            policy_version=run.policy_version,
+            state=run.state,
+            outcome=run.outcome,
+            window_since=run.window_since,
+            window_until=run.window_until,
+        )
+        for run in rows
+    ]
 
 
 class CollectionService:
@@ -103,6 +167,7 @@ class CollectionService:
                     data.policy_version,
                     data.retention_days,
                     data.trigger,
+                    data.ingestion_mode,
                     data.schedule_slot,
                 )
                 actual = (
@@ -115,6 +180,7 @@ class CollectionService:
                     existing.policy_version,
                     existing.retention_days,
                     existing.trigger,
+                    existing.ingestion_mode,
                     existing.schedule_slot,
                 )
                 if actual != expected:
@@ -192,6 +258,7 @@ class CollectionService:
                 policy_version=data.policy_version,
                 retention_days=data.retention_days,
                 trigger=data.trigger,
+                ingestion_mode=data.ingestion_mode,
                 schedule_slot=data.schedule_slot,
                 budget_day=budget_day,
                 reserved_requests=1,
@@ -306,6 +373,7 @@ class CollectionService:
                 until=run.window_until,
                 policy_version=run.policy_version,
                 retention_days=run.retention_days,
+                ingestion_mode=run.ingestion_mode,
             )
 
     def result_committed_for_job(self, job_id: UUID) -> bool:
@@ -427,6 +495,7 @@ class CollectionService:
                     policy_version=parent.policy_version,
                     retention_days=parent.retention_days,
                     trigger=parent.trigger,
+                    ingestion_mode=parent.ingestion_mode,
                     schedule_slot=parent.schedule_slot,
                     budget_day=parent.budget_day,
                     reserved_requests=1,

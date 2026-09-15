@@ -31,6 +31,69 @@ class ContentReference:
     canonical_url: str | None
 
 
+@dataclass(frozen=True)
+class ContentTrendObservation:
+    observed_at: datetime
+    reply_count: int | None
+    raw_page_id: UUID
+
+
+@dataclass(frozen=True)
+class ContentTrendRecord:
+    id: UUID
+    source: str
+    kind: str
+    first_seen_at: datetime
+    initial_raw_page_id: UUID | None
+    observations: tuple[ContentTrendObservation, ...]
+
+
+def content_trend_records(
+    session: Session, identities: list[UUID], until: datetime
+) -> list[ContentTrendRecord]:
+    if not identities:
+        return []
+    contents = list(session.scalars(select(Content).where(Content.id.in_(identities))))
+    initial_pages: dict[UUID, UUID] = {
+        content_id: raw_page_id
+        for content_id, raw_page_id in session.execute(
+            select(ContentVersion.content_id, ContentVersion.raw_page_id).where(
+                ContentVersion.content_id.in_(identities), ContentVersion.version == 1
+            )
+        )
+    }
+    observations: dict[UUID, list[ContentTrendObservation]] = {
+        identity: [] for identity in identities
+    }
+    rows = session.scalars(
+        select(ContentObservation)
+        .where(
+            ContentObservation.content_id.in_(identities),
+            ContentObservation.observed_at < until,
+        )
+        .order_by(ContentObservation.content_id, ContentObservation.observed_at)
+    )
+    for row in rows:
+        observations[row.content_id].append(
+            ContentTrendObservation(
+                observed_at=row.observed_at,
+                reply_count=row.reply_count,
+                raw_page_id=row.raw_page_id,
+            )
+        )
+    return [
+        ContentTrendRecord(
+            id=content.id,
+            source=content.source,
+            kind=content.kind,
+            first_seen_at=content.first_seen_at,
+            initial_raw_page_id=initial_pages.get(content.id),
+            observations=tuple(observations[content.id]),
+        )
+        for content in contents
+    ]
+
+
 def content_references(
     session: Session, identities: list[UUID], *, lock: bool = False
 ) -> dict[UUID, ContentReference]:

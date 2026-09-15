@@ -56,6 +56,14 @@
             "title": "Expected Version",
             "type": "integer"
           },
+          "ingestion_mode": {
+            "enum": [
+              "live",
+              "backfill"
+            ],
+            "title": "Ingestion Mode",
+            "type": "string"
+          },
           "operation": {
             "const": "search_posts",
             "default": "search_posts",
@@ -110,7 +118,8 @@
           "since",
           "until",
           "policy_version",
-          "retention_days"
+          "retention_days",
+          "ingestion_mode"
         ],
         "title": "CollectionRunRequest",
         "type": "object"
@@ -150,6 +159,14 @@
           "id": {
             "format": "uuid",
             "title": "Id",
+            "type": "string"
+          },
+          "ingestion_mode": {
+            "enum": [
+              "live",
+              "backfill"
+            ],
+            "title": "Ingestion Mode",
             "type": "string"
           },
           "items_count": {
@@ -296,6 +313,7 @@
           "request_value",
           "retention_days",
           "trigger",
+          "ingestion_mode",
           "schedule_slot",
           "budget_day",
           "reserved_requests",
@@ -586,6 +604,35 @@
         "title": "EventSnapshot",
         "type": "object"
       },
+      "EventSourceTrend": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/EventTrendBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "x",
+              "bilibili",
+              "weibo",
+              "xiaohongshu",
+              "douyin",
+              "bluesky"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "buckets"
+        ],
+        "title": "EventSourceTrend",
+        "type": "object"
+      },
       "EventSplitInput": {
         "additionalProperties": false,
         "properties": {
@@ -623,6 +670,156 @@
           "expected_revision"
         ],
         "title": "EventSplitInput",
+        "type": "object"
+      },
+      "EventTrendBucket": {
+        "properties": {
+          "backfill_run_count": {
+            "minimum": 0.0,
+            "title": "Backfill Run Count",
+            "type": "integer"
+          },
+          "coverage_status": {
+            "enum": [
+              "comparable",
+              "interrupted",
+              "missing"
+            ],
+            "title": "Coverage Status",
+            "type": "string"
+          },
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          },
+          "excluded_backfill_items": {
+            "minimum": 0.0,
+            "title": "Excluded Backfill Items",
+            "type": "integer"
+          },
+          "excluded_backfill_observations": {
+            "minimum": 0.0,
+            "title": "Excluded Backfill Observations",
+            "type": "integer"
+          },
+          "interruption_reasons": {
+            "items": {
+              "enum": [
+                "policy_changed",
+                "run_failed",
+                "run_partial",
+                "run_incomplete",
+                "no_live_coverage"
+              ],
+              "type": "string"
+            },
+            "title": "Interruption Reasons",
+            "type": "array"
+          },
+          "live_run_count": {
+            "minimum": 0.0,
+            "title": "Live Run Count",
+            "type": "integer"
+          },
+          "new_discussions": {
+            "minimum": 0.0,
+            "title": "New Discussions",
+            "type": "integer"
+          },
+          "new_posts": {
+            "minimum": 0.0,
+            "title": "New Posts",
+            "type": "integer"
+          },
+          "observed_reply_delta": {
+            "title": "Observed Reply Delta",
+            "type": "integer"
+          },
+          "policy_versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Versions",
+            "type": "array"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "starts_at",
+          "ends_at",
+          "new_posts",
+          "new_discussions",
+          "observed_reply_delta",
+          "coverage_status",
+          "interruption_reasons",
+          "live_run_count",
+          "backfill_run_count",
+          "excluded_backfill_items",
+          "excluded_backfill_observations",
+          "policy_versions"
+        ],
+        "title": "EventTrendBucket",
+        "type": "object"
+      },
+      "EventTrendView": {
+        "properties": {
+          "bucket_hours": {
+            "enum": [
+              1,
+              6,
+              24
+            ],
+            "title": "Bucket Hours",
+            "type": "integer"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "metric_version": {
+            "const": "event-trend-v1",
+            "default": "event-trend-v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/EventSourceTrend"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "timezone": {
+            "const": "UTC",
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "since",
+          "until",
+          "bucket_hours",
+          "sources"
+        ],
+        "title": "EventTrendView",
         "type": "object"
       },
       "EventView": {
@@ -1711,6 +1908,15 @@
         ],
         "title": "SourceView",
         "type": "object"
+      },
+      "TrendBucketHours": {
+        "enum": [
+          1,
+          6,
+          24
+        ],
+        "title": "TrendBucketHours",
+        "type": "integer"
       }
     },
     "securitySchemes": {
@@ -3127,6 +3333,150 @@
           }
         ],
         "summary": "Split Event",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/v1/events/{identity}/trends": {
+      "get": {
+        "operationId": "getEventTrends",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Since",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Until",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket_hours",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TrendBucketHours",
+              "default": 24
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventTrendView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Event Trends",
         "tags": [
           "events"
         ]

@@ -211,6 +211,17 @@ def test_event_api_creates_a_revisioned_empty_dossier(client):
     assert client.get("/api/v1/events").json()["items"][0]["id"] == event["id"]
     revisions = client.get(f"/api/v1/events/{event['id']}/revisions").json()
     assert [revision["change_type"] for revision in revisions] == ["create"]
+    trend = client.get(
+        f"/api/v1/events/{event['id']}/trends",
+        params={
+            "since": "2026-09-09T00:00:00Z",
+            "until": "2026-09-16T00:00:00Z",
+            "bucket_hours": 24,
+        },
+    )
+    assert trend.status_code == 200, trend.json()
+    assert trend.json()["metric_version"] == "event-trend-v1"
+    assert trend.json()["sources"] == []
     missing = client.post(
         f"/api/v1/events/{event['id']}/members",
         json={"content_id": "00000000-0000-0000-0000-000000000001"},
@@ -365,6 +376,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
             "until": "2026-09-15T00:00:00Z",
             "policy_version": "user-confirmed-policy-v1",
             "retention_days": 7,
+            "ingestion_mode": "live",
         },
     )
     assert missing_store.status_code == 409
@@ -383,6 +395,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
             "until": "2026-09-15T00:00:00Z",
             "policy_version": "user-confirmed-policy-v1",
             "retention_days": 7,
+            "ingestion_mode": "live",
         },
     )
     assert accepted.status_code == 201

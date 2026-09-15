@@ -34,6 +34,9 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   expect(
     document.paths["/api/v1/events/{identity}/split"].post.operationId,
   ).toBe("splitEvent");
+  expect(
+    document.paths["/api/v1/events/{identity}/trends"].get.operationId,
+  ).toBe("getEventTrends");
   expect(document.paths["/api/v1/notifications"].get.operationId).toBe(
     "listNotifications",
   );
@@ -47,6 +50,7 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   const runInput = document.components.schemas.CollectionRunRequest;
   const runView = document.components.schemas.CollectionRunView;
   expect(runInput.required).toContain("request_value");
+  expect(runInput.required).toContain("ingestion_mode");
   expect(runInput.properties.query_variant).toBe(undefined);
   expect(runView.properties.operation.enum).toEqual([
     "search_posts",

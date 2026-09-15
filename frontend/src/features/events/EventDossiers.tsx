@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { EventTrends } from "./EventTrends";
 
 type Event = API.EventView;
 
@@ -82,7 +83,7 @@ export function EventDossiers({
         <button disabled={busy || !title.trim()}>创建事件</button>
       </form>
       {items.length ? (
-        <div className="cards">
+        <div className="cards event-cards">
           {items.map((item) => {
             const targets = items.filter(
               (candidate) =>
@@ -111,6 +112,7 @@ export function EventDossiers({
                     </button>
                   </div>
                 ))}
+                <EventTrends eventId={item.id} />
                 {item.status === "active" && targets.length > 0 && (
                   <div className="actions">
                     <select

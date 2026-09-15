@@ -28,6 +28,8 @@ declare namespace API {
   type CollectionRunRequest = {
     /** Expected Version */
     expected_version: number;
+    /** Ingestion Mode */
+    ingestion_mode: "live" | "backfill";
     /** Operation */
     operation?: string;
     /** Policy Version */
@@ -57,6 +59,8 @@ declare namespace API {
     fencing_token: number;
     /** Id */
     id: string;
+    /** Ingestion Mode */
+    ingestion_mode: "live" | "backfill";
     /** Items Count */
     items_count: number;
     /** Job Id */
@@ -182,6 +186,13 @@ declare namespace API {
     title: string;
   };
 
+  type EventSourceTrend = {
+    /** Buckets */
+    buckets: EventTrendBucket[];
+    /** Source */
+    source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
+  };
+
   type EventSplitInput = {
     /** Content Ids */
     content_ids: string[];
@@ -191,6 +202,56 @@ declare namespace API {
     summary?: string;
     /** Title */
     title: string;
+  };
+
+  type EventTrendBucket = {
+    /** Backfill Run Count */
+    backfill_run_count: number;
+    /** Coverage Status */
+    coverage_status: "comparable" | "interrupted" | "missing";
+    /** Ends At */
+    ends_at: string;
+    /** Excluded Backfill Items */
+    excluded_backfill_items: number;
+    /** Excluded Backfill Observations */
+    excluded_backfill_observations: number;
+    /** Interruption Reasons */
+    interruption_reasons: (
+      | "policy_changed"
+      | "run_failed"
+      | "run_partial"
+      | "run_incomplete"
+      | "no_live_coverage"
+    )[];
+    /** Live Run Count */
+    live_run_count: number;
+    /** New Discussions */
+    new_discussions: number;
+    /** New Posts */
+    new_posts: number;
+    /** Observed Reply Delta */
+    observed_reply_delta: number;
+    /** Policy Versions */
+    policy_versions: string[];
+    /** Starts At */
+    starts_at: string;
+  };
+
+  type EventTrendView = {
+    /** Bucket Hours */
+    bucket_hours: 1 | 6 | 24;
+    /** Event Id */
+    event_id: string;
+    /** Metric Version */
+    metric_version?: string;
+    /** Since */
+    since: string;
+    /** Sources */
+    sources: EventSourceTrend[];
+    /** Timezone */
+    timezone?: string;
+    /** Until */
+    until: string;
   };
 
   type EventView = {
@@ -218,6 +279,13 @@ declare namespace API {
 
   type getEventParams = {
     identity: string;
+  };
+
+  type getEventTrendsParams = {
+    identity: string;
+    since: string;
+    until: string;
+    bucket_hours?: TrendBucketHours;
   };
 
   type getJobParams = {
@@ -592,6 +660,8 @@ declare namespace API {
   type splitEventParams = {
     identity: string;
   };
+
+  type TrendBucketHours = 1 | 6 | 24;
 
   type updateMonitorParams = {
     identity: string;

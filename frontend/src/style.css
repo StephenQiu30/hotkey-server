@@ -251,6 +251,29 @@ section {
   gap: 8px;
   margin-top: 14px;
 }
+.event-trends {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.event-trends h4,
+.event-trends h5 {
+  margin: 0;
+}
+.event-cards {
+  grid-template-columns: 1fr;
+}
+.event-trends table {
+  min-width: 720px;
+}
+.trend-source {
+  margin-top: 14px;
+}
+.trend-reasons {
+  display: block;
+  color: #8a4b32;
+  margin-top: 4px;
+}
 label {
   display: flex;
   flex-direction: column;

@@ -97,7 +97,8 @@ def test_notification_cursor_is_opaque_and_rejects_invalid_values(database):
     first = service.notifications(limit=1, cursor=None, unread_only=False)
     assert len(first.items) == 1 and first.unread_count == 2
     assert first.next_cursor is not None
-    assert first.next_cursor != str(first.items[0].id) and "-" not in first.next_cursor
+    assert first.next_cursor != str(first.items[0].id)
+    assert first.items[0].id.hex not in first.next_cursor
     second = service.notifications(limit=1, cursor=first.next_cursor, unread_only=False)
     assert len(second.items) == 1 and second.next_cursor is None
     assert second.items[0].id != first.items[0].id

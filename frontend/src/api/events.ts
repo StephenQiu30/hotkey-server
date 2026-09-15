@@ -135,3 +135,21 @@ export async function splitEvent(
     ...(options || {}),
   });
 }
+
+/** Event Trends GET /api/v1/events/${param0}/trends */
+export async function getEventTrends(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.getEventTrendsParams,
+  options?: RequestOptions
+) {
+  const { identity: param0, ...queryParams } = params;
+  return request<API.EventTrendView>(`/api/v1/events/${param0}/trends`, {
+    method: "GET",
+    params: {
+      // bucket_hours has a default value: 24
+      bucket_hours: "24",
+      ...queryParams,
+    },
+    ...(options || {}),
+  });
+}

@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import IntEnum
 from typing import Literal
 from uuid import UUID
 
@@ -6,6 +7,12 @@ from pydantic import BaseModel, Field, field_validator
 
 from core.schemas import Input
 from sources.schemas import SourceName
+
+
+class TrendBucketHours(IntEnum):
+    hourly = 1
+    six_hour = 6
+    daily = 24
 
 
 class EventInput(Input):
@@ -77,3 +84,41 @@ class EventRevisionView(BaseModel):
     related_event_id: UUID | None
     snapshot: EventSnapshot
     created_at: datetime
+
+
+class EventTrendBucket(BaseModel):
+    starts_at: datetime
+    ends_at: datetime
+    new_posts: int = Field(ge=0)
+    new_discussions: int = Field(ge=0)
+    observed_reply_delta: int
+    coverage_status: Literal["comparable", "interrupted", "missing"]
+    interruption_reasons: list[
+        Literal[
+            "policy_changed",
+            "run_failed",
+            "run_partial",
+            "run_incomplete",
+            "no_live_coverage",
+        ]
+    ]
+    live_run_count: int = Field(ge=0)
+    backfill_run_count: int = Field(ge=0)
+    excluded_backfill_items: int = Field(ge=0)
+    excluded_backfill_observations: int = Field(ge=0)
+    policy_versions: list[str]
+
+
+class EventSourceTrend(BaseModel):
+    source: SourceName
+    buckets: list[EventTrendBucket]
+
+
+class EventTrendView(BaseModel):
+    event_id: UUID
+    metric_version: Literal["event-trend-v1"] = "event-trend-v1"
+    timezone: Literal["UTC"] = "UTC"
+    since: datetime
+    until: datetime
+    bucket_hours: Literal[1, 6, 24]
+    sources: list[EventSourceTrend]

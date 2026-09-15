@@ -46,6 +46,13 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
     page.getByRole("heading", { name: eventTitle, exact: true }),
   ).toBeVisible();
   await expect(page.getByText("修订 v1 · 0 条内容")).toBeVisible();
+  const eventCard = page.getByRole("article").filter({
+    has: page.getByRole("heading", { name: eventTitle, exact: true }),
+  });
+  await eventCard.getByRole("button", { name: "查看近 7 天趋势" }).click();
+  await expect(
+    eventCard.getByText("该事件还没有带原始证据的平台内容。"),
+  ).toBeVisible();
   const sourceEventTitle = `待合并-${Date.now()}`;
   await page.getByLabel("事件名称").fill(sourceEventTitle);
   await page.getByRole("button", { name: "创建事件" }).click();

@@ -101,6 +101,7 @@ class CollectionScheduler:
                                 policy_version=f"monitor-version-{configuration.version}",
                                 retention_days=configuration.schedule.retention_days,
                                 trigger="scheduled",
+                                ingestion_mode="live",
                                 schedule_slot=until,
                             )
                         )

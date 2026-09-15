@@ -66,6 +66,7 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
         ("/api/v1/events/{identity}/revisions", "get"): "listEventRevisions",
         ("/api/v1/events/{identity}/merge", "post"): "mergeEvent",
         ("/api/v1/events/{identity}/split", "post"): "splitEvent",
+        ("/api/v1/events/{identity}/trends", "get"): "getEventTrends",
         ("/api/v1/notifications", "get"): "listNotifications",
         ("/api/v1/notifications/{identity}/read", "post"): "markNotificationRead",
         ("/api/v1/jobs", "get"): "listJobs",
@@ -84,6 +85,7 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
     run_input = document["components"]["schemas"]["CollectionRunRequest"]
     run_view = document["components"]["schemas"]["CollectionRunView"]
     assert "request_value" in run_input["required"]
+    assert "ingestion_mode" in run_input["required"]
     assert "query_variant" not in run_input["properties"]
     assert run_view["properties"]["operation"]["enum"] == [
         "search_posts",

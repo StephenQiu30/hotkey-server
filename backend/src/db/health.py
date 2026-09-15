@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.schemas import HealthView
 
-SCHEMA_REVISION = "0013_event_notifications"
+SCHEMA_REVISION = "0014_collection_ingestion_mode"
 
 
 def readiness(factory: sessionmaker[Session]) -> HealthView:

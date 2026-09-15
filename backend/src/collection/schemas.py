@@ -20,6 +20,7 @@ class CollectionRunInput(Input):
     policy_version: str = Field(min_length=1, max_length=64)
     retention_days: int = Field(ge=1, le=365)
     trigger: Literal["manual", "scheduled"] = "manual"
+    ingestion_mode: Literal["live", "backfill"]
     schedule_slot: AwareDatetime | None = None
 
     @model_validator(mode="after")
@@ -46,6 +47,7 @@ class CollectionRunView(BaseModel):
     request_value: str
     retention_days: int
     trigger: Literal["manual", "scheduled"]
+    ingestion_mode: Literal["live", "backfill"]
     schedule_slot: datetime | None
     budget_day: date
     reserved_requests: int
@@ -76,6 +78,7 @@ class CollectionRunRequest(Input):
     until: AwareDatetime
     policy_version: str = Field(min_length=1, max_length=64)
     retention_days: int = Field(ge=1, le=365)
+    ingestion_mode: Literal["live", "backfill"]
 
     @model_validator(mode="after")
     def valid_window(self) -> Self:
@@ -99,6 +102,7 @@ class CollectionExecutionInput(BaseModel):
     until: datetime
     policy_version: str
     retention_days: int = Field(ge=1, le=365)
+    ingestion_mode: Literal["live", "backfill"]
 
 
 class PageCommitInput(Input):

@@ -57,6 +57,7 @@ def manual_run(monitor, key):
         idempotency_key=key,
         policy_version="policy-v1",
         retention_days=7,
+        ingestion_mode="live",
     )
 
 

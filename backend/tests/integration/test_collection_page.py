@@ -163,6 +163,7 @@ def run_and_commit(
             idempotency_key=key,
             policy_version="synthetic-policy-v1",
             retention_days=7,
+            ingestion_mode="live",
         )
     )
     lease = service.claim_for_job(started.job_id, 1)
@@ -235,6 +236,7 @@ def test_collection_run_and_job_are_atomic_and_executor_commits_one_page(databas
             idempotency_key="executor-one-page",
             policy_version="synthetic-policy-v1",
             retention_days=7,
+            ingestion_mode="live",
         )
     )
     payload = b'{"page":"executor"}'
@@ -278,6 +280,7 @@ def test_search_reference_commit_atomically_creates_one_budgeted_detail_run(data
             idempotency_key="reference-expansion",
             policy_version="synthetic-policy-v1",
             retention_days=7,
+            ingestion_mode="live",
         )
     )
     payload = b'{"references":["BV1BVFWeHEaV"]}'
@@ -329,6 +332,7 @@ def test_search_reference_commit_atomically_creates_one_budgeted_detail_run(data
         detail = runs[1]
         assert detail.parent_run_id == created.id
         assert detail.operation == "fetch_post"
+        assert detail.ingestion_mode == "live"
         assert detail.request_value == "bvid:BV1BVFWeHEaV"
         assert session.scalar(select(func.count()).select_from(Job)) == 2
         assert session.scalar(select(func.count()).select_from(Outbox)) == 2
@@ -384,6 +388,7 @@ def test_same_scheduled_detail_can_be_expanded_from_distinct_search_parents(data
                 idempotency_key=f"same-detail-parent-{index}",
                 policy_version="synthetic-policy-v1",
                 retention_days=7,
+                ingestion_mode="live",
                 trigger="scheduled",
                 schedule_slot=slot,
             )
@@ -449,6 +454,7 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
             idempotency_key="root-comment-search",
             policy_version="synthetic-policy-v1",
             retention_days=7,
+            ingestion_mode="live",
         )
     )
     search_payload = b'{"reference":"BV1BVFWeHEaV"}'
@@ -650,6 +656,7 @@ def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(datab
                 idempotency_key=key,
                 policy_version="synthetic-policy-v1",
                 retention_days=7,
+                ingestion_mode="live",
             )
         )
 
@@ -709,6 +716,7 @@ def test_pausing_monitor_before_page_boundary_prevents_source_fetch(database):
             idempotency_key="pause-before-fetch",
             policy_version="synthetic-policy-v1",
             retention_days=7,
+            ingestion_mode="live",
         )
     )
     lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
@@ -752,6 +760,7 @@ def test_detail_revocation_at_search_commit_creates_no_followup(database):
             idempotency_key="detail-revoked",
             policy_version="synthetic-policy-v1",
             retention_days=7,
+            ingestion_mode="live",
         )
     )
     execution = collection.claim_for_job(created.job_id, 1)
@@ -809,6 +818,7 @@ def test_worker_crash_after_page_commit_completes_job_without_refetch(database):
             idempotency_key="crash-after-commit",
             policy_version="synthetic-policy-v1",
             retention_days=7,
+            ingestion_mode="live",
         )
     )
     payload = b'{"page":"committed-before-crash"}'
@@ -856,6 +866,7 @@ def test_missing_evidence_configuration_creates_no_run_or_job(database):
                 idempotency_key="missing-evidence",
                 policy_version="synthetic-policy-v1",
                 retention_days=7,
+                ingestion_mode="live",
             )
         )
     with database() as session:
@@ -877,6 +888,7 @@ def test_idempotent_replay_returns_committed_run_after_admission_is_revoked(data
         idempotency_key="replay-after-revocation",
         policy_version="synthetic-policy-v1",
         retention_days=7,
+        ingestion_mode="live",
     )
     created = CollectionService(database, admitted, evidence_configured=True).create_run(data)
 
@@ -885,6 +897,10 @@ def test_idempotent_replay_returns_committed_run_after_admission_is_revoked(data
     with pytest.raises(AppError, match="idempotency_conflict"):
         CollectionService(database, RevokedSources()).create_run(
             data.model_copy(update={"retention_days": 8})
+        )
+    with pytest.raises(AppError, match="idempotency_conflict"):
+        CollectionService(database, RevokedSources()).create_run(
+            data.model_copy(update={"ingestion_mode": "backfill"})
         )
     with database() as session:
         assert session.scalar(select(func.count()).select_from(CollectionRun)) == 1
@@ -906,6 +922,7 @@ def test_concurrent_collection_run_creation_has_one_intent(database):
         idempotency_key="concurrent-collection-run",
         policy_version="synthetic-policy-v1",
         retention_days=7,
+        ingestion_mode="live",
     )
 
     def create(_):
@@ -936,6 +953,7 @@ def test_executor_rechecks_source_eligibility_before_fetch(database):
             idempotency_key="revoked-before-fetch",
             policy_version="synthetic-policy-v1",
             retention_days=7,
+            ingestion_mode="live",
         )
     )
     payload = b'{"must":"not be fetched"}'
@@ -1162,6 +1180,7 @@ def test_invalid_page_is_rejected_before_object_upload(database):
             idempotency_key="preflight-reject",
             policy_version="synthetic-policy-v1",
             retention_days=7,
+            ingestion_mode="live",
         )
     )
     lease = collection.claim_for_job(started.job_id, 1)
@@ -1201,6 +1220,7 @@ def test_old_fence_cannot_commit_and_stale_commit_leaves_orphan_object(database)
             idempotency_key="old-fence",
             policy_version="synthetic-policy-v1",
             retention_days=7,
+            ingestion_mode="live",
         )
     )
     lease = collection.claim_for_job(started.job_id, 1)

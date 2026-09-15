@@ -4,6 +4,7 @@ from datetime import datetime
 from hashlib import sha256
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.errors import AppError
@@ -17,6 +18,13 @@ class PreparedEvidence:
     payload: bytes
     payload_sha256: str
     object_sha256: str
+
+
+def raw_page_run_ids(session: Session, identities: set[UUID]) -> dict[UUID, UUID]:
+    if not identities:
+        return {}
+    rows = session.execute(select(RawPage.id, RawPage.run_id).where(RawPage.id.in_(identities)))
+    return {identity: run_id for identity, run_id in rows}
 
 
 def raw_page_identity(session: Session, identity: UUID) -> tuple[str, str]:

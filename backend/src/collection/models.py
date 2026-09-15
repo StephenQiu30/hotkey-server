@@ -39,6 +39,10 @@ class CollectionRun(Base):
         ),
         CheckConstraint("trigger IN ('manual', 'scheduled')", name="ck_collection_runs_trigger"),
         CheckConstraint(
+            "ingestion_mode IN ('live', 'backfill')",
+            name="ck_collection_runs_ingestion_mode",
+        ),
+        CheckConstraint(
             "(trigger = 'manual' AND schedule_slot IS NULL) OR "
             "(trigger = 'scheduled' AND schedule_slot IS NOT NULL)",
             name="ck_collection_runs_schedule_slot",
@@ -90,6 +94,7 @@ class CollectionRun(Base):
     policy_version: Mapped[str] = mapped_column(String(64))
     retention_days: Mapped[int] = mapped_column(Integer)
     trigger: Mapped[str] = mapped_column(String(16))
+    ingestion_mode: Mapped[str] = mapped_column(String(16))
     schedule_slot: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     budget_day: Mapped[date] = mapped_column(Date)
     reserved_requests: Mapped[int] = mapped_column(Integer)
