@@ -76,7 +76,13 @@
     "npm_production_audit": "0 vulnerabilities",
     "compose": "pgvector migration, prefork diagnostic, backend replacement proxy and graceful shutdown passed",
     "playwright": "3 Chromium tests passed: semantic unavailable state, Swagger operation, full workspace and 390px layout",
-    "remote_ci": null
+    "remote_ci": {
+      "feature_commit": "64ff570342c4cec4a43703779fd26ea53e114a35",
+      "run_id": 35016406522,
+      "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35016406522",
+      "conclusion": "success",
+      "duration": "2m46s"
+    }
   },
   "official_protocol_basis": {
     "ollama_embed_api": "https://docs.ollama.com/api/embed",
