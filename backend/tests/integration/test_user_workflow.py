@@ -44,12 +44,18 @@ def test_auth_csrf_revocation_and_no_password_echo(client):
     assert client.get("/api/v1/monitors").status_code == 401
     assert client.get("/api/v1/contents").status_code == 401
     assert client.get("/api/v1/events").status_code == 401
+    assert client.get("/api/v1/notifications").status_code == 401
     assert client.get("/api/v1/collection-runs").status_code == 401
     result = client.post("/api/v1/session", json={"username": "learner", "password": "secret"})
     assert result.status_code == 422 and "secret" not in result.text
     login(client)
     assert client.get("/api/v1/contents").json() == {"items": [], "next_cursor": None}
     assert client.get("/api/v1/events").json() == {"items": [], "next_cursor": None}
+    assert client.get("/api/v1/notifications").json() == {
+        "items": [],
+        "next_cursor": None,
+        "unread_count": 0,
+    }
     assert client.get("/api/v1/collection-runs").json() == {
         "items": [],
         "next_cursor": None,
@@ -221,6 +227,15 @@ def test_event_api_creates_a_revisioned_empty_dossier(client):
     )
     assert merged.status_code == 200 and merged.json()["current_revision"] == 2
     assert client.get(f"/api/v1/events/{source['id']}").json()["status"] == "archived"
+    page = client.get("/api/v1/notifications?unread_only=true").json()
+    assert page["unread_count"] == 2
+    assert {item["kind"] for item in page["items"]} == {
+        "event_merged_in",
+        "event_merged_out",
+    }
+    read = client.post(f"/api/v1/notifications/{page['items'][0]['id']}/read")
+    assert read.status_code == 200 and read.json()["read_at"] is not None
+    assert client.get("/api/v1/notifications").json()["unread_count"] == 1
 
 
 def test_login_throttle_persists_failures(client):

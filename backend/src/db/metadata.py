@@ -9,6 +9,7 @@ from evidence import models as evidence
 from identity import models as identity
 from jobs import models as jobs
 from monitors import models as monitors
+from notifications import models as notifications
 
 __all__ = [
     "Base",
@@ -20,4 +21,5 @@ __all__ = [
     "identity",
     "jobs",
     "monitors",
+    "notifications",
 ]

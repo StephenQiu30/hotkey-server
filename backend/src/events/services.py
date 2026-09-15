@@ -18,6 +18,7 @@ from events.schemas import (
     EventSplitInput,
     EventView,
 )
+from notifications.services import record_event_change
 
 
 class EventService:
@@ -64,17 +65,24 @@ class EventService:
         ],
         related_event_id: UUID | None = None,
     ) -> None:
-        session.add(
-            EventRevision(
-                id=uuid4(),
+        revision = EventRevision(
+            id=uuid4(),
+            event_id=event.id,
+            revision=event.current_revision,
+            change_type=change_type,
+            related_event_id=related_event_id,
+            snapshot=cls._snapshot(session, event),
+            created_at=event.updated_at,
+        )
+        session.add(revision)
+        if change_type != "create":
+            record_event_change(
+                session,
                 event_id=event.id,
-                revision=event.current_revision,
+                change_id=revision.id,
                 change_type=change_type,
-                related_event_id=related_event_id,
-                snapshot=cls._snapshot(session, event),
                 created_at=event.updated_at,
             )
-        )
 
     @staticmethod
     def _view(session: Session, event: Event) -> EventView:

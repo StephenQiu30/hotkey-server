@@ -274,3 +274,13 @@ Red阶段因EventMergeInput/EventSplitInput不存在而在测试收集失败。G
 隔离 `hotkey-s04b-stack` Compose完成0012迁移与真实scheduler/RabbitMQ/Celery prefork诊断，succeeded/attempts=1。Chromium 2项通过：Swagger读取合并拆分端点，合成owner创建两个事件并在UI执行合并，数据库为1个active、1个archived，修订为2条create及各1条merge_in/merge_out。运行时OpenAPI等于发布快照；Web不替换、backend替换后代理返回401；关停worker=0、backend=143、scheduler=0，无SIGKILL/OOM。结构化证据见 [event-merge-split-poc.json](evidence/event-merge-split-poc.json)。
 
 拆分的浏览器交互因隔离栈没有合成收件箱内容，只由真实PostgreSQL服务测试覆盖。远程CI已复跑完整提交候选：117项后端测试、2项Playwright、Compose、代理替换和无SIGKILL停机检查通过，见 [GitHub Actions #34991217129](https://github.com/StephenQiu30/hotkey-server/actions/runs/34991217129)。趋势、提醒和分析失效仍未实现，因此本片推进AC-007-008但不构成完整EV-007-006或TASK-007-S04-T01完成证据。
+
+## 007 S04-T01C 事件变化站内提醒验证（2026-09-16）
+
+本片将事件加入/移出成员、合并和拆分的每条非create修订映射为站内提醒。修订与提醒使用同一数据库事务；`rule_version + event_id + change_id`唯一约束让同一变化重放不产生重复提醒。列表使用URL安全的不透明游标并返回全局未读数，标记已读以行锁和首次变化审计保持幂等。
+
+Red阶段因notifications模块不存在而在测试收集失败。Green阶段真实PostgreSQL 16与RabbitMQ 4.1全量127项pytest通过；Ruff、严格mypy（105个应用与迁移源文件）、FastAPI OpenAPI快照、UmiOpenAPI漂移、前端边界、Prettier及TypeScript/Vite构建通过。独立迁移POC从0012升级到`0013_event_notifications`，保留既有事件，新增空notifications表，Alembic与SQLAlchemy模型比较无差异。
+
+隔离`hotkey-s04c-stack`完成0013迁移和真实scheduler/RabbitMQ/Celery prefork诊断，succeeded/attempts=1。Chromium 2项通过：Swagger读取提醒端点；合成owner合并两个事件后看到2条未读提醒，标记1条后刷新仍为1条未读。运行时OpenAPI与发布快照相同；Web保持运行而backend替换后代理返回401；关停worker=0、backend=143、scheduler=0，无SIGKILL或OOM。首次浏览器运行使用未列入允许来源的测试端口，Origin门禁按设计拒绝登录；改用已登记的8010后通过。结构化证据见 [event-notification-poc.json](evidence/event-notification-poc.json)。
+
+本片只验证合成事件变化，没有访问外部平台或连接现有MinIO。提醒由明确的人工事件变化触发，不代表趋势检测；趋势时间桶、来源覆盖中断、回填抑制、突发规则和分析失效仍未实现，因此不单独满足AC-007-010或完整TASK-007-S04-T01。

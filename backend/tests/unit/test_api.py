@@ -66,6 +66,8 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
         ("/api/v1/events/{identity}/revisions", "get"): "listEventRevisions",
         ("/api/v1/events/{identity}/merge", "post"): "mergeEvent",
         ("/api/v1/events/{identity}/split", "post"): "splitEvent",
+        ("/api/v1/notifications", "get"): "listNotifications",
+        ("/api/v1/notifications/{identity}/read", "post"): "markNotificationRead",
         ("/api/v1/jobs", "get"): "listJobs",
         ("/api/v1/jobs", "post"): "createDiagnosticJob",
         ("/api/v1/jobs/{identity}", "get"): "getJob",

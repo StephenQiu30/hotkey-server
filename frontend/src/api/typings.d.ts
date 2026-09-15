@@ -326,11 +326,21 @@ declare namespace API {
     cursor?: string | null;
   };
 
+  type listNotificationsParams = {
+    limit?: number;
+    cursor?: string | null;
+    unread_only?: boolean;
+  };
+
   type LoginInput = {
     /** Password */
     password: string;
     /** Username */
     username: string;
+  };
+
+  type markNotificationReadParams = {
+    identity: string;
   };
 
   type mergeEventParams = {
@@ -410,6 +420,40 @@ declare namespace API {
     title: string;
     /** Updated At */
     updated_at: string;
+  };
+
+  type NotificationPage = {
+    /** Items */
+    items: NotificationView[];
+    /** Next Cursor */
+    next_cursor: string | null;
+    /** Unread Count */
+    unread_count: number;
+  };
+
+  type NotificationView = {
+    /** Change Id */
+    change_id: string;
+    /** Created At */
+    created_at: string;
+    /** Event Id */
+    event_id: string;
+    /** Id */
+    id: string;
+    /** Kind */
+    kind:
+      | "event_member_added"
+      | "event_member_removed"
+      | "event_merged_in"
+      | "event_merged_out"
+      | "event_split_in"
+      | "event_split_out";
+    /** Message */
+    message: string;
+    /** Read At */
+    read_at: string | null;
+    /** Rule Version */
+    rule_version: number;
   };
 
   type pauseMonitorParams = {

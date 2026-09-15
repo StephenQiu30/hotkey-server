@@ -34,6 +34,12 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   expect(
     document.paths["/api/v1/events/{identity}/split"].post.operationId,
   ).toBe("splitEvent");
+  expect(document.paths["/api/v1/notifications"].get.operationId).toBe(
+    "listNotifications",
+  );
+  expect(
+    document.paths["/api/v1/notifications/{identity}/read"].post.operationId,
+  ).toBe("markNotificationRead");
   const capability = document.components.schemas.SourceOperationCapability;
   expect(capability.required).toContain("pipeline");
   expect(capability.required).toContain("eligible_for_collection");

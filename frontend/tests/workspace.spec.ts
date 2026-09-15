@@ -35,6 +35,9 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   await expect(
     page.getByRole("heading", { name: "还没有事件档案" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "还没有事件提醒" }),
+  ).toBeVisible();
   const eventTitle = `事件验证-${Date.now()}`;
   await page.getByLabel("事件名称").fill(eventTitle);
   await page.getByLabel("简介").fill("人工整理的合成事件");
@@ -54,6 +57,13 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
     .selectOption({ label: eventTitle });
   await sourceEvent.getByRole("button", { name: "合并到所选事件" }).click();
   await expect(sourceEvent.getByText(/已归档 · 修订 v2/)).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "事件提醒 2 未读" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "标为已读" }).first().click();
+  await expect(
+    page.getByRole("heading", { name: "事件提醒 1 未读" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "新建监控", exact: true }).click();
   await expect(page.getByLabel("每日请求上限")).toHaveValue("96");
   const title = `学习验证-${Date.now()}`;
@@ -106,8 +116,12 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   await expect(
     page.getByRole("heading", { name: title + "-更新", exact: true }),
   ).toBeVisible();
+  const eventDossiers = page.getByRole("region", { name: /事件档案/ });
   await expect(
-    page.getByRole("heading", { name: eventTitle, exact: true }),
+    eventDossiers.getByRole("heading", { name: eventTitle, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "事件提醒 1 未读" }),
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(

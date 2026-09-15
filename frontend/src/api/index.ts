@@ -7,6 +7,7 @@ import * as contents from "./contents";
 import * as events from "./events";
 import * as jobs from "./jobs";
 import * as monitoring from "./monitoring";
+import * as notifications from "./notifications";
 import * as identity from "./identity";
 import * as sources from "./sources";
 import * as health from "./health";
@@ -16,6 +17,7 @@ export default {
   events,
   jobs,
   monitoring,
+  notifications,
   identity,
   sources,
   health,

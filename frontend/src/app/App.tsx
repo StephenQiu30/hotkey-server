@@ -12,6 +12,7 @@ import {
 import { createDiagnosticJob, cancelJob, listJobs } from "../api/jobs";
 import { getSession, logout } from "../api/identity";
 import { activateMonitor, listMonitors, pauseMonitor } from "../api/monitoring";
+import { listNotifications, markNotificationRead } from "../api/notifications";
 import { listSources } from "../api/sources";
 import { Login } from "../features/identity/Login";
 import { Runs } from "../features/collection/Runs";
@@ -21,6 +22,7 @@ import {
   MonitorEditor,
   sourceLabels,
 } from "../features/monitors/MonitorEditor";
+import { NotificationInbox } from "../features/notifications/NotificationInbox";
 import {
   canCollect,
   SourceCapabilities,
@@ -32,6 +34,7 @@ type Source = API.SourceView;
 type Content = API.InboxItem;
 type CollectionRun = API.CollectionRunView;
 type EventDossier = API.EventView;
+type Notification = API.NotificationView;
 const statuses: Record<Job["status"], string> = {
   queued: "排队中",
   running: "执行中",
@@ -53,6 +56,8 @@ export function App() {
   const [contents, setContents] = useState<Content[]>([]);
   const [runs, setRuns] = useState<CollectionRun[]>([]);
   const [events, setEvents] = useState<EventDossier[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [editor, setEditor] = useState<Monitor | "new" | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -61,6 +66,9 @@ export function App() {
   const [contentCursor, setContentCursor] = useState<string | null>(null);
   const [runCursor, setRunCursor] = useState<string | null>(null);
   const [eventCursor, setEventCursor] = useState<string | null>(null);
+  const [notificationCursor, setNotificationCursor] = useState<string | null>(
+    null,
+  );
   const generation = useRef(0);
   const diagnosticKey = useRef<string | null>(null);
   const refresh = useCallback(async () => {
@@ -68,13 +76,14 @@ export function App() {
     setLoading(true);
     setError("");
     try {
-      const [m, j, s, c, r, e] = await Promise.all([
+      const [m, j, s, c, r, e, n] = await Promise.all([
         listMonitors({}),
         listJobs({}),
         listSources(),
         listInboxContents({}),
         listCollectionRuns({}),
         listEvents({}),
+        listNotifications({}),
       ]);
       if (current !== generation.current) return;
       setMonitors(m.items);
@@ -88,6 +97,9 @@ export function App() {
       setRunCursor(r.next_cursor);
       setEvents(e.items);
       setEventCursor(e.next_cursor);
+      setNotifications(n.items);
+      setNotificationCursor(n.next_cursor);
+      setUnreadNotifications(n.unread_count);
     } catch (e) {
       if (current !== generation.current) return;
       if (errorCode(e) === "authentication_required") setSession("out");
@@ -130,7 +142,8 @@ export function App() {
     }
   }
   async function more(
-    kind: "monitors" | "jobs" | "contents" | "runs" | "events",
+    kind:
+      "monitors" | "jobs" | "contents" | "runs" | "events" | "notifications",
   ) {
     await action(async () => {
       if (kind === "monitors" && monitorCursor) {
@@ -153,6 +166,11 @@ export function App() {
         const page = await listEvents({ cursor: eventCursor });
         setEvents((old) => [...old, ...page.items]);
         setEventCursor(page.next_cursor);
+      } else if (kind === "notifications" && notificationCursor) {
+        const page = await listNotifications({ cursor: notificationCursor });
+        setNotifications((old) => [...old, ...page.items]);
+        setNotificationCursor(page.next_cursor);
+        setUnreadNotifications(page.unread_count);
       }
     });
   }
@@ -196,6 +214,8 @@ export function App() {
               setContents([]);
               setRuns([]);
               setEvents([]);
+              setNotifications([]);
+              setUnreadNotifications(0);
               setEditor(null);
               setSession("out");
             })
@@ -262,6 +282,20 @@ export function App() {
             });
           }}
           onMore={() => void more("contents")}
+        />
+        <NotificationInbox
+          items={notifications}
+          unreadCount={unreadNotifications}
+          nextCursor={notificationCursor}
+          events={events}
+          busy={busy}
+          onRead={async (identity) => {
+            await action(async () => {
+              await markNotificationRead({ identity });
+              await refresh();
+            });
+          }}
+          onMore={() => void more("notifications")}
         />
         <EventDossiers
           items={events}

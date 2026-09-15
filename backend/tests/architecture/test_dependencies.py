@@ -17,6 +17,7 @@ PACKAGES = {
     "evidence",
     "identity",
     "monitors",
+    "notifications",
     "jobs",
     "audit",
     "migrations",
@@ -202,7 +203,7 @@ def test_services_reject_cross_domain_orm_examples():
     assert cross_domain_model_imports("contents/services.py", tree) == []
 
 
-@pytest.mark.parametrize("reserved", ["ai", "analysis", "knowledge", "notifications"])
+@pytest.mark.parametrize("reserved", ["ai", "analysis", "knowledge"])
 def test_future_modules_require_explicit_registration(reserved):
     assert unregistered_top_level_modules([SOURCE / reserved / "module.py"]) == {reserved}
 
