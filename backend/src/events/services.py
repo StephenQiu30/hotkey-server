@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from audit.services import audit
-from contents.models import Content
+from contents.services import ContentReference, content_references
 from core.clock import utcnow
 from core.errors import AppError
 from events.models import Event, EventMember, EventRevision
@@ -78,12 +78,25 @@ class EventService:
 
     @staticmethod
     def _view(session: Session, event: Event) -> EventView:
-        rows = session.execute(
-            select(EventMember, Content)
-            .join(Content, Content.id == EventMember.content_id)
-            .where(EventMember.event_id == event.id)
-            .order_by(EventMember.added_at, EventMember.content_id)
-        ).all()
+        members = list(
+            session.scalars(
+                select(EventMember)
+                .where(EventMember.event_id == event.id)
+                .order_by(EventMember.added_at, EventMember.content_id)
+            )
+        )
+        references = content_references(session, [member.content_id for member in members])
+
+        def member_view(member: EventMember, content: ContentReference) -> dict[str, object]:
+            return {
+                "content_id": member.content_id,
+                "source": content.source,
+                "kind": content.kind,
+                "external_id": content.external_id,
+                "canonical_url": content.canonical_url,
+                "added_at": member.added_at,
+            }
+
         return EventView.model_validate(
             {
                 "id": event.id,
@@ -94,15 +107,7 @@ class EventService:
                 "created_at": event.created_at,
                 "updated_at": event.updated_at,
                 "members": [
-                    {
-                        "content_id": member.content_id,
-                        "source": content.source,
-                        "kind": content.kind,
-                        "external_id": content.external_id,
-                        "canonical_url": content.canonical_url,
-                        "added_at": member.added_at,
-                    }
-                    for member, content in rows
+                    member_view(member, references[member.content_id]) for member in members
                 ],
             }
         )
@@ -143,10 +148,7 @@ class EventService:
     def add_member(self, identity: UUID, data: EventMemberInput) -> EventView:
         with self.factory.begin() as session:
             event = self._event(session, identity, lock=True)
-            content = session.scalar(
-                select(Content).where(Content.id == data.content_id).with_for_update()
-            )
-            if content is None:
+            if data.content_id not in content_references(session, [data.content_id], lock=True):
                 raise AppError("content_not_found", 404)
             assigned = session.scalar(
                 select(EventMember.event_id).where(EventMember.content_id == data.content_id)

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, select
+from sqlalchemy import Select, and_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -58,6 +58,11 @@ def monitor_titles_for_content(session: Session, content_id: UUID) -> list[str]:
         .order_by(MonitorVersion.title)
     )
     return list(dict.fromkeys(titles))
+
+
+def matched_content_ids_query() -> Select[tuple[UUID]]:
+    """Expose a read-only query contract without leaking monitor ORM models."""
+    return select(MonitorMatch.content_id)
 
 
 def content_is_matched(session: Session, monitor_version_id: UUID, content_id: UUID) -> bool:

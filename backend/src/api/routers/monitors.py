@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 
 from api.dependencies import Authenticated, Monitors
+from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
 from monitors.schemas import (
     MonitorInput,
     MonitorPage,
@@ -16,7 +17,11 @@ router = APIRouter(prefix="/api/v1")
 
 
 @router.get(
-    "/monitors", response_model=MonitorPage, tags=["monitoring"], operation_id="listMonitors"
+    "/monitors",
+    response_model=MonitorPage,
+    responses=error_responses(*READ_ERROR_CODES),
+    tags=["monitoring"],
+    operation_id="listMonitors",
 )
 def monitors(
     service: Monitors,
@@ -31,6 +36,7 @@ def monitors(
     "/monitors",
     response_model=MonitorView,
     status_code=201,
+    responses=error_responses(*WRITE_ERROR_CODES),
     tags=["monitoring"],
     operation_id="createMonitor",
 )
@@ -41,6 +47,7 @@ def create_monitor(data: MonitorInput, service: Monitors, owner: Authenticated) 
 @router.patch(
     "/monitors/{identity}",
     response_model=MonitorView,
+    responses=error_responses(*WRITE_ERROR_CODES, 404, 409),
     tags=["monitoring"],
     operation_id="updateMonitor",
 )
@@ -53,6 +60,7 @@ def update_monitor(
 @router.post(
     "/monitors/{identity}/activate",
     response_model=MonitorView,
+    responses=error_responses(*WRITE_ERROR_CODES, 404, 409),
     tags=["monitoring"],
     operation_id="activateMonitor",
 )
@@ -65,6 +73,7 @@ def activate_monitor(
 @router.post(
     "/monitors/{identity}/pause",
     response_model=MonitorView,
+    responses=error_responses(*WRITE_ERROR_CODES, 404, 409),
     tags=["monitoring"],
     operation_id="pauseMonitor",
 )

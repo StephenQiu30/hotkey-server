@@ -4,12 +4,19 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Query
 
 from api.dependencies import Authenticated, Jobs
+from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
 from jobs.schemas import DiagnosticInput, JobPage, JobView
 
 router = APIRouter(prefix="/api/v1")
 
 
-@router.get("/jobs", response_model=JobPage, tags=["jobs"], operation_id="listJobs")
+@router.get(
+    "/jobs",
+    response_model=JobPage,
+    responses=error_responses(*READ_ERROR_CODES),
+    tags=["jobs"],
+    operation_id="listJobs",
+)
 def jobs(
     service: Jobs,
     owner: Authenticated,
@@ -23,6 +30,7 @@ def jobs(
     "/jobs",
     response_model=JobView,
     status_code=201,
+    responses=error_responses(*WRITE_ERROR_CODES),
     tags=["jobs"],
     operation_id="createDiagnosticJob",
 )
@@ -37,7 +45,13 @@ def create_job(
     return service.create_job(idempotency_key)
 
 
-@router.get("/jobs/{identity}", response_model=JobView, tags=["jobs"], operation_id="getJob")
+@router.get(
+    "/jobs/{identity}",
+    response_model=JobView,
+    responses=error_responses(*READ_ERROR_CODES, 404),
+    tags=["jobs"],
+    operation_id="getJob",
+)
 def get_job(identity: UUID, service: Jobs, owner: Authenticated) -> JobView:
     return service.job(identity)
 
@@ -45,6 +59,7 @@ def get_job(identity: UUID, service: Jobs, owner: Authenticated) -> JobView:
 @router.post(
     "/jobs/{identity}/cancel",
     response_model=JobView,
+    responses=error_responses(*WRITE_ERROR_CODES, 404, 409),
     tags=["jobs"],
     operation_id="cancelJob",
 )

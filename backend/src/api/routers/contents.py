@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from api.dependencies import Authenticated, Contents
+from api.responses import READ_ERROR_CODES, error_responses
 from contents.schemas import InboxPage
 
 router = APIRouter(prefix="/api/v1")
@@ -11,6 +12,7 @@ router = APIRouter(prefix="/api/v1")
 @router.get(
     "/contents",
     response_model=InboxPage,
+    responses=error_responses(*READ_ERROR_CODES),
     tags=["contents"],
     operation_id="listInboxContents",
 )

@@ -8,8 +8,6 @@ import pytest
 
 SOURCE = Path(__file__).resolve().parents[2] / "src"
 PACKAGES = {
-    "ai",
-    "analysis",
     "api",
     "collection",
     "contents",
@@ -18,10 +16,8 @@ PACKAGES = {
     "events",
     "evidence",
     "identity",
-    "knowledge",
     "monitors",
     "jobs",
-    "notifications",
     "audit",
     "migrations",
     "tools",
@@ -124,12 +120,27 @@ def forbidden_imports(relative, tree):
     return []
 
 
+def cross_domain_model_imports(relative, tree):
+    if not relative.endswith("/services.py"):
+        return []
+    owner = relative.split("/", 1)[0]
+    return [
+        dependency
+        for dependency in imports(tree)
+        if dependency.endswith(".models") and dependency.split(".", 1)[0] != owner
+    ]
+
+
 def test_import_boundaries_and_no_hidden_initializer_logic():
     violations = []
     for path in application_files():
         relative = path.relative_to(SOURCE).as_posix()
         tree = ast.parse(path.read_text())
         violations.extend(f"{relative}: forbidden {d}" for d in forbidden_imports(relative, tree))
+        violations.extend(
+            f"{relative}: cross-domain ORM import {d}"
+            for d in cross_domain_model_imports(relative, tree)
+        )
         if path.name == "__init__.py":
             assert all(
                 isinstance(n, ast.Expr)
@@ -185,6 +196,17 @@ def test_boundaries_reject_invalid_examples(module, dependency):
     assert forbidden_imports(module, ast.parse(f"import {dependency}")) == [dependency]
 
 
+def test_services_reject_cross_domain_orm_examples():
+    tree = ast.parse("from contents import models")
+    assert cross_domain_model_imports("events/services.py", tree) == ["contents.models"]
+    assert cross_domain_model_imports("contents/services.py", tree) == []
+
+
+@pytest.mark.parametrize("reserved", ["ai", "analysis", "knowledge", "notifications"])
+def test_future_modules_require_explicit_registration(reserved):
+    assert unregistered_top_level_modules([SOURCE / reserved / "module.py"]) == {reserved}
+
+
 def test_application_import_graph_is_acyclic():
     modules = {}
     for path in application_files():
@@ -213,11 +235,16 @@ def test_application_import_graph_is_acyclic():
 def test_only_main_constructs_fastapi():
     owners = []
     for path in application_files():
-        for node in ast.walk(ast.parse(path.read_text())):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
                 and node.func.id == "FastAPI"
             ):
                 owners.append(path.relative_to(SOURCE).as_posix())
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                assert node.func.attr != "on_event", (
+                    "Use FastAPI lifespan, not startup/shutdown hooks"
+                )
     assert owners == ["main.py"]

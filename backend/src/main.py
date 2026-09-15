@@ -1,6 +1,5 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import FastAPI
 
@@ -8,7 +7,6 @@ from api.exception_handlers import register_exception_handlers
 from api.middleware import Boundary
 from api.router import router
 from core.config import Settings
-from core.schemas import ErrorView
 from db.session import Database
 from sources.services import SourceService
 
@@ -25,10 +23,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             database.close()
 
-    errors: dict[int | str, dict[str, Any]] = {
-        status: {"model": ErrorView}
-        for status in (400, 401, 403, 404, 409, 413, 422, 429, 500, 503)
-    }
     app = FastAPI(
         title="HotKey API",
         version="0.2.0",
@@ -36,7 +30,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url="/redoc",
         openapi_url="/openapi.json",
         lifespan=lifespan,
-        responses=errors,
         description="Single-owner learning workspace. Unsafe requests require an exact allowed "
         "Origin; authenticated writes also require a session-bound X-CSRF-Token. "
         "Monitor configuration history and zero-network query previews are available; "

@@ -1,7 +1,11 @@
+import logging
+from time import perf_counter
 from uuid import uuid4
 
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+logger = logging.getLogger(__name__)
 
 
 class Boundary:
@@ -15,8 +19,22 @@ class Boundary:
             await self.app(scope, receive, send)
             return
         request_id = str(uuid4())
+        started_at = perf_counter()
         scope.setdefault("state", {})["request_id"] = request_id
         headers = dict(scope["headers"])
+
+        def log_completed(status_code: int) -> None:
+            route = getattr(scope.get("route"), "path", "<unmatched>")
+            duration_ms = round((perf_counter() - started_at) * 1000, 3)
+            logger.info(
+                "http_request_completed request_id=%s method=%s route=%s "
+                "status_code=%s duration_ms=%s",
+                request_id,
+                scope["method"],
+                route,
+                status_code,
+                duration_ms,
+            )
 
         async def respond(code: str, status: int) -> None:
             response = JSONResponse(
@@ -25,6 +43,7 @@ class Boundary:
                 headers={"X-Request-ID": request_id, "Cache-Control": "no-store"},
             )
             await response(scope, receive, send)
+            log_completed(status)
 
         async def tagged(message: Message) -> None:
             if message["type"] == "http.response.start":
@@ -65,19 +84,25 @@ class Boundary:
             return await receive()
 
         started = False
+        status_code = 500
 
         async def tracked(message: Message) -> None:
-            nonlocal started
+            nonlocal started, status_code
             if message["type"] == "http.response.start":
                 started = True
+                status_code = message["status"]
             await tagged(message)
 
         try:
             await self.app(scope, replay, tracked)
+            log_completed(status_code)
         except Exception as exc:
-            import logging
-
-            logging.error("request_failed request_id=%s type=%s", request_id, type(exc).__name__)
+            logger.exception(
+                "http_request_failed request_id=%s method=%s type=%s",
+                request_id,
+                scope["method"],
+                type(exc).__name__,
+            )
             if started:
                 raise
             await respond("internal_error", 500)

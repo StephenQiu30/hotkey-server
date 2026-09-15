@@ -3,15 +3,14 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from contents.models import Content, ContentObservation, ContentVersion
 from contents.schemas import InboxItem, InboxPage
 from core.errors import AppError
-from monitors.models import MonitorMatch
-from monitors.services import monitor_titles_for_content
+from monitors.services import matched_content_ids_query, monitor_titles_for_content
 from sources.schemas import SocialObject
 
 
@@ -21,6 +20,34 @@ class ContentWrite:
     new_content: bool
     new_version: bool
     root_content_id: UUID | None
+
+
+@dataclass(frozen=True)
+class ContentReference:
+    id: UUID
+    source: str
+    kind: str
+    external_id: str
+    canonical_url: str | None
+
+
+def content_references(
+    session: Session, identities: list[UUID], *, lock: bool = False
+) -> dict[UUID, ContentReference]:
+    if not identities:
+        return {}
+    query = select(Content).where(Content.id.in_(identities))
+    rows = session.scalars(query.with_for_update() if lock else query)
+    return {
+        content.id: ContentReference(
+            id=content.id,
+            source=content.source,
+            kind=content.kind,
+            external_id=content.external_id,
+            canonical_url=content.canonical_url,
+        )
+        for content in rows
+    }
 
 
 def upsert_content(
@@ -165,7 +192,7 @@ class ContentService:
         with self.factory() as session:
             query = (
                 select(Content)
-                .where(exists(select(MonitorMatch.id).where(MonitorMatch.content_id == Content.id)))
+                .where(Content.id.in_(matched_content_ids_query()))
                 .order_by(Content.first_seen_at.desc(), Content.id.desc())
             )
             if cursor is not None:

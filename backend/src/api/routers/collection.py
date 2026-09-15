@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Query
 
 from api.dependencies import Authenticated, Collections
+from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
 from collection.schemas import (
     CollectionRunInput,
     CollectionRunPage,
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/api/v1", tags=["collection"])
     "/monitors/{identity}/runs",
     response_model=CollectionRunView,
     status_code=201,
+    responses=error_responses(*WRITE_ERROR_CODES, 404, 409, 429),
     operation_id="createCollectionRun",
 )
 def create_collection_run(
@@ -41,6 +43,7 @@ def create_collection_run(
 @router.get(
     "/collection-runs",
     response_model=CollectionRunPage,
+    responses=error_responses(*READ_ERROR_CODES),
     operation_id="listCollectionRuns",
 )
 def list_collection_runs(
@@ -55,6 +58,7 @@ def list_collection_runs(
 @router.get(
     "/collection-runs/{identity}",
     response_model=CollectionRunView,
+    responses=error_responses(*READ_ERROR_CODES, 404),
     operation_id="getCollectionRun",
 )
 def get_collection_run(
