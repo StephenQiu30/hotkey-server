@@ -202,3 +202,15 @@ scheduler只读取monitor模块提供的当前active配置DTO，按UTC周期边�
 隔离 `hotkey-s02d` Compose完成0007迁移、真实scheduler → RabbitMQ → Celery prefork → PostgreSQL诊断，attempts=1。未配置S3且无已准入来源时，collection_runs数量保持0。Web容器不替换、只重建backend后，经Web访问认证端点得到预期401。Chromium 2项通过：Swagger UI实际显示 `listCollectionRuns`；合成owner工作台在1440px和390px显示运行区、保留天数和合法空态，无横向溢出或页面脚本错误。正常停机worker=0、scheduler=0、backend=143，无SIGKILL/OOM；隔离Compose、迁移数据库及测试容器均已删除。结构化证据见 [collection-schedule-budget-poc.json](evidence/collection-schedule-budget-poc.json)。
 
 本片没有连接用户现有MinIO，没有向任何平台发送请求，也没有产生真实帖子、评论或收件箱内容。生产来源仍全部not_connected；因此不构成EV-007-003、TASK-007-S02-T02或完整MVP验收。
+
+## 007 S02-T02E 精确来源操作准入验证（2026-09-15）
+
+来源准入从平台级状态收敛为精确 `source.operation`。FastAPI能力卡逐操作返回技术support、用途rights、pipeline和eligible，平台对象不再保留可造成误放行的汇总字段。只有三项门禁同时满足才eligible；monitor启用明确检查search_posts。API在lifespan构造共享SourceService，scheduler与Worker从同一Settings构造。生产Compose为所有应用角色透传完整MinIO配置及 `HOTKEY_SOURCE_RIGHTS_ALLOWED`、`HOTKEY_SOURCE_PIPELINES_CONNECTED`，默认均为空。查询预览从同一能力卡计算pipeline_connected。
+
+当前持久消费者只实现 `bilibili.search_posts`。使用合成配置把尚未实现的 `bilibili.list_comments` 标为connected时，最终镜像在API启动阶段以退出码3失败并给出稳定领域错误；未知键也有启动测试覆盖。默认Compose实际返回6个平台、24个操作、0项eligible，未创建真实采集运行。该验证没有连接现有MinIO、没有使用平台账号或授权会话，也没有访问外部平台。
+
+真实PostgreSQL 16与RabbitMQ 4.1环境中102项pytest通过，保留2条上游弃用提示；Ruff和严格mypy（84个源文件）通过。`pip-audit`无已知漏洞，npm生产依赖审计为0。运行时OpenAPI与仓库快照一致；UmiOpenAPI仅生成 `frontend/src/api`，前端契约漂移、目录/负向边界、Prettier和TypeScript/Vite构建通过；生产Compose覆盖确认migrate/backend/worker/scheduler均收到来源与MinIO配置。
+
+隔离 `hotkey-s02e` Compose完成0007迁移、真实scheduler → RabbitMQ → Celery prefork → PostgreSQL诊断，结果succeeded/attempts=1。Web不替换、只重建backend后代理返回预期401。Chromium 2项通过：Swagger UI渲染自动契约，owner工作台在默认零准入状态展示逐操作“权限待核对 · 未连接”，并完成查询预览、草稿、诊断、390px检查和会话撤销。正常停机worker=0、backend=143、scheduler=0，无SIGKILL/OOM；全部一次性Compose和测试容器及卷已删除。结构化证据见 [source-operation-admission-poc.json](evidence/source-operation-admission-poc.json)。
+
+这一步关闭的是配置表达、跨进程一致性和误配置失败边界。它不证明用户现有MinIO可用，也不证明B站或其他平台已获实际用途授权；因此不构成EV-007-003、真实收件箱、评论链或TASK-007-S02-T02完成证据。

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -27,3 +28,21 @@ def test_deployment_uses_canonical_backend_entrypoint():
     assert "build: ./backend" in compose and "build: ./server" not in compose
     assert "main:create_app" in compose
     assert "worker.app:app" in compose
+
+
+def test_production_roles_receive_storage_and_exact_source_admission_configuration():
+    production = (ROOT / "docker-compose-prod.yml").read_text()
+    for name in (
+        "HOTKEY_S3_ENDPOINT",
+        "HOTKEY_S3_ACCESS_KEY",
+        "HOTKEY_S3_SECRET_KEY",
+        "HOTKEY_S3_BUCKET",
+        "HOTKEY_S3_SECURE",
+        "HOTKEY_SOURCE_RIGHTS_ALLOWED",
+        "HOTKEY_SOURCE_PIPELINES_CONNECTED",
+    ):
+        assert name in production
+    for role in ("migrate", "backend", "worker", "scheduler"):
+        block = re.search(rf"(?ms)^  {role}:\n(?:(?!^  \S).)*", production)
+        assert block is not None
+        assert "environment: *production" in block.group()

@@ -26,6 +26,16 @@ class Settings(BaseSettings):
     s3_secret_key: SecretStr | None = None
     s3_bucket: str | None = None
     s3_secure: bool = True
+    source_rights_allowed: list[str] = Field(default_factory=list, max_length=24)
+    source_pipelines_connected: list[str] = Field(default_factory=list, max_length=24)
+
+    @field_validator("source_rights_allowed", "source_pipelines_connected")
+    @classmethod
+    def validate_source_operations(cls, values: list[str]) -> list[str]:
+        pattern = r"^[a-z][a-z0-9_]{0,31}\.[a-z][a-z0-9_]{0,31}$"
+        if any(not re.fullmatch(pattern, value) for value in values):
+            raise ValueError("Source admission values must use source.operation")
+        return list(dict.fromkeys(values))
 
     @field_validator("s3_endpoint", "s3_access_key", "s3_secret_key", "s3_bucket", mode="before")
     @classmethod
@@ -129,6 +139,8 @@ class Settings(BaseSettings):
             value is None for value in s3_values
         ):
             raise ValueError("S3 endpoint, access key, secret key and bucket are required together")
+        if self.source_pipelines_connected and not self.s3_configured:
+            raise ValueError("Connected source pipelines require a configured evidence store")
         return self
 
     @property

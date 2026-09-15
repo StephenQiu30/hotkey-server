@@ -1,5 +1,7 @@
+from collections.abc import Iterable
 from datetime import date
 
+from core.config import Settings
 from sources.schemas import (
     QueryPreview,
     QueryPreviewInput,
@@ -13,6 +15,19 @@ from sources.schemas import (
 
 EVIDENCE = "docs/operations/evidence/007/EV-007-001-source-poc.json"
 VERIFIED_AT = date(2026, 9, 15)
+SOURCE_IDS: tuple[SourceName, ...] = (
+    "x",
+    "bilibili",
+    "weibo",
+    "xiaohongshu",
+    "douyin",
+    "bluesky",
+)
+CATALOG_OPERATIONS = ("search_posts", "fetch_post", "list_comments", "list_replies")
+KNOWN_SOURCE_OPERATIONS = frozenset(
+    f"{source}.{operation}" for source in SOURCE_IDS for operation in CATALOG_OPERATIONS
+)
+PERSISTENT_SOURCE_OPERATIONS = frozenset({"bilibili.search_posts"})
 
 
 def capability(
@@ -26,6 +41,8 @@ def capability(
             "operation": operation,
             "support": support,
             "rights": "unknown",
+            "pipeline": "not_connected",
+            "eligible_for_collection": False,
             "access_mode": access_mode,
             "content_purchase_cost": 0,
             "verified_at": VERIFIED_AT,
@@ -43,6 +60,48 @@ def operations(support: str, access_mode: str, note: str) -> list[SourceOperatio
 
 
 class SourceService:
+    def __init__(
+        self,
+        *,
+        rights_allowed: Iterable[str] = (),
+        pipelines_connected: Iterable[str] = (),
+    ):
+        self.rights_allowed = frozenset(rights_allowed)
+        self.pipelines_connected = frozenset(pipelines_connected)
+        unknown = (self.rights_allowed | self.pipelines_connected) - KNOWN_SOURCE_OPERATIONS
+        if unknown:
+            raise ValueError("unknown source operation: " + sorted(unknown)[0])
+        unimplemented = self.pipelines_connected - PERSISTENT_SOURCE_OPERATIONS
+        if unimplemented:
+            raise ValueError(
+                "persistent source operation is not implemented: " + sorted(unimplemented)[0]
+            )
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> "SourceService":
+        return cls(
+            rights_allowed=settings.source_rights_allowed,
+            pipelines_connected=settings.source_pipelines_connected,
+        )
+
+    def _operation(
+        self, source: SourceName, value: SourceOperationCapability
+    ) -> SourceOperationCapability:
+        key = f"{source}.{value.operation}"
+        rights = (
+            "allowed" if key in self.rights_allowed and value.rights != "denied" else value.rights
+        )
+        pipeline = "connected" if key in self.pipelines_connected else "not_connected"
+        return value.model_copy(
+            update={
+                "rights": rights,
+                "pipeline": pipeline,
+                "eligible_for_collection": (
+                    value.support == "supported" and rights == "allowed" and pipeline == "connected"
+                ),
+            }
+        )
+
     def catalog(self) -> list[SourceView]:
         rows: tuple[tuple[SourceName, list[str], list[SourceOperationCapability]], ...] = (
             (
@@ -141,9 +200,9 @@ class SourceService:
                 {
                     "id": source,
                     "roles": roles,
-                    "pipeline": "not_connected",
-                    "eligible_for_collection": False,
-                    "operations": source_operations,
+                    "operations": [
+                        self._operation(source, operation) for operation in source_operations
+                    ],
                 }
             )
             for source, roles, source_operations in rows
@@ -181,6 +240,7 @@ class SourceService:
                     queries=queries,
                     rules=rules,
                     estimated_requests=len(queries),
+                    pipeline_connected=search.pipeline == "connected",
                 )
             )
         return QueryPreview(
@@ -190,10 +250,17 @@ class SourceService:
             estimated_requests=sum(source.estimated_requests for source in previews),
         )
 
-    def activation_issues(self, source_ids: list[SourceName]) -> list[SourceName]:
+    def activation_issues(
+        self, source_ids: list[SourceName], operation: str = "search_posts"
+    ) -> list[SourceName]:
         catalog = {source.id: source for source in self.catalog()}
         return [
-            source_id for source_id in source_ids if not catalog[source_id].eligible_for_collection
+            source_id
+            for source_id in source_ids
+            if not any(
+                capability.operation == operation and capability.eligible_for_collection
+                for capability in catalog[source_id].operations
+            )
         ]
 
     def request_estimate(self, query_spec: QuerySpec, source_ids: list[SourceName]) -> int:

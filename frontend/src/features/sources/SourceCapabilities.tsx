@@ -24,6 +24,29 @@ const supportLabels: Record<Capability["support"], string> = {
   unsupported: "不支持",
 };
 
+const rightsLabels: Record<Capability["rights"], string> = {
+  unknown: "权限待核对",
+  allowed: "用途已授权",
+  denied: "用途禁止",
+};
+
+const pipelineLabels: Record<Capability["pipeline"], string> = {
+  not_connected: "未连接",
+  connected: "已连接",
+  degraded: "连接异常",
+  paused: "已暂停",
+};
+
+export function canCollect(
+  source: Source,
+  operation: Capability["operation"] = "search_posts",
+): boolean {
+  return (
+    source.operations.find((item) => item.operation === operation)
+      ?.eligible_for_collection === true
+  );
+}
+
 export function SourceCapabilities({ sources }: { sources: Source[] }) {
   return (
     <section aria-labelledby="source-capabilities-title">
@@ -40,18 +63,22 @@ export function SourceCapabilities({ sources }: { sources: Source[] }) {
           <article className="panel" key={source.id}>
             <div className="source-heading">
               <h3>{sourceLabels[source.id]}</h3>
-              <span className="badge">未连接</span>
+              <span className="badge">
+                {source.operations.filter(
+                  (operation) => operation.eligible_for_collection,
+                ).length || 0}
+                项可采集
+              </span>
             </div>
             <ul className="capability-list">
               {source.operations.map((capability) => (
                 <li key={capability.operation}>
                   <span>{operationLabels[capability.operation]}</span>
                   <strong data-support={capability.support}>
-                    {supportLabels[capability.support]}
-                    {capability.support === "supported" &&
-                    capability.rights === "unknown"
-                      ? " · 权限待核对"
-                      : ""}
+                    {supportLabels[capability.support]} ·{" "}
+                    {rightsLabels[capability.rights]} ·{" "}
+                    {pipelineLabels[capability.pipeline]}
+                    {capability.eligible_for_collection ? " · 可采集" : ""}
                   </strong>
                 </li>
               ))}

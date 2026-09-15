@@ -10,12 +10,14 @@ from api.router import router
 from core.config import Settings
 from core.schemas import ErrorView
 from db.session import Database
+from sources.services import SourceService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = settings or Settings()
+        app.state.sources = SourceService.from_settings(app.state.settings)
         database = Database(app.state.settings)
         app.state.database = database
         try:

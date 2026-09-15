@@ -53,8 +53,12 @@ def bilibili_adapter(handler):
 def test_priority_source_catalog_separates_support_rights_and_pipeline():
     sources = {source.id: source for source in SourceService().catalog()}
     assert set(sources) == {"x", "bilibili", "weibo", "xiaohongshu", "douyin", "bluesky"}
-    assert all(source.pipeline == "not_connected" for source in sources.values())
-    assert all(not source.eligible_for_collection for source in sources.values())
+    assert all(
+        operation.pipeline == "not_connected" and not operation.eligible_for_collection
+        for source in sources.values()
+        for operation in source.operations
+    )
+    assert all(not hasattr(source, "pipeline") for source in sources.values())
     bilibili = {operation.operation: operation for operation in sources["bilibili"].operations}
     assert set(bilibili) == {"search_posts", "fetch_post", "list_comments", "list_replies"}
     assert all(operation.support == "supported" for operation in bilibili.values())
@@ -65,6 +69,33 @@ def test_priority_source_catalog_separates_support_rights_and_pipeline():
     assert x_search.support == "authorization_required"
     assert x_search.content_purchase_cost == 0
     assert x_search.evidence_ref.endswith("EV-007-001-source-poc.json")
+
+
+def test_operation_admission_requires_rights_pipeline_and_implemented_consumer():
+    rights_only = SourceService(rights_allowed={"bilibili.search_posts"})
+    search = next(
+        operation
+        for operation in rights_only.catalog()[1].operations
+        if operation.operation == "search_posts"
+    )
+    assert search.rights == "allowed"
+    assert search.pipeline == "not_connected"
+    assert not search.eligible_for_collection
+
+    admitted = SourceService(
+        rights_allowed={"bilibili.search_posts"},
+        pipelines_connected={"bilibili.search_posts"},
+    )
+    operations = {item.operation: item for item in admitted.catalog()[1].operations}
+    assert operations["search_posts"].eligible_for_collection
+    assert operations["search_posts"].pipeline == "connected"
+    assert operations["fetch_post"].rights == "unknown"
+    assert not admitted.activation_issues(["bilibili"])
+
+    with pytest.raises(ValueError, match="persistent source operation is not implemented"):
+        SourceService(pipelines_connected={"bilibili.list_comments"})
+    with pytest.raises(ValueError, match="unknown source operation"):
+        SourceService(rights_allowed={"unknown.search_posts"})
 
 
 def test_normalized_object_rejects_invalid_relationships_and_unknown_fields():
@@ -117,6 +148,22 @@ def test_query_preview_compiles_without_network_and_exposes_rule_boundaries():
     assert xiaohongshu.queries == []
     assert all(rule.mode == "unsupported" for rule in xiaohongshu.rules)
     assert preview.estimated_requests == 3
+    assert all(not source.pipeline_connected for source in preview.sources)
+
+    admitted = SourceService(
+        rights_allowed={"bilibili.search_posts"},
+        pipelines_connected={"bilibili.search_posts"},
+    ).preview(
+        QueryPreviewInput.model_validate(
+            {
+                "query_spec": {"include_any": ["AI"]},
+                "source_ids": ["bilibili"],
+                "since": "2026-09-01T00:00:00Z",
+                "until": "2026-09-08T00:00:00Z",
+            }
+        )
+    )
+    assert admitted.sources[0].pipeline_connected
 
 
 def test_window_validation():

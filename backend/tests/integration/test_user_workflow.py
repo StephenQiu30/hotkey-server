@@ -97,8 +97,12 @@ def test_monitor_version_conflict_and_no_fake_collection(client, database):
     assert client.patch(path, json=update).status_code == 409
     assert client.get("/api/v1/monitors?limit=101").status_code == 422
     sources = client.get("/api/v1/sources").json()
-    assert all(source["pipeline"] == "not_connected" for source in sources)
-    assert all(not source["eligible_for_collection"] for source in sources)
+    assert all(
+        operation["pipeline"] == "not_connected" and not operation["eligible_for_collection"]
+        for source in sources
+        for operation in source["operations"]
+    )
+    assert all("pipeline" not in source for source in sources)
     bilibili = next(source for source in sources if source["id"] == "bilibili")
     assert {operation["operation"] for operation in bilibili["operations"]} == {
         "search_posts",
@@ -121,6 +125,51 @@ def test_monitor_version_conflict_and_no_fake_collection(client, database):
             )
             == 1
         )
+
+
+def test_exact_search_admission_is_shared_by_api_and_monitor_activation(database):
+    IdentityService(database).bootstrap("learner", "Test-password-123!")
+    settings = Settings(
+        database_url=os.environ["HOTKEY_TEST_DATABASE_URL"],
+        broker_url="amqp://u:p@localhost/test",
+        allowed_origins=["http://testserver"],
+        s3_endpoint="minio.internal:9000",
+        s3_access_key="access",
+        s3_secret_key="secret",
+        s3_bucket="hotkey-evidence-test",
+        source_rights_allowed=["bilibili.search_posts"],
+        source_pipelines_connected=["bilibili.search_posts"],
+    )
+    with TestClient(create_app(settings)) as admitted:
+        admitted.headers["Origin"] = "http://testserver"
+        login(admitted)
+        source = next(
+            item for item in admitted.get("/api/v1/sources").json() if item["id"] == "bilibili"
+        )
+        assert "pipeline" not in source and "eligible_for_collection" not in source
+        operations = {item["operation"]: item for item in source["operations"]}
+        assert operations["search_posts"]["rights"] == "allowed"
+        assert operations["search_posts"]["pipeline"] == "connected"
+        assert operations["search_posts"]["eligible_for_collection"] is True
+        assert operations["list_comments"]["pipeline"] == "not_connected"
+        assert operations["list_comments"]["eligible_for_collection"] is False
+
+        created = admitted.post(
+            "/api/v1/monitors",
+            json={
+                "title": "精确准入",
+                "query_spec": {"include_any": ["AI"]},
+                "source_ids": ["bilibili"],
+                "schedule": {"interval_minutes": 60, "retention_days": 7},
+                "budget": {"daily_requests": 24, "content_purchase_cost": 0},
+            },
+        ).json()
+        activated = admitted.post(
+            f"/api/v1/monitors/{created['id']}/activate",
+            json={"expected_version": created["current_version"]},
+        )
+        assert activated.status_code == 200
+        assert activated.json()["state"] == "active"
 
 
 def test_diagnostic_idempotency_and_cancellation(client):

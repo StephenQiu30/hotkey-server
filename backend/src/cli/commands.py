@@ -16,6 +16,7 @@ from db.session import Database
 from jobs.execution import cancel, enqueue, reconcile
 from jobs.models import Job
 from migrations.config import migration_config
+from sources.services import SourceService
 from worker.messaging import celery_app, dispatch_one
 
 
@@ -85,8 +86,10 @@ def main() -> None:
             signal.signal(signal.SIGTERM, lambda *_: stopped.set())
             signal.signal(signal.SIGINT, lambda *_: stopped.set())
             app = celery_app(settings)
+            sources_service = SourceService.from_settings(settings)
             collector = CollectionScheduler(
                 factory,
+                sources_service,
                 evidence_configured=settings.s3_configured,
             )
             while not stopped.is_set():

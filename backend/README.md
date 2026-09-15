@@ -42,6 +42,15 @@ FastAPI 从路由、状态码和 Pydantic 模型自动维护接口文档。服�
 
 业务分层与命名规则见 [AGENTS](../AGENTS.md)，实际服务与浏览器验证见 [Operations](../docs/operations/006-Python运行与验证.md)。未配置测试数据库/vhost 时集成测试会 skip，不能视为完整通过。`collect_page` 已接入同一 Job/Outbox/Celery 账本；scheduler为active配置生成最近一个已结束周期槽，并在创建任务前按monitor version与UTC日期原子预留一次请求。`POST /api/v1/monitors/{id}/runs` 创建持久运行，`GET /api/v1/collection-runs` 分页列出运行，`GET /api/v1/collection-runs/{id}` 查询状态。创建操作仍受来源用途准入和完整 MinIO 配置双门禁；当前来源目录均未准入，所以这些接口和scheduler不会对真实平台发起请求。
 
+来源准入使用两个JSON数组，元素必须是精确的 `source.operation`：
+
+```sh
+HOTKEY_SOURCE_RIGHTS_ALLOWED='["bilibili.search_posts"]'
+HOTKEY_SOURCE_PIPELINES_CONNECTED='["bilibili.search_posts"]'
+```
+
+第一项是部署者对采集、保存和派生用途的确认，第二项只在该操作的持久消费者与证据链通过POC后设置。两项默认空；connected还要求完整 `HOTKEY_S3_*`。API在lifespan启动时校验，scheduler与Worker读取同一Settings。当前版本只实现 `bilibili.search_posts` 持久入口；其他operation或未知键会启动失败。本示例仅说明格式，不能替代真实用途确认与现有MinIO验收。
+
 来源探测无需数据库或 RabbitMQ 配置，每次只发送一个有界请求：
 
 ```sh

@@ -1,5 +1,7 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from core.config import Settings
 from main import create_app
 
 
@@ -23,6 +25,17 @@ def test_contract_declares_session_security():
     }
     assert document["paths"]["/api/v1/monitors"]["get"]["security"] == [{"OwnerSession": []}]
     assert "security" not in document["paths"]["/api/v1/session"]["post"]
+
+
+def test_api_startup_rejects_unknown_source_operation():
+    settings = Settings(
+        database_url="postgresql+psycopg://u:p@127.0.0.1:1/db",
+        broker_url="amqp://u:p@127.0.0.1:1/test",
+        source_rights_allowed=["unknown.search_posts"],
+    )
+    with pytest.raises(ValueError, match="unknown source operation"):
+        with TestClient(create_app(settings)):
+            pass
 
 
 def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):

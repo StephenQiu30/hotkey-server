@@ -21,7 +21,7 @@ def initialize(**kwargs: object) -> None:
     global _collection_executor, _database
     _database = Database(settings)
     if settings.s3_configured:
-        sources = SourceService()
+        sources = SourceService.from_settings(settings)
         _collection_executor = CollectionExecutor(
             CollectionService(_database.sessions, sources, evidence_configured=True),
             sources,

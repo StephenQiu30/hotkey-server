@@ -18,6 +18,8 @@ class SourceOperationCapability(BaseModel):
     operation: Literal["search_posts", "fetch_post", "list_comments", "list_replies"]
     support: Literal["unknown", "supported", "unsupported", "authorization_required"]
     rights: Literal["unknown", "allowed", "denied"]
+    pipeline: Literal["not_connected", "connected", "degraded", "paused"]
+    eligible_for_collection: bool
     access_mode: Literal["public_web", "public_api", "official_paid_api", "authorized_session"]
     content_purchase_cost: Literal[0] = 0
     verified_at: date
@@ -28,8 +30,6 @@ class SourceOperationCapability(BaseModel):
 class SourceView(BaseModel):
     id: SourceName
     roles: list[Literal["discovery", "comments", "supplement"]]
-    pipeline: Literal["not_connected", "connected", "degraded", "paused"]
-    eligible_for_collection: bool
     operations: list[SourceOperationCapability]
 
 
@@ -129,7 +129,7 @@ class SourceQueryPreview(BaseModel):
     rules: list[QueryRuleExecution]
     estimated_requests: int = Field(ge=0)
     content_purchase_cost: Literal[0] = 0
-    pipeline_connected: Literal[False] = False
+    pipeline_connected: bool
 
 
 class QueryPreview(BaseModel):

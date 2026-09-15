@@ -66,6 +66,28 @@ def test_minio_configuration_is_all_or_none_and_hides_credentials():
             )
 
 
+def test_source_operation_admission_configuration_is_exact_and_unique():
+    base = {
+        "database_url": "postgresql+psycopg://u:p@localhost/db",
+        "broker_url": "amqp://u:p@localhost/test",
+    }
+    settings = Settings(
+        **base,
+        s3_endpoint="minio.internal:9000",
+        s3_access_key="access",
+        s3_secret_key="secret",
+        s3_bucket="hotkey-evidence-test",
+        source_rights_allowed=["bilibili.search_posts", "bilibili.search_posts"],
+        source_pipelines_connected=["bilibili.search_posts"],
+    )
+    assert settings.source_rights_allowed == ["bilibili.search_posts"]
+    assert settings.source_pipelines_connected == ["bilibili.search_posts"]
+    with pytest.raises(ValidationError):
+        Settings(**base, source_rights_allowed=["bilibili"])
+    with pytest.raises(ValidationError, match="configured evidence store"):
+        Settings(**base, source_pipelines_connected=["bilibili.search_posts"])
+
+
 def test_production_requires_https_and_secure_cookies():
     base = dict(
         database_url="postgresql+psycopg://u:p@localhost/db",

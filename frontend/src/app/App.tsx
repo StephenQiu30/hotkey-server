@@ -12,7 +12,10 @@ import {
   MonitorEditor,
   sourceLabels,
 } from "../features/monitors/MonitorEditor";
-import { SourceCapabilities } from "../features/sources/SourceCapabilities";
+import {
+  canCollect,
+  SourceCapabilities,
+} from "../features/sources/SourceCapabilities";
 import { errorCode, message } from "../request";
 type Job = API.JobView;
 type Monitor = API.MonitorView;
@@ -278,8 +281,10 @@ export function App() {
                           busy ||
                           m.source_ids.some(
                             (id) =>
-                              !sources.find((source) => source.id === id)
-                                ?.eligible_for_collection,
+                              !sources.some(
+                                (source) =>
+                                  source.id === id && canCollect(source),
+                              ),
                           )
                         }
                         onClick={() =>
@@ -316,8 +321,9 @@ export function App() {
                   {m.state !== "active" &&
                     m.source_ids.some(
                       (id) =>
-                        !sources.find((source) => source.id === id)
-                          ?.eligible_for_collection,
+                        !sources.some(
+                          (source) => source.id === id && canCollect(source),
+                        ),
                     ) && (
                       <p className="muted small">来源未准入，暂不能启用。</p>
                     )}

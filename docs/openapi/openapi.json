@@ -1055,6 +1055,10 @@
             "title": "Content Purchase Cost",
             "type": "integer"
           },
+          "eligible_for_collection": {
+            "title": "Eligible For Collection",
+            "type": "boolean"
+          },
           "evidence_ref": {
             "maxLength": 255,
             "minLength": 1,
@@ -1075,6 +1079,16 @@
               "list_replies"
             ],
             "title": "Operation",
+            "type": "string"
+          },
+          "pipeline": {
+            "enum": [
+              "not_connected",
+              "connected",
+              "degraded",
+              "paused"
+            ],
+            "title": "Pipeline",
             "type": "string"
           },
           "rights": {
@@ -1106,6 +1120,8 @@
           "operation",
           "support",
           "rights",
+          "pipeline",
+          "eligible_for_collection",
           "access_mode",
           "verified_at",
           "evidence_ref",
@@ -1134,8 +1150,6 @@
             "type": "string"
           },
           "pipeline_connected": {
-            "const": false,
-            "default": false,
             "title": "Pipeline Connected",
             "type": "boolean"
           },
@@ -1181,17 +1195,14 @@
           "support",
           "queries",
           "rules",
-          "estimated_requests"
+          "estimated_requests",
+          "pipeline_connected"
         ],
         "title": "SourceQueryPreview",
         "type": "object"
       },
       "SourceView": {
         "properties": {
-          "eligible_for_collection": {
-            "title": "Eligible For Collection",
-            "type": "boolean"
-          },
           "id": {
             "enum": [
               "x",
@@ -1211,16 +1222,6 @@
             "title": "Operations",
             "type": "array"
           },
-          "pipeline": {
-            "enum": [
-              "not_connected",
-              "connected",
-              "degraded",
-              "paused"
-            ],
-            "title": "Pipeline",
-            "type": "string"
-          },
           "roles": {
             "items": {
               "enum": [
@@ -1237,8 +1238,6 @@
         "required": [
           "id",
           "roles",
-          "pipeline",
-          "eligible_for_collection",
           "operations"
         ],
         "title": "SourceView",

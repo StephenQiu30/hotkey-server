@@ -20,7 +20,7 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   const sources = page.getByRole("region", { name: "来源能力" });
   await expect(sources.getByRole("heading", { name: "B站" })).toBeVisible();
   await expect(
-    sources.getByText("技术可读 · 权限待核对").first(),
+    sources.getByText("技术可读 · 权限待核对 · 未连接").first(),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: /监控收件箱/ })).toBeVisible();
   await expect(

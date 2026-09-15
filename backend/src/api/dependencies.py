@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends, Header, Request, Security
 from fastapi.security import APIKeyCookie
@@ -18,8 +18,15 @@ def identity_service(request: Request) -> IdentityService:
     return IdentityService(request.app.state.database.sessions)
 
 
-def monitor_service(request: Request) -> MonitorService:
-    return MonitorService(request.app.state.database.sessions)
+def source_service(request: Request) -> SourceService:
+    return cast(SourceService, request.app.state.sources)
+
+
+Sources = Annotated[SourceService, Depends(source_service)]
+
+
+def monitor_service(request: Request, sources: Sources) -> MonitorService:
+    return MonitorService(request.app.state.database.sessions, sources)
 
 
 def job_service(request: Request) -> JobService:
@@ -30,9 +37,10 @@ def content_service(request: Request) -> ContentService:
     return ContentService(request.app.state.database.sessions)
 
 
-def collection_service(request: Request) -> CollectionService:
+def collection_service(request: Request, sources: Sources) -> CollectionService:
     return CollectionService(
         request.app.state.database.sessions,
+        sources,
         evidence_configured=request.app.state.settings.s3_configured,
     )
 
@@ -41,11 +49,6 @@ def health_status(request: Request) -> HealthView:
     return readiness(request.app.state.database.sessions)
 
 
-def source_service() -> SourceService:
-    return SourceService()
-
-
-Sources = Annotated[SourceService, Depends(source_service)]
 Identity = Annotated[IdentityService, Depends(identity_service)]
 Monitors = Annotated[MonitorService, Depends(monitor_service)]
 Jobs = Annotated[JobService, Depends(job_service)]

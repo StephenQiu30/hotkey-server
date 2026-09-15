@@ -24,4 +24,10 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   expect(document.paths["/api/v1/collection-runs"].get.operationId).toBe(
     "listCollectionRuns",
   );
+  const capability = document.components.schemas.SourceOperationCapability;
+  expect(capability.required).toContain("pipeline");
+  expect(capability.required).toContain("eligible_for_collection");
+  expect(document.components.schemas.SourceView.properties.pipeline).toBe(
+    undefined,
+  );
 });

@@ -361,12 +361,16 @@ declare namespace API {
       | "authorized_session";
     /** Content Purchase Cost */
     content_purchase_cost?: number;
+    /** Eligible For Collection */
+    eligible_for_collection: boolean;
     /** Evidence Ref */
     evidence_ref: string;
     /** Note */
     note: string;
     /** Operation */
     operation: "search_posts" | "fetch_post" | "list_comments" | "list_replies";
+    /** Pipeline */
+    pipeline: "not_connected" | "connected" | "degraded" | "paused";
     /** Rights */
     rights: "unknown" | "allowed" | "denied";
     /** Support */
@@ -383,7 +387,7 @@ declare namespace API {
     /** Operation */
     operation?: string;
     /** Pipeline Connected */
-    pipeline_connected?: boolean;
+    pipeline_connected: boolean;
     /** Queries */
     queries: string[];
     /** Rules */
@@ -395,14 +399,10 @@ declare namespace API {
   };
 
   type SourceView = {
-    /** Eligible For Collection */
-    eligible_for_collection: boolean;
     /** Id */
     id: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
     /** Operations */
     operations: SourceOperationCapability[];
-    /** Pipeline */
-    pipeline: "not_connected" | "connected" | "degraded" | "paused";
     /** Roles */
     roles: ("discovery" | "comments" | "supplement")[];
   };
