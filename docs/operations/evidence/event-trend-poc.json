@@ -38,6 +38,13 @@
     "axios_transport": "frontend/src/request.ts"
   },
   "verification": {
+    "remote_ci": {
+      "commit": "2619c899674be04f21e22ea8ce124891d31b6dfa",
+      "run_id": 34998942547,
+      "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/34998942547",
+      "conclusion": "success",
+      "duration": "2m28s"
+    },
     "red": "Swagger operation-id test failed because getEventTrends did not exist.",
     "backend_tests": "129 passed with disposable PostgreSQL 16 and RabbitMQ 4.1",
     "ruff": "passed for all backend source and tests",
