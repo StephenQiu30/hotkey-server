@@ -98,7 +98,13 @@
     "npm_production_audit": "0 vulnerabilities",
     "compose": "pgvector migration, prefork diagnostic, backend replacement proxy, clean topology startup and graceful worker/backend/scheduler shutdown without SIGKILL passed; disposable volumes were removed",
     "playwright": "3 Chromium tests passed: controlled unknown answer and semantic unavailable state, Swagger operations, full workspace and 390px layout",
-    "remote_ci": null
+    "remote_ci": {
+      "feature_commit": "63fc5feba90a5c2f3040a843a1795b870c796354",
+      "run_id": 35036895106,
+      "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35036895106",
+      "conclusion": "success",
+      "duration": "2m45s"
+    }
   },
   "limitations": [
     "The POC uses explicit synthetic rows; it does not prove the completeness, legality, freshness or representativeness of any real platform dataset.",
