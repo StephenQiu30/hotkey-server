@@ -24,6 +24,12 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: /监控收件箱/ })).toBeVisible();
   await expect(
+    page.getByRole("heading", { level: 2, name: /采集运行/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "还没有采集运行" }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("heading", { name: "还没有监控内容" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "新建监控", exact: true }).click();
@@ -35,6 +41,7 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   await page.getByLabel("必须同时包含").fill("监管");
   await page.getByLabel("排除词").fill("广告");
   await page.getByLabel("别名").fill("生成式AI");
+  await expect(page.getByLabel("证据保留（天）")).toHaveValue("7");
   await page.getByLabel("微博", { exact: true }).check();
   await page.getByLabel("B站", { exact: true }).check();
   await page.getByRole("button", { name: "预览查询" }).click();

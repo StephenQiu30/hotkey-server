@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { listCollectionRuns } from "../api/collection";
 import { listInboxContents } from "../api/contents";
 import { createDiagnosticJob, cancelJob, listJobs } from "../api/jobs";
 import { getSession, logout } from "../api/identity";
 import { activateMonitor, listMonitors, pauseMonitor } from "../api/monitoring";
 import { listSources } from "../api/sources";
 import { Login } from "../features/identity/Login";
+import { Runs } from "../features/collection/Runs";
 import { Inbox } from "../features/contents/Inbox";
 import {
   MonitorEditor,
@@ -16,6 +18,7 @@ type Job = API.JobView;
 type Monitor = API.MonitorView;
 type Source = API.SourceView;
 type Content = API.InboxItem;
+type CollectionRun = API.CollectionRunView;
 const statuses: Record<Job["status"], string> = {
   queued: "排队中",
   running: "执行中",
@@ -35,12 +38,14 @@ export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [contents, setContents] = useState<Content[]>([]);
+  const [runs, setRuns] = useState<CollectionRun[]>([]);
   const [editor, setEditor] = useState<Monitor | "new" | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [monitorCursor, setMonitorCursor] = useState<string | null>(null);
   const [jobCursor, setJobCursor] = useState<string | null>(null);
   const [contentCursor, setContentCursor] = useState<string | null>(null);
+  const [runCursor, setRunCursor] = useState<string | null>(null);
   const generation = useRef(0);
   const diagnosticKey = useRef<string | null>(null);
   const refresh = useCallback(async () => {
@@ -48,11 +53,12 @@ export function App() {
     setLoading(true);
     setError("");
     try {
-      const [m, j, s, c] = await Promise.all([
+      const [m, j, s, c, r] = await Promise.all([
         listMonitors({}),
         listJobs({}),
         listSources(),
         listInboxContents({}),
+        listCollectionRuns({}),
       ]);
       if (current !== generation.current) return;
       setMonitors(m.items);
@@ -62,6 +68,8 @@ export function App() {
       setSources(s);
       setContents(c.items);
       setContentCursor(c.next_cursor);
+      setRuns(r.items);
+      setRunCursor(r.next_cursor);
     } catch (e) {
       if (current !== generation.current) return;
       if (errorCode(e) === "authentication_required") setSession("out");
@@ -103,7 +111,7 @@ export function App() {
       setBusy(false);
     }
   }
-  async function more(kind: "monitors" | "jobs" | "contents") {
+  async function more(kind: "monitors" | "jobs" | "contents" | "runs") {
     await action(async () => {
       if (kind === "monitors" && monitorCursor) {
         const page = await listMonitors({ cursor: monitorCursor });
@@ -117,6 +125,10 @@ export function App() {
         const page = await listInboxContents({ cursor: contentCursor });
         setContents((old) => [...old, ...page.items]);
         setContentCursor(page.next_cursor);
+      } else if (kind === "runs" && runCursor) {
+        const page = await listCollectionRuns({ cursor: runCursor });
+        setRuns((old) => [...old, ...page.items]);
+        setRunCursor(page.next_cursor);
       }
     });
   }
@@ -158,6 +170,7 @@ export function App() {
               setMonitors([]);
               setJobs([]);
               setContents([]);
+              setRuns([]);
               setEditor(null);
               setSession("out");
             })
@@ -203,6 +216,12 @@ export function App() {
           />
         )}
         <SourceCapabilities sources={sources} />
+        <Runs
+          items={runs}
+          nextCursor={runCursor}
+          busy={busy}
+          onMore={() => void more("runs")}
+        />
         <Inbox
           items={contents}
           nextCursor={contentCursor}
@@ -238,7 +257,8 @@ export function App() {
                   <p className="muted">
                     {m.source_ids.map((s) => sourceLabels[s] ?? s).join(" / ")}
                     {" · "}每 {m.schedule.interval_minutes} 分钟 · 每日最多{" "}
-                    {m.budget.daily_requests} 次请求
+                    {m.budget.daily_requests} 次请求 · 证据保留{" "}
+                    {m.schedule.retention_days} 天
                   </p>
                   <div className="actions">
                     {m.state !== "active" && (

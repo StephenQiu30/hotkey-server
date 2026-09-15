@@ -20,6 +20,34 @@
         "title": "BudgetSpec",
         "type": "object"
       },
+      "CollectionRunPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionRunView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CollectionRunPage",
+        "type": "object"
+      },
       "CollectionRunRequest": {
         "additionalProperties": false,
         "properties": {
@@ -89,6 +117,11 @@
       },
       "CollectionRunView": {
         "properties": {
+          "budget_day": {
+            "format": "date",
+            "title": "Budget Day",
+            "type": "string"
+          },
           "bytes_count": {
             "title": "Bytes Count",
             "type": "integer"
@@ -163,9 +196,25 @@
             "title": "Query Variant",
             "type": "string"
           },
+          "reserved_requests": {
+            "title": "Reserved Requests",
+            "type": "integer"
+          },
           "retention_days": {
             "title": "Retention Days",
             "type": "integer"
+          },
+          "schedule_slot": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Slot"
           },
           "source": {
             "enum": [
@@ -200,6 +249,24 @@
               }
             ],
             "title": "Stop Reason"
+          },
+          "trigger": {
+            "enum": [
+              "manual",
+              "scheduled"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          },
+          "window_since": {
+            "format": "date-time",
+            "title": "Window Since",
+            "type": "string"
+          },
+          "window_until": {
+            "format": "date-time",
+            "title": "Window Until",
+            "type": "string"
           }
         },
         "required": [
@@ -210,6 +277,10 @@
           "operation",
           "query_variant",
           "retention_days",
+          "trigger",
+          "schedule_slot",
+          "budget_day",
+          "reserved_requests",
           "state",
           "outcome",
           "fencing_token",
@@ -217,6 +288,8 @@
           "items_count",
           "bytes_count",
           "stop_reason",
+          "window_since",
+          "window_until",
           "created_at",
           "completed_at"
         ],
@@ -952,6 +1025,13 @@
             "minimum": 15.0,
             "title": "Interval Minutes",
             "type": "integer"
+          },
+          "retention_days": {
+            "default": 7,
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Retention Days",
+            "type": "integer"
           }
         },
         "title": "ScheduleSpec",
@@ -1180,6 +1260,180 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/collection-runs": {
+      "get": {
+        "operationId": "listCollectionRuns",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionRunPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "List Collection Runs",
+        "tags": [
+          "collection"
+        ]
+      }
+    },
     "/api/v1/collection-runs/{identity}": {
       "get": {
         "operationId": "getCollectionRun",

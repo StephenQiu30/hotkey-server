@@ -9,6 +9,8 @@ from alembic import command
 from sqlalchemy import select
 
 from cli import sources
+from collection.scheduling import CollectionScheduler
+from core.clock import utcnow
 from core.config import Settings
 from db.session import Database
 from jobs.execution import cancel, enqueue, reconcile
@@ -83,9 +85,14 @@ def main() -> None:
             signal.signal(signal.SIGTERM, lambda *_: stopped.set())
             signal.signal(signal.SIGINT, lambda *_: stopped.set())
             app = celery_app(settings)
+            collector = CollectionScheduler(
+                factory,
+                evidence_configured=settings.s3_configured,
+            )
             while not stopped.is_set():
                 try:
                     reconcile(factory, settings.recovery_seconds)
+                    collector.schedule_due(utcnow())
                     for _ in range(100):
                         if stopped.is_set() or not dispatch_one(factory, app):
                             break

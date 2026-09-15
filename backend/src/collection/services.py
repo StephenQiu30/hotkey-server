@@ -1,13 +1,16 @@
+from datetime import UTC, datetime
 from hashlib import sha256
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
-from collection.models import CollectionCheckpoint, CollectionRun
+from collection.models import CollectionBudgetUsage, CollectionCheckpoint, CollectionRun
 from collection.schemas import (
     CollectionExecutionInput,
     CollectionRunInput,
+    CollectionRunPage,
     CollectionRunView,
     PageCommitInput,
     PageCommitView,
@@ -73,6 +76,8 @@ class CollectionService:
                     data.until,
                     data.policy_version,
                     data.retention_days,
+                    data.trigger,
+                    data.schedule_slot,
                 )
                 actual = (
                     existing.monitor_version_id,
@@ -83,14 +88,16 @@ class CollectionService:
                     existing.window_until,
                     existing.policy_version,
                     existing.retention_days,
+                    existing.trigger,
+                    existing.schedule_slot,
                 )
                 if actual != expected:
                     raise AppError("idempotency_conflict", 409)
                 return CollectionRunView.model_validate(existing)
-            version_id, query_spec, source_ids = active_monitor_configuration(
+            configuration = active_monitor_configuration(
                 session, data.monitor_id, data.expected_version
             )
-            if data.source not in source_ids:
+            if data.source not in configuration.source_ids:
                 raise AppError("source_not_in_monitor", 409)
             if self.sources.activation_issues([data.source]):
                 raise AppError("source_not_eligible", 409)
@@ -98,7 +105,7 @@ class CollectionService:
                 raise AppError("evidence_store_not_configured", 409)
             preview = self.sources.preview(
                 QueryPreviewInput(
-                    query_spec=query_spec,
+                    query_spec=configuration.query_spec,
                     source_ids=[data.source],
                     since=data.since,
                     until=data.until,
@@ -107,6 +114,40 @@ class CollectionService:
             if data.query_variant not in preview.sources[0].queries:
                 raise AppError("query_variant_not_in_snapshot", 409)
             now = utcnow()
+            budget_day = now.date()
+            session.execute(
+                insert(CollectionBudgetUsage)
+                .values(
+                    id=uuid4(),
+                    monitor_version_id=configuration.monitor_version_id,
+                    budget_day=budget_day,
+                    limit_requests=configuration.budget.daily_requests,
+                    reserved_requests=0,
+                    created_at=now,
+                    updated_at=now,
+                )
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        CollectionBudgetUsage.monitor_version_id,
+                        CollectionBudgetUsage.budget_day,
+                    ]
+                )
+            )
+            usage = session.scalar(
+                select(CollectionBudgetUsage)
+                .where(
+                    CollectionBudgetUsage.monitor_version_id == configuration.monitor_version_id,
+                    CollectionBudgetUsage.budget_day == budget_day,
+                )
+                .with_for_update()
+            )
+            assert usage is not None
+            if usage.limit_requests != configuration.budget.daily_requests:
+                raise AppError("budget_snapshot_mismatch", 500)
+            if usage.reserved_requests >= usage.limit_requests:
+                raise AppError("request_budget_exhausted", 429)
+            usage.reserved_requests += 1
+            usage.updated_at = now
             run_id = uuid4()
             job = enqueue(
                 session,
@@ -116,13 +157,17 @@ class CollectionService:
             run = CollectionRun(
                 id=run_id,
                 job_id=job.id,
-                monitor_version_id=version_id,
+                monitor_version_id=configuration.monitor_version_id,
                 source=data.source,
                 operation=data.operation,
                 query_variant=data.query_variant,
                 idempotency_key=data.idempotency_key,
                 policy_version=data.policy_version,
                 retention_days=data.retention_days,
+                trigger=data.trigger,
+                schedule_slot=data.schedule_slot,
+                budget_day=budget_day,
+                reserved_requests=1,
                 state="queued",
                 outcome=None,
                 fencing_token=0,
@@ -146,6 +191,65 @@ class CollectionService:
             if run is None:
                 raise AppError("collection_run_not_found", 404)
             return CollectionRunView.model_validate(run)
+
+    def has_scheduled_run(
+        self,
+        monitor_version_id: UUID,
+        source: str,
+        operation: str,
+        query_variant: str,
+        schedule_slot: datetime,
+    ) -> bool:
+        with self.factory() as session:
+            return (
+                session.scalar(
+                    select(CollectionRun.id).where(
+                        CollectionRun.monitor_version_id == monitor_version_id,
+                        CollectionRun.source == source,
+                        CollectionRun.operation == operation,
+                        CollectionRun.query_variant == query_variant,
+                        CollectionRun.schedule_slot == schedule_slot,
+                    )
+                )
+                is not None
+            )
+
+    @staticmethod
+    def _decode_cursor(cursor: str) -> tuple[datetime, UUID]:
+        try:
+            timestamp, identity = cursor.rsplit("|", 1)
+            created_at = datetime.fromisoformat(timestamp)
+            if created_at.tzinfo is None:
+                raise ValueError("cursor timestamp must include a timezone")
+            return created_at.astimezone(UTC), UUID(identity)
+        except (TypeError, ValueError) as error:
+            raise AppError("invalid_cursor", 422) from error
+
+    @staticmethod
+    def _encode_cursor(run: CollectionRun) -> str:
+        return f"{run.created_at.astimezone(UTC).isoformat()}|{run.id}"
+
+    def runs(self, limit: int, cursor: str | None) -> CollectionRunPage:
+        with self.factory() as session:
+            query = select(CollectionRun).order_by(
+                CollectionRun.created_at.desc(), CollectionRun.id.desc()
+            )
+            if cursor is not None:
+                created_at, identity = self._decode_cursor(cursor)
+                query = query.where(
+                    or_(
+                        CollectionRun.created_at < created_at,
+                        and_(
+                            CollectionRun.created_at == created_at,
+                            CollectionRun.id < identity,
+                        ),
+                    )
+                )
+            rows = list(session.scalars(query.limit(limit + 1)))
+            return CollectionRunPage(
+                items=[CollectionRunView.model_validate(row) for row in rows[:limit]],
+                next_cursor=self._encode_cursor(rows[limit - 1]) if len(rows) > limit else None,
+            )
 
     def claim_for_job(self, job_id: UUID, fencing_token: int) -> CollectionExecutionInput | None:
         with self.factory.begin() as session:

@@ -2,6 +2,23 @@
 /* eslint-disable */
 import { request, type RequestOptions } from "../request";
 
+/** List Collection Runs GET /api/v1/collection-runs */
+export async function listCollectionRuns(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.listCollectionRunsParams,
+  options?: RequestOptions
+) {
+  return request<API.CollectionRunPage>("/api/v1/collection-runs", {
+    method: "GET",
+    params: {
+      // limit has a default value: 20
+      limit: "20",
+      ...params,
+    },
+    ...(options || {}),
+  });
+}
+
 /** Get Collection Run GET /api/v1/collection-runs/${param0} */
 export async function getCollectionRun(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)

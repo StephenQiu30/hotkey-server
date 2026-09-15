@@ -44,6 +44,7 @@ function input(form: HTMLFormElement, sources: Source[]): API.MonitorInput {
     source_ids: selected,
     schedule: {
       interval_minutes: Number(values.get("interval_minutes")),
+      retention_days: Number(values.get("retention_days")),
     },
     budget: {
       daily_requests: Number(values.get("daily_requests")),
@@ -202,6 +203,17 @@ export function MonitorEditor({
               max={1000}
               required
               defaultValue={monitor?.budget.daily_requests ?? 24}
+            />
+          </label>
+          <label>
+            证据保留（天）
+            <input
+              name="retention_days"
+              type="number"
+              min={1}
+              max={365}
+              required
+              defaultValue={monitor ? monitor.schedule.retention_days : 7}
             />
           </label>
         </div>

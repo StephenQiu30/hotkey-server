@@ -1,10 +1,15 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Query
 
 from api.dependencies import Authenticated, Collections
-from collection.schemas import CollectionRunInput, CollectionRunRequest, CollectionRunView
+from collection.schemas import (
+    CollectionRunInput,
+    CollectionRunPage,
+    CollectionRunRequest,
+    CollectionRunView,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["collection"])
 
@@ -31,6 +36,20 @@ def create_collection_run(
             **data.model_dump(),
         )
     )
+
+
+@router.get(
+    "/collection-runs",
+    response_model=CollectionRunPage,
+    operation_id="listCollectionRuns",
+)
+def list_collection_runs(
+    service: Collections,
+    owner: Authenticated,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: Annotated[str | None, Query(max_length=100)] = None,
+) -> CollectionRunPage:
+    return service.runs(limit, cursor)
 
 
 @router.get(

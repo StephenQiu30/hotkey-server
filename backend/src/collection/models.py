@@ -1,7 +1,15 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.base import Base
@@ -27,6 +35,21 @@ class CollectionRun(Base):
         CheckConstraint(
             "retention_days BETWEEN 1 AND 365", name="ck_collection_runs_retention_days"
         ),
+        CheckConstraint("trigger IN ('manual', 'scheduled')", name="ck_collection_runs_trigger"),
+        CheckConstraint(
+            "(trigger = 'manual' AND schedule_slot IS NULL) OR "
+            "(trigger = 'scheduled' AND schedule_slot IS NOT NULL)",
+            name="ck_collection_runs_schedule_slot",
+        ),
+        CheckConstraint("reserved_requests = 1", name="ck_collection_runs_reserved_requests"),
+        UniqueConstraint(
+            "monitor_version_id",
+            "source",
+            "operation",
+            "query_variant",
+            "schedule_slot",
+            name="uq_collection_runs_schedule_slot",
+        ),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True)
     job_id: Mapped[UUID] = mapped_column(ForeignKey("jobs.id"), unique=True)
@@ -39,6 +62,10 @@ class CollectionRun(Base):
     idempotency_key: Mapped[str] = mapped_column(String(128))
     policy_version: Mapped[str] = mapped_column(String(64))
     retention_days: Mapped[int] = mapped_column(Integer)
+    trigger: Mapped[str] = mapped_column(String(16))
+    schedule_slot: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    budget_day: Mapped[date] = mapped_column(Date)
+    reserved_requests: Mapped[int] = mapped_column(Integer)
     state: Mapped[str] = mapped_column(String(16))
     outcome: Mapped[str | None] = mapped_column(String(16))
     fencing_token: Mapped[int] = mapped_column(Integer)
@@ -51,6 +78,27 @@ class CollectionRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CollectionBudgetUsage(Base):
+    __tablename__ = "collection_budget_usage"
+    __table_args__ = (
+        UniqueConstraint("monitor_version_id", "budget_day", name="uq_collection_budget_usage_day"),
+        CheckConstraint("limit_requests > 0", name="ck_collection_budget_limit"),
+        CheckConstraint(
+            "reserved_requests BETWEEN 0 AND limit_requests",
+            name="ck_collection_budget_reserved",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    monitor_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("monitor_versions.id", ondelete="CASCADE"), index=True
+    )
+    budget_day: Mapped[date] = mapped_column(Date)
+    limit_requests: Mapped[int] = mapped_column(Integer)
+    reserved_requests: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class CollectionCheckpoint(Base):

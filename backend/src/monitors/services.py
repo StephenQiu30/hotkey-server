@@ -11,6 +11,7 @@ from core.clock import utcnow
 from core.errors import AppError
 from monitors.models import Monitor, MonitorMatch, MonitorVersion
 from monitors.schemas import (
+    ActiveMonitorConfiguration,
     MonitorInput,
     MonitorPage,
     MonitorStateChange,
@@ -80,7 +81,7 @@ def monitor_version_identity(session: Session, monitor_id: UUID, version: int) -
 
 def active_monitor_configuration(
     session: Session, monitor_id: UUID, expected_version: int
-) -> tuple[UUID, QuerySpec, list[SourceName]]:
+) -> ActiveMonitorConfiguration:
     monitor = session.scalar(select(Monitor).where(Monitor.id == monitor_id).with_for_update())
     if monitor is None:
         raise AppError("monitor_not_found", 404)
@@ -89,10 +90,14 @@ def active_monitor_configuration(
     if monitor.state != "active":
         raise AppError("monitor_not_active", 409)
     version = MonitorService._current(session, monitor)
-    return (
-        version.id,
-        QuerySpec.model_validate(version.query_spec),
-        cast(list[SourceName], version.source_ids),
+    return ActiveMonitorConfiguration(
+        monitor_id=monitor.id,
+        monitor_version_id=version.id,
+        version=version.version,
+        query_spec=QuerySpec.model_validate(version.query_spec),
+        source_ids=cast(list[SourceName], version.source_ids),
+        schedule=version.schedule,
+        budget=version.budget,
     )
 
 
@@ -244,3 +249,30 @@ class MonitorService:
                 items=[self._view(monitor, version) for monitor, version in rows[:limit]],
                 next_cursor=rows[limit - 1][0].id if len(rows) > limit else None,
             )
+
+    def active_configurations(self) -> list[ActiveMonitorConfiguration]:
+        with self.factory() as session:
+            rows = session.execute(
+                select(Monitor, MonitorVersion)
+                .join(
+                    MonitorVersion,
+                    and_(
+                        MonitorVersion.monitor_id == Monitor.id,
+                        MonitorVersion.version == Monitor.current_version,
+                    ),
+                )
+                .where(Monitor.state == "active")
+                .order_by(Monitor.id)
+            ).tuples()
+            return [
+                ActiveMonitorConfiguration(
+                    monitor_id=monitor.id,
+                    monitor_version_id=version.id,
+                    version=version.version,
+                    query_spec=QuerySpec.model_validate(version.query_spec),
+                    source_ids=cast(list[SourceName], version.source_ids),
+                    schedule=version.schedule,
+                    budget=version.budget,
+                )
+                for monitor, version in rows
+            ]

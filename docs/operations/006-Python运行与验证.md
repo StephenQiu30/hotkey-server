@@ -188,3 +188,17 @@ FastAPI自动发布`POST /api/v1/monitors/{id}/runs`和`GET /api/v1/collection-r
 真实PostgreSQL 16和RabbitMQ 4.1环境中92项pytest通过，保留2条上游弃用提示；其中覆盖页提交后Worker崩溃的重领收口，确认不会二次抓取；也覆盖幂等重放在后续来源撤权和对象存储配置缺失时仍返回既有运行，以及8个并发同键请求只生成一组run/Job/Outbox。Ruff、严格mypy（82个源文件）、OpenAPI/UmiOpenAPI漂移、前端边界与负向样例、Prettier和TypeScript/Vite构建通过。隔离`hotkey-s02c` Compose完成迁移和真实scheduler → RabbitMQ → Celery prefork → PostgreSQL诊断，attempts=1；Web保持运行、替换backend后代理返回预期401。Chromium 2项通过，Swagger UI实际加载并核对两项collection operationId，owner工作台完成登录、草稿、查询预览、诊断、刷新、390px及退出流程。正常停机为worker=0、backend=143、scheduler=0，无SIGKILL/OOM；隔离资源随后删除。结构化证据见 [collection-job-foundation-poc.json](evidence/collection-job-foundation-poc.json)。
 
 本片使用注入的合成原始页和内存EvidenceStore验证消费者编排，没有访问外部来源，也没有连接用户现有MinIO。所有来源仍为not_connected且不具备产品采集准入；预算预留、按slot调度、分页、详情展开和评论任务仍待后续切片。因此本记录不构成EV-007-003、真实收件箱或TASK-007-S02-T02完成证据。
+
+## 007 S02-T02D 日预算、周期槽与运行列表验证（2026-09-15）
+
+本片增加 `0007_collection_budget`：每个单页运行在创建Job前，按monitor version与UTC日期原子预留1次请求；run、Job、Outbox和预算占用同事务提交。预留不会因失败自动退还，避免失败重试绕过上限。8个不同幂等键并发争抢1次预算时，1个成功，7个稳定返回`request_budget_exhausted`，数据库最终各有1条run、Job和Outbox。
+
+scheduler只读取monitor模块提供的当前active配置DTO，按UTC周期边界生成最近一个已结束窗口。同槽重扫不重复创建，暂停后不派下一槽；来源准入失败或 `HOTKEY_S3_*` 不完整时保持零写入，不尝试联网，也不追补停机期间无限历史。运行列表采用 `(created_at,id)` 不透明游标，GET只读取状态。前端只调用UmiOpenAPI生成的 `listCollectionRuns`，展示触发类型、预算日、时间窗口、页/内容/字节和停止原因；保留天数进入不可变monitor schedule快照，不保留前端默认值兼容分支。
+
+一次性数据库先迁移到0006并写入同一UTC日的两条历史运行，再升级到0007。两条运行均回填manual、空schedule slot、每条1次预留及UTC预算日，旧schedule结构回填7天保留期。旧预算快照为1但历史已有2次请求时，新账本以既有事实为下限记录limit=2、reserved=2，没有删除运行或制造负额度。全量迁移和SQLAlchemy模型比较无差异。
+
+真实PostgreSQL 16与RabbitMQ 4.1环境中97项pytest通过，保留2条上游弃用提示；Ruff和严格mypy（84个源文件）通过。`pip-audit`无已知漏洞，npm生产依赖审计为0。运行时OpenAPI与仓库快照相等；UmiOpenAPI漂移、前端目录/负向边界、Prettier和TypeScript/Vite构建通过，生产Compose覆盖解析成功。
+
+隔离 `hotkey-s02d` Compose完成0007迁移、真实scheduler → RabbitMQ → Celery prefork → PostgreSQL诊断，attempts=1。未配置S3且无已准入来源时，collection_runs数量保持0。Web容器不替换、只重建backend后，经Web访问认证端点得到预期401。Chromium 2项通过：Swagger UI实际显示 `listCollectionRuns`；合成owner工作台在1440px和390px显示运行区、保留天数和合法空态，无横向溢出或页面脚本错误。正常停机worker=0、scheduler=0、backend=143，无SIGKILL/OOM；隔离Compose、迁移数据库及测试容器均已删除。结构化证据见 [collection-schedule-budget-poc.json](evidence/collection-schedule-budget-poc.json)。
+
+本片没有连接用户现有MinIO，没有向任何平台发送请求，也没有产生真实帖子、评论或收件箱内容。生产来源仍全部not_connected；因此不构成EV-007-003、TASK-007-S02-T02或完整MVP验收。

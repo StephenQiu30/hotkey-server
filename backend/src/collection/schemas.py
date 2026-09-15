@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Literal, Self
 from uuid import UUID
 
@@ -19,6 +19,8 @@ class CollectionRunInput(Input):
     idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.:-]+$")
     policy_version: str = Field(min_length=1, max_length=64)
     retention_days: int = Field(ge=1, le=365)
+    trigger: Literal["manual", "scheduled"] = "manual"
+    schedule_slot: AwareDatetime | None = None
 
     @model_validator(mode="after")
     def valid_window(self) -> Self:
@@ -26,6 +28,10 @@ class CollectionRunInput(Input):
             raise ValueError("since must precede until")
         self.since = self.since.astimezone(UTC)
         self.until = self.until.astimezone(UTC)
+        if self.schedule_slot is not None:
+            self.schedule_slot = self.schedule_slot.astimezone(UTC)
+        if (self.trigger == "manual") != (self.schedule_slot is None):
+            raise ValueError("scheduled runs require a slot and manual runs forbid one")
         return self
 
 
@@ -38,6 +44,10 @@ class CollectionRunView(BaseModel):
     operation: Literal["search_posts"]
     query_variant: str
     retention_days: int
+    trigger: Literal["manual", "scheduled"]
+    schedule_slot: datetime | None
+    budget_day: date
+    reserved_requests: int
     state: Literal["queued", "running", "completed", "failed", "cancelled"]
     outcome: Literal["ok", "empty", "partial", "failed"] | None
     fencing_token: int
@@ -45,8 +55,15 @@ class CollectionRunView(BaseModel):
     items_count: int
     bytes_count: int
     stop_reason: str | None
+    window_since: datetime
+    window_until: datetime
     created_at: datetime
     completed_at: datetime | None
+
+
+class CollectionRunPage(BaseModel):
+    items: list[CollectionRunView]
+    next_cursor: str | None
 
 
 class CollectionRunRequest(Input):
@@ -80,12 +97,6 @@ class CollectionExecutionInput(BaseModel):
     until: datetime
     policy_version: str
     retention_days: int = Field(ge=1, le=365)
-
-
-class CollectionLease(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    run_id: UUID
-    fencing_token: int = Field(ge=1)
 
 
 class PageCommitInput(Input):

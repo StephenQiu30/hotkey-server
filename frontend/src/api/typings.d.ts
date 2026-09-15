@@ -14,6 +14,13 @@ declare namespace API {
     identity: string;
   };
 
+  type CollectionRunPage = {
+    /** Items */
+    items: CollectionRunView[];
+    /** Next Cursor */
+    next_cursor: string | null;
+  };
+
   type CollectionRunRequest = {
     /** Expected Version */
     expected_version: number;
@@ -34,6 +41,8 @@ declare namespace API {
   };
 
   type CollectionRunView = {
+    /** Budget Day */
+    budget_day: string;
     /** Bytes Count */
     bytes_count: number;
     /** Completed At */
@@ -58,14 +67,24 @@ declare namespace API {
     pages_count: number;
     /** Query Variant */
     query_variant: string;
+    /** Reserved Requests */
+    reserved_requests: number;
     /** Retention Days */
     retention_days: number;
+    /** Schedule Slot */
+    schedule_slot: string | null;
     /** Source */
     source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
     /** State */
     state: "queued" | "running" | "completed" | "failed" | "cancelled";
     /** Stop Reason */
     stop_reason: string | null;
+    /** Trigger */
+    trigger: "manual" | "scheduled";
+    /** Window Since */
+    window_since: string;
+    /** Window Until */
+    window_until: string;
   };
 
   type createCollectionRunParams = {
@@ -163,6 +182,11 @@ declare namespace API {
     kind: "verify_pipeline" | "collect_page";
     /** Status */
     status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  };
+
+  type listCollectionRunsParams = {
+    limit?: number;
+    cursor?: string | null;
   };
 
   type listInboxContentsParams = {
@@ -324,6 +348,8 @@ declare namespace API {
   type ScheduleSpec = {
     /** Interval Minutes */
     interval_minutes?: number;
+    /** Retention Days */
+    retention_days?: number;
   };
 
   type SourceOperationCapability = {
