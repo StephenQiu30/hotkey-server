@@ -16,12 +16,17 @@ x-app: &app
     HOTKEY_S3_SECURE: ${HOTKEY_S3_SECURE:-true}
     HOTKEY_SOURCE_RIGHTS_ALLOWED: ${HOTKEY_SOURCE_RIGHTS_ALLOWED:-[]}
     HOTKEY_SOURCE_PIPELINES_CONNECTED: ${HOTKEY_SOURCE_PIPELINES_CONNECTED:-[]}
+    HOTKEY_EMBEDDING_BASE_URL: ${HOTKEY_EMBEDDING_BASE_URL:-}
+    HOTKEY_EMBEDDING_MODEL: ${HOTKEY_EMBEDDING_MODEL:-qwen3-embedding:latest}
+    HOTKEY_EMBEDDING_MODEL_DIGEST: ${HOTKEY_EMBEDDING_MODEL_DIGEST:-}
+    HOTKEY_EMBEDDING_DIMENSIONS: ${HOTKEY_EMBEDDING_DIMENSIONS:-1024}
+    HOTKEY_EMBEDDING_TIMEOUT_SECONDS: ${HOTKEY_EMBEDDING_TIMEOUT_SECONDS:-15}
   depends_on:
     migrate: {condition: service_completed_successfully}
     rabbitmq: {condition: service_healthy}
 services:
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:0.8.6-pg16
     environment:
       POSTGRES_DB: hotkey
       POSTGRES_USER: hotkey

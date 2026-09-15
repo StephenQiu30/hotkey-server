@@ -3,6 +3,7 @@ from typing import Annotated, cast
 from fastapi import Depends, Header, Request, Security
 from fastapi.security import APIKeyCookie
 
+from ai.adapters.ollama import OllamaEmbeddingProvider
 from analysis.services import AnalysisService
 from collection.services import CollectionService
 from contents.services import ContentService
@@ -54,7 +55,19 @@ def analysis_service(request: Request) -> AnalysisService:
 
 
 def knowledge_service(request: Request) -> KnowledgeService:
-    return KnowledgeService(request.app.state.database.sessions)
+    settings = request.app.state.settings
+    provider = (
+        OllamaEmbeddingProvider(
+            base_url=settings.embedding_base_url,
+            model=settings.embedding_model,
+            model_digest=settings.embedding_model_digest,
+            dimensions=settings.embedding_dimensions,
+            timeout_seconds=settings.embedding_timeout_seconds,
+        )
+        if settings.embedding_base_url is not None and settings.embedding_model_digest is not None
+        else None
+    )
+    return KnowledgeService(request.app.state.database.sessions, provider)
 
 
 def collection_service(request: Request, sources: Sources) -> CollectionService:

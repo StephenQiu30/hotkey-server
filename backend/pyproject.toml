@@ -14,6 +14,7 @@ dependencies = [
   "argon2-cffi>=25.1,<26",
   "httpx>=0.28,<1",
   "minio==7.2.20",
+  "pgvector>=0.4,<0.5",
 ]
 
 [dependency-groups]
@@ -37,7 +38,7 @@ files = ["src", "scripts"]
 mypy_path = "src"
 explicit_package_bases = true
 [[tool.mypy.overrides]]
-module = ["celery", "celery.*", "kombu", "kombu.*"]
+module = ["celery", "celery.*", "kombu", "kombu.*", "pgvector", "pgvector.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

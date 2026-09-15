@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     s3_secure: bool = True
     source_rights_allowed: list[str] = Field(default_factory=list, max_length=24)
     source_pipelines_connected: list[str] = Field(default_factory=list, max_length=24)
+    embedding_base_url: str | None = None
+    embedding_model: Literal["qwen3-embedding:latest"] = "qwen3-embedding:latest"
+    embedding_model_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    embedding_dimensions: int = 1024
+    embedding_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
 
     @field_validator("source_rights_allowed", "source_pipelines_connected")
     @classmethod
@@ -42,6 +47,40 @@ class Settings(BaseSettings):
     def empty_s3_value_is_absent(cls, value: object) -> object:
         if value == "" or isinstance(value, SecretStr) and not value.get_secret_value():
             return None
+        return value
+
+    @field_validator("embedding_base_url", "embedding_model_digest", mode="before")
+    @classmethod
+    def empty_embedding_origin_is_absent(cls, value: object) -> object:
+        return None if value == "" else value
+
+    @field_validator("embedding_base_url")
+    @classmethod
+    def validate_embedding_origin(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlsplit(value)
+        try:
+            _ = parsed.port
+        except ValueError as error:
+            raise ValueError("Embedding origin contains an invalid port") from error
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("Embedding endpoint must be an exact HTTP(S) origin")
+        return value.rstrip("/")
+
+    @field_validator("embedding_dimensions")
+    @classmethod
+    def validate_embedding_dimensions(cls, value: int) -> int:
+        if value != 1024:
+            raise ValueError("Embedding dimensions must be 1024")
         return value
 
     @field_validator("s3_endpoint")
@@ -141,8 +180,14 @@ class Settings(BaseSettings):
             raise ValueError("S3 endpoint, access key, secret key and bucket are required together")
         if self.source_pipelines_connected and not self.s3_configured:
             raise ValueError("Connected source pipelines require a configured evidence store")
+        if (self.embedding_base_url is None) != (self.embedding_model_digest is None):
+            raise ValueError("Embedding origin and model digest are required together")
         return self
 
     @property
     def s3_configured(self) -> bool:
         return self.s3_endpoint is not None
+
+    @property
+    def embedding_configured(self) -> bool:
+        return self.embedding_base_url is not None and self.embedding_model_digest is not None

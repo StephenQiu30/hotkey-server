@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from ai.contracts import EmbeddingBatch, EmbeddingProviderError
 from analysis.schemas import AnalysisLabelInput, AnalysisRunInput
 from analysis.services import AnalysisService
 from collection.models import CollectionRun
@@ -19,7 +20,7 @@ from events.schemas import EventInput, EventMemberInput
 from events.services import EventService
 from evidence.models import RawPage
 from identity.services import IdentityService
-from knowledge.models import KnowledgeCitation, KnowledgeEntry, KnowledgeVersion
+from knowledge.models import KnowledgeChunk, KnowledgeCitation, KnowledgeEntry, KnowledgeVersion
 from knowledge.services import KnowledgeService
 from main import create_app
 from monitors.schemas import MonitorInput, MonitorStateChange
@@ -32,6 +33,22 @@ pytestmark = pytest.mark.integration
 class AdmittedSources(SourceService):
     def activation_issues(self, source_ids, operation="search_posts"):
         return []
+
+
+class StaticEmbeddingProvider:
+    def embed(self, texts: list[str]) -> EmbeddingBatch:
+        vector = [1.0, *([0.0] * 1023)]
+        return EmbeddingBatch(
+            model="qwen3-embedding:latest",
+            model_digest=("64b933495768fbd3b87c20583d379728a07471e0c66733a9df87cd1901b3c44b"),
+            dimensions=1024,
+            vectors=[vector for _ in texts],
+        )
+
+
+class FailingEmbeddingProvider:
+    def embed(self, texts: list[str]) -> EmbeddingBatch:
+        raise EmbeddingProviderError("embedding_unavailable")
 
 
 def _raw_page(database, start: datetime) -> UUID:
@@ -227,6 +244,8 @@ def test_analysis_snapshot_can_be_published_found_and_marked_stale(database):
         assert session.scalar(select(func.count()).select_from(KnowledgeEntry)) == 1
         assert session.scalar(select(func.count()).select_from(KnowledgeVersion)) == 1
         assert session.scalar(select(func.count()).select_from(KnowledgeCitation)) == 2
+        chunk = session.scalar(select(KnowledgeChunk))
+        assert chunk is not None and chunk.index_state == "pending"
 
     changed = analysis.samples[0].contexts[0]
     changed_text = "修改后的合成评论"
@@ -296,3 +315,33 @@ def test_authenticated_http_can_publish_and_search_analysis_snapshot(database):
         detail = client.get(f"/api/v1/knowledge/{first.json()['id']}")
         assert detail.status_code == 200
         assert len(detail.json()["citations"]) == 2
+        unavailable = client.post(f"/api/v1/knowledge/{first.json()['id']}/semantic-index")
+        assert unavailable.status_code == 503
+        assert unavailable.json()["code"] == "embedding_not_configured"
+        semantic = client.get(
+            "/api/v1/knowledge", params={"query": "release outage", "mode": "semantic"}
+        )
+        assert semantic.status_code == 503
+        assert semantic.json()["code"] == "embedding_not_configured"
+
+
+def test_semantic_index_failure_can_be_retried_and_filtered_by_event(database):
+    event, analysis, _ = _completed_analysis(database)
+    published = KnowledgeService(database).publish_analysis(analysis.id)
+
+    with pytest.raises(AppError) as failed:
+        KnowledgeService(database, FailingEmbeddingProvider()).index(published.id)
+    assert failed.value.code == "embedding_unavailable"
+    with database() as session:
+        chunk = session.scalar(select(KnowledgeChunk))
+        assert chunk is not None and chunk.index_state == "failed"
+
+    service = KnowledgeService(database, StaticEmbeddingProvider())
+    indexed = service.index(published.id)
+    assert indexed.semantic_index_state == "ready"
+
+    page = service.search("release outage", event.id, 20, "semantic")
+    assert page.query_mode == "semantic"
+    assert page.items[0].id == published.id
+    assert page.items[0].similarity == pytest.approx(1.0)
+    assert service.search("release outage", uuid4(), 20, "semantic").items == []

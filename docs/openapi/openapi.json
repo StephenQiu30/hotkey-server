@@ -1937,6 +1937,30 @@
             "title": "Id",
             "type": "string"
           },
+          "semantic_index_state": {
+            "enum": [
+              "pending",
+              "ready",
+              "failed",
+              "stale",
+              "deleted"
+            ],
+            "title": "Semantic Index State",
+            "type": "string"
+          },
+          "similarity": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": -1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Similarity"
+          },
           "source_analysis_run_id": {
             "format": "uuid",
             "title": "Source Analysis Run Id",
@@ -1970,6 +1994,7 @@
           "title",
           "body",
           "analysis_manifest_sha256",
+          "semantic_index_state",
           "stale",
           "citations",
           "created_at",
@@ -1992,8 +2017,11 @@
             "type": "string"
           },
           "query_mode": {
-            "const": "exact_substring",
             "default": "exact_substring",
+            "enum": [
+              "exact_substring",
+              "semantic"
+            ],
             "title": "Query Mode",
             "type": "string"
           }
@@ -5670,6 +5698,20 @@
           },
           {
             "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "exact_substring",
+              "enum": [
+                "exact_substring",
+                "semantic"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -5881,6 +5923,141 @@
           }
         ],
         "summary": "Get Knowledge Entry",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/knowledge/{identity}/semantic-index": {
+      "post": {
+        "operationId": "indexKnowledgeEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "State conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request content too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Index Knowledge Entry",
         "tags": [
           "knowledge"
         ]

@@ -1,0 +1,93 @@
+{
+  "scope": "S05-T01C recoverable semantic index and retrieval",
+  "observed_at": "2026-09-16",
+  "data_classification": {
+    "synthetic": true,
+    "contains_real_platform_content": false,
+    "external_platform_accessed": false,
+    "existing_minio_connected": false,
+    "paid_service_used": false
+  },
+  "selection": {
+    "database_image": "pgvector/pgvector:0.8.6-pg16",
+    "database_image_digest": "sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b",
+    "extension_version": "0.8.6",
+    "python_pgvector": "0.4.2",
+    "embedding_model": "qwen3-embedding:latest",
+    "embedding_model_digest": "64b933495768fbd3b87c20583d379728a07471e0c66733a9df87cd1901b3c44b",
+    "dimensions": 1024,
+    "distance": "cosine",
+    "search_strategy": "exact cosine after relational state, model and event filters",
+    "ann_index_created": false,
+    "ollama_deployment": "existing self-hosted HTTP service configured by origin"
+  },
+  "red": {
+    "command_scope": "new Ollama adapter, configuration, knowledge integration and architecture tests",
+    "exit_code": 2,
+    "failure": "pytest collection failed because the registered ai module and embedding contracts did not exist"
+  },
+  "migration_poc": {
+    "from_revision": "0016_analysis_knowledge",
+    "to_revision": "0017_knowledge_semantic_index",
+    "preexisting_knowledge_versions": 1,
+    "preexisting_citations": 2,
+    "post_upgrade_knowledge_versions": 1,
+    "post_upgrade_citations": 2,
+    "backfilled_chunks": 1,
+    "backfilled_state": "pending",
+    "backfilled_embeddings": 0,
+    "backfilled_text_sha256_length": 64,
+    "extension_version": "0.8.6",
+    "passed": true
+  },
+  "live_local_model_poc": {
+    "ollama_version": "0.33.2",
+    "endpoint_scope": "loopback host and host.docker.internal from disposable Compose backend",
+    "before_state": "pending",
+    "after_state": "ready",
+    "query": "release outage",
+    "query_mode": "semantic",
+    "top1_matched_expected_entry": true,
+    "top1_similarity": 0.5568580129571608,
+    "top1_citations_available": 2,
+    "event_filter_excluded_other": true,
+    "direct_service_index_seconds": 2.8530700000046636,
+    "direct_service_query_seconds": 0.1035753339965595,
+    "browser_result": "pending entry indexed to ready, English query returned the Chinese entry and rendered 55.7% similarity with two citations",
+    "passed": true
+  },
+  "failure_and_recovery": {
+    "transport_timeout_maps_to": "embedding_unavailable",
+    "failed_state_persisted": true,
+    "same_chunk_retry_reached_ready": true,
+    "model_digest_persisted_and_filtered": true,
+    "wrong_dimensions_rejected": true,
+    "non_finite_values_rejected": true,
+    "unconfigured_http_status": 503,
+    "unconfigured_code": "embedding_not_configured"
+  },
+  "verification": {
+    "backend_tests": "148 passed with disposable pgvector PostgreSQL 16 and RabbitMQ 4.1; 2 upstream deprecation warnings",
+    "ruff": "format and lint passed for 152 backend files",
+    "mypy": "strict check passed for 127 source and script files",
+    "pip_audit": "no known vulnerabilities",
+    "openapi": "FastAPI-generated snapshot check passed",
+    "frontend": "UmiOpenAPI drift, boundary, negative boundary, Prettier and TypeScript/Vite build passed",
+    "npm_production_audit": "0 vulnerabilities",
+    "compose": "pgvector migration, prefork diagnostic, backend replacement proxy and graceful shutdown passed",
+    "playwright": "3 Chromium tests passed: semantic unavailable state, Swagger operation, full workspace and 390px layout",
+    "remote_ci": null
+  },
+  "official_protocol_basis": {
+    "ollama_embed_api": "https://docs.ollama.com/api/embed",
+    "ollama_embedding_guidance": "https://docs.ollama.com/capabilities/embeddings",
+    "pgvector": "https://github.com/pgvector/pgvector"
+  },
+  "limitations": [
+    "The stored content and browser acceptance data are explicit synthetic fixtures; this does not establish real platform recall, slang coverage or ranking quality.",
+    "The production database role must be allowed to create the vector extension before revision 0017 can be deployed to an externally managed PostgreSQL service.",
+    "The configured Ollama origin must be reachable from every backend process; this slice does not deploy or supervise Ollama and does not download a model.",
+    "One full knowledge version is one chunk in this MVP; long-document chunking, background retries, HNSW, controlled statistics and cited Q&A remain later slices.",
+    "The existing MinIO instance, platform authorization, real source ingestion and seven-day continuous operation are outside this evidence."
+  ]
+}

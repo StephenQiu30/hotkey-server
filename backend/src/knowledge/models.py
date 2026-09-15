@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -73,3 +74,42 @@ class KnowledgeCitation(Base):
     )
     text_sha256: Mapped[str] = mapped_column(String(64))
     position: Mapped[int] = mapped_column(Integer)
+
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        CheckConstraint("position = 1", name="ck_knowledge_chunks_position"),
+        CheckConstraint(
+            "index_state IN ('pending', 'ready', 'failed', 'stale', 'deleted')",
+            name="ck_knowledge_chunks_index_state",
+        ),
+        CheckConstraint(
+            "embedding_model_digest IS NULL OR embedding_model_digest ~ '^[0-9a-f]{64}$'",
+            name="ck_knowledge_chunks_model_digest",
+        ),
+        CheckConstraint(
+            "(index_state = 'ready' AND embedding IS NOT NULL AND embedding_model IS NOT NULL "
+            "AND embedding_model_digest IS NOT NULL AND embedding_dimensions = 1024 "
+            "AND indexed_at IS NOT NULL AND error_code IS NULL) "
+            "OR (index_state <> 'ready' AND embedding IS NULL)",
+            name="ck_knowledge_chunks_ready_fields",
+        ),
+        UniqueConstraint("version_id", name="uq_knowledge_chunks_version"),
+        Index("ix_knowledge_chunks_state_model", "index_state", "embedding_model"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("knowledge_versions.id", ondelete="CASCADE")
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    text_sha256: Mapped[str] = mapped_column(String(64))
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    embedding_model_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    embedding_dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    index_state: Mapped[str] = mapped_column(String(16))
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

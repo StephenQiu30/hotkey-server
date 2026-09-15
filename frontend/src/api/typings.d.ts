@@ -563,6 +563,10 @@ declare namespace API {
     next_cursor: string | null;
   };
 
+  type indexKnowledgeEntryParams = {
+    identity: string;
+  };
+
   type JobPage = {
     /** Items */
     items: JobView[];
@@ -613,6 +617,10 @@ declare namespace API {
     event_id: string;
     /** Id */
     id: string;
+    /** Semantic Index State */
+    semantic_index_state: "pending" | "ready" | "failed" | "stale" | "deleted";
+    /** Similarity */
+    similarity?: number | null;
     /** Source Analysis Run Id */
     source_analysis_run_id: string;
     /** Stale */
@@ -631,7 +639,7 @@ declare namespace API {
     /** Query */
     query: string;
     /** Query Mode */
-    query_mode?: string;
+    query_mode?: "exact_substring" | "semantic";
   };
 
   type labelAnalysisSampleParams = {
@@ -885,6 +893,7 @@ declare namespace API {
   type searchKnowledgeParams = {
     query?: string | null;
     event_id?: string | null;
+    mode?: "exact_substring" | "semantic";
     limit?: number;
   };
 

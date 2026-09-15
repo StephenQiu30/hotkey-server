@@ -81,6 +81,10 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
         ): "labelAnalysisSample",
         ("/api/v1/knowledge", "get"): "searchKnowledge",
         ("/api/v1/knowledge/{identity}", "get"): "getKnowledgeEntry",
+        (
+            "/api/v1/knowledge/{identity}/semantic-index",
+            "post",
+        ): "indexKnowledgeEntry",
         ("/api/v1/notifications", "get"): "listNotifications",
         ("/api/v1/notifications/{identity}/read", "post"): "markNotificationRead",
         ("/api/v1/jobs", "get"): "listJobs",

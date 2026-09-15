@@ -2,11 +2,13 @@ import json
 import re
 import unicodedata
 from hashlib import sha256
+from typing import Literal
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from ai.contracts import EmbeddingProvider, EmbeddingProviderError
 from analysis.schemas import AnalysisRunView
 from analysis.services import analysis_knowledge_snapshot
 from audit.services import audit
@@ -14,7 +16,7 @@ from contents.services import content_version_contexts, current_content_version_
 from core.clock import utcnow
 from core.errors import AppError
 from events.services import event_title_for_knowledge
-from knowledge.models import KnowledgeCitation, KnowledgeEntry, KnowledgeVersion
+from knowledge.models import KnowledgeChunk, KnowledgeCitation, KnowledgeEntry, KnowledgeVersion
 from knowledge.schemas import KnowledgeCitationView, KnowledgeEntryView, KnowledgePage
 
 
@@ -49,8 +51,13 @@ def _snapshot_body(snapshot: AnalysisRunView) -> str:
 
 
 class KnowledgeService:
-    def __init__(self, factory: sessionmaker[Session]):
+    def __init__(
+        self,
+        factory: sessionmaker[Session],
+        embedding_provider: EmbeddingProvider | None = None,
+    ):
         self.factory = factory
+        self.embedding_provider = embedding_provider
 
     @staticmethod
     def _entry(session: Session, identity: UUID) -> KnowledgeEntry:
@@ -72,8 +79,19 @@ class KnowledgeService:
         return version
 
     @classmethod
-    def _view(cls, session: Session, entry: KnowledgeEntry) -> KnowledgeEntryView:
+    def _view(
+        cls,
+        session: Session,
+        entry: KnowledgeEntry,
+        *,
+        similarity: float | None = None,
+    ) -> KnowledgeEntryView:
         version = cls._version(session, entry)
+        chunk = session.scalar(
+            select(KnowledgeChunk).where(KnowledgeChunk.version_id == version.id)
+        )
+        if chunk is None:
+            raise AppError("knowledge_chunk_missing", 500)
         citation_rows = list(
             session.scalars(
                 select(KnowledgeCitation)
@@ -122,6 +140,8 @@ class KnowledgeService:
             title=version.title,
             body=version.body,
             analysis_manifest_sha256=version.analysis_manifest_sha256,
+            semantic_index_state=chunk.index_state,
+            similarity=similarity,
             stale=stale,
             citations=citation_views,
             created_at=entry.created_at,
@@ -185,6 +205,24 @@ class KnowledgeService:
             )
             session.add_all([entry, version])
             session.flush()
+            chunk_text = f"{title}\n{body}"
+            session.add(
+                KnowledgeChunk(
+                    id=uuid4(),
+                    version_id=version.id,
+                    position=1,
+                    text=chunk_text,
+                    text_sha256=sha256(chunk_text.encode()).hexdigest(),
+                    embedding=None,
+                    embedding_model=None,
+                    embedding_model_digest=None,
+                    embedding_dimensions=None,
+                    index_state="pending",
+                    error_code=None,
+                    created_at=now,
+                    indexed_at=None,
+                )
+            )
             for position, identity in enumerate(sorted(citations), start=1):
                 session.add(
                     KnowledgeCitation(
@@ -203,10 +241,83 @@ class KnowledgeService:
         with self.factory() as session:
             return self._view(session, self._entry(session, identity))
 
-    def search(self, query: str | None, event_id: UUID | None, limit: int) -> KnowledgePage:
+    def index(self, identity: UUID) -> KnowledgeEntryView:
+        if self.embedding_provider is None:
+            raise AppError("embedding_not_configured", 503)
+        with self.factory() as session:
+            entry = self._entry(session, identity)
+            version = self._version(session, entry)
+            chunk = session.scalar(
+                select(KnowledgeChunk).where(KnowledgeChunk.version_id == version.id)
+            )
+            if chunk is None:
+                raise AppError("knowledge_chunk_missing", 500)
+            if chunk.index_state == "ready":
+                return self._view(session, entry)
+            version_id = version.id
+            chunk_id = chunk.id
+            text = chunk.text
+            text_sha256 = chunk.text_sha256
+        try:
+            batch = self.embedding_provider.embed([text])
+        except EmbeddingProviderError as error:
+            with self.factory.begin() as session:
+                failed = session.get(KnowledgeChunk, chunk_id)
+                if failed is not None and failed.text_sha256 == text_sha256:
+                    failed.embedding = None
+                    failed.embedding_model = None
+                    failed.embedding_model_digest = None
+                    failed.embedding_dimensions = None
+                    failed.index_state = "failed"
+                    failed.error_code = error.code
+                    failed.indexed_at = None
+            raise AppError(error.code, 503) from error
+
+        if len(batch.vectors) != 1 or batch.dimensions != 1024:
+            raise AppError("embedding_invalid_response", 503)
+        with self.factory.begin() as session:
+            entry = self._entry(session, identity)
+            current_version = self._version(session, entry)
+            chunk = session.scalar(
+                select(KnowledgeChunk).where(KnowledgeChunk.id == chunk_id).with_for_update()
+            )
+            if (
+                chunk is None
+                or current_version.id != version_id
+                or chunk.version_id != current_version.id
+                or chunk.text_sha256 != text_sha256
+            ):
+                if chunk is not None:
+                    chunk.embedding = None
+                    chunk.index_state = "stale"
+                    chunk.error_code = "knowledge_version_changed"
+                    chunk.indexed_at = None
+                raise AppError("knowledge_version_changed", 409)
+            chunk.embedding = batch.vectors[0]
+            chunk.embedding_model = batch.model
+            chunk.embedding_model_digest = batch.model_digest
+            chunk.embedding_dimensions = batch.dimensions
+            chunk.index_state = "ready"
+            chunk.error_code = None
+            chunk.indexed_at = utcnow()
+            session.flush()
+            audit(session, "knowledge_semantic_indexed", f"{identity}:{version_id}")
+            return self._view(session, entry)
+
+    def search(
+        self,
+        query: str | None,
+        event_id: UUID | None,
+        limit: int,
+        mode: Literal["exact_substring", "semantic"] = "exact_substring",
+    ) -> KnowledgePage:
         normalized = normalize_search_text(query or "")
         if query is not None and not normalized:
             raise AppError("knowledge_query_empty", 422)
+        if mode == "semantic":
+            if not normalized:
+                raise AppError("knowledge_query_required", 422)
+            return self._semantic_search(normalized, event_id, limit)
         with self.factory() as session:
             statement = (
                 select(KnowledgeEntry)
@@ -229,4 +340,49 @@ class KnowledgeService:
                 query_mode="exact_substring",
                 query=normalized,
                 items=[self._view(session, entry) for entry in entries],
+            )
+
+    def _semantic_search(self, query: str, event_id: UUID | None, limit: int) -> KnowledgePage:
+        if self.embedding_provider is None:
+            raise AppError("embedding_not_configured", 503)
+        try:
+            batch = self.embedding_provider.embed([query])
+        except EmbeddingProviderError as error:
+            raise AppError(error.code, 503) from error
+        if len(batch.vectors) != 1 or batch.dimensions != 1024:
+            raise AppError("embedding_invalid_response", 503)
+
+        with self.factory() as session:
+            distance = KnowledgeChunk.embedding.cosine_distance(batch.vectors[0]).label("distance")
+            statement = (
+                select(KnowledgeEntry, distance)
+                .join(
+                    KnowledgeVersion,
+                    (KnowledgeVersion.entry_id == KnowledgeEntry.id)
+                    & (KnowledgeVersion.version == KnowledgeEntry.current_version),
+                )
+                .join(KnowledgeChunk, KnowledgeChunk.version_id == KnowledgeVersion.id)
+                .where(
+                    KnowledgeChunk.index_state == "ready",
+                    KnowledgeChunk.embedding_model == batch.model,
+                    KnowledgeChunk.embedding_model_digest == batch.model_digest,
+                    KnowledgeChunk.embedding_dimensions == batch.dimensions,
+                )
+                .order_by(distance, KnowledgeEntry.id)
+                .limit(limit)
+            )
+            if event_id is not None:
+                statement = statement.where(KnowledgeEntry.event_id == event_id)
+            rows = session.execute(statement).all()
+            return KnowledgePage(
+                query_mode="semantic",
+                query=query,
+                items=[
+                    self._view(
+                        session,
+                        entry,
+                        similarity=max(-1.0, min(1.0, 1.0 - float(row_distance))),
+                    )
+                    for entry, row_distance in rows
+                ],
             )

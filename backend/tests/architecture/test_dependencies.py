@@ -8,6 +8,7 @@ import pytest
 
 SOURCE = Path(__file__).resolve().parents[2] / "src"
 PACKAGES = {
+    "ai",
     "analysis",
     "api",
     "collection",
@@ -63,6 +64,24 @@ def imports(tree):
 
 def forbidden_imports(relative, tree):
     dependencies = list(imports(tree))
+    if relative.startswith("ai/"):
+        return [
+            d
+            for d in dependencies
+            if d.split(".")[0]
+            in {
+                "api",
+                "main",
+                "db",
+                "sqlalchemy",
+                "worker",
+                "cli",
+                "celery",
+                "kombu",
+                "analysis",
+                "knowledge",
+            }
+        ]
     if relative.startswith("evidence/adapters/"):
         return [
             d
@@ -193,6 +212,7 @@ def test_import_boundaries_and_no_hidden_initializer_logic():
         ("evidence/adapters/minio.py", "db.session"),
         ("evidence/adapters/minio.py", "worker.app"),
         ("sources/schemas.py", "httpx"),
+        ("ai/adapters/ollama.py", "knowledge.models"),
     ],
 )
 def test_boundaries_reject_invalid_examples(module, dependency):
@@ -205,7 +225,7 @@ def test_services_reject_cross_domain_orm_examples():
     assert cross_domain_model_imports("contents/services.py", tree) == []
 
 
-@pytest.mark.parametrize("reserved", ["ai"])
+@pytest.mark.parametrize("reserved", ["reporting"])
 def test_future_modules_require_explicit_registration(reserved):
     assert unregistered_top_level_modules([SOURCE / reserved / "module.py"]) == {reserved}
 

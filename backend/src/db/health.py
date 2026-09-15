@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.schemas import HealthView
 
-SCHEMA_REVISION = "0016_analysis_knowledge"
+SCHEMA_REVISION = "0017_knowledge_semantic_index"
 
 
 def readiness(factory: sessionmaker[Session]) -> HealthView:

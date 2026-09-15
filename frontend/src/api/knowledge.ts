@@ -28,6 +28,8 @@ export async function searchKnowledge(
   return request<API.KnowledgePage>("/api/v1/knowledge", {
     method: "GET",
     params: {
+      // mode has a default value: exact_substring
+      mode: "exact_substring",
       // limit has a default value: 20
       limit: "20",
       ...params,
@@ -48,4 +50,21 @@ export async function getKnowledgeEntry(
     params: { ...queryParams },
     ...(options || {}),
   });
+}
+
+/** Index Knowledge Entry POST /api/v1/knowledge/${param0}/semantic-index */
+export async function indexKnowledgeEntry(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.indexKnowledgeEntryParams,
+  options?: RequestOptions
+) {
+  const { identity: param0, ...queryParams } = params;
+  return request<API.KnowledgeEntryView>(
+    `/api/v1/knowledge/${param0}/semantic-index`,
+    {
+      method: "POST",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
 }

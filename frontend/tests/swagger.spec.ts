@@ -58,6 +58,10 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   expect(document.paths["/api/v1/knowledge/{identity}"].get.operationId).toBe(
     "getKnowledgeEntry",
   );
+  expect(
+    document.paths["/api/v1/knowledge/{identity}/semantic-index"].post
+      .operationId,
+  ).toBe("indexKnowledgeEntry");
   expect(document.paths["/api/v1/notifications"].get.operationId).toBe(
     "listNotifications",
   );

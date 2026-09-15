@@ -22,6 +22,8 @@ class KnowledgeEntryView(BaseModel):
     title: str
     body: str
     analysis_manifest_sha256: str
+    semantic_index_state: Literal["pending", "ready", "failed", "stale", "deleted"]
+    similarity: float | None = Field(default=None, ge=-1, le=1)
     stale: bool
     citations: list[KnowledgeCitationView] = Field(min_length=1)
     created_at: datetime
@@ -29,6 +31,6 @@ class KnowledgeEntryView(BaseModel):
 
 
 class KnowledgePage(BaseModel):
-    query_mode: Literal["exact_substring"] = "exact_substring"
+    query_mode: Literal["exact_substring", "semantic"] = "exact_substring"
     query: str
     items: list[KnowledgeEntryView]

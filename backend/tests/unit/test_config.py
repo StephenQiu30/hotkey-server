@@ -100,3 +100,42 @@ def test_production_requires_https_and_secure_cookies():
         Settings(**base, cookie_secure=True, allowed_origins=["https://example.com/path"])
     settings = Settings(**base, cookie_secure=True, allowed_origins=["https://example.com"])
     assert settings.cookie_secure
+
+
+def test_embedding_origin_is_optional_exact_and_has_a_frozen_dimension():
+    base = {
+        "database_url": "postgresql+psycopg://u:p@localhost/db",
+        "broker_url": "amqp://u:p@localhost/test",
+    }
+    assert not Settings(**base).embedding_configured
+    digest = "64b933495768fbd3b87c20583d379728a07471e0c66733a9df87cd1901b3c44b"
+    settings = Settings(
+        **base,
+        embedding_base_url="http://ollama.internal:11434",
+        embedding_model_digest=digest,
+    )
+    assert settings.embedding_configured
+    assert settings.embedding_dimensions == 1024
+    with pytest.raises(ValidationError, match="required together"):
+        Settings(**base, embedding_base_url="http://ollama.internal:11434")
+    for value in (
+        "http://user:password@ollama.internal:11434",
+        "http://ollama.internal:11434/api",
+        "ftp://ollama.internal:11434",
+    ):
+        with pytest.raises(ValidationError):
+            Settings(**base, embedding_base_url=value, embedding_model_digest=digest)
+    with pytest.raises(ValidationError):
+        Settings(
+            **base,
+            embedding_base_url="http://ollama.internal:11434",
+            embedding_model_digest=digest,
+            embedding_dimensions=768,
+        )
+    with pytest.raises(ValidationError):
+        Settings(
+            **base,
+            embedding_base_url="http://ollama.internal:11434",
+            embedding_model="another-model",
+            embedding_model_digest=digest,
+        )

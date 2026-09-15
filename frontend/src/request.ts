@@ -26,6 +26,11 @@ const messages: Record<string, string> = {
   analysis_sample_empty: "当前事件在所选范围没有可分析评论。",
   analysis_citation_outside_sample: "引用必须来自该条冻结样本的上下文。",
   analysis_label_exists: "该样本已经有不同的人工标签。",
+  embedding_not_configured: "尚未配置自建语义模型服务。",
+  embedding_unavailable: "语义模型暂时不可用，请稍后重试。",
+  embedding_invalid_response: "语义模型返回的数据不符合已锁定协议。",
+  knowledge_query_required: "语义检索需要输入查询内容。",
+  knowledge_version_changed: "知识版本已经变化，请刷新后重新建立索引。",
 };
 
 const client = axios.create({

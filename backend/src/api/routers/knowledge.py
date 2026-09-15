@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Query
@@ -36,9 +36,24 @@ def search_knowledge(
     owner: Authenticated,
     query: Annotated[str | None, Query(min_length=2, max_length=100)] = None,
     event_id: UUID | None = None,
+    mode: Literal["exact_substring", "semantic"] = "exact_substring",
     limit: Annotated[int, Query(ge=1, le=20)] = 20,
 ) -> KnowledgePage:
-    return service.search(query, event_id, limit)
+    return service.search(query, event_id, limit, mode)
+
+
+@router.post(
+    "/api/v1/knowledge/{identity}/semantic-index",
+    response_model=KnowledgeEntryView,
+    responses=error_responses(*WRITE_ERROR_CODES, 404, 409),
+    operation_id="indexKnowledgeEntry",
+)
+def index_knowledge_entry(
+    identity: UUID,
+    service: Knowledge,
+    owner: Authenticated,
+) -> KnowledgeEntryView:
+    return service.index(identity)
 
 
 @router.get(

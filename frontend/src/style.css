@@ -346,7 +346,7 @@ section {
 }
 .knowledge-search-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 180px) auto auto;
   align-items: end;
   gap: 12px;
   margin-bottom: 18px;
@@ -393,6 +393,9 @@ section {
   display: block;
   margin-top: 4px;
 }
+.knowledge-index-button {
+  margin-bottom: 14px;
+}
 .trend-source {
   margin-top: 14px;
 }
@@ -409,6 +412,7 @@ label {
   font-size: 14px;
 }
 input,
+select,
 textarea {
   width: 100%;
   padding: 11px;
