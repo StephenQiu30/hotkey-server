@@ -346,3 +346,13 @@ Red阶段的内部页契约用例因cursor被拒绝而失败。Green/Refactor后
 `verify_old_application_rollback.py` 在可丢弃Compose项目内导出该固定提交，新建隔离库并用旧迁移重放到0019，创建合成owner和会话后停止可写应用。随后用PostgreSQL `default_transaction_read_only=on`和仅SELECT授权的角色重启旧应用；就绪、既存会话和事件列表读取通过，30张旧库表的计数在HTTP读取前后不变，当前0020库也没有变化。脚本最后删除隔离库、只读角色和临时源码。结构化证据见 [old-application-rollback-poc.json](evidence/old-application-rollback-poc.json)。
 
 这是一次隔离数据库的紧急只读回退演练：不增加旧接口、跳转、双路由、Schema降级或永久旧服务。它没有执行生产流量切换、异地备份或现有MinIO物理对象恢复，因此仍不能独立将EV-007-010标记完整通过。
+
+## 007 S03-T01D 两根评独立回复链验证（2026-09-16）
+
+每个重点帖仍只有一个根评论运行且最多2页；系统从这些已提交页按页序和平台返回顺序最多选择2条存在回复的根评论。每个父级分别创建CollectionRun、Job、Checkpoint和预算账本，并各自最多续采2页。搜索候选、正文和根评论的派生上限仍为1。来源请求预估与运行时派生共同读取按operation定义的上限，单关键词/单B站/每小时最大意图从96调整为120次/日；既有monitor version快照不回填。
+
+Red阶段来源预估用例期望3个查询合计15次而旧实现只返回12次。Green用两页合成根评论返回3个有回复父级：只为前2个建立回复运行，第1个完成2页并以`partial/page_limit`结算，第2个独立完成1页并成功，第3个不建立run/Job且不占预算。最终对账为5个CollectionRun、5个Job、7个Outbox、7个RawPage、7个Checkpoint和7次预算；119次预算拒绝启用，120次通过。FastAPI自动OpenAPI只更新`BudgetSpec.daily_requests`默认值；`@umijs/openapi`重新生成后`frontend/src/api`无端点漂移，Axios仍只位于`frontend/src/request.ts`。
+
+真实PostgreSQL 16.15和RabbitMQ 4.1.8下180项pytest通过并保留2条上游弃用提示；Ruff检查161个文件，严格mypy检查133个源/验证文件，Python与前端生产依赖审计为0已知漏洞。OpenAPI运行时与快照相同，共39组路径；UmiOpenAPI、前端边界/负向样例、Prettier和TypeScript/Vite构建通过。隔离`hotkey-s03-multi-root`栈完成真实prefork诊断`succeeded/attempts=1`、backend替换代理401、Chromium 6项、PostgreSQL备份恢复与删除清单两次幂等重放，dump为99114字节；固定0019旧应用在只读隔离快照完成回退读取。停机worker=0、backend=143、scheduler=0且无SIGKILL，随后删除本次容器、网络和卷。结构化证据见[collection-multi-root-replies-poc.json](evidence/collection-multi-root-replies-poc.json)。
+
+首轮全量回归发现使用旧四请求估算的低预算测试与备份夹具无法启用监控；夹具统一到五请求链后全量通过。第一次Compose smoke与backend替换被并行执行，替换过程使smoke命令退出137；按CI顺序串行复跑后任务一次成功。验证只使用合成来源和内存EvidenceStore，没有请求外部平台或连接现有MinIO；真实评论链、超过两页/两父级的全量树和七日观察仍未验收。

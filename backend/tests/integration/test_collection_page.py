@@ -683,7 +683,7 @@ def test_same_scheduled_detail_can_be_expanded_from_distinct_search_parents(data
         assert session.scalar(select(func.count()).select_from(Outbox)) == 4
 
 
-def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(database):
+def test_post_detail_expands_two_root_comments_with_independent_reply_pages(database):
     sources = AdmittedSources()
     active = monitor(MonitorService(database, sources), "评论上下文", ["AI"])
     collection = CollectionService(database, sources, evidence_configured=True)
@@ -831,9 +831,39 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
             "cursor": "2",
             "references": [
                 SourceReference(
+                    external_id="aid:113/root:441",
+                    canonical_url="https://www.bilibili.com/video/av113#reply441",
+                ),
+                SourceReference(
                     external_id="aid:113/root:443",
                     canonical_url="https://www.bilibili.com/video/av113#reply443",
-                )
+                ),
+                SourceReference(
+                    external_id="aid:113/root:445",
+                    canonical_url="https://www.bilibili.com/video/av113#reply445",
+                ),
+            ],
+            "items": [
+                *result(
+                    "第二页观点",
+                    1,
+                    comments_second_payload,
+                    external_id="comment:443",
+                    provider_namespace="comment",
+                    kind="comment",
+                    root_id="video:113",
+                    operation="list_comments",
+                ).items,
+                *result(
+                    "第三个有回复的根评",
+                    1,
+                    comments_second_payload,
+                    external_id="comment:445",
+                    provider_namespace="comment",
+                    kind="comment",
+                    root_id="video:113",
+                    operation="list_comments",
+                ).items,
             ],
         }
     )
@@ -854,12 +884,19 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
     assert not complete(database, comments_second_lease)
 
     with database() as session:
-        replies = session.scalar(
-            select(CollectionRun).where(CollectionRun.operation == "list_replies")
+        reply_runs = list(
+            session.scalars(
+                select(CollectionRun)
+                .where(CollectionRun.operation == "list_replies")
+                .order_by(CollectionRun.request_value)
+            )
         )
-        assert replies is not None
-        assert replies.parent_run_id == comments.id
-        assert replies.request_value == "aid:113/root:441"
+        assert [run.request_value for run in reply_runs] == [
+            "aid:113/root:441",
+            "aid:113/root:443",
+        ]
+        assert {run.parent_run_id for run in reply_runs} == {comments.id}
+        replies, second_replies = reply_runs
         replies_job_id = replies.job_id
     replies_payload = b'{"replies":["comment:442"],"next":2}'
     replies_result = result(
@@ -918,6 +955,35 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
     assert replies_second_fetcher.inputs[0].cursor == "2"
     assert not complete(database, replies_second_lease)
 
+    second_replies_payload = b'{"replies":["comment:446"]}'
+    second_replies_result = result(
+        "第二个父级的回复",
+        0,
+        second_replies_payload,
+        external_id="comment:446",
+        provider_namespace="comment",
+        kind="reply",
+        root_id="video:113",
+        parent_id="comment:443",
+        operation="list_replies",
+    )
+    second_replies_page = FetchedPage(
+        result=second_replies_result,
+        payload=second_replies_payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"second-root-reply-request").hexdigest(),
+        page_key="replies:second-root",
+    )
+    second_replies_lease = claim(database, Dispatch(job_id=second_replies.job_id, epoch=1))
+    assert second_replies_lease is not None
+    assert CollectionExecutor(
+        collection,
+        sources,
+        StaticFetcher(second_replies_page),
+        store,
+    ).execute(second_replies_lease)
+    assert not complete(database, second_replies_lease)
+
     inbox = {item.external_id: item for item in ContentService(database).inbox(20, None).items}
     assert set(inbox) == {
         "video:113",
@@ -925,24 +991,31 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
         "comment:442",
         "comment:443",
         "comment:444",
+        "comment:445",
+        "comment:446",
     }
     assert inbox["comment:441"].relation_status == "resolved"
     assert inbox["comment:441"].monitor_titles == ["评论上下文"]
     assert inbox["comment:442"].relation_status == "resolved"
     assert inbox["comment:442"].parent_external_id == "comment:441"
     assert inbox["comment:442"].monitor_titles == ["评论上下文"]
+    assert inbox["comment:446"].parent_external_id == "comment:443"
+    assert inbox["comment:446"].monitor_titles == ["评论上下文"]
     comment_run = collection.run(comments.id)
     assert comment_run.outcome == "partial"
     assert comment_run.stop_reason == "page_limit"
     reply_run = collection.run(replies.id)
     assert reply_run.outcome == "partial"
     assert reply_run.stop_reason == "page_limit"
+    second_reply_run = collection.run(second_replies.id)
+    assert second_reply_run.outcome == "ok"
+    assert second_reply_run.stop_reason is None
     with database() as session:
-        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 4
-        assert session.scalar(select(func.count()).select_from(Job)) == 4
-        assert session.scalar(select(func.count()).select_from(Outbox)) == 6
-        assert session.scalar(select(func.count()).select_from(RawPage)) == 6
-        assert session.scalar(select(func.count()).select_from(CollectionCheckpoint)) == 6
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 5
+        assert session.scalar(select(func.count()).select_from(Job)) == 5
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 7
+        assert session.scalar(select(func.count()).select_from(RawPage)) == 7
+        assert session.scalar(select(func.count()).select_from(CollectionCheckpoint)) == 7
         assert (
             session.scalar(
                 select(func.count())
@@ -952,14 +1025,18 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
                     CollectionRun.operation == "list_replies",
                 )
             )
-            == 1
+            == 2
         )
         usage = session.scalar(select(CollectionBudgetUsage))
-        assert usage is not None and usage.reserved_requests == 6
+        assert usage is not None and usage.reserved_requests == 7
         persisted_comments = session.get(CollectionRun, comments.id)
         persisted_replies = session.get(CollectionRun, replies.id)
+        persisted_second_replies = session.get(CollectionRun, second_replies.id)
         assert persisted_comments is not None and persisted_comments.reserved_requests == 2
         assert persisted_replies is not None and persisted_replies.reserved_requests == 2
+        assert (
+            persisted_second_replies is not None and persisted_second_replies.reserved_requests == 1
+        )
         comment_job = session.get(Job, comments.job_id)
         reply_job = session.get(Job, replies.job_id)
         assert comment_job is not None and comment_job.epoch == 2 and comment_job.attempts == 2
@@ -990,7 +1067,7 @@ def test_comment_page_budget_exhaustion_keeps_committed_page_without_next_epoch(
                 "query_spec": {"include_any": ["AI"]},
                 "source_ids": ["bilibili"],
                 "schedule": {"interval_minutes": 1440, "retention_days": 7},
-                "budget": {"daily_requests": 4, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 5, "content_purchase_cost": 0},
             }
         )
     )
@@ -1012,6 +1089,12 @@ def test_comment_page_budget_exhaustion_keeps_committed_page_without_next_epoch(
         active.id,
         active.current_version,
         "comment-page-budget-blocker",
+    )
+    create_collection_run(
+        collection,
+        active.id,
+        active.current_version,
+        "comment-page-budget-second-blocker",
     )
 
     def reference_page(operation, request, reference, page_key):
@@ -1112,8 +1195,8 @@ def test_comment_page_budget_exhaustion_keeps_committed_page_without_next_epoch(
         assert persisted.state == "completed" and persisted.outcome == "partial"
         assert persisted.stop_reason == "page_budget_exhausted"
         assert job is not None and job.status == "succeeded" and job.epoch == 1
-        assert usage is not None and usage.reserved_requests == 4
-        assert session.scalar(select(func.count()).select_from(Outbox)) == 4
+        assert usage is not None and usage.reserved_requests == 5
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 5
         assert (
             session.scalar(
                 select(func.count())
@@ -1134,7 +1217,7 @@ def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(datab
                 "query_spec": {"include_any": ["AI"]},
                 "source_ids": ["bilibili"],
                 "schedule": {"interval_minutes": 1440, "retention_days": 7},
-                "budget": {"daily_requests": 4, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 5, "content_purchase_cost": 0},
             }
         )
     )
@@ -1165,6 +1248,7 @@ def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(datab
     create("budget-competing-run")
     create("budget-second-competing-run")
     create("budget-third-competing-run")
+    create("budget-fourth-competing-run")
     payload = b'{"references":["BV1BVFWeHEaV"]}'
     page = FetchedPage(
         result=SourceResult(
@@ -1197,8 +1281,8 @@ def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(datab
     assert persisted.outcome == "partial"
     assert persisted.stop_reason == "detail_budget_exhausted"
     with database() as session:
-        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 4
-        assert session.scalar(select(func.count()).select_from(Job)) == 4
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 5
+        assert session.scalar(select(func.count()).select_from(Job)) == 5
 
 
 def test_pausing_monitor_before_page_boundary_prevents_source_fetch(database):
@@ -1475,7 +1559,7 @@ def test_retry_budget_exhaustion_atomically_fails_without_retry_outbox(database)
                 "query_spec": {"include_any": ["AI"]},
                 "source_ids": ["bilibili"],
                 "schedule": {"interval_minutes": 1440, "retention_days": 7},
-                "budget": {"daily_requests": 4, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 5, "content_purchase_cost": 0},
             }
         )
     )
@@ -1488,7 +1572,7 @@ def test_retry_budget_exhaustion_atomically_fails_without_retry_outbox(database)
     target = create_collection_run(
         collection, active.id, active.current_version, "retry-budget-target"
     )
-    for index in range(3):
+    for index in range(4):
         create_collection_run(
             collection,
             active.id,
@@ -1515,8 +1599,8 @@ def test_retry_budget_exhaustion_atomically_fails_without_retry_outbox(database)
         assert run is not None and job is not None and usage is not None
         assert run.state == "failed" and run.stop_reason == "retry_budget_exhausted"
         assert job.status == "failed" and job.epoch == 1
-        assert usage.reserved_requests == 4
-        assert session.scalar(select(func.count()).select_from(Outbox)) == 4
+        assert usage.reserved_requests == 5
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 5
 
 
 def test_missing_evidence_configuration_creates_no_run_or_job(database):

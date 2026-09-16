@@ -704,7 +704,7 @@
             "type": "integer"
           },
           "daily_requests": {
-            "default": 96,
+            "default": 120,
             "maximum": 1000.0,
             "minimum": 1.0,
             "title": "Daily Requests",

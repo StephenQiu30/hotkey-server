@@ -58,7 +58,7 @@ from monitors.services import (
     query_match_reasons,
 )
 from sources.schemas import QueryPreviewInput, SourceName
-from sources.services import DISCOVERY_REFERENCE_LIMIT, SourceService
+from sources.services import FOLLOWUP_REFERENCE_LIMITS, SourceService
 
 
 @dataclass(frozen=True)
@@ -702,19 +702,24 @@ class CollectionService:
         )
         if usage is None:
             raise AppError("collection_budget_missing", 500)
-        existing_count = session.scalar(
-            select(func.count())
-            .select_from(CollectionRun)
-            .where(
-                CollectionRun.parent_run_id == parent.id,
-                CollectionRun.operation == operation,
+        existing_values = set(
+            session.scalars(
+                select(CollectionRun.request_value)
+                .where(
+                    CollectionRun.parent_run_id == parent.id,
+                    CollectionRun.operation == operation,
+                )
+                .with_for_update()
             )
         )
-        remaining = max(DISCOVERY_REFERENCE_LIMIT - (existing_count or 0), 0)
+        remaining = max(FOLLOWUP_REFERENCE_LIMITS[operation] - len(existing_values), 0)
         if remaining == 0:
             return 0, None
+        candidates = [value for value in dict.fromkeys(references) if value not in existing_values][
+            :remaining
+        ]
         created = 0
-        for request_value in list(dict.fromkeys(references))[:remaining]:
+        for request_value in candidates:
             if not self.sources.request_value_is_valid(
                 cast(SourceName, parent.source), operation, request_value
             ):

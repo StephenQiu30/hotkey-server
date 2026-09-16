@@ -36,7 +36,7 @@ def active_monitor(database):
                 "title": "趋势提醒测试",
                 "query_spec": {"include_any": ["AI"]},
                 "source_ids": ["bilibili"],
-                "budget": {"daily_requests": 100, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 120, "content_purchase_cost": 0},
             }
         )
     )

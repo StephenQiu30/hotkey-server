@@ -39,7 +39,11 @@ PERSISTENT_SOURCE_OPERATIONS = frozenset(
         "bilibili.list_replies",
     }
 )
-DISCOVERY_REFERENCE_LIMIT = 1
+FOLLOWUP_REFERENCE_LIMITS = {
+    "fetch_post": 1,
+    "list_comments": 1,
+    "list_replies": 2,
+}
 
 
 def capability(
@@ -350,8 +354,9 @@ class SourceService:
         if operation_name in path:
             raise ValueError("cyclic source operation dependency")
         operation = next(item for item in operations if item.operation == operation_name)
-        return 1 + DISCOVERY_REFERENCE_LIMIT * sum(
-            SourceService._request_cost(operations, required, path | {operation_name})
+        return 1 + sum(
+            FOLLOWUP_REFERENCE_LIMITS[required]
+            * SourceService._request_cost(operations, required, path | {operation_name})
             for required in operation.requires_operations
         )
 

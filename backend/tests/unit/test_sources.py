@@ -177,7 +177,7 @@ def test_query_preview_compiles_without_network_and_exposes_rule_boundaries():
     }
     assert xiaohongshu.queries == []
     assert all(rule.mode == "unsupported" for rule in xiaohongshu.rules)
-    assert preview.estimated_requests == 12
+    assert preview.estimated_requests == 15
     assert all(not source.pipeline_connected for source in preview.sources)
 
     admitted = SourceService(
