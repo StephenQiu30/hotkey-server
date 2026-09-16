@@ -35,6 +35,20 @@
     "test_vhost": "zero-message hotkey.control queue observed before hotkey_test vhost deletion",
     "repository_external_override": "temporary Compose override removed"
   },
+  "remote_ci": {
+    "status": "success",
+    "run_id": 35109249296,
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35109249296",
+    "commit": "17ef2e3e78bfb4f2e425ebd6b9f8a2225d676448",
+    "duration": "3m41s",
+    "backend_tests": "196 passed with 2 warnings",
+    "browser": "11 passed",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore": "schema 0020_trend_alerts, 99570-byte custom dump, withdrawal replay idempotent",
+    "old_application_rollback": "fixed 0019 application read an isolated snapshot through a database-enforced read-only role",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+  },
   "limitations": [
     "The browser failure response and database runs are controlled evidence; they do not prove that a platform authorization refresh succeeds.",
     "No external platform, existing MinIO instance, real user content, paid service or seven-day observation was used.",
