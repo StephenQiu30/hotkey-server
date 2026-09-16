@@ -68,6 +68,83 @@
       }
     }
   },
+  "green_live_product_persistence": {
+    "environment": "isolated PostgreSQL, RabbitMQ, Celery prefork and one-time MinIO protocol fixture",
+    "scheduler": "stopped to prevent a duplicate scheduled chain",
+    "outbox": "published only the manual chain and its derived children with the existing dispatch_one path",
+    "source_network_requests": 8,
+    "operations": {
+      "search_posts": {
+        "runs": 1,
+        "pages": 1,
+        "items": 0,
+        "outcome": "partial",
+        "stop_reason": "page_limit",
+        "reserved_requests": 1
+      },
+      "fetch_post": {
+        "runs": 1,
+        "pages": 1,
+        "items": 1,
+        "outcome": "ok",
+        "stop_reason": null,
+        "reserved_requests": 1
+      },
+      "list_comments": {
+        "runs": 1,
+        "pages": 1,
+        "items": 3,
+        "outcome": "ok",
+        "stop_reason": null,
+        "reserved_requests": 2
+      },
+      "list_replies": {
+        "runs": 2,
+        "pages": 2,
+        "items": 21,
+        "outcome": "ok",
+        "stop_reason": null,
+        "reserved_requests": 4
+      }
+    },
+    "persistence": {
+      "collection_runs": 5,
+      "jobs": 5,
+      "attempts": 5,
+      "outbox_unsent": 0,
+      "raw_pages": 5,
+      "raw_page_hash_readbacks": 5,
+      "checkpoints": 5,
+      "contents_by_kind": {
+        "post": 1,
+        "comment": 3,
+        "reply": 21
+      },
+      "content_versions": 25,
+      "content_observations": 25,
+      "monitor_matches": 24,
+      "relation_statuses": {
+        "root": 1,
+        "resolved": 22,
+        "unresolved": 2
+      },
+      "reserved_requests": 8,
+      "raw_object_manifest_sha256": "7c664d96b81d3ecdafa3378fffac2b43820314bcb02d1d7b95aa7b2d264606f6"
+    },
+    "cleanup": {
+      "objects_scheduled": 5,
+      "objects_deleted": 5,
+      "delete_failures": 0,
+      "database_raw_page_states": {
+        "deleted": 5
+      },
+      "object_versions_remaining": 0,
+      "temporary_containers_remaining": 0,
+      "temporary_volumes_remaining": 0,
+      "temporary_override_remaining": false
+    },
+    "result": "passed_with_temporary_storage_fixture"
+  },
   "budget": {
     "single_keyword_first_page_fanout_before": 5,
     "single_keyword_first_page_fanout_after": 8,
@@ -109,11 +186,12 @@
   "acceptance_boundary": {
     "fresh_client_public_comments": "passed_once",
     "fresh_client_public_replies": "passed_once",
-    "real_comment_and_reply_persistence": "not_retested_in_this_slice",
+    "real_comment_and_reply_persistence": "passed_with_temporary_storage_fixture",
+    "comment_relation_coverage": "22 resolved, 2 unresolved because the bounded reply sample did not contain every referenced parent",
     "existing_minio_end_to_end": "not_retested",
     "production_operation_admission": "not_ready",
     "seven_day_observation": "not_started",
     "EV-007-003": "partial",
-    "EV-007-004": "not_complete"
+    "EV-007-004": "partial"
   }
 }

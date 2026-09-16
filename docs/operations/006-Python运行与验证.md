@@ -448,3 +448,7 @@ Red用例分别失败于缺少HEAD、缺少网络次数字段、3关键词仍估
 全新隔离Compose按CI顺序完成真实prefork诊断`succeeded/attempts=1`、Web容器不替换而backend替换后的代理401、空库Chromium 11项、99579字节custom dump与撤权清单两次幂等重放、固定0019旧应用数据库强制只读快照回退；正常停机worker=0、backend=143、scheduler=0且无SIGKILL。第一次浏览器复跑沿用了已创建事件的可丢弃卷，空态断言按设计失败；删除该隔离项目卷后按完整顺序原样通过。主运行`hotkey-local-main`随后从本次代码重建，Web 8010与API 8867可用，所有持久角色运行，ready为200，运行时OpenAPI与42路径快照一致且默认预算为192。
 
 功能提交`5aa72671ff246747082118929ba87c1230c25e68`的[远端CI #35113018077](https://github.com/StephenQiu30/hotkey-server/actions/runs/35113018077)在5分11秒内复现完整门禁并成功：200项后端、11项Chromium、prefork一次执行、代理401、99575字节备份恢复、0019只读回退和无SIGKILL停机。结构化证据见[EV-007-003-bilibili-anonymous-session-poc.json](evidence/007/EV-007-003-bilibili-anonymous-session-poc.json)。本片证明全新任务client可低频读取公开评论与回复，并使预算反映会话预检；尚未把修复后的评论/回复重新写入真实产品持久链，也未复验现有MinIO、生产准入和七日稳定运行，因此EV-007-003保持部分通过，EV-007-004保持未完成。
+
+随后按3.44已登记的一次性同协议MinIO fixture原样复验真实产品链。为避免定时任务创建第二条采集链，隔离scheduler停止后只使用已有`dispatch_one`发布手动根任务及其派生Outbox；最初停止scheduler时手动运行保持queued且没有访问平台，该编排超时不计作来源失败。真实Celery prefork随后以8次来源网络请求完成5个运行：搜索`partial/page_limit`、正文ok、3条根评论ok，以及两个父级合计21条回复ok。5个RawPage和5个Checkpoint全部写入对象存储并按压缩对象hash与解压payload hash完整读回；数据库形成1条post、3条comment、21条reply、25个版本/观察和24个主题命中，预算账本精确为8，Outbox无未发送记录。
+
+关系解析结果为1个root、22个resolved和2个unresolved；后两条回复引用的父评论不在当前有界样本中，没有伪造关系。随后应用删除账本调度并删除5/5对象，0失败、数据库5页均为deleted、对象版本0余留；隔离PostgreSQL、RabbitMQ、MinIO卷、容器和临时override全部删除，主运行保持可用。该结果使真实评论/回复持久化在临时协议fixture上通过并将EV-007-004推进为部分；用户现有MinIO本次未运行，生产准入默认仍关闭，EV-007-003整体仍保持部分通过。
