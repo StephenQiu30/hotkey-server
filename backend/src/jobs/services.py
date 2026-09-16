@@ -1,3 +1,4 @@
+from collections.abc import Callable, Mapping
 from uuid import UUID
 
 from sqlalchemy import select
@@ -5,14 +6,22 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from audit.services import audit
 from core.errors import AppError
+from jobs.contracts import JobKind
 from jobs.execution import cancel, enqueue
 from jobs.models import Job
 from jobs.schemas import JobPage, JobView
 
+CancelHandler = Callable[[UUID], bool]
+
 
 class JobService:
-    def __init__(self, factory: sessionmaker[Session]):
+    def __init__(
+        self,
+        factory: sessionmaker[Session],
+        cancellation_handlers: Mapping[JobKind, CancelHandler] | None = None,
+    ):
         self.factory = factory
+        self.cancellation_handlers = dict(cancellation_handlers or {})
 
     def create_job(self, key: str) -> JobView:
         with self.factory.begin() as session:
@@ -39,6 +48,10 @@ class JobService:
             return JobView.model_validate(job)
 
     def cancel_job(self, identity: UUID) -> JobView:
-        self.job(identity)
-        cancel(self.factory, identity)
+        job = self.job(identity)
+        handler = self.cancellation_handlers.get(job.kind)
+        if handler is None:
+            cancel(self.factory, identity)
+        else:
+            handler(identity)
         return self.job(identity)

@@ -34,7 +34,7 @@ from evidence.services import (
     upload,
 )
 from jobs.contracts import Lease
-from jobs.execution import enqueue, fail_lease, reschedule_lease
+from jobs.execution import cancel_in_session, enqueue, fail_lease, reschedule_lease
 from monitors.services import (
     active_monitor_configuration,
     content_is_matched,
@@ -389,6 +389,21 @@ class CollectionService:
             )
             return state in {"completed", "failed", "cancelled"}
 
+    def cancel_job(self, job_id: UUID) -> bool:
+        with self.factory.begin() as session:
+            run = session.scalar(
+                select(CollectionRun).where(CollectionRun.job_id == job_id).with_for_update()
+            )
+            if run is None or run.state not in {"queued", "running"}:
+                return False
+            if not cancel_in_session(session, job_id):
+                return False
+            run.state = "cancelled"
+            run.outcome = "partial"
+            run.stop_reason = "user_cancelled"
+            run.completed_at = utcnow()
+            return True
+
     @staticmethod
     def _running_run_for_lease(
         session: Session,
@@ -620,8 +635,6 @@ class CollectionService:
                     raise AppError("content_withdrawn", 409)
                 return self._commit_uploaded_page(session, run, data, prepared, stored)
         except AppError as error:
-            if error.code != "content_withdrawn":
-                raise
             try:
                 store.delete(stored.key, stored.sha256)
             except Exception:
@@ -643,7 +656,12 @@ class CollectionService:
                         prepared=prepared,
                         stored=stored,
                     )
-                raise AppError("content_withdrawn_evidence_cleanup_failed", 503) from error
+                cleanup_code = (
+                    "content_withdrawn_evidence_cleanup_failed"
+                    if error.code == "content_withdrawn"
+                    else "evidence_rejection_cleanup_failed"
+                )
+                raise AppError(cleanup_code, 503) from error
             raise
 
     def _commit_uploaded_page(

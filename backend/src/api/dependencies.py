@@ -35,7 +35,14 @@ def monitor_service(request: Request, sources: Sources) -> MonitorService:
 
 
 def job_service(request: Request) -> JobService:
-    return JobService(request.app.state.database.sessions)
+    factory = request.app.state.database.sessions
+    settings = request.app.state.settings
+    collections = CollectionService(
+        factory,
+        cast(SourceService, request.app.state.sources),
+        evidence_configured=settings.s3_configured,
+    )
+    return JobService(factory, {"collect_page": collections.cancel_job})
 
 
 def content_service(request: Request) -> ContentService:

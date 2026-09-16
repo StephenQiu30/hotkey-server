@@ -284,3 +284,13 @@ Red阶段因notifications模块不存在而在测试收集失败。Green阶段�
 隔离`hotkey-s04c-stack`完成0013迁移和真实scheduler/RabbitMQ/Celery prefork诊断，succeeded/attempts=1。Chromium 2项通过：Swagger读取提醒端点；合成owner合并两个事件后看到2条未读提醒，标记1条后刷新仍为1条未读。运行时OpenAPI与发布快照相同；Web保持运行而backend替换后代理返回401；关停worker=0、backend=143、scheduler=0，无SIGKILL或OOM。首次浏览器运行使用未列入允许来源的测试端口，Origin门禁按设计拒绝登录；改用已登记的8010后通过。远端CI在锁定依赖与全新容器中复现完整门禁，见 [GitHub Actions #34995710640](https://github.com/StephenQiu30/hotkey-server/actions/runs/34995710640)。结构化证据见 [event-notification-poc.json](evidence/event-notification-poc.json)。
 
 本片只验证合成事件变化，没有访问外部平台或连接现有MinIO。提醒由明确的人工事件变化触发，不代表趋势检测；趋势时间桶、来源覆盖中断、回填抑制、突发规则和分析失效仍未实现，因此不单独满足AC-007-010或完整TASK-007-S04-T01。
+
+## 007 S03-T02B 用户取消与页提交屏障验证（2026-09-16）
+
+`collect_page`现在通过组合根注入的领域处理器取消。处理器按CollectionRun→Job顺序加锁，在同一PostgreSQL事务把仍在排队或运行的两者结算为cancelled，并记录`partial/user_cancelled`；诊断任务继续只走通用Job取消。网络请求返回后和对象上传后均重新检查运行状态与fencing，取消或陈旧租约不能创建RawPage、Content、Checkpoint或后续run。已上传但被第二道屏障拒绝的精确对象立即删除；删除失败只登记一条`failed` RawPage，既有有界证据清理器可重试。
+
+Red阶段3项用例因采集取消处理器不存在失败，旧fencing用例确认对象会遗留；新增HTTP用例第一次还因测试预算不足在准入阶段失败，修正fixture后不把它作为产品故障。Green/Refactor后5项聚焦测试和170项完整后端测试通过，保留2条上游弃用提示；Ruff覆盖158文件，严格mypy覆盖131个源/脚本文件。`pip-audit`无已知漏洞，npm生产依赖审计为0；FastAPI OpenAPI快照与UmiOpenAPI生成客户端无漂移，前端边界、负向样例、Prettier与TypeScript/Vite构建通过。
+
+隔离`hotkey-s03d` Compose完成0019迁移，真实scheduler/RabbitMQ/Celery prefork诊断为succeeded/attempts=1；Web不替换而backend替换后代理返回401。正确初始化合成owner后Chromium 3项全部通过；首次浏览器运行因验证命令在frontend目录调用不存在的`python`而没有创建owner，Swagger通过而两项登录流程失败，改用仓库根目录的`python3`与显式Compose项目后原样重跑通过。PostgreSQL 16.15 custom dump为90426字节，恢复后删除清单重放两次保持幂等。正常停机worker=0、backend=143、scheduler=0且无SIGKILL，全部容器与卷已删除。结构化证据见[collection-cancellation-poc.json](evidence/collection-cancellation-poc.json)。
+
+验证使用合成来源响应和内存EvidenceStore，没有访问外部平台或用户现有MinIO。它证明应用取消、数据库账本和对象补偿协议，不证明真实平台在途请求中断、现有MinIO权限/TLS/版本行为、多页评论或七日稳定性；EV-007-005与TASK-007-S03-T02继续保持部分完成。

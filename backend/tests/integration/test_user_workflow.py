@@ -6,16 +6,24 @@ from sqlalchemy import func, select
 
 from api.dependencies import collection_service
 from audit.models import Audit
+from collection.models import CollectionRun
+from collection.schemas import CollectionRunInput
 from collection.services import CollectionService
 from core.clock import utcnow
 from core.config import Settings
 from identity.services import IdentityService
 from main import create_app
 from monitors.models import MonitorVersion
+from monitors.schemas import MonitorInput, MonitorStateChange
 from monitors.services import MonitorService
 from sources.services import SourceService
 
 pytestmark = pytest.mark.integration
+
+
+class AdmittedSources(SourceService):
+    def activation_issues(self, source_ids, operation="search_posts"):
+        return []
 
 
 @pytest.fixture
@@ -200,6 +208,50 @@ def test_diagnostic_idempotency_and_cancellation(client):
     assert a.status_code == 201 and a.json()["id"] == b.json()["id"]
     assert client.post("/api/v1/jobs", json={"kind": "collect"}).status_code == 422
     assert client.post("/api/v1/jobs/" + a.json()["id"] + "/cancel").json()["status"] == "cancelled"
+
+
+def test_collection_job_cancel_endpoint_atomically_cancels_queued_run(client, database):
+    login(client)
+    sources = AdmittedSources()
+    monitors = MonitorService(database, sources)
+    draft = monitors.create_monitor(
+        MonitorInput.model_validate(
+            {
+                "title": "排队取消",
+                "query_spec": {"include_any": ["AI"]},
+                "source_ids": ["bilibili"],
+                "budget": {"daily_requests": 1000, "content_purchase_cost": 0},
+            }
+        )
+    )
+    active = monitors.change_state(
+        draft.id,
+        MonitorStateChange(expected_version=draft.current_version),
+        "active",
+    )
+    created = CollectionService(database, sources, evidence_configured=True).create_run(
+        CollectionRunInput(
+            monitor_id=active.id,
+            expected_version=active.current_version,
+            source="bilibili",
+            request_value="AI",
+            since="2026-09-14T00:00:00Z",
+            until="2026-09-15T00:00:00Z",
+            idempotency_key="queued-run-http-cancel",
+            policy_version="synthetic-policy-v1",
+            retention_days=7,
+            ingestion_mode="live",
+        )
+    )
+
+    response = client.post(f"/api/v1/jobs/{created.job_id}/cancel")
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
+    with database() as session:
+        run = session.get(CollectionRun, created.id)
+        assert run is not None
+        assert run.state == "cancelled" and run.outcome == "partial"
+        assert run.stop_reason == "user_cancelled" and run.completed_at is not None
 
 
 def test_event_api_creates_a_revisioned_empty_dossier(client):

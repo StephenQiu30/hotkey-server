@@ -157,15 +157,21 @@ def reschedule_lease(
     return "scheduled"
 
 
+def cancel_in_session(session: Session, job_id: UUID) -> bool:
+    job = session.scalar(select(Job).where(Job.id == job_id).with_for_update())
+    if job is None or job.status not in {"queued", "running"}:
+        return False
+    now = utcnow()
+    finish_attempt(session, job, "cancelled", now)
+    job.status = "cancelled"
+    job.completed_at = now
+    job.lease_until = None
+    return True
+
+
 def cancel(factory: sessionmaker[Session], job_id: UUID) -> bool:
     with factory.begin() as session:
-        job = session.scalar(select(Job).where(Job.id == job_id).with_for_update())
-        if job is None or job.status not in {"queued", "running"}:
-            return False
-        finish_attempt(session, job, "cancelled", utcnow())
-        job.status = "cancelled"
-        job.lease_until = None
-        return True
+        return cancel_in_session(session, job_id)
 
 
 def reconcile(factory: sessionmaker[Session], stale_seconds: int = 120) -> int:

@@ -1,0 +1,68 @@
+{
+  "scope": "S03-T02B user cancellation and page commit barrier",
+  "date": "2026-09-16",
+  "environment": {
+    "database": "PostgreSQL 16 disposable Compose database",
+    "broker": "RabbitMQ 4.1 disposable test vhost and Compose worker",
+    "schema_revision": "0019_collection_retry_budget",
+    "source": "explicitly synthetic responses only",
+    "evidence_store": "in-memory protocol implementation"
+  },
+  "red": {
+    "focused_result": "5 failed",
+    "product_failures": [
+      "collection cancellation handler did not exist for three cancellation boundary cases",
+      "a stale fencing token rejected the database commit but left the uploaded object orphaned"
+    ],
+    "fixture_failure": "the first HTTP cancellation fixture used an insufficient activation budget; it was corrected before implementation"
+  },
+  "green": {
+    "focused": "5 passed",
+    "backend": "170 passed with 2 upstream deprecation warnings",
+    "ruff": "158 files formatted and linted",
+    "mypy": "131 source and verification files",
+    "dependency_audit": "no known Python vulnerabilities; production frontend audit 0",
+    "contract": "FastAPI OpenAPI snapshot and UmiOpenAPI generated client unchanged and current",
+    "browser": "3 Chromium tests passed after the synthetic owner was initialized correctly",
+    "compose": "0019 migration, real prefork job attempts=1, backend replacement proxy=401, graceful worker/scheduler exit=0 and backend exit=143 without SIGKILL"
+  },
+  "assertions": {
+    "queued_http_cancel": "job and collection run cancelled atomically with partial/user_cancelled",
+    "source_request_cancel": {
+      "raw_pages": 0,
+      "contents": 0,
+      "checkpoints": 0,
+      "stored_objects": 0
+    },
+    "object_upload_cancel": {
+      "database_commit_rejected": true,
+      "uploaded_object_deleted": true,
+      "raw_pages": 0,
+      "contents": 0,
+      "checkpoints": 0
+    },
+    "cleanup_failure": {
+      "tracked_raw_pages": 1,
+      "object_state": "failed",
+      "cleanup_attempts_before_reconcile": 1,
+      "reconcile_deleted": 1
+    },
+    "old_lease": "could not complete, fail, reschedule or reclaim the cancelled job",
+    "stale_fencing_upload": "rejected object was removed instead of becoming an untracked orphan",
+    "diagnostic_cancel_regression": "passed"
+  },
+  "backup_restore_regression": {
+    "schema_revision": "0019_collection_retry_budget",
+    "dump_format": "custom",
+    "dump_bytes": 90426,
+    "withdrawal_replay_twice": "deleted/delete_pending/1 tombstone",
+    "cleanup": "restore database, dump, manifest and source fixture removed"
+  },
+  "limitations": [
+    "No external platform request, account session, real user content or existing MinIO instance was used.",
+    "The in-memory store proves the EvidenceStore compensation protocol, not the selected MinIO deployment's TLS, delete permission, versioning or object-lock behavior.",
+    "Cancellation stops persistence after a bounded source request returns; this slice does not add transport-level interruption of an in-flight HTTP call.",
+    "Comment and reply continuation pages, multiple roots and seven-day observation remain outside this slice.",
+    "This evidence advances but does not complete EV-007-005 or TASK-007-S03-T02."
+  ]
+}

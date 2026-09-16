@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from collection.schemas import PageCommitInput
 from collection.services import CollectionService
+from core.errors import AppError
 from evidence.contracts import EvidenceStore
 from jobs.contracts import Lease
 from sources.contracts import CollectionPageFetcher
@@ -61,18 +62,23 @@ class CollectionExecutor:
             result = result.model_copy(
                 update={"status": "partial", "code": "page_limit", "cursor": None}
             )
-        self.service.commit_page(
-            PageCommitInput(
-                run_id=run.run_id,
-                fencing_token=run.fencing_token,
-                page_key=page.page_key,
-                request_fingerprint=page.request_fingerprint,
-                media_type=page.media_type,
-                payload=page.payload,
-                retention_until=result.observed_at + timedelta(days=run.retention_days),
-                policy_version=run.policy_version,
-                result=result,
-            ),
-            self.store,
-        )
+        try:
+            self.service.commit_page(
+                PageCommitInput(
+                    run_id=run.run_id,
+                    fencing_token=run.fencing_token,
+                    page_key=page.page_key,
+                    request_fingerprint=page.request_fingerprint,
+                    media_type=page.media_type,
+                    payload=page.payload,
+                    retention_until=result.observed_at + timedelta(days=run.retention_days),
+                    policy_version=run.policy_version,
+                    result=result,
+                ),
+                self.store,
+            )
+        except AppError as error:
+            if error.code in {"collection_run_not_running", "stale_collection_lease"}:
+                return False
+            raise
         return True

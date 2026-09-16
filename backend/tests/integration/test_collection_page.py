@@ -18,8 +18,9 @@ from evidence.contracts import StoredObject
 from evidence.models import RawPage
 from evidence.services import EvidenceDeletionService
 from jobs.contracts import Dispatch
-from jobs.execution import claim, complete, reconcile
-from jobs.models import Job, JobResult, Outbox
+from jobs.execution import claim, complete, fail_lease, reconcile, reschedule_lease
+from jobs.models import Attempt, Job, JobResult, Outbox
+from jobs.services import JobService
 from monitors.models import MonitorMatch
 from monitors.schemas import MonitorInput, MonitorStateChange
 from monitors.services import MonitorService
@@ -113,6 +114,23 @@ class WithdrawalDuringPutStore(MemoryStore):
         super().delete(key, expected_sha256)
 
 
+class CancelDuringPutStore(MemoryStore):
+    def __init__(self, cancel, *, fail_delete: bool = False):
+        super().__init__()
+        self.cancel = cancel
+        self.fail_delete = fail_delete
+
+    def put(self, key: str, payload: bytes, expected_sha256: str) -> StoredObject:
+        stored = super().put(key, payload, expected_sha256)
+        self.cancel()
+        return stored
+
+    def delete(self, key: str, expected_sha256: str) -> None:
+        if self.fail_delete:
+            raise RuntimeError("synthetic_delete_failure")
+        super().delete(key, expected_sha256)
+
+
 class StaticFetcher:
     def __init__(self, page: FetchedPage):
         self.page = page
@@ -132,6 +150,18 @@ class SequenceFetcher:
         page = self.pages[self.calls]
         self.calls += 1
         return page
+
+
+class CancelDuringFetch:
+    def __init__(self, page: FetchedPage, cancel):
+        self.page = page
+        self.cancel = cancel
+        self.calls = 0
+
+    def fetch(self, data):
+        self.calls += 1
+        self.cancel()
+        return self.page
 
 
 def monitor(service: MonitorService, title: str, terms: list[str]):
@@ -352,6 +382,120 @@ def test_collection_run_and_job_are_atomic_and_executor_commits_one_page(databas
         assert session.scalar(select(func.count()).select_from(Job)) == 1
         assert session.scalar(select(func.count()).select_from(Outbox)) == 1
         assert session.scalar(select(func.count()).select_from(JobResult)) == 0
+
+
+def test_user_cancel_during_source_fetch_atomically_stops_run_and_old_lease(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "请求期间取消", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    created = create_collection_run(
+        collection, active.id, active.current_version, "cancel-during-source-fetch"
+    )
+    lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert lease is not None
+    jobs = JobService(database, {"collect_page": collection.cancel_job})
+    payload = b'{"page":"cancel-during-fetch"}'
+    page = FetchedPage(
+        result=result("不得提交的合成正文", 0, payload),
+        payload=payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"cancel-during-fetch").hexdigest(),
+        page_key="search:cancel-during-fetch",
+    )
+    store = MemoryStore()
+
+    assert not CollectionExecutor(
+        collection,
+        sources,
+        CancelDuringFetch(page, lambda: jobs.cancel_job(created.job_id)),
+        store,
+    ).execute(lease)
+
+    with database.begin() as session:
+        run = session.get(CollectionRun, created.id)
+        job = session.get(Job, created.job_id)
+        attempt = session.scalar(select(Attempt).where(Attempt.job_id == created.job_id))
+        assert run is not None and job is not None and attempt is not None
+        assert run.state == "cancelled" and run.outcome == "partial"
+        assert run.stop_reason == "user_cancelled" and run.completed_at is not None
+        assert job.status == "cancelled" and job.lease_until is None
+        assert attempt.outcome == "cancelled" and attempt.ended_at is not None
+        assert session.scalar(select(func.count()).select_from(RawPage)) == 0
+        assert session.scalar(select(func.count()).select_from(Content)) == 0
+        assert session.scalar(select(func.count()).select_from(CollectionCheckpoint)) == 0
+        assert not fail_lease(session, lease)
+        assert reschedule_lease(session, lease, 5) == "stale"
+    assert store.objects == {}
+    assert not complete(database, lease)
+    assert claim(database, Dispatch(job_id=created.job_id, epoch=1)) is None
+
+
+def test_user_cancel_during_object_upload_deletes_rejected_object(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "上传期间取消", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    created = create_collection_run(
+        collection, active.id, active.current_version, "cancel-during-object-upload"
+    )
+    lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert lease is not None
+    jobs = JobService(database, {"collect_page": collection.cancel_job})
+    payload = b'{"page":"cancel-during-upload"}'
+    page = FetchedPage(
+        result=result("不得提交的合成正文", 0, payload),
+        payload=payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"cancel-during-upload").hexdigest(),
+        page_key="search:cancel-during-upload",
+    )
+    store = CancelDuringPutStore(lambda: jobs.cancel_job(created.job_id))
+
+    assert not CollectionExecutor(collection, sources, StaticFetcher(page), store).execute(lease)
+    assert store.objects == {}
+    with database() as session:
+        run = session.get(CollectionRun, created.id)
+        job = session.get(Job, created.job_id)
+        assert run is not None and job is not None
+        assert run.state == "cancelled" and job.status == "cancelled"
+        assert session.scalar(select(func.count()).select_from(RawPage)) == 0
+        assert session.scalar(select(func.count()).select_from(Content)) == 0
+        assert session.scalar(select(func.count()).select_from(CollectionCheckpoint)) == 0
+
+
+def test_cancelled_upload_cleanup_failure_is_recorded_and_reconciled(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "取消补偿", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    created = create_collection_run(
+        collection, active.id, active.current_version, "cancelled-upload-cleanup"
+    )
+    lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert lease is not None
+    jobs = JobService(database, {"collect_page": collection.cancel_job})
+    payload = b'{"page":"cancelled-upload-cleanup"}'
+    page = FetchedPage(
+        result=result("不得提交的合成正文", 0, payload),
+        payload=payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"cancelled-upload-cleanup").hexdigest(),
+        page_key="search:cancelled-upload-cleanup",
+    )
+    store = CancelDuringPutStore(lambda: jobs.cancel_job(created.job_id), fail_delete=True)
+
+    with pytest.raises(AppError, match="evidence_rejection_cleanup_failed"):
+        CollectionExecutor(collection, sources, StaticFetcher(page), store).execute(lease)
+
+    with database() as session:
+        raw_page = session.scalar(select(RawPage))
+        assert raw_page is not None
+        assert raw_page.run_id == created.id
+        assert raw_page.object_state == "failed" and raw_page.cleanup_attempts == 1
+        assert session.scalar(select(func.count()).select_from(Content)) == 0
+        assert session.scalar(select(func.count()).select_from(CollectionCheckpoint)) == 0
+
+    store.fail_delete = False
+    assert EvidenceDeletionService(database, store).reconcile(1).deleted == 1
+    assert store.objects == {}
 
 
 def test_search_reference_commit_atomically_creates_one_budgeted_detail_run(database):
@@ -1553,7 +1697,7 @@ def test_withdrawal_race_tracks_failed_compensation_for_reconciliation(database)
     assert store.objects == {}
 
 
-def test_old_fence_cannot_commit_and_stale_commit_leaves_orphan_object(database):
+def test_old_fence_cannot_commit_and_stale_upload_is_compensated(database):
     sources = AdmittedSources()
     monitors = MonitorService(database, sources)
     collection = CollectionService(database, sources, evidence_configured=True)
@@ -1589,6 +1733,6 @@ def test_old_fence_cannot_commit_and_stale_commit_leaves_orphan_object(database)
     )
     with pytest.raises(AppError, match="stale_collection_lease"):
         collection.commit_page(page, store)
-    assert len(store.objects) == 1
+    assert store.objects == {}
     with database() as session:
         assert session.scalar(select(func.count()).select_from(RawPage)) == 0
