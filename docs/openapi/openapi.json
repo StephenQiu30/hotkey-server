@@ -3224,6 +3224,9 @@
             "title": "Rights",
             "type": "string"
           },
+          "runtime": {
+            "$ref": "#/components/schemas/SourceOperationRuntime"
+          },
           "support": {
             "enum": [
               "unknown",
@@ -3250,9 +3253,83 @@
           "access_mode",
           "verified_at",
           "evidence_ref",
-          "note"
+          "note",
+          "runtime"
         ],
         "title": "SourceOperationCapability",
+        "type": "object"
+      },
+      "SourceOperationRuntime": {
+        "properties": {
+          "last_failure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failure At"
+          },
+          "last_failure_code": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failure Code"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "recovery_action": {
+            "anyOf": [
+              {
+                "enum": [
+                  "refresh_authorization",
+                  "wait_for_rate_limit",
+                  "check_source_availability",
+                  "update_adapter",
+                  "review_run"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Action"
+          },
+          "status": {
+            "enum": [
+              "unobserved",
+              "healthy",
+              "degraded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SourceOperationRuntime",
         "type": "object"
       },
       "SourceQueryPreview": {

@@ -4,7 +4,7 @@ from hashlib import sha256
 from typing import Literal, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -62,7 +62,12 @@ from monitors.services import (
     monitor_version_is_active,
     query_match_reasons,
 )
-from sources.schemas import QueryPreviewInput, SourceName
+from sources.schemas import (
+    QueryPreviewInput,
+    SourceName,
+    SourceOperationRuntime,
+    SourceRecoveryAction,
+)
 from sources.services import FOLLOWUP_REFERENCE_LIMITS, SourceService
 
 
@@ -76,6 +81,26 @@ class CollectionTrendRun:
     outcome: str | None
     window_since: datetime
     window_until: datetime
+
+
+@dataclass
+class SourceRuntimeFacts:
+    latest_kind: Literal["success", "failure"] | None = None
+    last_success_at: datetime | None = None
+    last_failure_at: datetime | None = None
+    last_failure_code: str | None = None
+
+
+def source_recovery_action(code: str) -> SourceRecoveryAction:
+    if code in {"access_denied", "authorization_required"}:
+        return "refresh_authorization"
+    if code in {"rate_limited", "page_budget_exhausted", "request_budget_exhausted"}:
+        return "wait_for_rate_limit"
+    if code in {"schema_drift", "invalid_source_result"}:
+        return "update_adapter"
+    if code in {"upstream_unavailable", "timeout", "network_error"}:
+        return "check_source_availability"
+    return "review_run"
 
 
 def collection_run_contexts(
@@ -611,6 +636,98 @@ class CollectionService:
                 items=[CollectionRunView.model_validate(row) for row in rows[:limit]],
                 next_cursor=self._encode_cursor(rows[limit - 1]) if len(rows) > limit else None,
             )
+
+    def source_runtime_statuses(self) -> dict[str, SourceOperationRuntime]:
+        successful = and_(
+            CollectionRun.state == "completed",
+            CollectionRun.outcome.in_(("ok", "empty", "partial")),
+        )
+        failed = or_(CollectionRun.state == "failed", CollectionRun.outcome == "failed")
+        terminal_runs = (
+            select(
+                CollectionRun.source,
+                CollectionRun.operation,
+                CollectionRun.state,
+                CollectionRun.outcome,
+                CollectionRun.stop_reason,
+                CollectionRun.completed_at,
+                CollectionRun.id,
+                case((successful, "success"), else_="failure").label("terminal_kind"),
+            )
+            .where(CollectionRun.completed_at.is_not(None), or_(successful, failed))
+            .cte("terminal_source_runs")
+        )
+        latest_by_kind = select(
+            terminal_runs,
+            func.row_number()
+            .over(
+                partition_by=(
+                    terminal_runs.c.source,
+                    terminal_runs.c.operation,
+                    terminal_runs.c.terminal_kind,
+                ),
+                order_by=(terminal_runs.c.completed_at.desc(), terminal_runs.c.id.desc()),
+            )
+            .label("recency"),
+        ).cte("latest_source_runs")
+        with self.factory() as session:
+            rows = session.execute(
+                select(
+                    latest_by_kind.c.source,
+                    latest_by_kind.c.operation,
+                    latest_by_kind.c.state,
+                    latest_by_kind.c.outcome,
+                    latest_by_kind.c.stop_reason,
+                    latest_by_kind.c.completed_at,
+                    latest_by_kind.c.id,
+                )
+                .where(latest_by_kind.c.recency == 1)
+                .order_by(
+                    latest_by_kind.c.source,
+                    latest_by_kind.c.operation,
+                    latest_by_kind.c.completed_at.desc(),
+                    latest_by_kind.c.id.desc(),
+                )
+            ).all()
+
+        facts_by_operation: dict[str, SourceRuntimeFacts] = {}
+        for source, operation, state, outcome, stop_reason, completed_at, _identity in rows:
+            if completed_at is None:
+                continue
+            key = f"{source}.{operation}"
+            facts = facts_by_operation.setdefault(key, SourceRuntimeFacts())
+            succeeded = state == "completed" and outcome in {"ok", "empty", "partial"}
+            if succeeded:
+                if facts.latest_kind is None:
+                    facts.latest_kind = "success"
+                if facts.last_success_at is None:
+                    facts.last_success_at = completed_at
+            else:
+                if facts.latest_kind is None:
+                    facts.latest_kind = "failure"
+                if facts.last_failure_at is None:
+                    facts.last_failure_at = completed_at
+                    facts.last_failure_code = stop_reason or "collection_failed"
+
+        result: dict[str, SourceOperationRuntime] = {}
+        for key, facts in facts_by_operation.items():
+            if facts.latest_kind == "failure":
+                failure_code = facts.last_failure_code or "collection_failed"
+                result[key] = SourceOperationRuntime(
+                    status="degraded",
+                    last_success_at=facts.last_success_at,
+                    last_failure_at=facts.last_failure_at,
+                    last_failure_code=failure_code,
+                    recovery_action=source_recovery_action(failure_code),
+                )
+            elif facts.last_success_at is not None:
+                result[key] = SourceOperationRuntime(
+                    status="healthy",
+                    last_success_at=facts.last_success_at,
+                    last_failure_at=facts.last_failure_at,
+                    last_failure_code=facts.last_failure_code,
+                )
+        return result
 
     def claim_for_job(self, lease: Lease) -> CollectionExecutionInput | None:
         with self.factory.begin() as session:

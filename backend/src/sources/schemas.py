@@ -13,6 +13,47 @@ SourceName = Literal["x", "bilibili", "weibo", "xiaohongshu", "douyin", "bluesky
 SourceOperation = Literal[
     "search_posts", "fetch_post", "list_comments", "list_replies", "fetch_thread"
 ]
+SourceRecoveryAction = Literal[
+    "refresh_authorization",
+    "wait_for_rate_limit",
+    "check_source_availability",
+    "update_adapter",
+    "review_run",
+]
+
+
+class SourceOperationRuntime(BaseModel):
+    status: Literal["unobserved", "healthy", "degraded"]
+    last_success_at: AwareDatetime | None = None
+    last_failure_at: AwareDatetime | None = None
+    last_failure_code: str | None = Field(default=None, min_length=1, max_length=80)
+    recovery_action: SourceRecoveryAction | None = None
+
+    @model_validator(mode="after")
+    def valid_runtime(self) -> Self:
+        if (self.last_failure_at is None) != (self.last_failure_code is None):
+            raise ValueError("failure time and code must be provided together")
+        if self.status == "unobserved" and any(
+            value is not None
+            for value in (
+                self.last_success_at,
+                self.last_failure_at,
+                self.last_failure_code,
+                self.recovery_action,
+            )
+        ):
+            raise ValueError("unobserved runtime cannot contain observations")
+        if self.status == "healthy" and self.last_success_at is None:
+            raise ValueError("healthy runtime requires a successful observation")
+        if self.status == "degraded" and (
+            self.last_failure_at is None
+            or self.last_failure_code is None
+            or self.recovery_action is None
+        ):
+            raise ValueError("degraded runtime requires failure details and recovery action")
+        if self.status != "degraded" and self.recovery_action is not None:
+            raise ValueError("only degraded runtime can expose a recovery action")
+        return self
 
 
 class SourceOperationCapability(BaseModel):
@@ -29,6 +70,7 @@ class SourceOperationCapability(BaseModel):
     verified_at: date
     evidence_ref: str = Field(min_length=1, max_length=255)
     note: str = Field(min_length=1, max_length=500)
+    runtime: SourceOperationRuntime
 
 
 class SourceView(BaseModel):

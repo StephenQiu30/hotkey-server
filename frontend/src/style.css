@@ -173,6 +173,25 @@ section {
   font-weight: 600;
   text-align: right;
 }
+.capability-detail {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+  min-width: 0;
+  text-align: right;
+}
+.runtime-status {
+  color: #718078;
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+.runtime-status[data-runtime="healthy"] {
+  color: #496a38;
+}
+.runtime-status[data-runtime="degraded"] {
+  color: #9a321f;
+}
 .capability-list strong[data-support="supported"] {
   color: #496a38;
 }

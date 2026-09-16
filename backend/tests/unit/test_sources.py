@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 from hashlib import sha256
 
 import httpx
@@ -17,6 +18,7 @@ from sources.schemas import (
     QueryPreviewInput,
     SearchInput,
     SocialObject,
+    SourceOperationRuntime,
     ThreadInput,
 )
 from sources.services import SourceService
@@ -70,6 +72,37 @@ def test_priority_source_catalog_separates_support_rights_and_pipeline():
     assert x_search.support == "authorization_required"
     assert x_search.content_purchase_cost == 0
     assert x_search.evidence_ref.endswith("EV-007-001-source-poc.json")
+
+
+def test_source_catalog_attaches_runtime_health_without_changing_admission():
+    failed_at = datetime(2026, 9, 16, 12, 0, tzinfo=UTC)
+    runtime = SourceOperationRuntime(
+        status="degraded",
+        last_success_at=datetime(2026, 9, 16, 11, 0, tzinfo=UTC),
+        last_failure_at=failed_at,
+        last_failure_code="access_denied",
+        recovery_action="refresh_authorization",
+    )
+
+    sources = {
+        source.id: source
+        for source in SourceService().catalog(runtime_statuses={"bilibili.list_comments": runtime})
+    }
+    comments = next(
+        operation
+        for operation in sources["bilibili"].operations
+        if operation.operation == "list_comments"
+    )
+    search = next(
+        operation
+        for operation in sources["bilibili"].operations
+        if operation.operation == "search_posts"
+    )
+
+    assert comments.runtime == runtime
+    assert comments.pipeline == "not_connected"
+    assert comments.eligible_for_collection is False
+    assert search.runtime.status == "unobserved"
 
 
 def test_operation_admission_requires_rights_pipeline_and_implemented_consumer():

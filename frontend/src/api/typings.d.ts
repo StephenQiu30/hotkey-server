@@ -1118,10 +1118,30 @@ declare namespace API {
     )[];
     /** Rights */
     rights: "unknown" | "allowed" | "denied";
+    runtime: SourceOperationRuntime;
     /** Support */
     support: "unknown" | "supported" | "unsupported" | "authorization_required";
     /** Verified At */
     verified_at: string;
+  };
+
+  type SourceOperationRuntime = {
+    /** Last Failure At */
+    last_failure_at?: string | null;
+    /** Last Failure Code */
+    last_failure_code?: string | null;
+    /** Last Success At */
+    last_success_at?: string | null;
+    /** Recovery Action */
+    recovery_action?:
+      | "refresh_authorization"
+      | "wait_for_rate_limit"
+      | "check_source_availability"
+      | "update_adapter"
+      | "review_run"
+      | null;
+    /** Status */
+    status: "unobserved" | "healthy" | "degraded";
   };
 
   type SourceQueryPreview = {

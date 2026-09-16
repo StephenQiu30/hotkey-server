@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from api.dependencies import Authenticated, Sources
+from api.dependencies import Authenticated, Collections, Sources
 from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
 from sources.schemas import QueryPreview, QueryPreviewInput, SourceView
 
@@ -13,8 +13,12 @@ router = APIRouter(prefix="/sources", tags=["sources"])
     responses=error_responses(*READ_ERROR_CODES),
     operation_id="listSources",
 )
-def source_catalog(service: Sources, owner: Authenticated) -> list[SourceView]:
-    return service.catalog()
+def source_catalog(
+    service: Sources,
+    collections: Collections,
+    owner: Authenticated,
+) -> list[SourceView]:
+    return service.catalog(collections.source_runtime_statuses())
 
 
 @router.post(

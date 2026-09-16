@@ -1,0 +1,44 @@
+{
+  "scope": "S02-T02K source operation runtime health projection",
+  "date": "2026-09-16",
+  "environment": {
+    "database": "PostgreSQL 16 disposable hotkey_test database",
+    "broker": "RabbitMQ 4.1 disposable hotkey_test vhost",
+    "browser": "Playwright Chromium against a disposable production frontend image",
+    "source": "controlled collection-run terminal facts; no external source request or MinIO access"
+  },
+  "red": {
+    "contract": "pytest collection failed because SourceOperationRuntime did not exist",
+    "projection": "a real PostgreSQL workflow stored a later access_denied failure after a success, while GET /api/sources still returned no runtime observation"
+  },
+  "green": {
+    "projection": "one read-only window query returns at most the latest success and latest failure for each source and operation",
+    "state_rules": "completed ok, empty or partial is success; failed state or failed outcome is failure; cancelled runs are ignored",
+    "degraded": "a later access_denied failure returned degraded, both UTC observation times and refresh_authorization",
+    "recovered": "a later empty success returned healthy and removed the current recovery action while retaining the historical failure observation",
+    "isolation": "an unobserved operation remained unobserved and static support, rights, pipeline and collection eligibility were unchanged",
+    "contract": "FastAPI OpenAPI snapshot and UmiOpenAPI generated client had no drift; runtime is a required generated capability field",
+    "backend": "196 passed with 2 upstream deprecation warnings",
+    "ruff": "166 backend files formatted and linted",
+    "mypy": "135 source and verification files",
+    "dependency_audit": "no known Python vulnerabilities; production frontend audit 0",
+    "frontend": "contract, boundary, negative boundary, Prettier and TypeScript/Vite checks passed; 106 modules built",
+    "browser": "11 Chromium tests passed, including degraded recovery text, unobserved state, Swagger and 390px no-overflow",
+    "compose_prefork_attempts": 1,
+    "production_compose": "required variables fail closed; a complete placeholder environment parsed successfully",
+    "local_runtime": "hotkey-local-main rebuilt from the verified frontend and backend; web 8010 and API 8867 are reachable, all persistent roles are running, readiness is 200, runtime OpenAPI equals the 42-path snapshot and unauthenticated /api/sources returns 401 through the web proxy",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+  },
+  "cleanup": {
+    "disposable_compose": "containers, network and volumes removed",
+    "test_database": "hotkey_test dropped",
+    "test_vhost": "zero-message hotkey.control queue observed before hotkey_test vhost deletion",
+    "repository_external_override": "temporary Compose override removed"
+  },
+  "limitations": [
+    "The browser failure response and database runs are controlled evidence; they do not prove that a platform authorization refresh succeeds.",
+    "No external platform, existing MinIO instance, real user content, paid service or seven-day observation was used.",
+    "Runtime health is a read-only user signal and does not automatically retry, pause or change source admission.",
+    "This slice advances FR-007-001 and FR-007-012 but does not complete EV-007-003, EV-007-004 or the full P0 goal."
+  ]
+}

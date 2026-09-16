@@ -428,3 +428,11 @@ Red阶段后端操作ID测试精确失败于端点缺失，Chromium用例精确�
 真实prefork链完成搜索与正文并派生评论：搜索以`partial/page_limit`结算、正文`ok`，评论请求返回`access_denied`并原子失败，未继续请求回复。搜索、正文和评论拒绝响应共3个RawPage、3个Checkpoint；3个对象均从fixture按SHA-256完整读回，正文形成1个内容版本/观察。随后通过应用删除账本删除全部3个对象和所有版本，0失败、0余留；隔离PostgreSQL、RabbitMQ、MinIO卷、容器和临时env全部删除。没有对评论拒绝高频重试，总内容采购费用为0。
 
 结构化证据见 [EV-007-003-bilibili-live-canary.json](evidence/007/EV-007-003-bilibili-live-canary.json)。功能提交`c8d2c320301a9bd489ccacfaad99b7f772449a38`的[远端CI #35095350599](https://github.com/StephenQiu30/hotkey-server/actions/runs/35095350599)在3分31秒内通过，复现194项后端测试、10项Chromium、OpenAPI/UmiOpenAPI契约、真实PostgreSQL/RabbitMQ prefork、代理替换、备份恢复、旧应用回退和无SIGKILL停机门禁。它证明真实来源的搜索/正文持久主链和拒绝状态处理，但不证明真实评论/回复持久化、现有MinIO当前可用、生产来源准入或七日稳定性；EV-007-003仅部分通过，EV-007-004保持未完成。
+
+## 007 S02-T02K 来源运行健康投影（2026-09-16）
+
+认证后的`GET /api/sources`现在把来源能力的静态准入与现有`collection_runs`终态事实组合返回。每项操作明确显示尚无运行记录、运行正常或运行异常；异常状态包含最近失败时间、稳定失败码、最近成功时间（如有）和恢复动作。授权失败映射为“更新授权后执行有界重试”，限流、来源不可用、适配器结构变化和未知失败分别使用稳定动作枚举。运行健康只读，不改变`support/rights/pipeline/eligible_for_collection`，也不触发网络、预算或自动重试。
+
+投影使用数据库窗口查询，每个来源操作最多返回最近一次成功与最近一次失败。`completed`且outcome为`ok|empty|partial`视为成功，failed state或failed outcome视为失败，取消不算来源故障；完成时间相同时用运行ID稳定排序。真实PostgreSQL用例验证先成功、后`access_denied`为degraded，更晚empty成功恢复healthy；其他操作仍为unobserved。FastAPI/Pydantic自动维护Swagger/OpenAPI，UmiOpenAPI只更新`frontend/src/api/typings.d.ts`，业务页面继续调用已有生成的`listSources`，没有手写URL、HTTP方法或DTO。
+
+本地完整验收为196项后端测试通过并保留2条上游弃用提示；Ruff检查166个后端文件，严格mypy检查135个源/验证文件，Python和前端生产依赖无已知漏洞。OpenAPI/UmiOpenAPI漂移、前端边界/负向边界、Prettier和TypeScript/Vite构建通过。一次性Compose中的真实prefork诊断attempts=1，Chromium 11项全部通过，覆盖异常恢复文案、未观察空态、Swagger及390px无横向溢出；正常停机worker=0、backend=143、scheduler=0且无SIGKILL，临时资源已删除。结构化证据见[source-runtime-health-poc.json](evidence/source-runtime-health-poc.json)。本片使用受控运行事实，没有访问外部平台或现有MinIO，不代表平台授权已经恢复、真实评论可用或七日稳定性已验收。

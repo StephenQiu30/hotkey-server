@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -197,6 +198,89 @@ def test_exact_search_admission_is_shared_by_api_and_monitor_activation(database
         )
         assert activated.status_code == 200
         assert activated.json()["state"] == "active"
+
+
+def test_source_catalog_projects_latest_runtime_health(client, database):
+    login(client)
+    sources = AdmittedSources()
+    monitors = MonitorService(database, sources)
+    draft = monitors.create_monitor(
+        MonitorInput.model_validate(
+            {
+                "title": "来源健康",
+                "query_spec": {"include_any": ["AI"]},
+                "source_ids": ["bilibili"],
+                "budget": {"daily_requests": 1000, "content_purchase_cost": 0},
+            }
+        )
+    )
+    active = monitors.change_state(
+        draft.id,
+        MonitorStateChange(expected_version=draft.current_version),
+        "active",
+    )
+
+    def create(key: str):
+        return CollectionService(database, sources, evidence_configured=True).create_run(
+            CollectionRunInput(
+                monitor_id=active.id,
+                expected_version=active.current_version,
+                source="bilibili",
+                request_value="AI",
+                since="2026-09-14T00:00:00Z",
+                until="2026-09-15T00:00:00Z",
+                idempotency_key=key,
+                policy_version="synthetic-policy-v1",
+                retention_days=7,
+                ingestion_mode="live",
+            )
+        )
+
+    success = create("runtime-health-success")
+    failure = create("runtime-health-failure")
+    now = utcnow()
+    with database.begin() as session:
+        succeeded = session.get(CollectionRun, success.id)
+        failed = session.get(CollectionRun, failure.id)
+        assert succeeded is not None and failed is not None
+        succeeded.state = "completed"
+        succeeded.outcome = "ok"
+        succeeded.completed_at = now - timedelta(minutes=2)
+        failed.state = "failed"
+        failed.outcome = "failed"
+        failed.stop_reason = "access_denied"
+        failed.completed_at = now - timedelta(minutes=1)
+
+    catalog = client.get("/api/sources")
+    assert catalog.status_code == 200
+    bilibili = next(source for source in catalog.json() if source["id"] == "bilibili")
+    operations = {item["operation"]: item for item in bilibili["operations"]}
+    assert operations["search_posts"]["runtime"] == {
+        "status": "degraded",
+        "last_success_at": (now - timedelta(minutes=2)).isoformat().replace("+00:00", "Z"),
+        "last_failure_at": (now - timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
+        "last_failure_code": "access_denied",
+        "recovery_action": "refresh_authorization",
+    }
+    assert operations["list_comments"]["runtime"]["status"] == "unobserved"
+
+    recovered = create("runtime-health-recovered")
+    with database.begin() as session:
+        row = session.get(CollectionRun, recovered.id)
+        assert row is not None
+        row.state = "completed"
+        row.outcome = "empty"
+        row.completed_at = now
+
+    catalog = client.get("/api/sources").json()
+    bilibili = next(source for source in catalog if source["id"] == "bilibili")
+    runtime = next(
+        item["runtime"] for item in bilibili["operations"] if item["operation"] == "search_posts"
+    )
+    assert runtime["status"] == "healthy"
+    assert runtime["last_success_at"] == now.isoformat().replace("+00:00", "Z")
+    assert runtime["last_failure_code"] == "access_denied"
+    assert runtime["recovery_action"] is None
 
 
 def test_diagnostic_idempotency_and_cancellation(client):

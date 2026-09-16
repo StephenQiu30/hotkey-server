@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import date
 
 from pydantic import ValidationError
@@ -13,6 +13,7 @@ from sources.schemas import (
     QuerySpec,
     SourceName,
     SourceOperationCapability,
+    SourceOperationRuntime,
     SourceQueryPreview,
     SourceView,
 )
@@ -66,6 +67,7 @@ def capability(
             "verified_at": VERIFIED_AT,
             "evidence_ref": EVIDENCE,
             "note": note,
+            "runtime": SourceOperationRuntime(status="unobserved"),
         }
     )
 
@@ -120,7 +122,11 @@ class SourceService:
             }
         )
 
-    def catalog(self) -> list[SourceView]:
+    def catalog(
+        self,
+        runtime_statuses: Mapping[str, SourceOperationRuntime] | None = None,
+    ) -> list[SourceView]:
+        runtime_statuses = runtime_statuses or {}
         rows: tuple[tuple[SourceName, list[str], list[SourceOperationCapability]], ...] = (
             (
                 "x",
@@ -231,7 +237,17 @@ class SourceService:
         )
         result = []
         for source, roles, source_operations in rows:
-            admitted = [self._operation(source, operation) for operation in source_operations]
+            admitted = [
+                self._operation(source, operation).model_copy(
+                    update={
+                        "runtime": runtime_statuses.get(
+                            f"{source}.{operation.operation}",
+                            SourceOperationRuntime(status="unobserved"),
+                        )
+                    }
+                )
+                for operation in source_operations
+            ]
             by_operation: dict[str, SourceOperationCapability] = {
                 operation.operation: operation for operation in admitted
             }

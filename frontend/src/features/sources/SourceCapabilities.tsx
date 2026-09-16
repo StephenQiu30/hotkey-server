@@ -1,5 +1,6 @@
 type Source = API.SourceView;
 type Capability = API.SourceOperationCapability;
+type Runtime = API.SourceOperationRuntime;
 
 const sourceLabels: Record<Source["id"], string> = {
   x: "X",
@@ -36,6 +37,68 @@ const pipelineLabels: Record<Capability["pipeline"], string> = {
   degraded: "连接异常",
   paused: "已暂停",
 };
+
+const recoveryLabels: Record<
+  Exclude<Runtime["recovery_action"], null | undefined>,
+  string
+> = {
+  refresh_authorization: "更新授权后执行有界重试",
+  wait_for_rate_limit: "等待限流窗口后由调度恢复",
+  check_source_availability: "检查平台可用性后重试",
+  update_adapter: "暂停来源并更新适配器",
+  review_run: "查看运行详情后再重试",
+};
+
+const failureLabels: Record<string, string> = {
+  access_denied: "授权被拒绝",
+  authorization_required: "需要授权",
+  rate_limited: "平台限流",
+  upstream_unavailable: "平台暂不可用",
+  schema_drift: "来源结构变化",
+  timeout: "请求超时",
+};
+
+const observedAt = new Intl.DateTimeFormat("zh-CN", {
+  dateStyle: "short",
+  timeStyle: "short",
+  hour12: false,
+});
+
+function formatObservedAt(value?: string | null): string | null {
+  if (!value) return null;
+  return observedAt.format(new Date(value));
+}
+
+function RuntimeStatus({ runtime }: { runtime: Runtime }) {
+  const successAt = formatObservedAt(runtime.last_success_at);
+  const failureAt = formatObservedAt(runtime.last_failure_at);
+  if (runtime.status === "unobserved") {
+    return <small className="runtime-status">尚无运行记录</small>;
+  }
+  if (runtime.status === "healthy") {
+    return (
+      <small className="runtime-status" data-runtime="healthy">
+        运行正常{successAt ? ` · 最近成功 ${successAt}` : ""}
+      </small>
+    );
+  }
+  const failure = runtime.last_failure_code
+    ? (failureLabels[runtime.last_failure_code] ?? runtime.last_failure_code)
+    : "未知失败";
+  const recovery = runtime.recovery_action
+    ? recoveryLabels[runtime.recovery_action]
+    : null;
+  return (
+    <small className="runtime-status" data-runtime="degraded">
+      <span>
+        运行异常 · {failure}
+        {failureAt ? ` · 最近失败 ${failureAt}` : ""}
+      </span>
+      {successAt ? <span>最近成功 {successAt}</span> : null}
+      {recovery ? <span>恢复：{recovery}</span> : null}
+    </small>
+  );
+}
 
 export function canCollect(
   source: Source,
@@ -74,12 +137,15 @@ export function SourceCapabilities({ sources }: { sources: Source[] }) {
               {source.operations.map((capability) => (
                 <li key={capability.operation}>
                   <span>{operationLabels[capability.operation]}</span>
-                  <strong data-support={capability.support}>
-                    {supportLabels[capability.support]} ·{" "}
-                    {rightsLabels[capability.rights]} ·{" "}
-                    {pipelineLabels[capability.pipeline]}
-                    {capability.eligible_for_collection ? " · 可采集" : ""}
-                  </strong>
+                  <div className="capability-detail">
+                    <strong data-support={capability.support}>
+                      {supportLabels[capability.support]} ·{" "}
+                      {rightsLabels[capability.rights]} ·{" "}
+                      {pipelineLabels[capability.pipeline]}
+                      {capability.eligible_for_collection ? " · 可采集" : ""}
+                    </strong>
+                    <RuntimeStatus runtime={capability.runtime} />
+                  </div>
                 </li>
               ))}
             </ul>
