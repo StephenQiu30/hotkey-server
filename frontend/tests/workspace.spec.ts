@@ -122,7 +122,10 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
     if (route.request().method() === "POST") {
       const response = await route.fetch();
       currentJob = await response.json();
-      await route.fulfill({ response });
+      await route.fulfill({
+        response,
+        json: { ...currentJob, status: "queued", attempts: 0 },
+      });
       return;
     }
     jobReads += 1;

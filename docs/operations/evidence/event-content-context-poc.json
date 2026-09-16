@@ -35,9 +35,15 @@
     "old_application_rollback": "fixed 0019 application read an isolated old-schema snapshot through a database-enforced read-only role",
     "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
   },
-  "regression_note": "A reused disposable database contained events created by a previous browser run, so the workspace empty-state assertion failed; deleting only this Compose project's volumes and rerunning unchanged produced 9 passes.",
+  "regression_note": "A reused disposable database contained events created by a previous browser run, so the workspace empty-state assertion failed; deleting only this Compose project volumes and rerunning unchanged produced 9 passes. The first remote run also exposed an existing diagnostic-test race: the real prefork worker could finish before the UI observed the controlled queued phase. The POST response is now held at queued by the test route while later generated list reads drive the deterministic terminal sequence; the production request and worker still execute.",
   "remote_ci": {
-    "status": "pending"
+    "first_run": {
+      "status": "failed",
+      "run_id": 35067915354,
+      "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35067915354",
+      "failure": "workspace polling test observed the real diagnostic as completed before its controlled queued assertion"
+    },
+    "final_status": "pending"
   },
   "limitations": [
     "The browser response is controlled and verifies generated-client wiring; it does not prove real platform comment retrieval.",
