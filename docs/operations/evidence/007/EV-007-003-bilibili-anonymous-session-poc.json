@@ -92,6 +92,20 @@
     "local_runtime": "hotkey-local-main rebuilt and running on web 8010 and API 8867; runtime OpenAPI matches the 42-path snapshot",
     "test_resources_cleaned": "hotkey_test database and RabbitMQ vhost removed"
   },
+  "remote_ci": {
+    "status": "success",
+    "run_id": 35113018077,
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35113018077",
+    "commit": "5aa72671ff246747082118929ba87c1230c25e68",
+    "duration": "5m11s",
+    "backend_tests": "200 passed with 2 upstream deprecation warnings",
+    "browser": "11 passed",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore": "schema 0020_trend_alerts, 99575-byte custom dump, withdrawal replay idempotent",
+    "old_application_rollback": "fixed 0019 application read an isolated database-enforced read-only snapshot",
+    "shutdown": "worker 0, backend 143, scheduler 0, no SIGKILL"
+  },
   "acceptance_boundary": {
     "fresh_client_public_comments": "passed_once",
     "fresh_client_public_replies": "passed_once",

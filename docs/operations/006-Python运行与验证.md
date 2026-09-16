@@ -447,4 +447,4 @@ Red用例分别失败于缺少HEAD、缺少网络次数字段、3关键词仍估
 
 全新隔离Compose按CI顺序完成真实prefork诊断`succeeded/attempts=1`、Web容器不替换而backend替换后的代理401、空库Chromium 11项、99579字节custom dump与撤权清单两次幂等重放、固定0019旧应用数据库强制只读快照回退；正常停机worker=0、backend=143、scheduler=0且无SIGKILL。第一次浏览器复跑沿用了已创建事件的可丢弃卷，空态断言按设计失败；删除该隔离项目卷后按完整顺序原样通过。主运行`hotkey-local-main`随后从本次代码重建，Web 8010与API 8867可用，所有持久角色运行，ready为200，运行时OpenAPI与42路径快照一致且默认预算为192。
 
-结构化证据见[EV-007-003-bilibili-anonymous-session-poc.json](evidence/007/EV-007-003-bilibili-anonymous-session-poc.json)。本片证明全新任务client可低频读取公开评论与回复，并使预算反映会话预检；尚未把修复后的评论/回复重新写入真实产品持久链，也未复验现有MinIO、生产准入和七日稳定运行，因此EV-007-003保持部分通过，EV-007-004保持未完成。
+功能提交`5aa72671ff246747082118929ba87c1230c25e68`的[远端CI #35113018077](https://github.com/StephenQiu30/hotkey-server/actions/runs/35113018077)在5分11秒内复现完整门禁并成功：200项后端、11项Chromium、prefork一次执行、代理401、99575字节备份恢复、0019只读回退和无SIGKILL停机。结构化证据见[EV-007-003-bilibili-anonymous-session-poc.json](evidence/007/EV-007-003-bilibili-anonymous-session-poc.json)。本片证明全新任务client可低频读取公开评论与回复，并使预算反映会话预检；尚未把修复后的评论/回复重新写入真实产品持久链，也未复验现有MinIO、生产准入和七日稳定运行，因此EV-007-003保持部分通过，EV-007-004保持未完成。
