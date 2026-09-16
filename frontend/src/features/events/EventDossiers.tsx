@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ContentDiscussion } from "../contents/ContentDiscussion";
 import { EventAnalysis } from "./EventAnalysis";
 import { EventTrends } from "./EventTrends";
 
@@ -102,17 +103,26 @@ export function EventDossiers({
                 <h3>{item.title}</h3>
                 {item.summary && <p className="muted">{item.summary}</p>}
                 {item.members.map((member) => (
-                  <div className="event-member" key={member.content_id}>
-                    <span>
-                      {member.source} · {member.kind} · {member.external_id}
-                    </span>
-                    <button
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() => void onRemove(item.id, member.content_id)}
-                    >
-                      移出
-                    </button>
+                  <div key={member.content_id}>
+                    <div className="event-member">
+                      <span>
+                        {member.source} · {member.kind} · {member.external_id}
+                      </span>
+                      <button
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() =>
+                          void onRemove(item.id, member.content_id)
+                        }
+                      >
+                        移出
+                      </button>
+                    </div>
+                    <ContentDiscussion
+                      contentId={member.content_id}
+                      externalId={member.external_id}
+                      kind={member.kind}
+                    />
                   </div>
                 ))}
                 <EventTrends
