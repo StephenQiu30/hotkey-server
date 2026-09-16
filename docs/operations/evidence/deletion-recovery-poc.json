@@ -84,7 +84,13 @@
     "compose": "0018 migration, full PostgreSQL/RabbitMQ/Backend/Worker/Scheduler/Web topology, real prefork job with attempts=1 and backend replacement proxy check passed; readiness, OpenAPI and web returned HTTP 200",
     "playwright": "3 Chromium tests passed for the controlled knowledge state, Swagger contract, authenticated workspace and 390px layout",
     "shutdown": "worker=0, backend=143, scheduler=0, web=0, PostgreSQL=0 and RabbitMQ=0; no SIGKILL, OOM or application traceback observed",
-    "remote_ci": null
+    "remote_ci": {
+      "feature_commit": "6ce9d90bca469583a22994d0852e4257f6c169d4",
+      "run_id": 35039356595,
+      "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35039356595",
+      "conclusion": "success",
+      "duration": "2m42s"
+    }
   },
   "limitations": [
     "The POC uses synthetic database rows and an in-memory evidence store for lifecycle behavior; it does not prove deletion on the selected existing MinIO instance.",
