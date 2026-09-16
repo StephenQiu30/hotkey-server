@@ -1,0 +1,50 @@
+{
+  "scope": "S03-T02C atomic page and job settlement",
+  "date": "2026-09-16",
+  "environment": {
+    "database": "PostgreSQL 16.15 disposable Compose database",
+    "broker": "RabbitMQ 4.1.8 disposable Compose broker",
+    "schema_revision": "0019_collection_retry_budget",
+    "source": "explicitly synthetic responses only",
+    "evidence_store": "in-memory protocol implementation"
+  },
+  "red": {
+    "focused_result": "3 failed",
+    "failures": [
+      "a committed collection page left its job running",
+      "a paused monitor returned a completion signal to the worker",
+      "a terminal collection state did not safely close a redelivery"
+    ]
+  },
+  "green": {
+    "focused": "30 passed",
+    "backend": "170 passed with 2 upstream deprecation warnings",
+    "ruff": "158 files formatted and linted",
+    "mypy": "131 source and verification files",
+    "dependency_audit": "no known Python vulnerabilities; production frontend audit 0",
+    "contract": "FastAPI OpenAPI snapshot and UmiOpenAPI generated client unchanged and current",
+    "browser": "3 Chromium tests passed on a fresh synthetic database",
+    "compose": "real prefork job attempts=1, backend replacement proxy=401, graceful worker/scheduler exit=0 and backend exit=143 without SIGKILL"
+  },
+  "assertions": {
+    "successful_final_page": "raw page, content, checkpoint, collection run and job committed in one transaction",
+    "failed_final_page": "collection run, job and attempt settled failed in one transaction",
+    "worker_boundary": "collect_page execution owns settlement and the worker does not call complete afterward",
+    "message_redelivery": "the same epoch cannot reclaim a succeeded job and source fetch count remains one",
+    "duplicate_page": "the same lease identity returns the existing checkpoint without new content, object or follow-up run",
+    "paused_monitor": "collection run and job cancel atomically before source fetch",
+    "stale_lease": "epoch, kind, fencing, lease timeout and deadline are revalidated before persistence"
+  },
+  "test_isolation": {
+    "initial_browser_rerun": "failed because a prior disposable run left synthetic event data",
+    "corrective_action": "removed only the hotkey-s03f disposable containers and volumes",
+    "fresh_rerun": "3 passed"
+  },
+  "limitations": [
+    "No external platform request, account session, real user content or existing MinIO instance was used.",
+    "The Compose diagnostic exercises the real scheduler, RabbitMQ and Celery prefork path but not collection because source rights and object storage remain disabled.",
+    "Comment and reply continuation pages, multiple roots and seven-day observation remain outside this slice.",
+    "The HTTP/OpenAPI contract and generated frontend client are unchanged.",
+    "This evidence advances but does not complete EV-007-005 or TASK-007-S03-T02."
+  ]
+}

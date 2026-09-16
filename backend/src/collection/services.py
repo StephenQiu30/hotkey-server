@@ -34,7 +34,15 @@ from evidence.services import (
     upload,
 )
 from jobs.contracts import Lease
-from jobs.execution import cancel_in_session, enqueue, fail_lease, reschedule_lease
+from jobs.execution import (
+    cancel_in_session,
+    complete_in_session,
+    enqueue,
+    fail_lease,
+    lease_has_status,
+    lease_is_active,
+    reschedule_lease,
+)
 from monitors.services import (
     active_monitor_configuration,
     content_is_matched,
@@ -351,27 +359,32 @@ class CollectionService:
                 next_cursor=self._encode_cursor(rows[limit - 1]) if len(rows) > limit else None,
             )
 
-    def claim_for_job(self, job_id: UUID, fencing_token: int) -> CollectionExecutionInput | None:
+    def claim_for_job(self, lease: Lease) -> CollectionExecutionInput | None:
         with self.factory.begin() as session:
             run = session.scalar(
-                select(CollectionRun).where(CollectionRun.job_id == job_id).with_for_update()
+                select(CollectionRun).where(CollectionRun.job_id == lease.job_id).with_for_update()
             )
-            if run is None or run.state not in {"queued", "running"}:
+            if run is None or run.job_id != lease.job_id:
+                return None
+            if not lease_is_active(session, lease):
+                return None
+            if run.state not in {"queued", "running"}:
                 return None
             if not monitor_version_is_active(session, run.monitor_version_id):
-                run.state = "cancelled"
-                run.outcome = "partial"
-                run.stop_reason = "monitor_inactive"
-                run.completed_at = utcnow()
+                if cancel_in_session(session, lease.job_id):
+                    run.state = "cancelled"
+                    run.outcome = "partial"
+                    run.stop_reason = "monitor_inactive"
+                    run.completed_at = utcnow()
                 return None
             run.state = "running"
-            run.fencing_token = fencing_token
+            run.fencing_token = lease.fencing_token
             run.started_at = run.started_at or utcnow()
             return CollectionExecutionInput(
                 run_id=run.id,
                 job_id=run.job_id,
                 parent_run_id=run.parent_run_id,
-                fencing_token=run.fencing_token,
+                fencing_token=lease.fencing_token,
                 source=run.source,
                 operation=run.operation,
                 request_value=run.request_value,
@@ -381,13 +394,6 @@ class CollectionService:
                 retention_days=run.retention_days,
                 ingestion_mode=run.ingestion_mode,
             )
-
-    def result_committed_for_job(self, job_id: UUID) -> bool:
-        with self.factory() as session:
-            state = session.scalar(
-                select(CollectionRun.state).where(CollectionRun.job_id == job_id)
-            )
-            return state in {"completed", "failed", "cancelled"}
 
     def cancel_job(self, job_id: UUID) -> bool:
         with self.factory.begin() as session:
@@ -482,6 +488,7 @@ class CollectionService:
         session: Session,
         data: PageCommitInput,
         prepared: PreparedEvidence,
+        lease: Lease,
         *,
         lock: bool,
     ) -> tuple[CollectionRun, CollectionCheckpoint | None]:
@@ -491,7 +498,12 @@ class CollectionService:
         run = session.scalar(query)
         if run is None:
             raise AppError("collection_run_not_found", 404)
-        if run.fencing_token != data.fencing_token:
+        if (
+            lease.kind != "collect_page"
+            or lease.job_id != run.job_id
+            or lease.fencing_token != data.fencing_token
+            or run.fencing_token != lease.fencing_token
+        ):
             raise AppError("stale_collection_lease", 409)
         if run.source != data.result.source or run.operation != data.result.operation:
             raise AppError("collection_result_mismatch", 409)
@@ -599,7 +611,9 @@ class CollectionService:
             created += 1
         return created, None
 
-    def commit_page(self, data: PageCommitInput, store: EvidenceStore) -> PageCommitView:
+    def commit_page(
+        self, data: PageCommitInput, store: EvidenceStore, lease: Lease
+    ) -> PageCommitView:
         if data.result.response_sha256 is None:
             raise AppError("evidence_hash_missing", 409)
         if data.result.response_sha256 != sha256(data.payload).hexdigest():
@@ -615,16 +629,25 @@ class CollectionService:
             data.payload,
         )
         with self.factory() as session:
-            run, existing = self._page_state(session, data, prepared, lock=False)
+            run, existing = self._page_state(session, data, prepared, lease, lock=False)
             if existing is not None:
-                return self._duplicate_view(run, existing)
+                with self.factory.begin() as settling_session:
+                    settled_run, settled_checkpoint = self._page_state(
+                        settling_session, data, prepared, lease, lock=True
+                    )
+                    assert settled_checkpoint is not None
+                    self._validate_or_settle_run_lease(settling_session, settled_run, lease)
+                    return self._duplicate_view(settled_run, settled_checkpoint)
             if page_contains_withdrawn_content(session, run.source, data.result.items):
                 raise AppError("content_withdrawn", 409)
+            if not lease_is_active(session, lease):
+                raise AppError("stale_collection_lease", 409)
         stored = upload(store, prepared)
         try:
             with self.factory.begin() as session:
-                run, existing = self._page_state(session, data, prepared, lock=True)
+                run, existing = self._page_state(session, data, prepared, lease, lock=True)
                 if existing is not None:
+                    self._validate_or_settle_run_lease(session, run, lease)
                     return self._duplicate_view(run, existing)
                 lock_content_identities(
                     session,
@@ -633,7 +656,9 @@ class CollectionService:
                 )
                 if page_contains_withdrawn_content(session, run.source, data.result.items):
                     raise AppError("content_withdrawn", 409)
-                return self._commit_uploaded_page(session, run, data, prepared, stored)
+                view = self._commit_uploaded_page(session, run, data, prepared, stored)
+                self._validate_or_settle_run_lease(session, run, lease)
+                return view
         except AppError as error:
             try:
                 store.delete(stored.key, stored.sha256)
@@ -663,6 +688,21 @@ class CollectionService:
                 )
                 raise AppError(cleanup_code, 503) from error
             raise
+
+    @staticmethod
+    def _validate_or_settle_run_lease(session: Session, run: CollectionRun, lease: Lease) -> None:
+        if run.state == "completed":
+            settled = complete_in_session(session, lease) or lease_has_status(
+                session, lease, "succeeded"
+            )
+        elif run.state == "failed":
+            settled = fail_lease(session, lease) or lease_has_status(session, lease, "failed")
+        elif run.state == "running":
+            settled = lease_is_active(session, lease)
+        else:
+            settled = False
+        if not settled:
+            raise AppError("stale_collection_lease", 409)
 
     def _commit_uploaded_page(
         self,

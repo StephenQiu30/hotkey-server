@@ -48,8 +48,8 @@ def execute_job(payload: dict[str, object]) -> None:
     if lease.kind == "collect_page":
         if _collection_executor is None:
             raise RuntimeError("evidence_store_not_configured")
-        if not _collection_executor.execute(lease):
-            return
+        _collection_executor.execute(lease)
+        return
     complete(_database.sessions, lease)
 
 

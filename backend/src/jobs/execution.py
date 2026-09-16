@@ -75,45 +75,68 @@ def finish_attempt(session: Session, job: Job, outcome: str, now: datetime) -> N
         attempt.outcome = outcome
 
 
-def complete(factory: sessionmaker[Session], lease: Lease) -> bool:
-    with factory.begin() as session:
-        job = session.scalar(select(Job).where(Job.id == lease.job_id).with_for_update())
-        now = utcnow()
-        if (
-            job is None
-            or job.status != "running"
-            or job.epoch != lease.epoch
-            or job.kind != lease.kind
-            or job.fencing_token != lease.fencing_token
-            or job.lease_until is None
-            or job.lease_until <= now
-            or job.deadline <= now
-        ):
-            return False
-        if lease.kind == "verify_pipeline":
-            # This diagnostic is an actual durable side effect, never labelled source collection.
-            session.add(JobResult(job_id=job.id, completed_at=now, result="pipeline_verified"))
-        job.status = "succeeded"
-        job.completed_at = now
-        job.lease_until = None
-        finish_attempt(session, job, "succeeded", now)
-        return True
-
-
-def fail_lease(session: Session, lease: Lease) -> bool:
+def _job_for_lease(session: Session, lease: Lease) -> Job | None:
     job = session.scalar(select(Job).where(Job.id == lease.job_id).with_for_update())
+    if (
+        job is None
+        or job.epoch != lease.epoch
+        or job.kind != lease.kind
+        or job.fencing_token != lease.fencing_token
+    ):
+        return None
+    return job
+
+
+def _active_job_for_lease(session: Session, lease: Lease) -> Job | None:
+    job = _job_for_lease(session, lease)
     now = utcnow()
     if (
         job is None
         or job.status != "running"
-        or job.epoch != lease.epoch
-        or job.kind != lease.kind
-        or job.fencing_token != lease.fencing_token
         or job.lease_until is None
         or job.lease_until <= now
         or job.deadline <= now
     ):
+        return None
+    return job
+
+
+def lease_is_active(session: Session, lease: Lease) -> bool:
+    return _active_job_for_lease(session, lease) is not None
+
+
+def lease_has_status(
+    session: Session, lease: Lease, status: Literal["succeeded", "failed"]
+) -> bool:
+    job = _job_for_lease(session, lease)
+    return job is not None and job.status == status
+
+
+def complete_in_session(session: Session, lease: Lease) -> bool:
+    job = _active_job_for_lease(session, lease)
+    if job is None:
         return False
+    now = utcnow()
+    if lease.kind == "verify_pipeline":
+        # This diagnostic is an actual durable side effect, never labelled source collection.
+        session.add(JobResult(job_id=job.id, completed_at=now, result="pipeline_verified"))
+    job.status = "succeeded"
+    job.completed_at = now
+    job.lease_until = None
+    finish_attempt(session, job, "succeeded", now)
+    return True
+
+
+def complete(factory: sessionmaker[Session], lease: Lease) -> bool:
+    with factory.begin() as session:
+        return complete_in_session(session, lease)
+
+
+def fail_lease(session: Session, lease: Lease) -> bool:
+    job = _active_job_for_lease(session, lease)
+    if job is None:
+        return False
+    now = utcnow()
     job.status = "failed"
     job.completed_at = now
     job.lease_until = None
@@ -128,19 +151,10 @@ def reschedule_lease(
 ) -> Literal["scheduled", "exhausted", "stale"]:
     if delay_seconds < 1 or delay_seconds > 86400:
         raise ValueError("retry delay must contain 1-86400 seconds")
-    job = session.scalar(select(Job).where(Job.id == lease.job_id).with_for_update())
-    now = utcnow()
-    if (
-        job is None
-        or job.status != "running"
-        or job.epoch != lease.epoch
-        or job.kind != lease.kind
-        or job.fencing_token != lease.fencing_token
-        or job.lease_until is None
-        or job.lease_until <= now
-        or job.deadline <= now
-    ):
+    job = _active_job_for_lease(session, lease)
+    if job is None:
         return "stale"
+    now = utcnow()
     due_at = now + timedelta(seconds=delay_seconds)
     if job.attempts >= job.max_attempts or due_at >= job.deadline:
         job.status = "failed"

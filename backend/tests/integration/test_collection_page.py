@@ -285,7 +285,9 @@ def run_and_commit(
             ingestion_mode="live",
         )
     )
-    lease = service.claim_for_job(started.job_id, 1)
+    job_lease = claim(service.factory, Dispatch(job_id=started.job_id, epoch=1))
+    assert job_lease is not None
+    lease = service.claim_for_job(job_lease)
     assert lease is not None
     payload = ('{"page":"' + key + '"}').encode()
     page = PageCommitInput(
@@ -308,7 +310,7 @@ def run_and_commit(
             parent_id,
         ),
     )
-    return service.commit_page(page, store), page
+    return service.commit_page(page, store, job_lease), page, job_lease
 
 
 def test_page_commit_is_idempotent_and_preserves_versions_matches_and_zero(database):
@@ -317,10 +319,10 @@ def test_page_commit_is_idempotent_and_preserves_versions_matches_and_zero(datab
     collection = CollectionService(database, sources, evidence_configured=True)
     store = MemoryStore()
     first = monitor(monitors, "主题一", ["AI"])
-    committed, page = run_and_commit(
+    committed, page, job_lease = run_and_commit(
         collection, store, first.id, first.current_version, "run-one", "AI 初版", None
     )
-    duplicate = collection.commit_page(page, store)
+    duplicate = collection.commit_page(page, store, job_lease)
     assert committed.duplicate is False and duplicate.duplicate is True
 
     second = monitor(monitors, "主题二", ["AI"])
@@ -372,7 +374,11 @@ def test_collection_run_and_job_are_atomic_and_executor_commits_one_page(databas
     assert lease is not None and lease.kind == "collect_page"
 
     assert CollectionExecutor(collection, sources, fetcher, MemoryStore()).execute(lease)
-    assert complete(database, lease)
+
+    with database() as session:
+        settled_job = session.get(Job, created.job_id)
+        assert settled_job is not None and settled_job.status == "succeeded"
+    assert not complete(database, lease)
 
     persisted = collection.run(created.id)
     assert persisted.state == "completed" and persisted.outcome == "ok"
@@ -555,6 +561,7 @@ def test_search_reference_commit_atomically_creates_one_budgeted_detail_run(data
             result=page.result,
         ),
         store,
+        lease,
     )
     assert duplicate.duplicate is True
     assert duplicate.followup_run_count == 0
@@ -570,7 +577,7 @@ def test_search_reference_commit_atomically_creates_one_budgeted_detail_run(data
         assert session.scalar(select(func.count()).select_from(Job)) == 2
         assert session.scalar(select(func.count()).select_from(Outbox)) == 2
         detail_job_id = detail.job_id
-    assert complete(database, lease)
+    assert not complete(database, lease)
 
     detail_payload = b'{"post":"video:113"}'
     detail_page = FetchedPage(
@@ -592,7 +599,7 @@ def test_search_reference_commit_atomically_creates_one_budgeted_detail_run(data
     assert CollectionExecutor(
         collection, sources, StaticFetcher(detail_page), MemoryStore()
     ).execute(detail_lease)
-    assert complete(database, detail_lease)
+    assert not complete(database, detail_lease)
 
     inbox = ContentService(database).inbox(20, None)
     assert len(inbox.items) == 1
@@ -626,7 +633,9 @@ def test_same_scheduled_detail_can_be_expanded_from_distinct_search_parents(data
                 schedule_slot=slot,
             )
         )
-        execution = collection.claim_for_job(parent.job_id, index)
+        job_lease = claim(database, Dispatch(job_id=parent.job_id, epoch=1))
+        assert job_lease is not None
+        execution = collection.claim_for_job(job_lease)
         assert execution is not None
         payload = f'{{"search":{index}}}'.encode()
         committed = collection.commit_page(
@@ -656,6 +665,7 @@ def test_same_scheduled_detail_can_be_expanded_from_distinct_search_parents(data
                 ),
             ),
             MemoryStore(),
+            job_lease,
         )
         assert committed.followup_run_count == 1
         parents.append(parent.id)
@@ -717,7 +727,7 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
     assert CollectionExecutor(collection, sources, StaticFetcher(search_page), store).execute(
         search_lease
     )
-    assert complete(database, search_lease)
+    assert not complete(database, search_lease)
 
     with database() as session:
         detail = session.scalar(
@@ -756,7 +766,7 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
     assert CollectionExecutor(collection, sources, StaticFetcher(detail_page), store).execute(
         detail_lease
     )
-    assert complete(database, detail_lease)
+    assert not complete(database, detail_lease)
 
     with database() as session:
         comments = session.scalar(
@@ -799,7 +809,7 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
     assert CollectionExecutor(collection, sources, StaticFetcher(comments_page), store).execute(
         comments_lease
     )
-    assert complete(database, comments_lease)
+    assert not complete(database, comments_lease)
 
     with database() as session:
         replies = session.scalar(
@@ -833,7 +843,7 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
     assert CollectionExecutor(collection, sources, StaticFetcher(replies_page), store).execute(
         replies_lease
     )
-    assert complete(database, replies_lease)
+    assert not complete(database, replies_lease)
 
     inbox = {item.external_id: item for item in ContentService(database).inbox(20, None).items}
     assert set(inbox) == {"video:113", "comment:441", "comment:442"}
@@ -969,13 +979,16 @@ def test_pausing_monitor_before_page_boundary_prevents_source_fetch(database):
             page_key="search:pause-before-fetch",
         )
     )
-    assert CollectionExecutor(collection, sources, fetcher, MemoryStore()).execute(lease)
-    assert complete(database, lease)
+    assert not CollectionExecutor(collection, sources, fetcher, MemoryStore()).execute(lease)
+    assert not complete(database, lease)
     persisted = collection.run(created.id)
     assert persisted.state == "cancelled"
     assert persisted.outcome == "partial"
     assert persisted.stop_reason == "monitor_inactive"
     assert fetcher.calls == 0
+    with database() as session:
+        job = session.get(Job, created.job_id)
+        assert job is not None and job.status == "cancelled"
 
 
 def test_detail_revocation_at_search_commit_creates_no_followup(database):
@@ -996,7 +1009,9 @@ def test_detail_revocation_at_search_commit_creates_no_followup(database):
             ingestion_mode="live",
         )
     )
-    execution = collection.claim_for_job(created.job_id, 1)
+    job_lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert job_lease is not None
+    execution = collection.claim_for_job(job_lease)
     assert execution is not None
     payload = b'{"references":["BV1BVFWeHEaV"]}'
     committed = collection.commit_page(
@@ -1026,6 +1041,7 @@ def test_detail_revocation_at_search_commit_creates_no_followup(database):
             ),
         ),
         MemoryStore(),
+        job_lease,
     )
     assert committed.followup_run_count == 0
     persisted = collection.run(created.id)
@@ -1036,7 +1052,7 @@ def test_detail_revocation_at_search_commit_creates_no_followup(database):
         assert session.scalar(select(func.count()).select_from(Job)) == 1
 
 
-def test_worker_crash_after_page_commit_completes_job_without_refetch(database):
+def test_message_redelivery_after_atomic_page_commit_cannot_refetch(database):
     sources = AdmittedSources()
     active = monitor(MonitorService(database, sources), "提交后恢复", ["AI"])
     collection = CollectionService(database, sources, evidence_configured=True)
@@ -1067,19 +1083,13 @@ def test_worker_crash_after_page_commit_completes_job_without_refetch(database):
     executor = CollectionExecutor(collection, sources, fetcher, MemoryStore())
     first = claim(database, Dispatch(job_id=created.job_id, epoch=1))
     assert first is not None and executor.execute(first)
-    with database.begin() as session:
+    with database() as session:
         job = session.get(Job, created.job_id)
-        assert job is not None
-        job.lease_until = utcnow() - timedelta(seconds=1)
-    assert reconcile(database) == 1
-    with database.begin() as session:
-        job = session.get(Job, created.job_id)
-        assert job is not None
-        job.available_at = utcnow() - timedelta(seconds=1)
-    replacement = claim(database, Dispatch(job_id=created.job_id, epoch=2))
-    assert replacement is not None
-    assert executor.execute(replacement)
-    assert complete(database, replacement)
+        assert job is not None and job.status == "succeeded"
+    assert reconcile(database) == 0
+    assert claim(database, Dispatch(job_id=created.job_id, epoch=1)) is None
+    assert not executor.execute(first)
+    assert not complete(database, first)
     assert fetcher.calls == 1
 
 
@@ -1099,8 +1109,8 @@ def test_permanent_source_failure_atomically_fails_run_and_job(database):
         StaticFetcher(failed_page("schema_changed")),
         MemoryStore(),
     ).execute(lease)
-    if should_complete:
-        assert complete(database, lease)
+    assert not should_complete
+    assert not complete(database, lease)
 
     with database() as session:
         run = session.get(CollectionRun, created.id)
@@ -1155,7 +1165,7 @@ def test_rate_limit_retry_reserves_budget_and_second_attempt_commits_once(databa
 
     second = claim(database, Dispatch(job_id=created.job_id, epoch=2))
     assert second is not None and executor.execute(second)
-    assert complete(database, second)
+    assert not complete(database, second)
     with database() as session:
         run = session.get(CollectionRun, created.id)
         job = session.get(Job, created.job_id)
@@ -1588,7 +1598,9 @@ def test_invalid_page_is_rejected_before_object_upload(database):
             ingestion_mode="live",
         )
     )
-    lease = collection.claim_for_job(started.job_id, 1)
+    job_lease = claim(database, Dispatch(job_id=started.job_id, epoch=1))
+    assert job_lease is not None
+    lease = collection.claim_for_job(job_lease)
     assert lease is not None
     payload = b'{"page":"wrong-source"}'
     page = PageCommitInput(
@@ -1604,7 +1616,7 @@ def test_invalid_page_is_rejected_before_object_upload(database):
     )
 
     with pytest.raises(AppError, match="collection_result_mismatch"):
-        collection.commit_page(page, store)
+        collection.commit_page(page, store, job_lease)
 
     assert store.objects == {}
 
@@ -1716,7 +1728,9 @@ def test_old_fence_cannot_commit_and_stale_upload_is_compensated(database):
             ingestion_mode="live",
         )
     )
-    lease = collection.claim_for_job(started.job_id, 1)
+    job_lease = claim(database, Dispatch(job_id=started.job_id, epoch=1))
+    assert job_lease is not None
+    lease = collection.claim_for_job(job_lease)
     assert lease is not None
     store = FenceChangingStore(database, started.id)
     payload = b'{"page":"old-fence"}'
@@ -1732,7 +1746,7 @@ def test_old_fence_cannot_commit_and_stale_upload_is_compensated(database):
         result=result("AI", None, payload),
     )
     with pytest.raises(AppError, match="stale_collection_lease"):
-        collection.commit_page(page, store)
+        collection.commit_page(page, store, job_lease)
     assert store.objects == {}
     with database() as session:
         assert session.scalar(select(func.count()).select_from(RawPage)) == 0

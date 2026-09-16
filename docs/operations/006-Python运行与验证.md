@@ -294,3 +294,13 @@ Red阶段3项用例因采集取消处理器不存在失败，旧fencing用例确
 隔离`hotkey-s03d` Compose完成0019迁移，真实scheduler/RabbitMQ/Celery prefork诊断为succeeded/attempts=1；Web不替换而backend替换后代理返回401。正确初始化合成owner后Chromium 3项全部通过；首次浏览器运行因验证命令在frontend目录调用不存在的`python`而没有创建owner，Swagger通过而两项登录流程失败，改用仓库根目录的`python3`与显式Compose项目后原样重跑通过。PostgreSQL 16.15 custom dump为90426字节，恢复后删除清单重放两次保持幂等。正常停机worker=0、backend=143、scheduler=0且无SIGKILL，全部容器与卷已删除。功能提交`ff514541ce3204eac8091eff1dc92806590313c6`的[远端CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35044168135)在3分05秒内复现170项后端、Chromium 3项、prefork/代理/恢复/停机门禁并成功，远端0019 dump为90413字节。结构化证据见[collection-cancellation-poc.json](evidence/collection-cancellation-poc.json)。
 
 验证使用合成来源响应和内存EvidenceStore，没有访问外部平台或用户现有MinIO。它证明应用取消、数据库账本和对象补偿协议，不证明真实平台在途请求中断、现有MinIO权限/TLS/版本行为、多页评论或七日稳定性；EV-007-005与TASK-007-S03-T02继续保持部分完成。
+
+## 007 S03-T02C 页面与Job终态原子结算验证（2026-09-16）
+
+`collect_page` 现在以完整Lease领取CollectionRun，在写入RawPage、内容、Checkpoint和run终态的同一PostgreSQL事务结算Job与Attempt。Worker不再在事务外第二次complete；提交后重投的同epoch消息无法重新领取终态Job，同一Lease的重复页只返回已有Checkpoint。
+
+Red阶段3项聚焦断言失败：成功页提交后Job仍为running，暂停监控后执行器仍返回可完成，重投无法按终态收口。Green/Refactor后30项采集聚焦测试和170项全量后端测试通过，保留2条上游弃用提示；Ruff覆盖158文件，严格mypy覆盖131个源/验证文件。`pip-audit`无已知漏洞，npm生产依赖审计为0；FastAPI OpenAPI快照、UmiOpenAPI客户端和HTTP契约未变更且无漂移。
+
+全新隔离`hotkey-s03f` Compose迁移到0019，PostgreSQL 16.15、RabbitMQ 4.1.8的scheduler → RabbitMQ → Celery prefork诊断为succeeded/attempts=1；Web不替换而backend替换后代理返回401。合成owner的3项Chromium测试全部通过，覆盖Swagger自动文档、知识不可用态和主工作台；首次复跑复用了上一次合成事件数据，空态断言按设计失败，清理一次性卷后原样通过。关停worker=0、backend=143、scheduler=0且无SIGKILL，所有`hotkey-s03f`容器与卷已删除。结构化证据见[collection-atomic-settlement-poc.json](evidence/collection-atomic-settlement-poc.json)。
+
+本片使用合成来源响应和内存EvidenceStore，没有访问外部平台或用户现有MinIO，也没有改动HTTP/OpenAPI契约。它关闭了单页结算的两个事务窗口，但多页/多根评论、现有MinIO、真实来源和七日观察仍未验收；EV-007-005与TASK-007-S03-T02仍为部分完成。

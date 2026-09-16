@@ -33,9 +33,9 @@ class CollectionExecutor:
     def execute(self, lease: Lease) -> bool:
         if lease.kind != "collect_page":
             raise ValueError("collection executor requires a collect_page lease")
-        run = self.service.claim_for_job(lease.job_id, lease.fencing_token)
+        run = self.service.claim_for_job(lease)
         if run is None:
-            return self.service.result_committed_for_job(lease.job_id)
+            return False
         if self.sources.activation_issues([run.source], run.operation):
             self.service.fail_run(lease, run.run_id, "source_not_eligible")
             return False
@@ -76,6 +76,7 @@ class CollectionExecutor:
                     result=result,
                 ),
                 self.store,
+                lease,
             )
         except AppError as error:
             if error.code in {"collection_run_not_running", "stale_collection_lease"}:
