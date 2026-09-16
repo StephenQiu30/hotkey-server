@@ -2,13 +2,13 @@
 /* eslint-disable */
 import { request, type RequestOptions } from "../request";
 
-/** Events GET /api/v1/events */
+/** Events GET /api/events */
 export async function listEvents(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.listEventsParams,
   options?: RequestOptions
 ) {
-  return request<API.EventPage>("/api/v1/events", {
+  return request<API.EventPage>("/api/events", {
     method: "GET",
     params: {
       // limit has a default value: 20
@@ -19,12 +19,12 @@ export async function listEvents(
   });
 }
 
-/** Create Event POST /api/v1/events */
+/** Create Event POST /api/events */
 export async function createEvent(
   body: API.EventInput,
   options?: RequestOptions
 ) {
-  return request<API.EventView>("/api/v1/events", {
+  return request<API.EventView>("/api/events", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -34,21 +34,21 @@ export async function createEvent(
   });
 }
 
-/** Get Event GET /api/v1/events/${param0} */
+/** Get Event GET /api/events/${param0} */
 export async function getEvent(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getEventParams,
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.EventView>(`/api/v1/events/${param0}`, {
+  return request<API.EventView>(`/api/events/${param0}`, {
     method: "GET",
     params: { ...queryParams },
     ...(options || {}),
   });
 }
 
-/** Add Event Member POST /api/v1/events/${param0}/members */
+/** Add Event Member POST /api/events/${param0}/members */
 export async function addEventMember(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.addEventMemberParams,
@@ -56,7 +56,7 @@ export async function addEventMember(
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.EventView>(`/api/v1/events/${param0}/members`, {
+  return request<API.EventView>(`/api/events/${param0}/members`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -67,21 +67,21 @@ export async function addEventMember(
   });
 }
 
-/** Remove Event Member DELETE /api/v1/events/${param0}/members/${param1} */
+/** Remove Event Member DELETE /api/events/${param0}/members/${param1} */
 export async function removeEventMember(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.removeEventMemberParams,
   options?: RequestOptions
 ) {
   const { identity: param0, content_id: param1, ...queryParams } = params;
-  return request<API.EventView>(`/api/v1/events/${param0}/members/${param1}`, {
+  return request<API.EventView>(`/api/events/${param0}/members/${param1}`, {
     method: "DELETE",
     params: { ...queryParams },
     ...(options || {}),
   });
 }
 
-/** Merge Event POST /api/v1/events/${param0}/merge */
+/** Merge Event POST /api/events/${param0}/merge */
 export async function mergeEvent(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.mergeEventParams,
@@ -89,7 +89,7 @@ export async function mergeEvent(
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.EventView>(`/api/v1/events/${param0}/merge`, {
+  return request<API.EventView>(`/api/events/${param0}/merge`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -100,24 +100,21 @@ export async function mergeEvent(
   });
 }
 
-/** Event Revisions GET /api/v1/events/${param0}/revisions */
+/** Event Revisions GET /api/events/${param0}/revisions */
 export async function listEventRevisions(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.listEventRevisionsParams,
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.EventRevisionView[]>(
-    `/api/v1/events/${param0}/revisions`,
-    {
-      method: "GET",
-      params: { ...queryParams },
-      ...(options || {}),
-    }
-  );
+  return request<API.EventRevisionView[]>(`/api/events/${param0}/revisions`, {
+    method: "GET",
+    params: { ...queryParams },
+    ...(options || {}),
+  });
 }
 
-/** Split Event POST /api/v1/events/${param0}/split */
+/** Split Event POST /api/events/${param0}/split */
 export async function splitEvent(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.splitEventParams,
@@ -125,7 +122,7 @@ export async function splitEvent(
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.EventView>(`/api/v1/events/${param0}/split`, {
+  return request<API.EventView>(`/api/events/${param0}/split`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -136,14 +133,14 @@ export async function splitEvent(
   });
 }
 
-/** Event Trends GET /api/v1/events/${param0}/trends */
+/** Event Trends GET /api/events/${param0}/trends */
 export async function getEventTrends(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getEventTrendsParams,
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.EventTrendView>(`/api/v1/events/${param0}/trends`, {
+  return request<API.EventTrendView>(`/api/events/${param0}/trends`, {
     method: "GET",
     params: {
       // bucket_hours has a default value: 24

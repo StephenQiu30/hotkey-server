@@ -7,7 +7,7 @@ from api.dependencies import Authenticated, Notifications
 from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
 from notifications.schemas import NotificationPage, NotificationView
 
-router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
+router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
 @router.get(

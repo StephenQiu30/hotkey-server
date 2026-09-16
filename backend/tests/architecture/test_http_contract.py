@@ -1,3 +1,5 @@
+import re
+
 from main import create_app
 
 
@@ -6,6 +8,16 @@ def operations(document):
         for method, operation in path_item.items():
             if method in {"get", "post", "put", "patch", "delete"}:
                 yield path, method, operation
+
+
+def test_business_api_uses_one_unversioned_root():
+    paths = set(create_app().openapi()["paths"])
+    business_paths = {path for path in paths if not path.startswith("/health/")}
+
+    assert business_paths
+    assert all(path.startswith("/api/") for path in business_paths)
+    assert not any(re.match(r"^/api/v\d+(?:/|$)", path) for path in paths)
+    assert "/api/monitors" in paths
 
 
 def test_every_operation_has_stable_metadata_and_typed_success_response():
@@ -27,7 +39,7 @@ def test_every_operation_has_stable_metadata_and_typed_success_response():
 
 def test_all_business_operations_except_login_declare_session_security():
     for path, method, operation in operations(create_app().openapi()):
-        if path.startswith("/health/") or (path == "/api/v1/session" and method == "post"):
+        if path.startswith("/health/") or (path == "/api/session" and method == "post"):
             assert "security" not in operation, (method, path)
         else:
             assert operation.get("security") == [{"OwnerSession": []}], (method, path)
@@ -38,7 +50,7 @@ def test_operations_only_advertise_errors_their_contract_can_return():
 
     assert set(document["paths"]["/health/live"]["get"]["responses"]) == {"200"}
     assert set(document["paths"]["/health/ready"]["get"]["responses"]) == {"200", "503"}
-    assert set(document["paths"]["/api/v1/session"]["post"]["responses"]) == {
+    assert set(document["paths"]["/api/session"]["post"]["responses"]) == {
         "200",
         "401",
         "403",
@@ -48,7 +60,7 @@ def test_operations_only_advertise_errors_their_contract_can_return():
         "500",
         "503",
     }
-    assert set(document["paths"]["/api/v1/monitors"]["get"]["responses"]) == {
+    assert set(document["paths"]["/api/monitors"]["get"]["responses"]) == {
         "200",
         "401",
         "413",

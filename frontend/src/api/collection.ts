@@ -2,13 +2,13 @@
 /* eslint-disable */
 import { request, type RequestOptions } from "../request";
 
-/** List Collection Runs GET /api/v1/collection-runs */
+/** List Collection Runs GET /api/collection-runs */
 export async function listCollectionRuns(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.listCollectionRunsParams,
   options?: RequestOptions
 ) {
-  return request<API.CollectionRunPage>("/api/v1/collection-runs", {
+  return request<API.CollectionRunPage>("/api/collection-runs", {
     method: "GET",
     params: {
       // limit has a default value: 20
@@ -19,21 +19,21 @@ export async function listCollectionRuns(
   });
 }
 
-/** Get Collection Run GET /api/v1/collection-runs/${param0} */
+/** Get Collection Run GET /api/collection-runs/${param0} */
 export async function getCollectionRun(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getCollectionRunParams,
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.CollectionRunView>(`/api/v1/collection-runs/${param0}`, {
+  return request<API.CollectionRunView>(`/api/collection-runs/${param0}`, {
     method: "GET",
     params: { ...queryParams },
     ...(options || {}),
   });
 }
 
-/** Create Collection Run POST /api/v1/monitors/${param0}/runs */
+/** Create Collection Run POST /api/monitors/${param0}/runs */
 export async function createCollectionRun(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.createCollectionRunParams,
@@ -41,7 +41,7 @@ export async function createCollectionRun(
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.CollectionRunView>(`/api/v1/monitors/${param0}/runs`, {
+  return request<API.CollectionRunView>(`/api/monitors/${param0}/runs`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

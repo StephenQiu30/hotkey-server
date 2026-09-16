@@ -7,7 +7,7 @@ from api.dependencies import Authenticated, Jobs
 from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
 from jobs.schemas import DiagnosticInput, JobPage, JobView
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter()
 
 
 @router.get(

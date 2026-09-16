@@ -163,7 +163,7 @@ FastAPI 从路由和 Pydantic 模型运行时生成 `/openapi.json`、`/docs` �
 
 ## 007 S02-T02A 页事务与收件箱基础验证（2026-09-15）
 
-本片在MinIO连接参数和来源用途准入尚未具备时，只实现可独立验证的事务内核。`collection` 负责运行、fencing和页检查点，`evidence` 负责确定性gzip、对象协议及raw page元数据，`contents` 负责规范身份、不可变正文版本、观察值和只读收件箱，`monitors` 负责版本级内容命中。API增加认证只读 `GET /api/v1/contents`；FastAPI自动生成Swagger/OpenAPI，UmiOpenAPI在 `frontend/src/api/contents.ts` 生成调用，页面仍只经根级Axios `request.ts` 发请求。
+本片在MinIO连接参数和来源用途准入尚未具备时，只实现可独立验证的事务内核。`collection` 负责运行、fencing和页检查点，`evidence` 负责确定性gzip、对象协议及raw page元数据，`contents` 负责规范身份、不可变正文版本、观察值和只读收件箱，`monitors` 负责版本级内容命中。API增加认证只读 `GET /api/contents`；FastAPI自动生成Swagger/OpenAPI，UmiOpenAPI在 `frontend/src/api/contents.ts` 生成调用，页面仍只经根级Axios `request.ts` 发请求。
 
 真实PostgreSQL 16和RabbitMQ测试环境中76项pytest通过，无跳过，保留两条上游弃用提示；迁移/模型比较为空。额外的一次性数据库从 `0004_monitor_versions` 升至 `0005_collection_page`，已有monitor version保留且5张新增核心表存在。隔离 `hotkey-s02a` Compose从迁移服务到0005，真实scheduler、RabbitMQ、Celery prefork和数据库诊断成功，attempts=1。运行时OpenAPI与发布JSON相等。生成客户端漂移、前端边界/负向样例、Prettier、TypeScript/Vite和开发/生产Compose解析通过。
 
@@ -183,7 +183,7 @@ FastAPI 从路由和 Pydantic 模型运行时生成 `/openapi.json`、`/docs` �
 
 新增`0006_collection_jobs`迁移。一次性数据库先升级至0005并写入一条queued和一条completed历史运行，再升级至0006：queued运行以`migration_boundary`终止并关联failed collect_page Job；completed/ok运行保持结果并关联succeeded Job；两者保留期均回填7天。全量迁移与SQLAlchemy模型比较无差异，readiness revision与Alembic唯一head增加静态一致性门禁。
 
-FastAPI自动发布`POST /api/v1/monitors/{id}/runs`和`GET /api/v1/collection-runs/{id}`。创建响应为HTTP 201，因为run与Job在响应前已持久化；异步进度由资源状态表达。此前为生成器改写202响应的hook已删除，`@umijs/openapi`直接生成`frontend/src/api/collection.ts`，业务请求仍只经根级Axios `request.ts`。运行时OpenAPI与发布快照相等。
+FastAPI自动发布`POST /api/monitors/{id}/runs`和`GET /api/collection-runs/{id}`。创建响应为HTTP 201，因为run与Job在响应前已持久化；异步进度由资源状态表达。此前为生成器改写202响应的hook已删除，`@umijs/openapi`直接生成`frontend/src/api/collection.ts`，业务请求仍只经根级Axios `request.ts`。运行时OpenAPI与发布快照相等。
 
 真实PostgreSQL 16和RabbitMQ 4.1环境中92项pytest通过，保留2条上游弃用提示；其中覆盖页提交后Worker崩溃的重领收口，确认不会二次抓取；也覆盖幂等重放在后续来源撤权和对象存储配置缺失时仍返回既有运行，以及8个并发同键请求只生成一组run/Job/Outbox。Ruff、严格mypy（82个源文件）、OpenAPI/UmiOpenAPI漂移、前端边界与负向样例、Prettier和TypeScript/Vite构建通过。隔离`hotkey-s02c` Compose完成迁移和真实scheduler → RabbitMQ → Celery prefork → PostgreSQL诊断，attempts=1；Web保持运行、替换backend后代理返回预期401。Chromium 2项通过，Swagger UI实际加载并核对两项collection operationId，owner工作台完成登录、草稿、查询预览、诊断、刷新、390px及退出流程。正常停机为worker=0、backend=143、scheduler=0，无SIGKILL/OOM；隔离资源随后删除。结构化证据见 [collection-job-foundation-poc.json](evidence/collection-job-foundation-poc.json)。
 

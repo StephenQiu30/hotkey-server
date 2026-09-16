@@ -15,8 +15,10 @@ from api.routers import (
 )
 
 router = APIRouter()
+router.include_router(health.router)
+
+api_router = APIRouter(prefix="/api")
 for child in (
-    health.router,
     analysis.router,
     knowledge.router,
     identity.router,
@@ -28,4 +30,6 @@ for child in (
     jobs.router,
     sources.router,
 ):
-    router.include_router(child)
+    api_router.include_router(child)
+
+router.include_router(api_router)

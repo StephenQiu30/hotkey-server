@@ -300,27 +300,27 @@ def test_authenticated_http_can_publish_and_search_analysis_snapshot(database):
     with TestClient(create_app(settings)) as client:
         client.headers["Origin"] = "http://testserver"
         login = client.post(
-            "/api/v1/session",
+            "/api/session",
             json={"username": "knowledge-owner", "password": "Test-password-123!"},
         )
         assert login.status_code == 200
         client.headers["X-CSRF-Token"] = client.cookies["hk_csrf"]
-        path = f"/api/v1/analysis-runs/{analysis.id}/knowledge-entry"
+        path = f"/api/analysis-runs/{analysis.id}/knowledge-entry"
         first = client.post(path)
         replay = client.post(path)
         assert first.status_code == 201
         assert replay.status_code == 201
         assert replay.json()["id"] == first.json()["id"]
 
-        page = client.get("/api/v1/knowledge", params={"query": "修复稳定性"})
+        page = client.get("/api/knowledge", params={"query": "修复稳定性"})
         assert page.status_code == 200
         assert page.json()["query_mode"] == "exact_substring"
         assert page.json()["items"][0]["id"] == first.json()["id"]
-        detail = client.get(f"/api/v1/knowledge/{first.json()['id']}")
+        detail = client.get(f"/api/knowledge/{first.json()['id']}")
         assert detail.status_code == 200
         assert len(detail.json()["citations"]) == 2
         statistics = client.post(
-            "/api/v1/knowledge/query",
+            "/api/knowledge/query",
             json={
                 "kind": "comment_count",
                 "question": "这次事件有多少条评论？",
@@ -332,7 +332,7 @@ def test_authenticated_http_can_publish_and_search_analysis_snapshot(database):
         assert statistics.status_code == 200
         assert statistics.json()["statistics"]["total"] == 2
         evidence = client.post(
-            "/api/v1/knowledge/query",
+            "/api/knowledge/query",
             json={
                 "kind": "evidence",
                 "question": "修复稳定性",
@@ -345,17 +345,17 @@ def test_authenticated_http_can_publish_and_search_analysis_snapshot(database):
         assert evidence.json()["status"] == "answered"
         content_id = analysis.samples[0].contexts[0].content_id
         withdrawn = client.post(
-            f"/api/v1/contents/{content_id}/withdraw",
+            f"/api/contents/{content_id}/withdraw",
             json={"reason": "purpose_revoked"},
         )
         assert withdrawn.status_code == 200
         assert withdrawn.json()["visibility"] == "unavailable"
-        assert client.get("/api/v1/knowledge", params={"query": "修复稳定性"}).json()["items"] == []
-        unavailable = client.post(f"/api/v1/knowledge/{first.json()['id']}/semantic-index")
+        assert client.get("/api/knowledge", params={"query": "修复稳定性"}).json()["items"] == []
+        unavailable = client.post(f"/api/knowledge/{first.json()['id']}/semantic-index")
         assert unavailable.status_code == 409
         assert unavailable.json()["code"] == "knowledge_entry_stale"
         semantic = client.get(
-            "/api/v1/knowledge", params={"query": "release outage", "mode": "semantic"}
+            "/api/knowledge", params={"query": "release outage", "mode": "semantic"}
         )
         assert semantic.status_code == 503
         assert semantic.json()["code"] == "embedding_not_configured"

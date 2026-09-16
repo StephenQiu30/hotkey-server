@@ -41,7 +41,7 @@ def client(database):
 
 def login(client):
     result = client.post(
-        "/api/v1/session", json={"username": "learner", "password": "Test-password-123!"}
+        "/api/session", json={"username": "learner", "password": "Test-password-123!"}
     )
     assert result.status_code == 200
     assert "HttpOnly" in result.headers.get_list("set-cookie")[0]
@@ -49,41 +49,40 @@ def login(client):
 
 
 def test_auth_csrf_revocation_and_no_password_echo(client):
-    assert client.get("/api/v1/monitors").status_code == 401
-    assert client.get("/api/v1/contents").status_code == 401
-    assert client.get("/api/v1/events").status_code == 401
-    assert client.get("/api/v1/notifications").status_code == 401
-    assert client.get("/api/v1/collection-runs").status_code == 401
-    result = client.post("/api/v1/session", json={"username": "learner", "password": "secret"})
+    assert client.get("/api/monitors").status_code == 401
+    assert client.get("/api/contents").status_code == 401
+    assert client.get("/api/events").status_code == 401
+    assert client.get("/api/notifications").status_code == 401
+    assert client.get("/api/collection-runs").status_code == 401
+    result = client.post("/api/session", json={"username": "learner", "password": "secret"})
     assert result.status_code == 422 and "secret" not in result.text
     login(client)
-    assert client.get("/api/v1/contents").json() == {"items": [], "next_cursor": None}
-    assert client.get("/api/v1/events").json() == {"items": [], "next_cursor": None}
-    assert client.get("/api/v1/notifications").json() == {
+    assert client.get("/api/contents").json() == {"items": [], "next_cursor": None}
+    assert client.get("/api/events").json() == {"items": [], "next_cursor": None}
+    assert client.get("/api/notifications").json() == {
         "items": [],
         "next_cursor": None,
         "unread_count": 0,
     }
-    assert client.get("/api/v1/collection-runs").json() == {
+    assert client.get("/api/collection-runs").json() == {
         "items": [],
         "next_cursor": None,
     }
-    assert client.get("/api/v1/contents?cursor=bad").status_code == 422
+    assert client.get("/api/contents?cursor=bad").status_code == 422
     old_token = client.cookies["hk_session"]
     client.headers.pop("X-CSRF-Token")
-    assert client.delete("/api/v1/session").status_code == 403
+    assert client.delete("/api/session").status_code == 403
     client.headers["X-CSRF-Token"] = client.cookies["hk_csrf"]
-    assert client.delete("/api/v1/session").status_code == 204
+    assert client.delete("/api/session").status_code == 204
     client.cookies.set("hk_session", old_token)
-    assert client.get("/api/v1/session").status_code == 401
+    assert client.get("/api/session").status_code == 401
 
 
 def test_origin_and_request_size_are_bounded(client):
     assert (
-        client.post("/api/v1/session", headers={"Origin": "https://evil.invalid"}).status_code
-        == 403
+        client.post("/api/session", headers={"Origin": "https://evil.invalid"}).status_code == 403
     )
-    result = client.post("/api/v1/session", content=b"a" * 65537)
+    result = client.post("/api/session", content=b"a" * 65537)
     assert result.status_code == 413
     assert result.json()["request_id"] == result.headers["x-request-id"]
 
@@ -102,17 +101,17 @@ def test_monitor_version_conflict_and_no_fake_collection(client, database):
         "schedule": {"interval_minutes": 60},
         "budget": {"daily_requests": 24, "content_purchase_cost": 0},
     }
-    result = client.post("/api/v1/monitors", json=body)
+    result = client.post("/api/monitors", json=body)
     assert result.status_code == 201
     monitor = result.json()
     assert monitor["query_spec"]["include_any"] == ["AI", "人工智能"]
     assert monitor["state"] == "draft" and monitor["current_version"] == 1
-    path = "/api/v1/monitors/" + monitor["id"]
+    path = "/api/monitors/" + monitor["id"]
     update = dict(body, title="更新", expected_version=1)
     assert client.patch(path, json=update).json()["current_version"] == 2
     assert client.patch(path, json=update).status_code == 409
-    assert client.get("/api/v1/monitors?limit=101").status_code == 422
-    sources = client.get("/api/v1/sources").json()
+    assert client.get("/api/monitors?limit=101").status_code == 422
+    sources = client.get("/api/sources").json()
     assert all(
         operation["pipeline"] == "not_connected" and not operation["eligible_for_collection"]
         for source in sources
@@ -170,7 +169,7 @@ def test_exact_search_admission_is_shared_by_api_and_monitor_activation(database
         admitted.headers["Origin"] = "http://testserver"
         login(admitted)
         source = next(
-            item for item in admitted.get("/api/v1/sources").json() if item["id"] == "bilibili"
+            item for item in admitted.get("/api/sources").json() if item["id"] == "bilibili"
         )
         assert "pipeline" not in source and "eligible_for_collection" not in source
         operations = {item["operation"]: item for item in source["operations"]}
@@ -183,7 +182,7 @@ def test_exact_search_admission_is_shared_by_api_and_monitor_activation(database
         assert operations["list_replies"]["eligible_for_collection"] is True
 
         created = admitted.post(
-            "/api/v1/monitors",
+            "/api/monitors",
             json={
                 "title": "精确准入",
                 "query_spec": {"include_any": ["AI"]},
@@ -193,7 +192,7 @@ def test_exact_search_admission_is_shared_by_api_and_monitor_activation(database
             },
         ).json()
         activated = admitted.post(
-            f"/api/v1/monitors/{created['id']}/activate",
+            f"/api/monitors/{created['id']}/activate",
             json={"expected_version": created["current_version"]},
         )
         assert activated.status_code == 200
@@ -203,11 +202,11 @@ def test_exact_search_admission_is_shared_by_api_and_monitor_activation(database
 def test_diagnostic_idempotency_and_cancellation(client):
     login(client)
     args = {"json": {"kind": "verify_pipeline"}, "headers": {"Idempotency-Key": "test-diagnostic"}}
-    a = client.post("/api/v1/jobs", **args)
-    b = client.post("/api/v1/jobs", **args)
+    a = client.post("/api/jobs", **args)
+    b = client.post("/api/jobs", **args)
     assert a.status_code == 201 and a.json()["id"] == b.json()["id"]
-    assert client.post("/api/v1/jobs", json={"kind": "collect"}).status_code == 422
-    assert client.post("/api/v1/jobs/" + a.json()["id"] + "/cancel").json()["status"] == "cancelled"
+    assert client.post("/api/jobs", json={"kind": "collect"}).status_code == 422
+    assert client.post("/api/jobs/" + a.json()["id"] + "/cancel").json()["status"] == "cancelled"
 
 
 def test_collection_job_cancel_endpoint_atomically_cancels_queued_run(client, database):
@@ -244,7 +243,7 @@ def test_collection_job_cancel_endpoint_atomically_cancels_queued_run(client, da
         )
     )
 
-    response = client.post(f"/api/v1/jobs/{created.job_id}/cancel")
+    response = client.post(f"/api/jobs/{created.job_id}/cancel")
     assert response.status_code == 200
     assert response.json()["status"] == "cancelled"
     with database() as session:
@@ -256,15 +255,15 @@ def test_collection_job_cancel_endpoint_atomically_cancels_queued_run(client, da
 
 def test_event_api_creates_a_revisioned_empty_dossier(client):
     login(client)
-    created = client.post("/api/v1/events", json={"title": "品牌发布会", "summary": "人工整理"})
+    created = client.post("/api/events", json={"title": "品牌发布会", "summary": "人工整理"})
     assert created.status_code == 201
     event = created.json()
     assert event["current_revision"] == 1 and event["members"] == []
-    assert client.get("/api/v1/events").json()["items"][0]["id"] == event["id"]
-    revisions = client.get(f"/api/v1/events/{event['id']}/revisions").json()
+    assert client.get("/api/events").json()["items"][0]["id"] == event["id"]
+    revisions = client.get(f"/api/events/{event['id']}/revisions").json()
     assert [revision["change_type"] for revision in revisions] == ["create"]
     trend = client.get(
-        f"/api/v1/events/{event['id']}/trends",
+        f"/api/events/{event['id']}/trends",
         params={
             "since": "2026-09-09T00:00:00Z",
             "until": "2026-09-16T00:00:00Z",
@@ -275,13 +274,13 @@ def test_event_api_creates_a_revisioned_empty_dossier(client):
     assert trend.json()["metric_version"] == "event-trend-v1"
     assert trend.json()["sources"] == []
     missing = client.post(
-        f"/api/v1/events/{event['id']}/members",
+        f"/api/events/{event['id']}/members",
         json={"content_id": "00000000-0000-0000-0000-000000000001"},
     )
     assert missing.status_code == 404 and missing.json()["code"] == "content_not_found"
-    source = client.post("/api/v1/events", json={"title": "待合并事件"}).json()
+    source = client.post("/api/events", json={"title": "待合并事件"}).json()
     merged = client.post(
-        f"/api/v1/events/{event['id']}/merge",
+        f"/api/events/{event['id']}/merge",
         json={
             "source_event_id": source["id"],
             "expected_target_revision": event["current_revision"],
@@ -289,28 +288,28 @@ def test_event_api_creates_a_revisioned_empty_dossier(client):
         },
     )
     assert merged.status_code == 200 and merged.json()["current_revision"] == 2
-    assert client.get(f"/api/v1/events/{source['id']}").json()["status"] == "archived"
-    page = client.get("/api/v1/notifications?unread_only=true").json()
+    assert client.get(f"/api/events/{source['id']}").json()["status"] == "archived"
+    page = client.get("/api/notifications?unread_only=true").json()
     assert page["unread_count"] == 2
     assert {item["kind"] for item in page["items"]} == {
         "event_merged_in",
         "event_merged_out",
     }
-    read = client.post(f"/api/v1/notifications/{page['items'][0]['id']}/read")
+    read = client.post(f"/api/notifications/{page['items'][0]['id']}/read")
     assert read.status_code == 200 and read.json()["read_at"] is not None
-    assert client.get("/api/v1/notifications").json()["unread_count"] == 1
+    assert client.get("/api/notifications").json()["unread_count"] == 1
 
 
 def test_login_throttle_persists_failures(client):
     for _ in range(5):
         assert (
             client.post(
-                "/api/v1/session", json={"username": "learner", "password": "Wrong-password-123!"}
+                "/api/session", json={"username": "learner", "password": "Wrong-password-123!"}
             ).status_code
             == 401
         )
     response = client.post(
-        "/api/v1/session", json={"username": "learner", "password": "Test-password-123!"}
+        "/api/session", json={"username": "learner", "password": "Test-password-123!"}
     )
     assert response.status_code == 429 and response.headers["Retry-After"] == "900"
 
@@ -326,7 +325,7 @@ def test_expired_session_and_pagination(client, database):
     for title in ["one", "two", "three"]:
         assert (
             client.post(
-                "/api/v1/monitors",
+                "/api/monitors",
                 json={
                     "title": title,
                     "query_spec": {"include_any": ["AI"]},
@@ -335,15 +334,13 @@ def test_expired_session_and_pagination(client, database):
             ).status_code
             == 201
         )
-    first = client.get("/api/v1/monitors?limit=2").json()
-    second = client.get(
-        "/api/v1/monitors", params={"limit": 2, "cursor": first["next_cursor"]}
-    ).json()
+    first = client.get("/api/monitors?limit=2").json()
+    second = client.get("/api/monitors", params={"limit": 2, "cursor": first["next_cursor"]}).json()
     assert len({m["id"] for m in first["items"] + second["items"]}) == 3
     assert second["next_cursor"] is None
     with database.begin() as session:
         session.execute(update(LoginSession).values(expires_at=utcnow() - timedelta(seconds=1)))
-    assert client.get("/api/v1/session").status_code == 401
+    assert client.get("/api/session").status_code == 401
 
 
 def test_unexpected_error_is_sanitized(client, monkeypatch):
@@ -353,14 +350,14 @@ def test_unexpected_error_is_sanitized(client, monkeypatch):
         raise RuntimeError("private-credential-must-not-escape")
 
     monkeypatch.setattr(MonitorService, "monitors", broken)
-    result = client.get("/api/v1/monitors")
+    result = client.get("/api/monitors")
     assert result.status_code == 500
     assert result.json()["code"] == "internal_error"
     assert "private-credential" not in result.text
 
 
 def test_query_preview_auth_window_and_no_fake_connection(client):
-    path = "/api/v1/sources/query-preview"
+    path = "/api/sources/query-preview"
     query = {
         "query_spec": {"include_any": ["科学"], "exclude": ["广告"]},
         "source_ids": ["bilibili", "xiaohongshu"],
@@ -384,7 +381,7 @@ def test_query_preview_auth_window_and_no_fake_connection(client):
 def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, database, monkeypatch):
     login(client)
     created = client.post(
-        "/api/v1/monitors",
+        "/api/monitors",
         json={
             "title": "受控启停",
             "query_spec": {"include_any": ["AI"]},
@@ -392,7 +389,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
             "budget": {"daily_requests": 95, "content_purchase_cost": 0},
         },
     ).json()
-    path = f"/api/v1/monitors/{created['id']}"
+    path = f"/api/monitors/{created['id']}"
     state = {"expected_version": created["current_version"]}
     refused = client.post(path + "/activate", json=state)
     assert refused.status_code == 409
@@ -451,7 +448,7 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
         },
     )
     assert accepted.status_code == 201
-    run = client.get(f"/api/v1/collection-runs/{accepted.json()['id']}")
+    run = client.get(f"/api/collection-runs/{accepted.json()['id']}")
     assert run.status_code == 200 and run.json()["job_id"] == accepted.json()["job_id"]
     client.app.dependency_overrides.pop(collection_service)
     assert (

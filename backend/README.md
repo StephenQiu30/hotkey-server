@@ -43,7 +43,7 @@ FastAPI 从路由、状态码和 Pydantic 模型自动维护接口文档。服�
 
 事件接口提供创建、分页读取、详情、加入/移出成员、合并、拆分和修订读取。每条内容当前只能属于一个事件；数据库唯一约束与内容行锁共同保证并发归属，重复加入同一事件幂等。合并和拆分要求期望修订号并对涉及事件固定顺序加锁，每个受影响事件保存关联修订。非创建修订会在同一事务内生成一条站内提醒；提醒以规则版本、事件和变化ID去重，支持不透明游标分页与幂等已读。趋势比较和突发规则仍未实现。
 
-业务分层与命名规则见 [AGENTS](../AGENTS.md)，实际服务与浏览器验证见 [Operations](../docs/operations/006-Python运行与验证.md)。未配置测试数据库/vhost 时集成测试会 skip，不能视为完整通过。`collect_page` 已接入同一 Job/Outbox/Celery 账本；scheduler为active配置生成最近一个已结束周期槽，并在创建任务前按monitor version与UTC日期原子预留一次请求。`POST /api/v1/monitors/{id}/runs` 创建持久运行，`GET /api/v1/collection-runs` 分页列出运行，`GET /api/v1/collection-runs/{id}` 查询状态。创建操作仍受来源用途准入和完整 MinIO 配置双门禁；当前来源目录均未准入，所以这些接口和scheduler不会对真实平台发起请求。
+业务分层与命名规则见 [AGENTS](../AGENTS.md)，实际服务与浏览器验证见 [Operations](../docs/operations/006-Python运行与验证.md)。未配置测试数据库/vhost 时集成测试会 skip，不能视为完整通过。`collect_page` 已接入同一 Job/Outbox/Celery 账本；scheduler为active配置生成最近一个已结束周期槽，并在创建任务前按monitor version与UTC日期原子预留一次请求。`POST /api/monitors/{id}/runs` 创建持久运行，`GET /api/collection-runs` 分页列出运行，`GET /api/collection-runs/{id}` 查询状态。创建操作仍受来源用途准入和完整 MinIO 配置双门禁；当前来源目录均未准入，所以这些接口和scheduler不会对真实平台发起请求。
 
 来源准入使用两个JSON数组，元素必须是精确的 `source.operation`：
 
@@ -62,7 +62,7 @@ uv run --directory backend/src python -m cli source-probe bluesky thread --uri '
 uv run --directory backend/src python -m cli source-probe bilibili search --keyword 人工智能 --limit 3
 ```
 
-线程示例中的 DID 和记录键需替换成真实帖子标识。CLI 输出 JSON；输入错误退出 2，来源失败退出 1，ok/empty/partial 退出 0，因此必须读取 status/code 判断是否部分结果。HTTP 查询预览为已认证的 `POST /api/v1/sources/query-preview`，需要会话、Origin 与 CSRF；仅验证和规范化查询，不发起外部请求。
+线程示例中的 DID 和记录键需替换成真实帖子标识。CLI 输出 JSON；输入错误退出 2，来源失败退出 1，ok/empty/partial 退出 0，因此必须读取 status/code 判断是否部分结果。HTTP 查询预览为已认证的 `POST /api/sources/query-preview`，需要会话、Origin 与 CSRF；仅验证和规范化查询，不发起外部请求。
 
 MinIO 只连接已存在的私有实例和 bucket。设置全部 `HOTKEY_S3_*` 连接变量后，可执行隔离对象协议验证：
 

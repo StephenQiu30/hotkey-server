@@ -11,7 +11,7 @@ router = APIRouter(tags=["knowledge"])
 
 
 @router.post(
-    "/api/v1/analysis-runs/{identity}/knowledge-entry",
+    "/analysis-runs/{identity}/knowledge-entry",
     response_model=KnowledgeEntryView,
     status_code=201,
     responses=error_responses(*WRITE_ERROR_CODES, 404, 409),
@@ -26,7 +26,7 @@ def publish_analysis_knowledge(
 
 
 @router.get(
-    "/api/v1/knowledge",
+    "/knowledge",
     response_model=KnowledgePage,
     responses=error_responses(*READ_ERROR_CODES, 422),
     operation_id="searchKnowledge",
@@ -43,7 +43,7 @@ def search_knowledge(
 
 
 @router.post(
-    "/api/v1/knowledge/query",
+    "/knowledge/query",
     response_model=KnowledgeAnswer,
     responses=error_responses(*WRITE_ERROR_CODES, 404, 422),
     operation_id="queryKnowledge",
@@ -57,7 +57,7 @@ def query_knowledge(
 
 
 @router.post(
-    "/api/v1/knowledge/{identity}/semantic-index",
+    "/knowledge/{identity}/semantic-index",
     response_model=KnowledgeEntryView,
     responses=error_responses(*WRITE_ERROR_CODES, 404, 409),
     operation_id="indexKnowledgeEntry",
@@ -71,7 +71,7 @@ def index_knowledge_entry(
 
 
 @router.get(
-    "/api/v1/knowledge/{identity}",
+    "/knowledge/{identity}",
     response_model=KnowledgeEntryView,
     responses=error_responses(*READ_ERROR_CODES, 404),
     operation_id="getKnowledgeEntry",

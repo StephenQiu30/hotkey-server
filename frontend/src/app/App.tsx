@@ -224,6 +224,12 @@ export function App() {
       setBusy(false);
     }
   }
+  async function cancelTrackedJob(jobId: string) {
+    await action(async () => {
+      await cancelJob({ identity: jobId });
+      await refresh();
+    });
+  }
   async function more(
     kind:
       "monitors" | "jobs" | "contents" | "runs" | "events" | "notifications",
@@ -349,6 +355,7 @@ export function App() {
           nextCursor={runCursor}
           busy={busy}
           onMore={() => void more("runs")}
+          onCancel={(jobId) => void cancelTrackedJob(jobId)}
         />
         <Inbox
           items={contents}
@@ -606,12 +613,7 @@ export function App() {
                           <button
                             className="secondary"
                             disabled={busy}
-                            onClick={() =>
-                              void action(async () => {
-                                await cancelJob({ identity: j.id });
-                                await refresh();
-                              })
-                            }
+                            onClick={() => void cancelTrackedJob(j.id)}
                           >
                             取消任务
                           </button>

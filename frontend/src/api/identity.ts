@@ -2,17 +2,17 @@
 /* eslint-disable */
 import { request, type RequestOptions } from "../request";
 
-/** Me GET /api/v1/session */
+/** Me GET /api/session */
 export async function getSession(options?: RequestOptions) {
-  return request<API.Principal>("/api/v1/session", {
+  return request<API.Principal>("/api/session", {
     method: "GET",
     ...(options || {}),
   });
 }
 
-/** Login POST /api/v1/session */
+/** Login POST /api/session */
 export async function login(body: API.LoginInput, options?: RequestOptions) {
-  return request<API.Principal>("/api/v1/session", {
+  return request<API.Principal>("/api/session", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -22,9 +22,9 @@ export async function login(body: API.LoginInput, options?: RequestOptions) {
   });
 }
 
-/** Logout DELETE /api/v1/session */
+/** Logout DELETE /api/session */
 export async function logout(options?: RequestOptions) {
-  return request<any>("/api/v1/session", {
+  return request<any>("/api/session", {
     method: "DELETE",
     ...(options || {}),
   });

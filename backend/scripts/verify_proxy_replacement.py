@@ -48,7 +48,7 @@ def main() -> None:
         raise RuntimeError("replacement backend did not become ready")
 
     web_port = os.getenv("HOTKEY_WEB_PORT", "8010")
-    status = http_status(f"http://127.0.0.1:{web_port}/api/v1/session")
+    status = http_status(f"http://127.0.0.1:{web_port}/api/session")
     assert status == 401, f"web proxy did not reach replacement backend: HTTP {status}"
     print(
         json.dumps(

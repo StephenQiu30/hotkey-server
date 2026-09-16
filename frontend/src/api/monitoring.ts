@@ -2,13 +2,13 @@
 /* eslint-disable */
 import { request, type RequestOptions } from "../request";
 
-/** Monitors GET /api/v1/monitors */
+/** Monitors GET /api/monitors */
 export async function listMonitors(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.listMonitorsParams,
   options?: RequestOptions
 ) {
-  return request<API.MonitorPage>("/api/v1/monitors", {
+  return request<API.MonitorPage>("/api/monitors", {
     method: "GET",
     params: {
       // limit has a default value: 20
@@ -19,12 +19,12 @@ export async function listMonitors(
   });
 }
 
-/** Create Monitor POST /api/v1/monitors */
+/** Create Monitor POST /api/monitors */
 export async function createMonitor(
   body: API.MonitorInput,
   options?: RequestOptions
 ) {
-  return request<API.MonitorView>("/api/v1/monitors", {
+  return request<API.MonitorView>("/api/monitors", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -34,7 +34,7 @@ export async function createMonitor(
   });
 }
 
-/** Update Monitor PATCH /api/v1/monitors/${param0} */
+/** Update Monitor PATCH /api/monitors/${param0} */
 export async function updateMonitor(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.updateMonitorParams,
@@ -42,7 +42,7 @@ export async function updateMonitor(
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.MonitorView>(`/api/v1/monitors/${param0}`, {
+  return request<API.MonitorView>(`/api/monitors/${param0}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -53,7 +53,7 @@ export async function updateMonitor(
   });
 }
 
-/** Activate Monitor POST /api/v1/monitors/${param0}/activate */
+/** Activate Monitor POST /api/monitors/${param0}/activate */
 export async function activateMonitor(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.activateMonitorParams,
@@ -61,7 +61,7 @@ export async function activateMonitor(
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.MonitorView>(`/api/v1/monitors/${param0}/activate`, {
+  return request<API.MonitorView>(`/api/monitors/${param0}/activate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -72,7 +72,7 @@ export async function activateMonitor(
   });
 }
 
-/** Pause Monitor POST /api/v1/monitors/${param0}/pause */
+/** Pause Monitor POST /api/monitors/${param0}/pause */
 export async function pauseMonitor(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.pauseMonitorParams,
@@ -80,7 +80,7 @@ export async function pauseMonitor(
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.MonitorView>(`/api/v1/monitors/${param0}/pause`, {
+  return request<API.MonitorView>(`/api/monitors/${param0}/pause`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

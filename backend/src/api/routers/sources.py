@@ -4,7 +4,7 @@ from api.dependencies import Authenticated, Sources
 from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
 from sources.schemas import QueryPreview, QueryPreviewInput, SourceView
 
-router = APIRouter(prefix="/api/v1/sources", tags=["sources"])
+router = APIRouter(prefix="/sources", tags=["sources"])
 
 
 @router.get(

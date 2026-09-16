@@ -9,7 +9,7 @@ from api.responses import (
 )
 from identity.schemas import LoginInput, Principal
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter()
 
 
 @router.post(

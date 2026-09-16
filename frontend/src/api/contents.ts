@@ -2,13 +2,13 @@
 /* eslint-disable */
 import { request, type RequestOptions } from "../request";
 
-/** Inbox Contents GET /api/v1/contents */
+/** Inbox Contents GET /api/contents */
 export async function listInboxContents(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.listInboxContentsParams,
   options?: RequestOptions
 ) {
-  return request<API.InboxPage>("/api/v1/contents", {
+  return request<API.InboxPage>("/api/contents", {
     method: "GET",
     params: {
       // limit has a default value: 20
@@ -19,7 +19,7 @@ export async function listInboxContents(
   });
 }
 
-/** Withdraw Content POST /api/v1/contents/${param0}/withdraw */
+/** Withdraw Content POST /api/contents/${param0}/withdraw */
 export async function withdrawContent(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.withdrawContentParams,
@@ -28,7 +28,7 @@ export async function withdrawContent(
 ) {
   const { identity: param0, ...queryParams } = params;
   return request<API.ContentWithdrawalView>(
-    `/api/v1/contents/${param0}/withdraw`,
+    `/api/contents/${param0}/withdraw`,
     {
       method: "POST",
       headers: {

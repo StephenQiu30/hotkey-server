@@ -34,11 +34,13 @@ export function Runs({
   nextCursor,
   busy,
   onMore,
+  onCancel,
 }: {
   items: Run[];
   nextCursor: string | null;
   busy: boolean;
   onMore: () => void;
+  onCancel: (jobId: string) => void;
 }) {
   return (
     <section aria-labelledby="runs-heading">
@@ -82,6 +84,18 @@ export function Runs({
                 结果 {run.outcome ?? "等待执行"} · 停止原因{" "}
                 {run.stop_reason ?? "无"}
               </p>
+              {(run.state === "queued" || run.state === "running") && (
+                <div className="actions">
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => onCancel(run.job_id)}
+                    aria-label={`取消采集 ${run.request_value}`}
+                  >
+                    取消采集
+                  </button>
+                </div>
+              )}
             </article>
           ))}
         </div>

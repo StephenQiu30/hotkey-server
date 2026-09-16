@@ -13,7 +13,10 @@ def test_live_does_not_claim_pipeline_or_collection_ready(monkeypatch):
         result = client.get("/health/ready")
         assert result.status_code == 503
         assert result.json() == {"status": "not_ready", "code": "database_unavailable"}
-        assert client.get("/api/v1/monitors").status_code == 401
+        assert client.get("/api/monitors").status_code == 401
+        legacy = client.get("/api/v" + "1/monitors", follow_redirects=False)
+        assert legacy.status_code == 404
+        assert "location" not in legacy.headers
 
 
 def test_contract_declares_session_security():
@@ -23,8 +26,8 @@ def test_contract_declares_session_security():
         "in": "cookie",
         "name": "hk_session",
     }
-    assert document["paths"]["/api/v1/monitors"]["get"]["security"] == [{"OwnerSession": []}]
-    assert "security" not in document["paths"]["/api/v1/session"]["post"]
+    assert document["paths"]["/api/monitors"]["get"]["security"] == [{"OwnerSession": []}]
+    assert "security" not in document["paths"]["/api/session"]["post"]
 
 
 def test_api_startup_rejects_unknown_source_operation():
@@ -44,55 +47,55 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
     expected = {
         ("/health/live", "get"): "healthLive",
         ("/health/ready", "get"): "healthReady",
-        ("/api/v1/session", "post"): "login",
-        ("/api/v1/session", "get"): "getSession",
-        ("/api/v1/session", "delete"): "logout",
-        ("/api/v1/sources", "get"): "listSources",
-        ("/api/v1/sources/query-preview", "post"): "previewSourceQueries",
-        ("/api/v1/monitors", "get"): "listMonitors",
-        ("/api/v1/monitors", "post"): "createMonitor",
-        ("/api/v1/monitors/{identity}", "patch"): "updateMonitor",
-        ("/api/v1/monitors/{identity}/activate", "post"): "activateMonitor",
-        ("/api/v1/monitors/{identity}/pause", "post"): "pauseMonitor",
-        ("/api/v1/monitors/{identity}/runs", "post"): "createCollectionRun",
-        ("/api/v1/collection-runs", "get"): "listCollectionRuns",
-        ("/api/v1/collection-runs/{identity}", "get"): "getCollectionRun",
-        ("/api/v1/contents", "get"): "listInboxContents",
-        ("/api/v1/events", "get"): "listEvents",
-        ("/api/v1/events", "post"): "createEvent",
-        ("/api/v1/events/{identity}", "get"): "getEvent",
-        ("/api/v1/events/{identity}/members", "post"): "addEventMember",
-        ("/api/v1/events/{identity}/members/{content_id}", "delete"): "removeEventMember",
-        ("/api/v1/knowledge/query", "post"): "queryKnowledge",
-        ("/api/v1/contents/{identity}/withdraw", "post"): "withdrawContent",
-        ("/api/v1/events/{identity}/revisions", "get"): "listEventRevisions",
-        ("/api/v1/events/{identity}/merge", "post"): "mergeEvent",
-        ("/api/v1/events/{identity}/split", "post"): "splitEvent",
-        ("/api/v1/events/{identity}/trends", "get"): "getEventTrends",
-        ("/api/v1/events/{identity}/analysis-runs", "post"): "createEventAnalysisRun",
-        ("/api/v1/events/{identity}/analysis-runs", "get"): "listEventAnalysisRuns",
-        ("/api/v1/analysis-runs/{identity}", "get"): "getAnalysisRun",
-        ("/api/v1/analysis-runs/{identity}/recompute", "post"): "recomputeAnalysisRun",
+        ("/api/session", "post"): "login",
+        ("/api/session", "get"): "getSession",
+        ("/api/session", "delete"): "logout",
+        ("/api/sources", "get"): "listSources",
+        ("/api/sources/query-preview", "post"): "previewSourceQueries",
+        ("/api/monitors", "get"): "listMonitors",
+        ("/api/monitors", "post"): "createMonitor",
+        ("/api/monitors/{identity}", "patch"): "updateMonitor",
+        ("/api/monitors/{identity}/activate", "post"): "activateMonitor",
+        ("/api/monitors/{identity}/pause", "post"): "pauseMonitor",
+        ("/api/monitors/{identity}/runs", "post"): "createCollectionRun",
+        ("/api/collection-runs", "get"): "listCollectionRuns",
+        ("/api/collection-runs/{identity}", "get"): "getCollectionRun",
+        ("/api/contents", "get"): "listInboxContents",
+        ("/api/events", "get"): "listEvents",
+        ("/api/events", "post"): "createEvent",
+        ("/api/events/{identity}", "get"): "getEvent",
+        ("/api/events/{identity}/members", "post"): "addEventMember",
+        ("/api/events/{identity}/members/{content_id}", "delete"): "removeEventMember",
+        ("/api/knowledge/query", "post"): "queryKnowledge",
+        ("/api/contents/{identity}/withdraw", "post"): "withdrawContent",
+        ("/api/events/{identity}/revisions", "get"): "listEventRevisions",
+        ("/api/events/{identity}/merge", "post"): "mergeEvent",
+        ("/api/events/{identity}/split", "post"): "splitEvent",
+        ("/api/events/{identity}/trends", "get"): "getEventTrends",
+        ("/api/events/{identity}/analysis-runs", "post"): "createEventAnalysisRun",
+        ("/api/events/{identity}/analysis-runs", "get"): "listEventAnalysisRuns",
+        ("/api/analysis-runs/{identity}", "get"): "getAnalysisRun",
+        ("/api/analysis-runs/{identity}/recompute", "post"): "recomputeAnalysisRun",
         (
-            "/api/v1/analysis-runs/{identity}/knowledge-entry",
+            "/api/analysis-runs/{identity}/knowledge-entry",
             "post",
         ): "publishAnalysisKnowledge",
         (
-            "/api/v1/analysis-runs/{identity}/samples/{sample_id}/label",
+            "/api/analysis-runs/{identity}/samples/{sample_id}/label",
             "put",
         ): "labelAnalysisSample",
-        ("/api/v1/knowledge", "get"): "searchKnowledge",
-        ("/api/v1/knowledge/{identity}", "get"): "getKnowledgeEntry",
+        ("/api/knowledge", "get"): "searchKnowledge",
+        ("/api/knowledge/{identity}", "get"): "getKnowledgeEntry",
         (
-            "/api/v1/knowledge/{identity}/semantic-index",
+            "/api/knowledge/{identity}/semantic-index",
             "post",
         ): "indexKnowledgeEntry",
-        ("/api/v1/notifications", "get"): "listNotifications",
-        ("/api/v1/notifications/{identity}/read", "post"): "markNotificationRead",
-        ("/api/v1/jobs", "get"): "listJobs",
-        ("/api/v1/jobs", "post"): "createDiagnosticJob",
-        ("/api/v1/jobs/{identity}", "get"): "getJob",
-        ("/api/v1/jobs/{identity}/cancel", "post"): "cancelJob",
+        ("/api/notifications", "get"): "listNotifications",
+        ("/api/notifications/{identity}/read", "post"): "markNotificationRead",
+        ("/api/jobs", "get"): "listJobs",
+        ("/api/jobs", "post"): "createDiagnosticJob",
+        ("/api/jobs/{identity}", "get"): "getJob",
+        ("/api/jobs/{identity}/cancel", "post"): "cancelJob",
     }
     document = create_app().openapi()
     actual = {
@@ -102,7 +105,7 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
     }
     assert actual == expected
     assert (
-        document["paths"]["/api/v1/events"]["post"]["responses"]["413"]["description"]
+        document["paths"]["/api/events"]["post"]["responses"]["413"]["description"]
         == "Request content too large"
     )
     assert document["info"]["title"] == "HotKey API"

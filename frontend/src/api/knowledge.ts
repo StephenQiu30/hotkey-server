@@ -2,7 +2,7 @@
 /* eslint-disable */
 import { request, type RequestOptions } from "../request";
 
-/** Publish Analysis Knowledge POST /api/v1/analysis-runs/${param0}/knowledge-entry */
+/** Publish Analysis Knowledge POST /api/analysis-runs/${param0}/knowledge-entry */
 export async function publishAnalysisKnowledge(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.publishAnalysisKnowledgeParams,
@@ -10,7 +10,7 @@ export async function publishAnalysisKnowledge(
 ) {
   const { identity: param0, ...queryParams } = params;
   return request<API.KnowledgeEntryView>(
-    `/api/v1/analysis-runs/${param0}/knowledge-entry`,
+    `/api/analysis-runs/${param0}/knowledge-entry`,
     {
       method: "POST",
       params: { ...queryParams },
@@ -19,13 +19,13 @@ export async function publishAnalysisKnowledge(
   );
 }
 
-/** Search Knowledge GET /api/v1/knowledge */
+/** Search Knowledge GET /api/knowledge */
 export async function searchKnowledge(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.searchKnowledgeParams,
   options?: RequestOptions
 ) {
-  return request<API.KnowledgePage>("/api/v1/knowledge", {
+  return request<API.KnowledgePage>("/api/knowledge", {
     method: "GET",
     params: {
       // mode has a default value: exact_substring
@@ -38,21 +38,21 @@ export async function searchKnowledge(
   });
 }
 
-/** Get Knowledge Entry GET /api/v1/knowledge/${param0} */
+/** Get Knowledge Entry GET /api/knowledge/${param0} */
 export async function getKnowledgeEntry(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.getKnowledgeEntryParams,
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.KnowledgeEntryView>(`/api/v1/knowledge/${param0}`, {
+  return request<API.KnowledgeEntryView>(`/api/knowledge/${param0}`, {
     method: "GET",
     params: { ...queryParams },
     ...(options || {}),
   });
 }
 
-/** Index Knowledge Entry POST /api/v1/knowledge/${param0}/semantic-index */
+/** Index Knowledge Entry POST /api/knowledge/${param0}/semantic-index */
 export async function indexKnowledgeEntry(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.indexKnowledgeEntryParams,
@@ -60,7 +60,7 @@ export async function indexKnowledgeEntry(
 ) {
   const { identity: param0, ...queryParams } = params;
   return request<API.KnowledgeEntryView>(
-    `/api/v1/knowledge/${param0}/semantic-index`,
+    `/api/knowledge/${param0}/semantic-index`,
     {
       method: "POST",
       params: { ...queryParams },
@@ -69,12 +69,12 @@ export async function indexKnowledgeEntry(
   );
 }
 
-/** Query Knowledge POST /api/v1/knowledge/query */
+/** Query Knowledge POST /api/knowledge/query */
 export async function queryKnowledge(
   body: API.CommentCountQuestion | API.EvidenceQuestion,
   options?: RequestOptions
 ) {
-  return request<API.KnowledgeAnswer>("/api/v1/knowledge/query", {
+  return request<API.KnowledgeAnswer>("/api/knowledge/query", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

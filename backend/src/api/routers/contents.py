@@ -7,7 +7,7 @@ from api.dependencies import Authenticated, Contents, Knowledge
 from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
 from contents.schemas import ContentWithdrawalInput, ContentWithdrawalView, InboxPage
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter()
 
 
 @router.get(

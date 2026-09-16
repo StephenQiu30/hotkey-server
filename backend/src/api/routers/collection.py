@@ -12,7 +12,7 @@ from collection.schemas import (
     CollectionRunView,
 )
 
-router = APIRouter(prefix="/api/v1", tags=["collection"])
+router = APIRouter(tags=["collection"])
 
 
 @router.post(

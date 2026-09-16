@@ -12,67 +12,63 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   expect(contract.ok()).toBe(true);
   const document = await contract.json();
   expect(document.info.title).toBe("HotKey API");
-  expect(document.paths["/api/v1/monitors"].get.operationId).toBe(
-    "listMonitors",
+  expect(document.paths["/api/monitors"].get.operationId).toBe("listMonitors");
+  expect(document.paths["/api/monitors/{identity}/runs"].post.operationId).toBe(
+    "createCollectionRun",
   );
   expect(
-    document.paths["/api/v1/monitors/{identity}/runs"].post.operationId,
-  ).toBe("createCollectionRun");
-  expect(
-    document.paths["/api/v1/collection-runs/{identity}"].get.operationId,
+    document.paths["/api/collection-runs/{identity}"].get.operationId,
   ).toBe("getCollectionRun");
-  expect(document.paths["/api/v1/collection-runs"].get.operationId).toBe(
+  expect(document.paths["/api/collection-runs"].get.operationId).toBe(
     "listCollectionRuns",
   );
-  expect(document.paths["/api/v1/events"].post.operationId).toBe("createEvent");
+  expect(document.paths["/api/events"].post.operationId).toBe("createEvent");
   expect(
-    document.paths["/api/v1/events/{identity}/members"].post.operationId,
+    document.paths["/api/events/{identity}/members"].post.operationId,
   ).toBe("addEventMember");
+  expect(document.paths["/api/events/{identity}/merge"].post.operationId).toBe(
+    "mergeEvent",
+  );
+  expect(document.paths["/api/events/{identity}/split"].post.operationId).toBe(
+    "splitEvent",
+  );
+  expect(document.paths["/api/events/{identity}/trends"].get.operationId).toBe(
+    "getEventTrends",
+  );
   expect(
-    document.paths["/api/v1/events/{identity}/merge"].post.operationId,
-  ).toBe("mergeEvent");
-  expect(
-    document.paths["/api/v1/events/{identity}/split"].post.operationId,
-  ).toBe("splitEvent");
-  expect(
-    document.paths["/api/v1/events/{identity}/trends"].get.operationId,
-  ).toBe("getEventTrends");
-  expect(
-    document.paths["/api/v1/events/{identity}/analysis-runs"].post.operationId,
+    document.paths["/api/events/{identity}/analysis-runs"].post.operationId,
   ).toBe("createEventAnalysisRun");
   expect(
-    document.paths["/api/v1/analysis-runs/{identity}/samples/{sample_id}/label"]
+    document.paths["/api/analysis-runs/{identity}/samples/{sample_id}/label"]
       .put.operationId,
   ).toBe("labelAnalysisSample");
   expect(
-    document.paths["/api/v1/analysis-runs/{identity}/recompute"].post
-      .operationId,
+    document.paths["/api/analysis-runs/{identity}/recompute"].post.operationId,
   ).toBe("recomputeAnalysisRun");
   expect(
-    document.paths["/api/v1/analysis-runs/{identity}/knowledge-entry"].post
+    document.paths["/api/analysis-runs/{identity}/knowledge-entry"].post
       .operationId,
   ).toBe("publishAnalysisKnowledge");
-  expect(document.paths["/api/v1/knowledge"].get.operationId).toBe(
+  expect(document.paths["/api/knowledge"].get.operationId).toBe(
     "searchKnowledge",
   );
-  expect(document.paths["/api/v1/knowledge/query"].post.operationId).toBe(
+  expect(document.paths["/api/knowledge/query"].post.operationId).toBe(
     "queryKnowledge",
   );
   expect(
-    document.paths["/api/v1/contents/{identity}/withdraw"].post.operationId,
+    document.paths["/api/contents/{identity}/withdraw"].post.operationId,
   ).toBe("withdrawContent");
-  expect(document.paths["/api/v1/knowledge/{identity}"].get.operationId).toBe(
+  expect(document.paths["/api/knowledge/{identity}"].get.operationId).toBe(
     "getKnowledgeEntry",
   );
   expect(
-    document.paths["/api/v1/knowledge/{identity}/semantic-index"].post
-      .operationId,
+    document.paths["/api/knowledge/{identity}/semantic-index"].post.operationId,
   ).toBe("indexKnowledgeEntry");
-  expect(document.paths["/api/v1/notifications"].get.operationId).toBe(
+  expect(document.paths["/api/notifications"].get.operationId).toBe(
     "listNotifications",
   );
   expect(
-    document.paths["/api/v1/notifications/{identity}/read"].post.operationId,
+    document.paths["/api/notifications/{identity}/read"].post.operationId,
   ).toBe("markNotificationRead");
   const capability = document.components.schemas.SourceOperationCapability;
   expect(capability.required).toContain("pipeline");

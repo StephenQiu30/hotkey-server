@@ -65,7 +65,7 @@ migrations -> db.metadata -> all domain models
 
 ## 5. HTTP与OpenAPI契约
 
-- 路由统一位于`/api/v1`，健康检查除外。路径以资源名为主；不能自然表示为CRUD的动作使用POST并保持全项目命名一致。
+- 业务路由统一位于`/api`，健康检查除外。URL不携带`v1`等数字版本段；当前单用户MVP通过OpenAPI契约、生成客户端和同步发布管理破坏性变更，不为未发布客户端预设URL版本或兼容路由。`/api`只在`api/router.py`的聚合路由声明，资源路由只声明资源路径。路径以资源名为主；不能自然表示为CRUD的动作使用POST并保持全项目命名一致。
 - 每个操作必须有唯一、人工命名的`operation_id`、tag、明确成功状态和Pydantic响应模型；204不得返回响应体。
 - 输入模型继承严格Input，默认拒绝未知字段并限制字符串、集合、页大小、正文和幂等键。输出使用独立Schema，不直接返回ORM模型或泄漏内部字段。
 - OpenAPI由FastAPI运行时生成，`docs/openapi/openapi.json`为可复现快照，前端调用由该快照生成。数据库模型不是客户端契约。

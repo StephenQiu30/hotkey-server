@@ -117,7 +117,7 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   let currentJob: Record<string, unknown> | null = null;
   let jobReads = 0;
   let runReads = 0;
-  await page.route("**/api/v1/jobs", async (route) => {
+  await page.route("**/api/jobs", async (route) => {
     if (route.request().method() === "POST") {
       const response = await route.fetch();
       currentJob = await response.json();
@@ -144,7 +144,7 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
       },
     });
   });
-  await page.route("**/api/v1/collection-runs?**", async (route) => {
+  await page.route("**/api/collection-runs?**", async (route) => {
     runReads += 1;
     if (currentJob === null) {
       await route.fulfill({ json: { items: [], next_cursor: null } });
@@ -187,7 +187,7 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
     });
   });
   const jobResponse = page.waitForResponse(
-    (r) => r.url().endsWith("/api/v1/jobs") && r.request().method() === "POST",
+    (r) => r.url().endsWith("/api/jobs") && r.request().method() === "POST",
   );
   await page.getByRole("button", { name: "运行诊断" }).click();
   const job = await (await jobResponse).json();
@@ -247,6 +247,6 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   });
   await page.getByRole("button", { name: "退出登录" }).click();
   await expect(page.getByRole("button", { name: "登录工作台" })).toBeVisible();
-  expect((await page.request.get("/api/v1/monitors")).status()).toBe(401);
+  expect((await page.request.get("/api/monitors")).status()).toBe(401);
   expect(errors).toEqual([]);
 });

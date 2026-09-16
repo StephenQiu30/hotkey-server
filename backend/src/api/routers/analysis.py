@@ -16,7 +16,7 @@ router = APIRouter(tags=["analysis"])
 
 
 @router.post(
-    "/api/v1/events/{identity}/analysis-runs",
+    "/events/{identity}/analysis-runs",
     response_model=AnalysisRunView,
     status_code=201,
     responses=error_responses(*WRITE_ERROR_CODES, 404, 409),
@@ -32,7 +32,7 @@ def create_event_analysis_run(
 
 
 @router.get(
-    "/api/v1/events/{identity}/analysis-runs",
+    "/events/{identity}/analysis-runs",
     response_model=AnalysisRunPage,
     responses=error_responses(*READ_ERROR_CODES, 404),
     operation_id="listEventAnalysisRuns",
@@ -47,7 +47,7 @@ def list_event_analysis_runs(
 
 
 @router.get(
-    "/api/v1/analysis-runs/{identity}",
+    "/analysis-runs/{identity}",
     response_model=AnalysisRunView,
     responses=error_responses(*READ_ERROR_CODES, 404),
     operation_id="getAnalysisRun",
@@ -57,7 +57,7 @@ def get_analysis_run(identity: UUID, service: Analyses, owner: Authenticated) ->
 
 
 @router.put(
-    "/api/v1/analysis-runs/{identity}/samples/{sample_id}/label",
+    "/analysis-runs/{identity}/samples/{sample_id}/label",
     response_model=AnalysisRunView,
     responses=error_responses(*WRITE_ERROR_CODES, 404, 409, 422),
     operation_id="labelAnalysisSample",
@@ -73,7 +73,7 @@ def label_analysis_sample(
 
 
 @router.post(
-    "/api/v1/analysis-runs/{identity}/recompute",
+    "/analysis-runs/{identity}/recompute",
     response_model=AnalysisRunView,
     responses=error_responses(*WRITE_ERROR_CODES, 404),
     operation_id="recomputeAnalysisRun",
