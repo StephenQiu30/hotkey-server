@@ -102,6 +102,19 @@
     "a generated PATCH disables the rule with expected_version",
     "the original workspace journey and Swagger UI still pass"
   ],
+  "remote_ci": {
+    "feature_commit": "d4bc207a53c4c32ff64421ce8731ba0b84c77031",
+    "run_id": 35057702156,
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35057702156",
+    "conclusion": "success",
+    "duration": "3m22s",
+    "backend_tests": "180 passed, 2 upstream deprecation warnings",
+    "chromium": "6 passed",
+    "prefork_attempts": 1,
+    "proxy_status": 401,
+    "backup_dump_bytes": 99040,
+    "shutdown_sigkill": false
+  },
   "boundaries": {
     "data": "synthetic only",
     "external_platform_requests": 0,
