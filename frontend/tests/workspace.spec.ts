@@ -117,6 +117,7 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   let currentJob: Record<string, unknown> | null = null;
   let jobReads = 0;
   let runReads = 0;
+  let pollingPhase: "held" | "job_done" | "completed" = "held";
   await page.route("**/api/jobs", async (route) => {
     if (route.request().method() === "POST") {
       const response = await route.fetch();
@@ -130,7 +131,7 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
       await route.fulfill({ json: { items: [], next_cursor: null } });
       return;
     }
-    const active = jobReads === 1;
+    const active = pollingPhase === "held";
     await route.fulfill({
       json: {
         items: [
@@ -150,8 +151,8 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
       await route.fulfill({ json: { items: [], next_cursor: null } });
       return;
     }
-    const activeState = runReads === 1 ? "queued" : "running";
-    const active = runReads <= 2;
+    const active = pollingPhase !== "completed";
+    const activeState = pollingPhase === "held" ? "queued" : "running";
     await route.fulfill({
       json: {
         items: [
@@ -185,6 +186,7 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
         next_cursor: null,
       },
     });
+    if (pollingPhase === "job_done") pollingPhase = "completed";
   });
   const jobResponse = page.waitForResponse(
     (r) => r.url().endsWith("/api/jobs") && r.request().method() === "POST",
@@ -203,6 +205,7 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   const hiddenReads = { jobs: jobReads, runs: runReads };
   await page.waitForTimeout(4500);
   expect({ jobs: jobReads, runs: runReads }).toEqual(hiddenReads);
+  pollingPhase = "job_done";
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
