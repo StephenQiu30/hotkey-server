@@ -37,7 +37,19 @@
     "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
   },
   "remote_ci": {
-    "status": "pending"
+    "status": "success",
+    "run_id": 35066046632,
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35066046632",
+    "commit": "79bb4af263e94d1bcf9a7dd0130b8130b5545a6f",
+    "duration": "3m34s",
+    "backend_tests": "184 passed with 2 warnings",
+    "browser": "8 passed",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore_schema": "0020_trend_alerts",
+    "backup_restore_dump_bytes": 99342,
+    "old_application_rollback": "success",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
   },
   "limitations": [
     "Synthetic browser responses verify generated-client wiring while PostgreSQL integration tests verify persisted identity, visibility, pagination and side-effect boundaries.",

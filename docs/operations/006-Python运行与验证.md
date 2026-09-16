@@ -373,6 +373,6 @@ FastAPI新增自动文档化的`GET /api/contents/{identity}`，读取选中内�
 
 工作台在用户点击“查看评论上下文”前不发详情请求；点击后只调用UmiOpenAPI生成的`getContentDetail`，展示根帖、父评论和等价列表，并可继续读取下一页。详情读取不创建Job、CollectionRun或来源请求。Red阶段稳定操作ID断言确认接口不存在；Green的真实PostgreSQL测试固定根帖、评论、回复、歧义双根和撤权内容，验证两页无重复、关系隔离以及读取前后任务账本计数不变。
 
-本地完整门禁为184项后端测试通过并保留2条上游弃用提示，Ruff覆盖162个文件，严格mypy覆盖133个源/验证文件；`pip-audit`无已知漏洞，npm生产依赖审计为0。FastAPI运行时契约与41组路径的发布快照相同，UmiOpenAPI、前端边界/负向样例、Prettier和TypeScript/Vite构建通过。一次性`hotkey-detail-stack`在PostgreSQL 16.15和RabbitMQ 4.1.8上完成prefork诊断`succeeded/attempts=1`、backend替换代理401、Chromium 8项、99488字节备份恢复与删除重放、固定0019旧应用隔离只读回退；停机worker=0、backend=143、scheduler=0且无SIGKILL，全部隔离资源已删除。结构化证据见[content-discussion-poc.json](evidence/content-discussion-poc.json)。
+本地完整门禁为184项后端测试通过并保留2条上游弃用提示，Ruff覆盖162个文件，严格mypy覆盖133个源/验证文件；`pip-audit`无已知漏洞，npm生产依赖审计为0。FastAPI运行时契约与41组路径的发布快照相同，UmiOpenAPI、前端边界/负向样例、Prettier和TypeScript/Vite构建通过。一次性`hotkey-detail-stack`在PostgreSQL 16.15和RabbitMQ 4.1.8上完成prefork诊断`succeeded/attempts=1`、backend替换代理401、Chromium 8项、99488字节备份恢复与删除重放、固定0019旧应用隔离只读回退；停机worker=0、backend=143、scheduler=0且无SIGKILL，全部隔离资源已删除。功能提交`79bb4af263e94d1bcf9a7dd0130b8130b5545a6f`的[远端CI #35066046632](https://github.com/StephenQiu30/hotkey-server/actions/runs/35066046632)在3分34秒内复现184项后端、8项Chromium、prefork一次执行、代理401、99342字节备份恢复、旧应用回退和无SIGKILL停机门禁并成功。结构化证据见[content-discussion-poc.json](evidence/content-discussion-poc.json)。
 
 浏览器和数据库使用明确的合成内容，没有请求外部平台或连接用户现有MinIO。本片证明持久评论事实的只读产品入口、身份歧义屏障和生成客户端接线，不证明真实平台评论内容、超过既有两页/两父级口径的全量树、现有MinIO或七日稳定性；`TASK-007-S03-T01`和EV-007-004仍保持部分完成。
