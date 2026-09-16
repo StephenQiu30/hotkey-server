@@ -11,9 +11,10 @@
   },
   "endpoint_validation": {
     "public_strict_tls": {
-      "result": "tls_validation_failed_before_bucket_access",
+      "result": "tls_handshake_unexpected_eof_before_bucket_access",
       "certificate_verification_disabled": false,
-      "object_write_attempted": false
+      "object_write_attempted": false,
+      "certificate_chain_evaluated": false
     },
     "local_browser_loopback": {
       "result": "passed",
@@ -47,11 +48,11 @@
   },
   "acceptance_boundary": {
     "local_development_connection_and_object_protocol": "passed",
-    "public_tls_chain": "not_passed",
     "local_product_container_network": "passed_in_S02-T02H",
     "remote_production_container_network": "not_tested",
     "bucket_lifecycle_and_object_lock": "not_tested",
     "real_source_ingestion": "not_tested",
-    "EV-007-003": "not_complete"
+    "EV-007-003": "not_complete",
+    "public_tls_endpoint": "handshake_failed_before_certificate_validation"
   }
 }
