@@ -1,0 +1,47 @@
+{
+  "scope": "S04-T01D event dossier discussion context",
+  "date": "2026-09-16",
+  "environment": {
+    "database": "PostgreSQL 16.15 disposable databases",
+    "broker": "RabbitMQ 4.1.8 disposable vhost and Compose broker",
+    "schema_revision": "0020_trend_alerts",
+    "browser": "Playwright Chromium against a production frontend image",
+    "source": "controlled synthetic event and discussion responses; no external source requests or existing MinIO connection"
+  },
+  "red": {
+    "result": "1 failed",
+    "assertion": "an event member must expose persisted discussion on user action",
+    "observed": "the event dossier had no 查看评论上下文 button and made no detail request"
+  },
+  "green": {
+    "client": "EventDossiers reuses ContentDiscussion and generated getContentDetail; no handwritten endpoint request",
+    "lazy_loading": "detail request count remained zero before user action and became one generated GET after click",
+    "rendered_context": "controlled root post, parent comment and selected reply were visible inside the event member",
+    "event_actions": "the existing remove-member action remained enabled",
+    "contract": "FastAPI OpenAPI and UmiOpenAPI generated client had no drift",
+    "backend": "184 passed with 2 upstream deprecation warnings",
+    "ruff": "162 files formatted and linted",
+    "mypy": "133 source and verification files",
+    "dependency_audit": "no known Python vulnerabilities; production frontend audit 0",
+    "frontend": "contract, boundary, negative boundary, Prettier and TypeScript/Vite checks passed",
+    "browser": "9 Chromium tests passed from an empty disposable database",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore": {
+      "schema_revision": "0020_trend_alerts",
+      "dump_bytes": 99345,
+      "withdrawal_replay_idempotent": true
+    },
+    "old_application_rollback": "fixed 0019 application read an isolated old-schema snapshot through a database-enforced read-only role",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+  },
+  "regression_note": "A reused disposable database contained events created by a previous browser run, so the workspace empty-state assertion failed; deleting only this Compose project's volumes and rerunning unchanged produced 9 passes.",
+  "remote_ci": {
+    "status": "pending"
+  },
+  "limitations": [
+    "The browser response is controlled and verifies generated-client wiring; it does not prove real platform comment retrieval.",
+    "No external platform request, existing MinIO instance, real user content or seven-day observation was used.",
+    "This slice advances TASK-007-S04-T01 and CHK-007-G4-002 but does not complete EV-007-004, EV-007-006 or the full P0 goal."
+  ]
+}

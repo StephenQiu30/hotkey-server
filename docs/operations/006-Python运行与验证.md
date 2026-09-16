@@ -376,3 +376,11 @@ FastAPI新增自动文档化的`GET /api/contents/{identity}`，读取选中内�
 本地完整门禁为184项后端测试通过并保留2条上游弃用提示，Ruff覆盖162个文件，严格mypy覆盖133个源/验证文件；`pip-audit`无已知漏洞，npm生产依赖审计为0。FastAPI运行时契约与41组路径的发布快照相同，UmiOpenAPI、前端边界/负向样例、Prettier和TypeScript/Vite构建通过。一次性`hotkey-detail-stack`在PostgreSQL 16.15和RabbitMQ 4.1.8上完成prefork诊断`succeeded/attempts=1`、backend替换代理401、Chromium 8项、99488字节备份恢复与删除重放、固定0019旧应用隔离只读回退；停机worker=0、backend=143、scheduler=0且无SIGKILL，全部隔离资源已删除。功能提交`79bb4af263e94d1bcf9a7dd0130b8130b5545a6f`的[远端CI #35066046632](https://github.com/StephenQiu30/hotkey-server/actions/runs/35066046632)在3分34秒内复现184项后端、8项Chromium、prefork一次执行、代理401、99342字节备份恢复、旧应用回退和无SIGKILL停机门禁并成功。结构化证据见[content-discussion-poc.json](evidence/content-discussion-poc.json)。
 
 浏览器和数据库使用明确的合成内容，没有请求外部平台或连接用户现有MinIO。本片证明持久评论事实的只读产品入口、身份歧义屏障和生成客户端接线，不证明真实平台评论内容、超过既有两页/两父级口径的全量树、现有MinIO或七日稳定性；`TASK-007-S03-T01`和EV-007-004仍保持部分完成。
+
+## 007 S04-T01D 事件档案评论上下文验证（2026-09-16）
+
+事件档案中的每个成员现在复用内容领域的`ContentDiscussion`。初次渲染不读取详情；用户点击“查看评论上下文”后，组件只调用UmiOpenAPI生成的`getContentDetail`，展示已持久化的根帖、父评论和回复。事件界面只传递成员已有的内容ID、外部ID与类型，不复制关系解析、撤权或分页规则，也没有新增HTTP端点、手写请求、迁移或依赖。
+
+Red浏览器用例精确失败于事件成员中不存在展开按钮。Green/Refactor后目标用例和空卷完整Chromium 9项通过；完整回归第一次复用了前一轮主工作台创建的事件，空态断言按设计失败，删除本次可丢弃卷后原样通过。真实PostgreSQL/RabbitMQ下184项后端测试通过并保留2条上游弃用提示；Ruff覆盖162文件，严格mypy覆盖133个源/验证文件；Python与前端生产依赖审计无已知漏洞，FastAPI OpenAPI、UmiOpenAPI漂移、前端边界/负向样例、Prettier与构建通过。
+
+一次性`hotkey-event-context` Compose按CI顺序完成prefork诊断`succeeded/attempts=1`、Web不替换而backend替换后的代理401、Chromium 9项、PostgreSQL 16.15 custom dump 99345字节及删除清单两次幂等重放、固定0019旧应用隔离只读快照回退；正常停机worker=0、backend=143、scheduler=0且无SIGKILL。结构化证据见[event-content-context-poc.json](evidence/event-content-context-poc.json)。本片使用合成事件和受控浏览器响应，没有请求外部平台、连接现有MinIO或证明真实评论与七日稳定性，因此不独立完成EV-007-004/006。
