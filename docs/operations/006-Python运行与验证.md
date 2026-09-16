@@ -314,3 +314,15 @@ Red浏览器断言在20秒后仍看到排队中的诊断行。Green用真实登�
 本地完整门禁为170项后端测试通过并保留2条上游弃用提示，Ruff覆盖158文件，严格mypy覆盖131个源/验证文件；`pip-audit`无已知漏洞，npm生产依赖审计为0；FastAPI OpenAPI、UmiOpenAPI、前端边界/负向样例、Prettier与TypeScript/Vite构建通过。全新`hotkey-s02poll` Compose保持0019，backend替换后代理返回401，Chromium 3项通过，PostgreSQL 16.15备份恢复本地dump为90427字节，停机worker=0、backend=143、scheduler=0且无SIGKILL。功能提交`9ebd91e87108cd5a632a3eefcd6ea7f7e5d7f254`的[远端CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35049798922)在3分19秒内复现全部门禁并成功，远端dump为90351字节。结构化证据见[activity-polling-poc.json](evidence/activity-polling-poc.json)。
 
 验证没有访问外部平台、现有MinIO或真实用户内容，也没有修改HTTP契约、生成客户端、请求预算或来源准入。它证明活动状态自动回显和停轮询边界，不证明真实收件箱、评论多页、七日运行或完整TASK-007-S02-T03。
+
+## 007 S00-T04 / S02-T03B 无数字版本API与采集取消入口验证（2026-09-16）
+
+业务API前缀现在只在`api/router.py`声明一次：非健康操作位于`/api/*`，健康检查仍位于`/health/*`。资源路由不再各自声明全局前缀，也没有旧路径重定向或别名。架构测试要求全部业务OpenAPI路径位于唯一根路径且拒绝数字版本段；单元测试另行证明旧格式路径直接404且没有Location头。FastAPI重新导出Swagger/OpenAPI，`@umijs/openapi`重新生成`frontend/src/api`，业务代码没有手写URL或DTO。
+
+采集运行卡片只在`queued|running`时显示“取消采集”。点击后`App`调用生成的`cancelJob({ identity: run.job_id })`，成功后执行完整重读；界面不自行修改CollectionRun状态。受控Chromium用例证明单次POST路径、`cancelled`回显与终态按钮消失；既有S03-T02B真实PostgreSQL测试继续负责Job/CollectionRun原子取消、页提交屏障和对象补偿语义。
+
+Red阶段的架构测试因Swagger仍包含数字版本路径失败；取消入口浏览器用例在正确Origin下精确失败于按钮不存在。Green/Refactor后171项后端测试通过并保留2条上游弃用提示；Ruff覆盖158个文件，严格mypy覆盖131个源/验证文件。`pip-audit`无已知漏洞，npm生产依赖审计为0；OpenAPI/UmiOpenAPI漂移、前端边界/负向样例、Prettier与TypeScript/Vite构建通过。
+
+全新`hotkey-s02b` Compose在0019 schema上完成scheduler→RabbitMQ→Celery prefork诊断，结果为succeeded/attempts=1；backend替换后代理返回401。清理仅该一次性项目的复用卷后，Chromium 4项通过，覆盖新API根路径的Swagger、采集取消、知识不可用态和完整工作台。PostgreSQL 16.15 custom dump为90457字节，删除清单重放两次幂等；停机worker=0、backend=143、scheduler=0且无SIGKILL。功能提交`586b77610341802c9b8efb7b043772ac5eed618b`的[远端CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35051558868)在3分钟内复现171项后端测试、Chromium 4项与全部运行门禁，远端dump同为90457字节。结构化证据见[api-root-poc.json](evidence/api-root-poc.json)与[collection-run-cancel-ui-poc.json](evidence/collection-run-cancel-ui-poc.json)。
+
+验证使用合成owner、合成CollectionRun和可丢弃基础设施，没有访问外部平台或现有MinIO。它证明公开HTTP契约迁移、生成客户端和用户取消接线，不证明真实来源中断、多页评论、现有MinIO或七日稳定性。
