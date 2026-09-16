@@ -335,6 +335,6 @@ Red阶段的架构测试因Swagger仍包含数字版本路径失败；取消入�
 
 Red阶段的内部页契约用例因cursor被拒绝而失败。Green/Refactor后，177项后端测试在真实PostgreSQL/RabbitMQ下通过，保留2条上游弃用提示；Ruff检查158个文件，严格mypy检查131个源/验证文件。`pip-audit`无已知漏洞，npm生产依赖审计为0；FastAPI OpenAPI、UmiOpenAPI生成客户端、前端边界/负向样例、Prettier和TypeScript/Vite构建均通过，HTTP契约与生成文件无变化。
 
-全新隔离`hotkey-s03g` Compose保持0019 schema，scheduler→RabbitMQ→Celery prefork诊断为`succeeded/attempts=1`；运行时OpenAPI等于发布快照，backend替换后代理返回401。Chromium 5项通过。PostgreSQL 16.15 custom dump为90570字节，恢复后删除清单重放两次幂等；停机worker=0、backend=143、scheduler=0且无SIGKILL。结构化证据见[collection-two-page-poc.json](evidence/collection-two-page-poc.json)。
+全新隔离`hotkey-s03g` Compose保持0019 schema，scheduler→RabbitMQ→Celery prefork诊断为`succeeded/attempts=1`；运行时OpenAPI等于发布快照，backend替换后代理返回401。Chromium 5项通过。PostgreSQL 16.15 custom dump为90570字节，恢复后删除清单重放两次幂等；停机worker=0、backend=143、scheduler=0且无SIGKILL。功能提交`84effd002d41965accc3fe1359eb3d228d3c5353`的[远端CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35055542112)在2分29秒内复现全部门禁并成功：177项后端、Chromium 5项、prefork attempts=1、代理401、备份恢复dump 90556字节与0/143/0停机通过。结构化证据见[collection-two-page-poc.json](evidence/collection-two-page-poc.json)。
 
 本片使用合成页响应和内存EvidenceStore，没有访问外部平台、连接用户现有MinIO或改变来源准入。它证明有界两页续采的事务、恢复和预算语义，不证明真实平台的页面口径、更广多根评覆盖或七日稳定性。

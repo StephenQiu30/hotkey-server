@@ -49,6 +49,19 @@
     },
     "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
   },
+  "remote_ci": {
+    "status": "success",
+    "run_id": 35055542112,
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35055542112",
+    "feature_commit": "84effd002d41965accc3fe1359eb3d228d3c5353",
+    "duration": "2m29s",
+    "backend_tests": "177 passed with 2 warnings",
+    "browser": "5 passed",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore_dump_bytes": 90556,
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+  },
   "limitations": [
     "The collection pages and source admission are synthetic and do not establish a live platform capability.",
     "The existing MinIO instance was not used; evidence persistence was verified with the in-memory adapter and existing object protocol tests.",
