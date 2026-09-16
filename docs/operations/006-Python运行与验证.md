@@ -460,3 +460,9 @@ Red用例分别失败于缺少HEAD、缺少网络次数字段、3关键词仍估
 全新隔离PostgreSQL 16/RabbitMQ 4.1、Celery prefork与不启scheduler的产品拓扑中，现有`dispatch_one`只发布人工根任务及派生Outbox。5条消息以8次来源请求完成搜索`partial/page_limit`、正文ok、3条根评论ok和两个父级共21条回复ok。数据库形成1条post、3条comment、21条reply、25个版本/观察和24个主题命中；5个RawPage均从现有MinIO按压缩对象SHA-256与解压payload SHA-256完整读回。对账为5个run、5个Job/Attempt、5个Checkpoint、8次预算与0个未发送Outbox；关系为1个root、22个resolved和2个因有界样本缺父评论而保留的unresolved。
 
 应用删除账本随后安排并删除5/5对象，0失败，数据库5页均为deleted，专用bucket对象版本0余留，其他bucket数量仍为16。隔离容器、网络、卷和临时文件全部删除；现有MinIO、主Web和主API ready均为200。结构化证据见[EV-007-003-existing-minio-canary.json](evidence/007/EV-007-003-existing-minio-canary.json)。这证明现有MinIO本机产品路径上的真实B站有界评论链单次通过；最小权限凭据、公开TLS/远端生产网络、生产准入、X发现、其他国内平台与七日观察仍未验收，EV-007-003/004仍为部分通过。
+
+## 007 S02-T02N 现有MinIO最小权限应用身份（2026-09-17）
+
+按照MinIO内置身份与PBAC流程创建`hotkey-app`并只关联`hotkey-evidence-rw`。该策略只允许`hotkey-evidence`的位置/列表/版本列表和其中对象的读、写、删除、版本读删；不授予管理动作、通配S3权限、全bucket列表或bucket创建/删除。随机secret保存在仓库外0500目录中的0600运行env；仓库、证据、镜像与命令输出都不记录凭据。
+
+现有`MinioEvidenceStore`以该身份完成gzip对象首次写入、幂等重投、完整SHA-256读回和全版本删除，验证前后专用bucket都为0个对象版本。`ListBuckets`只返回专用bucket；访问其他bucket和创建bucket均为`AccessDenied`，其他bucket数量保持16。按现有Compose契约重建backend、worker、scheduler后，三个角色均使用该身份，来源用途和流水线准入仍默认关闭；容器内也只能看见专用bucket。Web、API ready与MinIO均为200。固定mc镜像退出后没有临时容器，临时policy已删除。结构化证据见[EV-007-003-minio-least-privilege-poc.json](evidence/007/EV-007-003-minio-least-privilege-poc.json)。本片只验收本机应用身份；公开TLS、远端生产网络、自动保留、生产来源准入和七日观察仍未完成。
