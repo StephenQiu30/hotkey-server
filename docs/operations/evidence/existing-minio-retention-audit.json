@@ -38,7 +38,13 @@
   "verification": {
     "focused_tests": "16 passed",
     "ruff": "passed",
-    "mypy": "135 source and script files passed"
+    "mypy": "135 source and script files passed",
+    "feature_commit": "79e169701f7a52aa5848eb5dbededc58ec058938",
+    "remote_ci": {
+      "run_id": 35091475304,
+      "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35091475304",
+      "conclusion": "success"
+    }
   },
   "acceptance_boundary": {
     "current_policy_facts": "verified",

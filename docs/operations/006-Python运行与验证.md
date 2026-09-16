@@ -417,4 +417,4 @@ Red阶段后端操作ID测试精确失败于端点缺失，Chromium用例精确�
 
 现有bucket可达，四项读取均有权限。实例当前是`unversioned`，对象锁为`absent`，生命周期为`absent`。因此现有精确删除不受bucket默认保留锁限制，也不会产生需要额外删除的历史版本；同时服务端没有自动过期规则或`AbortIncompleteMultipartUpload`，不能仅依靠bucket策略保证保留期与中止分片清理。
 
-离线fake client共16项配置/适配器/审计测试通过，Ruff通过，官方mypy检查135个源/脚本文件且无错误。结构化结果见 [existing-minio-retention-audit.json](evidence/existing-minio-retention-audit.json)。本片不自动修改外部MinIO；应用依旧需以删除账本/对账作为可变保留天数的主路径，生产启用前应在bucket配置有界的未完multipart中止规则并复核是否需要版本历史。该审计不独立完成EV-007-003/010。
+离线fake client共16项配置/适配器/审计测试通过，Ruff通过，官方mypy检查135个源/脚本文件且无错误。功能提交`79e16970`的[完整远端CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35091475304)通过，包括PostgreSQL、RabbitMQ、OpenAPI/UmiOpenAPI契约、Chromium、备份恢复和回退演练。结构化结果见 [existing-minio-retention-audit.json](evidence/existing-minio-retention-audit.json)。本片不自动修改外部MinIO；应用依旧需以删除账本/对账作为可变保留天数的主路径，生产启用前应在bucket配置有界的未完multipart中止规则并复核是否需要版本历史。该审计不独立完成EV-007-003/010。
