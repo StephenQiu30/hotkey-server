@@ -64,6 +64,15 @@ class CollectionRunView(BaseModel):
     completed_at: datetime | None
 
 
+class CommentTrackingView(BaseModel):
+    match_id: UUID
+    content_id: UUID
+    root_content_id: UUID
+    review_state: Literal["following"]
+    run: CollectionRunView
+    replayed: bool
+
+
 class CollectionRunPage(BaseModel):
     items: list[CollectionRunView]
     next_cursor: str | None

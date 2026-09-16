@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, cast
 from uuid import UUID, uuid4
@@ -23,6 +24,14 @@ from monitors.schemas import (
 )
 from sources.schemas import QuerySpec, SourceName
 from sources.services import SourceService
+
+
+@dataclass(frozen=True)
+class MonitorMatchTrackingContext:
+    match_id: UUID
+    monitor_version_id: UUID
+    content_id: UUID
+    review_state: MonitorMatchReviewState
 
 
 def match_content(
@@ -156,6 +165,37 @@ def monitor_version_is_active(session: Session, monitor_version_id: UUID) -> boo
         )
         is not None
     )
+
+
+def lock_monitor_match_for_comment_tracking(
+    session: Session, identity: UUID
+) -> MonitorMatchTrackingContext:
+    match = session.scalar(
+        select(MonitorMatch).where(MonitorMatch.id == identity).with_for_update()
+    )
+    if match is None:
+        raise AppError("monitor_match_not_found", 404)
+    if match.review_state == "ignored":
+        raise AppError("monitor_match_ignored", 409)
+    if not monitor_version_is_active(session, match.monitor_version_id):
+        raise AppError("monitor_not_active", 409)
+    return MonitorMatchTrackingContext(
+        match_id=match.id,
+        monitor_version_id=match.monitor_version_id,
+        content_id=match.content_id,
+        review_state=cast(MonitorMatchReviewState, match.review_state),
+    )
+
+
+def mark_monitor_match_comment_tracking(
+    session: Session, context: MonitorMatchTrackingContext
+) -> None:
+    match = session.get(MonitorMatch, context.match_id)
+    if match is None:
+        raise AppError("monitor_match_not_found", 404)
+    if match.review_state != "following":
+        match.review_state = "following"
+        audit(session, "comment_tracking_started", str(match.id))
 
 
 def active_monitor_configuration(

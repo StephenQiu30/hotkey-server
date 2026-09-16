@@ -4,7 +4,8 @@ import { sourceLabels } from "../monitors/MonitorEditor";
 import { ContentDiscussion } from "./ContentDiscussion";
 
 type Content = API.InboxItem;
-type ReviewState = API.MonitorMatchReviewInput["review_state"];
+type ReviewState = API.MonitorMatchView["review_state"];
+type ReviewAction = API.MonitorMatchReviewInput["review_state"];
 
 export type InboxFilters = {
   monitorId: string;
@@ -23,7 +24,8 @@ type InboxProps = {
   sources: API.SourceView[];
   filters: InboxFilters;
   onFiltersChange: (filters: InboxFilters) => void;
-  onReview: (matchId: string, reviewState: ReviewState) => Promise<void>;
+  onReview: (matchId: string, reviewState: ReviewAction) => Promise<void>;
+  onTrackComments: (matchId: string) => Promise<void>;
   onAssign: (eventId: string, contentId: string) => Promise<void>;
   onWithdraw: (contentId: string) => Promise<void>;
   onMore: () => void;
@@ -68,6 +70,7 @@ export function Inbox({
   filters,
   onFiltersChange,
   onReview,
+  onTrackComments,
   onAssign,
   onWithdraw,
   onMore,
@@ -196,23 +199,16 @@ export function Inbox({
                         <button
                           className="secondary"
                           disabled={busy}
-                          aria-label={`跟进 ${match.monitor_title}`}
-                          onClick={() => void onReview(match.id, "following")}
+                          aria-label={`追踪评论 ${match.monitor_title}`}
+                          onClick={() => void onTrackComments(match.id)}
                         >
-                          跟进
+                          追踪评论
                         </button>
                       )}
                       {match.review_state === "following" && (
-                        <button
-                          className="secondary"
-                          disabled={busy}
-                          aria-label={`取消跟进 ${match.monitor_title}`}
-                          onClick={() => void onReview(match.id, "new")}
-                        >
-                          取消跟进
-                        </button>
+                        <span className="badge">评论追踪中</span>
                       )}
-                      {match.review_state !== "ignored" ? (
+                      {match.review_state === "new" ? (
                         <button
                           className="secondary"
                           disabled={busy}
@@ -221,7 +217,7 @@ export function Inbox({
                         >
                           忽略
                         </button>
-                      ) : (
+                      ) : match.review_state === "ignored" ? (
                         <button
                           className="secondary"
                           disabled={busy}
@@ -230,7 +226,7 @@ export function Inbox({
                         >
                           恢复待处理
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 ))}

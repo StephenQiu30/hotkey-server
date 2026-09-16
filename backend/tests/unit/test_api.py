@@ -63,6 +63,10 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
         ("/api/contents", "get"): "listInboxContents",
         ("/api/contents/{identity}", "get"): "getContentDetail",
         ("/api/monitor-matches/{identity}", "patch"): "reviewMonitorMatch",
+        (
+            "/api/monitor-matches/{identity}/comment-tracking",
+            "post",
+        ): "startCommentTracking",
         ("/api/events", "get"): "listEvents",
         ("/api/events", "post"): "createEvent",
         ("/api/events/{identity}", "get"): "getEvent",

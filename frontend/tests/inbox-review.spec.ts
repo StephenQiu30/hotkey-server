@@ -134,7 +134,7 @@ test("inbox review updates one topic match and keeps generated filters", async (
   await page.route(/\/api\/monitor-matches\/[^/?]+$/, async (route) => {
     const id = new URL(route.request().url()).pathname.split("/").at(-1)!;
     const body = route.request().postDataJSON() as {
-      review_state: "new" | "ignored" | "following";
+      review_state: "new" | "ignored";
     };
     writes.push({ path: new URL(route.request().url()).pathname, body });
     states.set(id, body.review_state);
@@ -175,8 +175,6 @@ test("inbox review updates one topic match and keeps generated filters", async (
 
   await inbox.getByLabel("审核状态").selectOption("");
   await expect(inbox.getByText("主题甲 · v1")).toBeVisible();
-  await inbox.getByRole("button", { name: "跟进 主题甲" }).click();
-  await expect(inbox.getByText(/待分析 · 跟进中/)).toBeVisible();
   await inbox.getByLabel("发现时间").selectOption("24h");
   await expect.poll(() => queries.at(-1)?.get("discovered_since")).toBeTruthy();
   await inbox.getByLabel("来源").selectOption("x");
@@ -190,10 +188,6 @@ test("inbox review updates one topic match and keeps generated filters", async (
     {
       path: `/api/monitor-matches/${firstMatchId}`,
       body: { review_state: "new" },
-    },
-    {
-      path: `/api/monitor-matches/${firstMatchId}`,
-      body: { review_state: "following" },
     },
   ]);
 });

@@ -21,6 +21,23 @@ export async function reviewMonitorMatch(
   });
 }
 
+/** Start Comment Tracking POST /api/monitor-matches/${param0}/comment-tracking */
+export async function startCommentTracking(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.startCommentTrackingParams,
+  options?: RequestOptions
+) {
+  const { identity: param0, ...queryParams } = params;
+  return request<API.CommentTrackingView>(
+    `/api/monitor-matches/${param0}/comment-tracking`,
+    {
+      method: "POST",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
 /** Monitors GET /api/monitors */
 export async function listMonitors(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)

@@ -16,6 +16,7 @@ import {
   listMonitors,
   pauseMonitor,
   reviewMonitorMatch,
+  startCommentTracking,
 } from "../api/monitoring";
 import { listNotifications, markNotificationRead } from "../api/notifications";
 import { listSources } from "../api/sources";
@@ -417,6 +418,12 @@ export function App() {
                 { identity: matchId },
                 { review_state: reviewState },
               );
+              await refresh();
+            });
+          }}
+          onTrackComments={async (matchId) => {
+            await action(async () => {
+              await startCommentTracking({ identity: matchId });
               await refresh();
             });
           }}

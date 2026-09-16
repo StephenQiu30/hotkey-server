@@ -1846,23 +1846,7 @@ def test_inbox_review_is_scoped_to_one_monitor_match(database):
         matches["AI 主题"].id,
         MonitorMatchReviewInput(review_state="new"),
     )
-    following = monitors.review_match(
-        matches["观察主题"].id,
-        MonitorMatchReviewInput(review_state="following"),
-    )
-    replayed = monitors.review_match(
-        matches["观察主题"].id,
-        MonitorMatchReviewInput(review_state="following"),
-    )
     assert restored.review_state == "new"
-    assert following.review_state == "following"
-    assert replayed == following
-    persisted = ContentService(database).inbox(
-        limit=20,
-        cursor=None,
-        review_state="following",
-    )
-    assert [match.monitor_title for match in persisted.items[0].matches] == ["观察主题"]
     with database() as session:
         assert (
             session.scalar(
@@ -1870,7 +1854,7 @@ def test_inbox_review_is_scoped_to_one_monitor_match(database):
                 .select_from(Audit)
                 .where(Audit.action == "monitor_match_reviewed")
             )
-            == 3
+            == 2
         )
     with pytest.raises(AppError) as missing:
         monitors.review_match(

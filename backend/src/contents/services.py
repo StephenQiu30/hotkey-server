@@ -42,6 +42,15 @@ class ContentReference:
 
 
 @dataclass(frozen=True)
+class CommentTrackingTarget:
+    selected_content_id: UUID
+    root_content_id: UUID
+    source: str
+    request_value: str
+    raw_page_ids: tuple[UUID, ...]
+
+
+@dataclass(frozen=True)
 class ContentTrendObservation:
     observed_at: datetime
     reply_count: int | None
@@ -539,6 +548,58 @@ def content_references(
         )
         for content in rows
     }
+
+
+def comment_tracking_target(session: Session, identity: UUID) -> CommentTrackingTarget:
+    selected = session.scalar(
+        select(Content).where(
+            Content.id == identity,
+            Content.visibility == "available",
+        )
+    )
+    if selected is None:
+        raise AppError("content_not_found", 404)
+    root_candidates = list(
+        session.scalars(
+            select(Content)
+            .where(
+                Content.source == selected.source,
+                Content.kind == "post",
+                Content.external_id == selected.root_external_id,
+                Content.visibility == "available",
+            )
+            .order_by(Content.id)
+            .limit(2)
+        )
+    )
+    root = root_candidates[0] if len(root_candidates) == 1 else None
+    resolved = root is not None and (
+        (selected.kind == "post" and selected.id == root.id)
+        or (selected.kind != "post" and selected.relation_status == "resolved")
+    )
+    if not resolved or root is None:
+        raise AppError("comment_root_unresolved", 409)
+    raw_page_ids = tuple(
+        dict.fromkeys(
+            session.scalars(
+                select(ContentObservation.raw_page_id)
+                .where(ContentObservation.content_id == root.id)
+                .order_by(
+                    ContentObservation.observed_at.desc(),
+                    ContentObservation.id.desc(),
+                )
+            )
+        )
+    )
+    if not raw_page_ids:
+        raise AppError("comment_evidence_missing", 409)
+    return CommentTrackingTarget(
+        selected_content_id=selected.id,
+        root_content_id=root.id,
+        source=root.source,
+        request_value=root.external_id,
+        raw_page_ids=raw_page_ids,
+    )
 
 
 def withdraw_content(

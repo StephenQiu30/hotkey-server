@@ -1011,6 +1011,47 @@
         "title": "CommentCountQuestion",
         "type": "object"
       },
+      "CommentTrackingView": {
+        "properties": {
+          "content_id": {
+            "format": "uuid",
+            "title": "Content Id",
+            "type": "string"
+          },
+          "match_id": {
+            "format": "uuid",
+            "title": "Match Id",
+            "type": "string"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "review_state": {
+            "const": "following",
+            "title": "Review State",
+            "type": "string"
+          },
+          "root_content_id": {
+            "format": "uuid",
+            "title": "Root Content Id",
+            "type": "string"
+          },
+          "run": {
+            "$ref": "#/components/schemas/CollectionRunView"
+          }
+        },
+        "required": [
+          "match_id",
+          "content_id",
+          "root_content_id",
+          "review_state",
+          "run",
+          "replayed"
+        ],
+        "title": "CommentTrackingView",
+        "type": "object"
+      },
       "ContentDetailItem": {
         "properties": {
           "canonical_url": {
@@ -2512,8 +2553,7 @@
           "review_state": {
             "enum": [
               "new",
-              "ignored",
-              "following"
+              "ignored"
             ],
             "title": "Review State",
             "type": "string"
@@ -7952,6 +7992,141 @@
           }
         ],
         "summary": "Review Monitor Match",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitor-matches/{identity}/comment-tracking": {
+      "post": {
+        "operationId": "startCommentTracking",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentTrackingView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "State conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request content too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Start Comment Tracking",
         "tags": [
           "monitoring"
         ]

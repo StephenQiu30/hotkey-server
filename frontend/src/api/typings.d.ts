@@ -304,6 +304,20 @@ declare namespace API {
     until: string;
   };
 
+  type CommentTrackingView = {
+    /** Content Id */
+    content_id: string;
+    /** Match Id */
+    match_id: string;
+    /** Replayed */
+    replayed: boolean;
+    /** Review State */
+    review_state: string;
+    /** Root Content Id */
+    root_content_id: string;
+    run: CollectionRunView;
+  };
+
   type ContentDetailItem = {
     /** Canonical Url */
     canonical_url: string | null;
@@ -858,7 +872,7 @@ declare namespace API {
 
   type MonitorMatchReviewInput = {
     /** Review State */
-    review_state: "new" | "ignored" | "following";
+    review_state: "new" | "ignored";
   };
 
   type MonitorMatchView = {
@@ -1139,6 +1153,10 @@ declare namespace API {
   };
 
   type splitEventParams = {
+    identity: string;
+  };
+
+  type startCommentTrackingParams = {
     identity: string;
   };
 

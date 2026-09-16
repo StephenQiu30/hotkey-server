@@ -1,0 +1,56 @@
+{
+  "scope": "S03-T01F user-selected comment tracking",
+  "date": "2026-09-16",
+  "environment": {
+    "database": "PostgreSQL 16.15 disposable databases",
+    "broker": "RabbitMQ 4.1.8 disposable vhost and Compose broker",
+    "schema_revision": "0020_trend_alerts",
+    "browser": "Playwright Chromium against a production frontend image",
+    "source": "controlled synthetic content and source-page evidence; no external source request or existing MinIO connection"
+  },
+  "red": {
+    "backend": "the stable operation-id test failed because startCommentTracking did not exist",
+    "browser": "the inbox scenario waited for 追踪评论 评论研究 and timed out because the control did not exist"
+  },
+  "green": {
+    "endpoint": "POST /api/monitor-matches/{identity}/comment-tracking",
+    "operation_id": "startCommentTracking",
+    "review_boundary": "reviewMonitorMatch accepts only new or ignored; following is committed only with a persistent tracking run",
+    "transaction": "monitor-match lock, follow-up CollectionRun, Job, Outbox, daily budget and following state commit atomically",
+    "selection": "available root evidence from the same immutable monitor version; fetch_post preferred over search_posts",
+    "idempotency": "the same target replays the same child run without another job, outbox row or budget reservation",
+    "sampling": "a selected second post receives its own fetch_post child even when the parent already has one sampled child",
+    "direct_comments": "available fetch_post evidence creates list_comments directly",
+    "zero_write_failures": [
+      "evidence_store_not_configured",
+      "request_budget_exhausted",
+      "monitor_not_active",
+      "comment_root_unresolved for ambiguous roots",
+      "comment_tracking_origin_missing for cross-version evidence"
+    ],
+    "backend": "189 passed with 2 upstream deprecation warnings",
+    "mypy": "133 source and verification files",
+    "dependency_audit": "no known Python vulnerabilities; production frontend audit 0",
+    "openapi": "FastAPI runtime document equals the generated snapshot; 42 path groups",
+    "generated_client": "@umijs/openapi generated startCommentTracking under frontend/src/api; Axios remains in frontend/src/request.ts",
+    "frontend": "contract, boundary, negative-boundary, Prettier and TypeScript/Vite checks passed",
+    "browser": "10 Chromium tests passed from an empty disposable database",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore": {
+      "schema_revision": "0020_trend_alerts",
+      "dump_bytes": 99472,
+      "withdrawal_replay_idempotent": true
+    },
+    "old_application_rollback": "fixed 0019 application read an isolated old-schema snapshot through a database-enforced read-only role",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL or OOM"
+  },
+  "remote_ci": {
+    "status": "pending"
+  },
+  "limitations": [
+    "Synthetic database facts verify transaction and identity boundaries; controlled browser responses verify generated-client wiring.",
+    "No external platform request, existing MinIO instance, real user content, authorization admission or seven-day observation was used.",
+    "This slice advances TASK-007-S03-T01 and EV-007-004 but does not complete either one or the full P0 goal."
+  ]
+}

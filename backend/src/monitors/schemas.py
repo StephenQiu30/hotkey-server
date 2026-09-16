@@ -9,6 +9,7 @@ from sources.schemas import QuerySpec, SourceName
 
 MonitorState = Literal["draft", "active", "paused"]
 MonitorMatchReviewState = Literal["new", "ignored", "following"]
+MonitorMatchReviewAction = Literal["new", "ignored"]
 MonitorMatchRelevanceStatus = Literal["pending", "accepted", "rejected", "needs_review"]
 
 
@@ -81,7 +82,7 @@ class MonitorPage(BaseModel):
 
 
 class MonitorMatchReviewInput(Input):
-    review_state: MonitorMatchReviewState
+    review_state: MonitorMatchReviewAction
 
 
 class MonitorMatchView(BaseModel):

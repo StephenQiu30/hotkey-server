@@ -384,3 +384,13 @@ FastAPI新增自动文档化的`GET /api/contents/{identity}`，读取选中内�
 Red浏览器用例精确失败于事件成员中不存在展开按钮。Green/Refactor后目标用例和空卷完整Chromium 9项通过；完整回归第一次复用了前一轮主工作台创建的事件，空态断言按设计失败，删除本次可丢弃卷后原样通过。首次远端CI还发现既有轮询用例会被更快的prefork抢先完成：测试现在让POST响应稳定进入受控排队态，之后仍只通过生成的Job/CollectionRun列表读取推进终态；真实诊断POST和Worker执行没有被替换。真实PostgreSQL/RabbitMQ下184项后端测试通过并保留2条上游弃用提示；Ruff覆盖162文件，严格mypy覆盖133个源/验证文件；Python与前端生产依赖审计无已知漏洞，FastAPI OpenAPI、UmiOpenAPI漂移、前端边界/负向样例、Prettier与构建通过。
 
 一次性`hotkey-event-context` Compose按CI顺序完成prefork诊断`succeeded/attempts=1`、Web不替换而backend替换后的代理401、Chromium 9项、PostgreSQL 16.15 custom dump 99345字节及删除清单两次幂等重放、固定0019旧应用隔离只读快照回退；正常停机worker=0、backend=143、scheduler=0且无SIGKILL。修复提交`92d8a849d17a8ac120a33155968014f58de11b7e`的[远端CI #35068391771](https://github.com/StephenQiu30/hotkey-server/actions/runs/35068391771)在3分30秒内完成184项后端、9项Chromium、prefork/代理/恢复/回退/停机全套门禁，远端dump为99360字节。结构化证据见[event-content-context-poc.json](evidence/event-content-context-poc.json)。本片使用合成事件和受控浏览器响应，没有请求外部平台、连接现有MinIO或证明真实评论与七日稳定性，因此不独立完成EV-007-004/006。
+
+## 007 S03-T01F 用户选择内容并启动评论追踪验证（2026-09-16）
+
+收件箱的“追踪评论”现在调用FastAPI自动文档化、UmiOpenAPI生成的`startCommentTracking`。服务在一个PostgreSQL事务中锁定主题命中，确认其监控版本仍活动，解析唯一可用根帖，再从根帖可用RawPage反查同版本来源运行。已有详情证据时创建或重放`list_comments`，只有搜索证据时创建或重放`fetch_post`；Job、Outbox、预算与`following`状态一起提交。普通审核接口只接受`new|ignored`，不能单独写“评论追踪中”。
+
+Red阶段后端操作ID测试精确失败于端点缺失，Chromium用例精确失败于收件箱没有“追踪评论”按钮。Green/Refactor后真实PostgreSQL集成测试覆盖已有一个抽样详情任务后为用户选择的第二帖子建立独立任务、重复调用不重复扣预算、详情页直接进入评论任务，以及未配置证据存储、预算耗尽、监控失活、根身份歧义和跨监控版本证据时命中/预算/队列零变化。完整后端189项通过并保留2条上游弃用提示；严格mypy检查133个源/验证文件，`pip-audit`与npm生产依赖审计无已知漏洞。FastAPI运行时契约与42组路径快照一致，生成客户端只位于`frontend/src/api`并继续使用根级Axios `request.ts`；边界、负向边界、Prettier与TypeScript/Vite构建通过。
+
+全新`hotkey-comment-tracking`一次性Compose完成`scheduler → RabbitMQ → Celery prefork → PostgreSQL`诊断，结果为`succeeded/attempts=1`；Web不替换而backend替换后代理返回401。空库Chromium 10项通过，包括Swagger、新评论追踪调用与完整工作台。PostgreSQL 16.15 custom dump为99472字节，恢复后撤权清单重放两次幂等；固定0019应用从数据库强制只读的隔离旧Schema快照完成读取。正常停机worker=0、backend=143、scheduler=0且无SIGKILL，随后删除该项目容器、网络和卷。结构化证据见[comment-tracking-poc.json](evidence/comment-tracking-poc.json)。
+
+验证内容、来源页和浏览器响应均为明确合成数据，没有访问外部平台或用户现有MinIO。它证明用户动作与持久采集账本的原子接线，不证明真实平台评论、用途准入、现有MinIO权限、真实内容盲测或七日稳定运行；`TASK-007-S03-T01`和EV-007-004仍保持部分完成。

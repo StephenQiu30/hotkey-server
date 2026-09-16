@@ -3,8 +3,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
-from api.dependencies import Authenticated, Monitors
+from api.dependencies import Authenticated, Collections, Monitors
 from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
+from collection.schemas import CommentTrackingView
 from monitors.schemas import (
     MonitorInput,
     MonitorMatchReviewInput,
@@ -99,3 +100,18 @@ def review_monitor_match(
     owner: Authenticated,
 ) -> MonitorMatchView:
     return service.review_match(identity, data)
+
+
+@router.post(
+    "/monitor-matches/{identity}/comment-tracking",
+    response_model=CommentTrackingView,
+    responses=error_responses(*WRITE_ERROR_CODES, 404, 409),
+    tags=["monitoring"],
+    operation_id="startCommentTracking",
+)
+def start_comment_tracking(
+    identity: UUID,
+    service: Collections,
+    owner: Authenticated,
+) -> CommentTrackingView:
+    return service.start_comment_tracking(identity)

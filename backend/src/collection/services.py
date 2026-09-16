@@ -16,10 +16,12 @@ from collection.schemas import (
     CollectionRunInput,
     CollectionRunPage,
     CollectionRunView,
+    CommentTrackingView,
     PageCommitInput,
     PageCommitView,
 )
 from contents.services import (
+    comment_tracking_target,
     lock_content_identities,
     page_contains_withdrawn_content,
     upsert_content,
@@ -31,6 +33,7 @@ from evidence.services import (
     PreparedEvidence,
     prepare_evidence,
     raw_page_identity,
+    raw_page_run_ids,
     record_failed_upload_cleanup,
     record_raw_page,
     upload,
@@ -51,6 +54,8 @@ from monitors.schemas import ActiveMonitorConfiguration
 from monitors.services import (
     active_monitor_configuration,
     content_is_matched,
+    lock_monitor_match_for_comment_tracking,
+    mark_monitor_match_comment_tracking,
     match_content,
     monitor_query_spec,
     monitor_version_identity,
@@ -445,6 +450,123 @@ class CollectionService:
                 now=now,
             )
             return CollectionRunView.model_validate(run)
+
+    def start_comment_tracking(self, identity: UUID) -> CommentTrackingView:
+        with self.factory.begin() as session:
+            context = lock_monitor_match_for_comment_tracking(session, identity)
+            target = comment_tracking_target(session, context.content_id)
+            if not self.evidence_configured:
+                raise AppError("evidence_store_not_configured", 409)
+
+            page_runs = raw_page_run_ids(session, set(target.raw_page_ids))
+            run_positions: dict[UUID, int] = {}
+            for position, raw_page_id in enumerate(target.raw_page_ids):
+                run_id = page_runs.get(raw_page_id)
+                if run_id is not None:
+                    run_positions.setdefault(run_id, position)
+            parents = list(
+                session.scalars(
+                    select(CollectionRun)
+                    .where(
+                        CollectionRun.id.in_(run_positions),
+                        CollectionRun.monitor_version_id == context.monitor_version_id,
+                        CollectionRun.source == target.source,
+                        CollectionRun.operation.in_(("fetch_post", "search_posts")),
+                    )
+                    .with_for_update()
+                )
+            )
+            parents.sort(
+                key=lambda run: (
+                    0 if run.operation == "fetch_post" else 1,
+                    run_positions[run.id],
+                )
+            )
+            if not parents:
+                raise AppError("comment_tracking_origin_missing", 409)
+            parent = parents[0]
+            operation = self.FOLLOWUP_OPERATION[parent.operation]
+            source = cast(SourceName, parent.source)
+            if self.sources.activation_issues([source], operation):
+                raise AppError("source_not_eligible", 409)
+            if not self.sources.request_value_is_valid(source, operation, target.request_value):
+                raise AppError("invalid_comment_tracking_reference", 409)
+
+            run = session.scalar(
+                select(CollectionRun)
+                .where(
+                    CollectionRun.parent_run_id == parent.id,
+                    CollectionRun.operation == operation,
+                    CollectionRun.request_value == target.request_value,
+                )
+                .with_for_update()
+            )
+            replayed = run is not None
+            if run is None:
+                usage = session.scalar(
+                    select(CollectionBudgetUsage)
+                    .where(
+                        CollectionBudgetUsage.monitor_version_id == parent.monitor_version_id,
+                        CollectionBudgetUsage.budget_day == parent.budget_day,
+                    )
+                    .with_for_update()
+                )
+                if usage is None:
+                    raise AppError("collection_budget_missing", 500)
+                if usage.reserved_requests >= usage.limit_requests:
+                    raise AppError("request_budget_exhausted", 429)
+                now = utcnow()
+                key = (
+                    "manual-followup:"
+                    + sha256(f"{parent.id}|{operation}|{target.request_value}".encode()).hexdigest()
+                )
+                job = enqueue(
+                    session,
+                    "collection:" + sha256(key.encode()).hexdigest(),
+                    "collect_page",
+                )
+                run = CollectionRun(
+                    id=uuid4(),
+                    job_id=job.id,
+                    parent_run_id=parent.id,
+                    monitor_version_id=parent.monitor_version_id,
+                    source=parent.source,
+                    operation=operation,
+                    request_value=target.request_value,
+                    idempotency_key=key,
+                    policy_version=parent.policy_version,
+                    retention_days=parent.retention_days,
+                    trigger=parent.trigger,
+                    ingestion_mode=parent.ingestion_mode,
+                    schedule_slot=parent.schedule_slot,
+                    budget_day=parent.budget_day,
+                    reserved_requests=1,
+                    state="queued",
+                    outcome=None,
+                    fencing_token=0,
+                    window_since=parent.window_since,
+                    window_until=parent.window_until,
+                    pages_count=0,
+                    items_count=0,
+                    bytes_count=0,
+                    stop_reason=None,
+                    created_at=now,
+                    started_at=None,
+                    completed_at=None,
+                )
+                session.add(run)
+                usage.reserved_requests += 1
+                usage.updated_at = now
+                session.flush()
+            mark_monitor_match_comment_tracking(session, context)
+            return CommentTrackingView(
+                match_id=context.match_id,
+                content_id=target.selected_content_id,
+                root_content_id=target.root_content_id,
+                review_state="following",
+                run=CollectionRunView.model_validate(run),
+                replayed=replayed,
+            )
 
     def run(self, identity: UUID) -> CollectionRunView:
         with self.factory() as session:
