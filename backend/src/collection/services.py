@@ -327,9 +327,7 @@ class CollectionService:
                 )
             )
             entries = [
-                (source.source, query)
-                for source in preview.sources
-                for query in source.queries
+                (source.source, query) for source in preview.sources for query in source.queries
             ]
             if not entries:
                 raise AppError("source_not_eligible", 409)

@@ -116,9 +116,9 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
     assert set(run_input["properties"]) == {"expected_version", "idempotency_key"}
     assert set(run_batch["required"]) == {"items", "replayed"}
     assert (
-        document["paths"]["/api/monitors/{identity}/runs"]["post"]["responses"]["201"][
-            "content"
-        ]["application/json"]["schema"]["$ref"]
+        document["paths"]["/api/monitors/{identity}/runs"]["post"]["responses"]["201"]["content"][
+            "application/json"
+        ]["schema"]["$ref"]
         == "#/components/schemas/CollectionRunBatchView"
     )
     assert run_view["properties"]["operation"]["enum"] == [

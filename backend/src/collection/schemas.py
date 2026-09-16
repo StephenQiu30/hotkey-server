@@ -76,9 +76,7 @@ class CollectionRunBatchView(BaseModel):
 
 class MonitorRunRequest(Input):
     expected_version: int = Field(ge=1)
-    idempotency_key: str = Field(
-        min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.:-]+$"
-    )
+    idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.:-]+$")
 
 
 class CollectionRunBatchInput(MonitorRunRequest):
