@@ -394,3 +394,11 @@ Red阶段后端操作ID测试精确失败于端点缺失，Chromium用例精确�
 全新`hotkey-comment-tracking`一次性Compose完成`scheduler → RabbitMQ → Celery prefork → PostgreSQL`诊断，结果为`succeeded/attempts=1`；Web不替换而backend替换后代理返回401。空库Chromium 10项通过，包括Swagger、新评论追踪调用与完整工作台。PostgreSQL 16.15 custom dump为99472字节，恢复后撤权清单重放两次幂等；固定0019应用从数据库强制只读的隔离旧Schema快照完成读取。正常停机worker=0、backend=143、scheduler=0且无SIGKILL，随后删除该项目容器、网络和卷。功能提交`4c1695b42c40ee95259eff8a0fa2956fe0c8aab7`的[远端CI #35079689852](https://github.com/StephenQiu30/hotkey-server/actions/runs/35079689852)在3分48秒内复现189项后端、10项Chromium、prefork一次执行、代理401、99480字节备份恢复、旧应用回退与无SIGKILL停机门禁并成功。结构化证据见[comment-tracking-poc.json](evidence/comment-tracking-poc.json)。
 
 验证内容、来源页和浏览器响应均为明确合成数据，没有访问外部平台或用户现有MinIO。它证明用户动作与持久采集账本的原子接线，不证明真实平台评论、用途准入、现有MinIO权限、真实内容盲测或七日稳定运行；`TASK-007-S03-T01`和EV-007-004仍保持部分完成。
+
+## 007 S02-T02G 现有 MinIO 实例隔离对象验证（2026-09-16）
+
+验证直接复用用户已有项目的私有生产配置，只在子进程内将已有键映射为 `HOTKEY_S3_*`。命令和证据均未输出 endpoint、bucket、access key、secret key 或既有对象名；应用未创建bucket、未修改策略/生命周期，也未遍历非本次唯一键。
+
+公开端点使用配置声明的TLS时，严格证书校验在bucket访问前失败。本项目没有关闭证书校验或加入不安全兼容分支。同一份配置明确给出的主机回环HTTP端点可用：`verify_minio.py` 在1秒内将一条合成JSON的确定性gzip对象写入预先存在的bucket，第二次重投返回同一对象；65字节完整读回的SHA-256为 `d0ca6df230d1274f6dccd4b1e691367467aa12809b9ec75319789bb7176f3ad6`。随后按精确键删除所有版本/删除标记，带版本列举和`stat`均证明无余留。
+
+聚焦配置/适配器的12项pytest通过，Ruff通过，仓库官方mypy目标检查133个源文件且无错误，证据JSON可解析。结构化证据见 [existing-minio-poc.json](evidence/existing-minio-poc.json)。这一结果证明现有实例、已有凭据和bucket可在本机开发路径承载当前对象协议。主机回环端点不能直接作为生产容器配置；公开证书链、可从生产网络到达的端点、对象锁/生命周期与真实来源页入库仍需后续验收，因此不独立完成EV-007-003。
