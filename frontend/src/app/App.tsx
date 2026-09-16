@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listCollectionRuns } from "../api/collection";
+import { createCollectionRun, listCollectionRuns } from "../api/collection";
 import { listInboxContents, withdrawContent } from "../api/contents";
 import {
   addEventMember,
@@ -82,6 +82,7 @@ export function App() {
   );
   const generation = useRef(0);
   const diagnosticKey = useRef<string | null>(null);
+  const collectionKeys = useRef(new Map<string, string>());
   const refresh = useCallback(async () => {
     const current = ++generation.current;
     setLoading(true);
@@ -230,6 +231,21 @@ export function App() {
       await refresh();
     });
   }
+  async function runMonitor(monitor: Monitor) {
+    await action(async () => {
+      const key = collectionKeys.current.get(monitor.id) ?? crypto.randomUUID();
+      collectionKeys.current.set(monitor.id, key);
+      await createCollectionRun(
+        { identity: monitor.id },
+        {
+          expected_version: monitor.current_version,
+          idempotency_key: key,
+        },
+      );
+      collectionKeys.current.delete(monitor.id);
+      await refresh();
+    });
+  }
   async function more(
     kind:
       "monitors" | "jobs" | "contents" | "runs" | "events" | "notifications",
@@ -305,6 +321,7 @@ export function App() {
               setEvents([]);
               setNotifications([]);
               setUnreadNotifications(0);
+              collectionKeys.current.clear();
               setEditor(null);
               setSession("out");
             })
@@ -518,22 +535,31 @@ export function App() {
                         启用监控
                       </button>
                     ) : (
-                      <button
-                        className="secondary"
-                        aria-label={`暂停 ${m.title}`}
-                        disabled={busy}
-                        onClick={() =>
-                          void action(async () => {
-                            await pauseMonitor(
-                              { identity: m.id },
-                              { expected_version: m.current_version },
-                            );
-                            await refresh();
-                          })
-                        }
-                      >
-                        暂停监控
-                      </button>
+                      <>
+                        <button
+                          aria-label={`立即采集 ${m.title}`}
+                          disabled={busy}
+                          onClick={() => void runMonitor(m)}
+                        >
+                          立即采集
+                        </button>
+                        <button
+                          className="secondary"
+                          aria-label={`暂停 ${m.title}`}
+                          disabled={busy}
+                          onClick={() =>
+                            void action(async () => {
+                              await pauseMonitor(
+                                { identity: m.id },
+                                { expected_version: m.current_version },
+                              );
+                              await refresh();
+                            })
+                          }
+                        >
+                          暂停监控
+                        </button>
+                      </>
                     )}
                   </div>
                   {m.state !== "active" &&

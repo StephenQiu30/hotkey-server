@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
-from typing import cast
+from typing import Literal, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import and_, func, or_, select
@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from collection.models import CollectionBudgetUsage, CollectionCheckpoint, CollectionRun
 from collection.schemas import (
     CollectionExecutionInput,
+    CollectionRunBatchInput,
+    CollectionRunBatchView,
     CollectionRunInput,
     CollectionRunPage,
     CollectionRunView,
@@ -43,6 +45,7 @@ from jobs.execution import (
     lease_is_active,
     reschedule_lease,
 )
+from monitors.schemas import ActiveMonitorConfiguration
 from monitors.services import (
     active_monitor_configuration,
     content_is_matched,
@@ -154,6 +157,209 @@ class CollectionService:
         self.sources = sources or SourceService()
         self.evidence_configured = evidence_configured
 
+    @staticmethod
+    def _batch_prefix(idempotency_key: str) -> str:
+        return "batch:" + sha256(idempotency_key.encode()).hexdigest() + ":"
+
+    @staticmethod
+    def _batch_run_key(prefix: str, index: int, source: str, query: str) -> str:
+        identity = sha256(f"{source}\0search_posts\0{query}".encode()).hexdigest()[:52]
+        return f"{prefix}{index:03d}:{identity}"
+
+    @staticmethod
+    def _reserve_requests(
+        session: Session,
+        configuration: ActiveMonitorConfiguration,
+        count: int,
+        now: datetime,
+    ) -> date:
+        budget_day = now.date()
+        session.execute(
+            insert(CollectionBudgetUsage)
+            .values(
+                id=uuid4(),
+                monitor_version_id=configuration.monitor_version_id,
+                budget_day=budget_day,
+                limit_requests=configuration.budget.daily_requests,
+                reserved_requests=0,
+                created_at=now,
+                updated_at=now,
+            )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    CollectionBudgetUsage.monitor_version_id,
+                    CollectionBudgetUsage.budget_day,
+                ]
+            )
+        )
+        usage = session.scalar(
+            select(CollectionBudgetUsage)
+            .where(
+                CollectionBudgetUsage.monitor_version_id == configuration.monitor_version_id,
+                CollectionBudgetUsage.budget_day == budget_day,
+            )
+            .with_for_update()
+        )
+        assert usage is not None
+        if usage.limit_requests != configuration.budget.daily_requests:
+            raise AppError("budget_snapshot_mismatch", 500)
+        if usage.reserved_requests + count > usage.limit_requests:
+            raise AppError("request_budget_exhausted", 429)
+        usage.reserved_requests += count
+        usage.updated_at = now
+        return budget_day
+
+    @staticmethod
+    def _create_run_record(
+        session: Session,
+        *,
+        configuration: ActiveMonitorConfiguration,
+        source: SourceName,
+        request_value: str,
+        since: datetime,
+        until: datetime,
+        idempotency_key: str,
+        policy_version: str,
+        retention_days: int,
+        trigger: Literal["manual", "scheduled"],
+        ingestion_mode: Literal["live", "backfill"],
+        schedule_slot: datetime | None,
+        budget_day: date,
+        now: datetime,
+    ) -> CollectionRun:
+        job = enqueue(
+            session,
+            "collection:" + sha256(idempotency_key.encode()).hexdigest(),
+            kind="collect_page",
+        )
+        run = CollectionRun(
+            id=uuid4(),
+            job_id=job.id,
+            parent_run_id=None,
+            monitor_version_id=configuration.monitor_version_id,
+            source=source,
+            operation="search_posts",
+            request_value=request_value,
+            idempotency_key=idempotency_key,
+            policy_version=policy_version,
+            retention_days=retention_days,
+            trigger=trigger,
+            ingestion_mode=ingestion_mode,
+            schedule_slot=schedule_slot,
+            budget_day=budget_day,
+            reserved_requests=1,
+            state="queued",
+            outcome=None,
+            fencing_token=0,
+            window_since=since,
+            window_until=until,
+            pages_count=0,
+            items_count=0,
+            bytes_count=0,
+            stop_reason=None,
+            created_at=now,
+            started_at=None,
+            completed_at=None,
+        )
+        session.add(run)
+        session.flush()
+        return run
+
+    def create_monitor_runs(self, data: CollectionRunBatchInput) -> CollectionRunBatchView:
+        prefix = self._batch_prefix(data.idempotency_key)
+        with self.factory.begin() as session:
+            lock_key = int.from_bytes(
+                sha256(prefix.encode()).digest()[:8], byteorder="big", signed=True
+            )
+            session.execute(select(func.pg_advisory_xact_lock(lock_key)))
+            existing = list(
+                session.scalars(
+                    select(CollectionRun)
+                    .where(CollectionRun.idempotency_key.startswith(prefix))
+                    .order_by(CollectionRun.idempotency_key)
+                    .with_for_update()
+                )
+            )
+            if existing:
+                version_id = monitor_version_identity(
+                    session, data.monitor_id, data.expected_version
+                )
+                stable_match = all(
+                    run.monitor_version_id == version_id
+                    and run.trigger == data.trigger
+                    and run.ingestion_mode == data.ingestion_mode
+                    and run.schedule_slot == data.schedule_slot
+                    for run in existing
+                )
+                scheduled_window_matches = data.trigger == "manual" or all(
+                    run.window_since == data.since and run.window_until == data.until
+                    for run in existing
+                )
+                if not stable_match or not scheduled_window_matches:
+                    raise AppError("idempotency_conflict", 409)
+                return CollectionRunBatchView(
+                    items=[CollectionRunView.model_validate(run) for run in existing],
+                    replayed=True,
+                )
+
+            configuration = active_monitor_configuration(
+                session, data.monitor_id, data.expected_version
+            )
+            if self.sources.activation_issues(configuration.source_ids):
+                raise AppError("source_not_eligible", 409)
+            if not self.evidence_configured:
+                raise AppError("evidence_store_not_configured", 409)
+            if data.trigger == "manual":
+                until = utcnow()
+                since = until - timedelta(minutes=configuration.schedule.interval_minutes)
+                schedule_slot = None
+            else:
+                assert data.since is not None and data.until is not None
+                since = data.since
+                until = data.until
+                schedule_slot = data.schedule_slot
+            preview = self.sources.preview(
+                QueryPreviewInput(
+                    query_spec=configuration.query_spec,
+                    source_ids=configuration.source_ids,
+                    since=since,
+                    until=until,
+                )
+            )
+            entries = [
+                (source.source, query)
+                for source in preview.sources
+                for query in source.queries
+            ]
+            if not entries:
+                raise AppError("source_not_eligible", 409)
+            now = utcnow()
+            budget_day = self._reserve_requests(session, configuration, len(entries), now)
+            policy_version = f"monitor-version-{configuration.version}"
+            runs = [
+                self._create_run_record(
+                    session,
+                    configuration=configuration,
+                    source=source,
+                    request_value=query,
+                    since=since,
+                    until=until,
+                    idempotency_key=self._batch_run_key(prefix, index, source, query),
+                    policy_version=policy_version,
+                    retention_days=configuration.schedule.retention_days,
+                    trigger=data.trigger,
+                    ingestion_mode=data.ingestion_mode,
+                    schedule_slot=schedule_slot,
+                    budget_day=budget_day,
+                    now=now,
+                )
+                for index, (source, query) in enumerate(entries)
+            ]
+            return CollectionRunBatchView(
+                items=[CollectionRunView.model_validate(run) for run in runs],
+                replayed=False,
+            )
+
     def create_run(self, data: CollectionRunInput) -> CollectionRunView:
         with self.factory.begin() as session:
             lock_key = int.from_bytes(
@@ -220,54 +426,14 @@ class CollectionService:
             if data.request_value not in preview.sources[0].queries:
                 raise AppError("request_value_not_in_snapshot", 409)
             now = utcnow()
-            budget_day = now.date()
-            session.execute(
-                insert(CollectionBudgetUsage)
-                .values(
-                    id=uuid4(),
-                    monitor_version_id=configuration.monitor_version_id,
-                    budget_day=budget_day,
-                    limit_requests=configuration.budget.daily_requests,
-                    reserved_requests=0,
-                    created_at=now,
-                    updated_at=now,
-                )
-                .on_conflict_do_nothing(
-                    index_elements=[
-                        CollectionBudgetUsage.monitor_version_id,
-                        CollectionBudgetUsage.budget_day,
-                    ]
-                )
-            )
-            usage = session.scalar(
-                select(CollectionBudgetUsage)
-                .where(
-                    CollectionBudgetUsage.monitor_version_id == configuration.monitor_version_id,
-                    CollectionBudgetUsage.budget_day == budget_day,
-                )
-                .with_for_update()
-            )
-            assert usage is not None
-            if usage.limit_requests != configuration.budget.daily_requests:
-                raise AppError("budget_snapshot_mismatch", 500)
-            if usage.reserved_requests >= usage.limit_requests:
-                raise AppError("request_budget_exhausted", 429)
-            usage.reserved_requests += 1
-            usage.updated_at = now
-            run_id = uuid4()
-            job = enqueue(
+            budget_day = self._reserve_requests(session, configuration, 1, now)
+            run = self._create_run_record(
                 session,
-                "collection:" + sha256(data.idempotency_key.encode()).hexdigest(),
-                kind="collect_page",
-            )
-            run = CollectionRun(
-                id=run_id,
-                job_id=job.id,
-                parent_run_id=None,
-                monitor_version_id=configuration.monitor_version_id,
+                configuration=configuration,
                 source=data.source,
-                operation=data.operation,
                 request_value=data.request_value,
+                since=data.since,
+                until=data.until,
                 idempotency_key=data.idempotency_key,
                 policy_version=data.policy_version,
                 retention_days=data.retention_days,
@@ -275,22 +441,8 @@ class CollectionService:
                 ingestion_mode=data.ingestion_mode,
                 schedule_slot=data.schedule_slot,
                 budget_day=budget_day,
-                reserved_requests=1,
-                state="queued",
-                outcome=None,
-                fencing_token=0,
-                window_since=data.since,
-                window_until=data.until,
-                pages_count=0,
-                items_count=0,
-                bytes_count=0,
-                stop_reason=None,
-                created_at=now,
-                started_at=None,
-                completed_at=None,
+                now=now,
             )
-            session.add(run)
-            session.flush()
             return CollectionRunView.model_validate(run)
 
     def run(self, identity: UUID) -> CollectionRunView:
@@ -299,28 +451,6 @@ class CollectionService:
             if run is None:
                 raise AppError("collection_run_not_found", 404)
             return CollectionRunView.model_validate(run)
-
-    def has_scheduled_run(
-        self,
-        monitor_version_id: UUID,
-        source: str,
-        operation: str,
-        request_value: str,
-        schedule_slot: datetime,
-    ) -> bool:
-        with self.factory() as session:
-            return (
-                session.scalar(
-                    select(CollectionRun.id).where(
-                        CollectionRun.monitor_version_id == monitor_version_id,
-                        CollectionRun.source == source,
-                        CollectionRun.operation == operation,
-                        CollectionRun.request_value == request_value,
-                        CollectionRun.schedule_slot == schedule_slot,
-                    )
-                )
-                is not None
-            )
 
     @staticmethod
     def _decode_cursor(cursor: str) -> tuple[datetime, UUID]:

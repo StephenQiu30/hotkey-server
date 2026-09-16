@@ -1,15 +1,16 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Query
 
 from api.dependencies import Authenticated, Collections
 from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
 from collection.schemas import (
-    CollectionRunInput,
+    CollectionRunBatchInput,
+    CollectionRunBatchView,
     CollectionRunPage,
-    CollectionRunRequest,
     CollectionRunView,
+    MonitorRunRequest,
 )
 
 router = APIRouter(tags=["collection"])
@@ -17,24 +18,20 @@ router = APIRouter(tags=["collection"])
 
 @router.post(
     "/monitors/{identity}/runs",
-    response_model=CollectionRunView,
+    response_model=CollectionRunBatchView,
     status_code=201,
     responses=error_responses(*WRITE_ERROR_CODES, 404, 409, 429),
     operation_id="createCollectionRun",
 )
 def create_collection_run(
     identity: UUID,
-    data: CollectionRunRequest,
+    data: MonitorRunRequest,
     service: Collections,
     owner: Authenticated,
-    idempotency_key: Annotated[
-        str, Header(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.:-]+$")
-    ],
-) -> CollectionRunView:
-    return service.create_run(
-        CollectionRunInput(
+) -> CollectionRunBatchView:
+    return service.create_monitor_runs(
+        CollectionRunBatchInput(
             monitor_id=identity,
-            idempotency_key=idempotency_key,
             **data.model_dump(),
         )
     )

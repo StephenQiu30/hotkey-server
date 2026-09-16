@@ -69,23 +69,42 @@ class CollectionRunPage(BaseModel):
     next_cursor: str | None
 
 
-class CollectionRunRequest(Input):
+class CollectionRunBatchView(BaseModel):
+    items: list[CollectionRunView]
+    replayed: bool
+
+
+class MonitorRunRequest(Input):
     expected_version: int = Field(ge=1)
-    source: SourceName
-    operation: Literal["search_posts"] = "search_posts"
-    request_value: str = Field(min_length=1, max_length=100)
-    since: AwareDatetime
-    until: AwareDatetime
-    policy_version: str = Field(min_length=1, max_length=64)
-    retention_days: int = Field(ge=1, le=365)
-    ingestion_mode: Literal["live", "backfill"]
+    idempotency_key: str = Field(
+        min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.:-]+$"
+    )
+
+
+class CollectionRunBatchInput(MonitorRunRequest):
+    monitor_id: UUID
+    trigger: Literal["manual", "scheduled"] = "manual"
+    ingestion_mode: Literal["live", "backfill"] = "live"
+    since: AwareDatetime | None = None
+    until: AwareDatetime | None = None
+    schedule_slot: AwareDatetime | None = None
 
     @model_validator(mode="after")
-    def valid_window(self) -> Self:
-        if self.since >= self.until:
-            raise ValueError("since must precede until")
+    def valid_trigger_window(self) -> Self:
+        window = (self.since, self.until, self.schedule_slot)
+        if self.trigger == "manual":
+            if any(value is not None for value in window):
+                raise ValueError("manual batches derive their window")
+            return self
+        if any(value is None for value in window):
+            raise ValueError("scheduled batches require a complete slot window")
+        assert self.since is not None and self.until is not None
+        assert self.schedule_slot is not None
+        if self.since >= self.until or self.schedule_slot != self.until:
+            raise ValueError("scheduled slot must close a valid window")
         self.since = self.since.astimezone(UTC)
         self.until = self.until.astimezone(UTC)
+        self.schedule_slot = self.schedule_slot.astimezone(UTC)
         return self
 
 

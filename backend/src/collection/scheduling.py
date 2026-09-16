@@ -1,14 +1,12 @@
-import json
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from collection.schemas import CollectionRunInput
+from collection.schemas import CollectionRunBatchInput
 from collection.services import CollectionService
 from core.errors import AppError
 from monitors.services import MonitorService
-from sources.schemas import QueryPreviewInput
 from sources.services import SourceService
 
 
@@ -37,18 +35,8 @@ class CollectionScheduler:
         return boundary - timedelta(seconds=seconds), boundary
 
     @staticmethod
-    def _key(version_id: object, source: str, query: str, slot: datetime) -> str:
-        canonical = json.dumps(
-            {
-                "monitor_version_id": str(version_id),
-                "source": source,
-                "query": query,
-                "slot": slot.isoformat(),
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode()
+    def _key(version_id: object, slot: datetime) -> str:
+        canonical = f"{version_id}\0{slot.isoformat()}".encode()
         return "slot:" + sha256(canonical).hexdigest()
 
     def schedule_due(self, now: datetime) -> int:
@@ -61,58 +49,32 @@ class CollectionScheduler:
         )
         created = 0
         for configuration in MonitorService(self.factory, self.sources).active_configurations():
-            if self.sources.activation_issues(configuration.source_ids):
-                continue
             since, until = self._slot(now, configuration.schedule.interval_minutes)
-            preview = self.sources.preview(
-                QueryPreviewInput(
-                    query_spec=configuration.query_spec,
-                    source_ids=configuration.source_ids,
-                    since=since,
-                    until=until,
-                )
-            )
-            for source in preview.sources:
-                for query in source.queries:
-                    key = self._key(
-                        configuration.monitor_version_id,
-                        source.source,
-                        query,
-                        until,
+            try:
+                batch = collection.create_monitor_runs(
+                    CollectionRunBatchInput(
+                        monitor_id=configuration.monitor_id,
+                        expected_version=configuration.version,
+                        idempotency_key=self._key(
+                            configuration.monitor_version_id,
+                            until,
+                        ),
+                        trigger="scheduled",
+                        ingestion_mode="live",
+                        since=since,
+                        until=until,
+                        schedule_slot=until,
                     )
-                    if collection.has_scheduled_run(
-                        configuration.monitor_version_id,
-                        source.source,
-                        source.operation,
-                        query,
-                        until,
-                    ):
-                        continue
-                    try:
-                        collection.create_run(
-                            CollectionRunInput(
-                                monitor_id=configuration.monitor_id,
-                                expected_version=configuration.version,
-                                source=source.source,
-                                request_value=query,
-                                since=since,
-                                until=until,
-                                idempotency_key=key,
-                                policy_version=f"monitor-version-{configuration.version}",
-                                retention_days=configuration.schedule.retention_days,
-                                trigger="scheduled",
-                                ingestion_mode="live",
-                                schedule_slot=until,
-                            )
-                        )
-                    except AppError as error:
-                        if error.code in {
-                            "monitor_not_active",
-                            "version_conflict",
-                            "source_not_eligible",
-                            "request_budget_exhausted",
-                        }:
-                            continue
-                        raise
-                    created += 1
+                )
+            except AppError as error:
+                if error.code in {
+                    "monitor_not_active",
+                    "version_conflict",
+                    "source_not_eligible",
+                    "request_budget_exhausted",
+                }:
+                    continue
+                raise
+            if not batch.replayed:
+                created += len(batch.items)
         return created

@@ -109,11 +109,18 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
         == "Request content too large"
     )
     assert document["info"]["title"] == "HotKey API"
-    run_input = document["components"]["schemas"]["CollectionRunRequest"]
+    run_input = document["components"]["schemas"]["MonitorRunRequest"]
+    run_batch = document["components"]["schemas"]["CollectionRunBatchView"]
     run_view = document["components"]["schemas"]["CollectionRunView"]
-    assert "request_value" in run_input["required"]
-    assert "ingestion_mode" in run_input["required"]
-    assert "query_variant" not in run_input["properties"]
+    assert set(run_input["required"]) == {"expected_version", "idempotency_key"}
+    assert set(run_input["properties"]) == {"expected_version", "idempotency_key"}
+    assert set(run_batch["required"]) == {"items", "replayed"}
+    assert (
+        document["paths"]["/api/monitors/{identity}/runs"]["post"]["responses"]["201"][
+            "content"
+        ]["application/json"]["schema"]["$ref"]
+        == "#/components/schemas/CollectionRunBatchView"
+    )
     assert run_view["properties"]["operation"]["enum"] == [
         "search_posts",
         "fetch_post",

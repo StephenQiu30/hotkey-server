@@ -416,16 +416,9 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
     assert activated.status_code == 200 and activated.json()["state"] == "active"
     missing_store = client.post(
         path + "/runs",
-        headers={"Idempotency-Key": "missing-store"},
         json={
             "expected_version": updated["current_version"],
-            "source": "bilibili",
-            "request_value": "AI",
-            "since": "2026-09-14T00:00:00Z",
-            "until": "2026-09-15T00:00:00Z",
-            "policy_version": "user-confirmed-policy-v1",
-            "retention_days": 7,
-            "ingestion_mode": "live",
+            "idempotency_key": "missing-store",
         },
     )
     assert missing_store.status_code == 409
@@ -435,21 +428,17 @@ def test_monitor_activation_is_admission_gated_and_pause_is_explicit(client, dat
     )
     accepted = client.post(
         path + "/runs",
-        headers={"Idempotency-Key": "accepted-run"},
         json={
             "expected_version": updated["current_version"],
-            "source": "bilibili",
-            "request_value": "AI",
-            "since": "2026-09-14T00:00:00Z",
-            "until": "2026-09-15T00:00:00Z",
-            "policy_version": "user-confirmed-policy-v1",
-            "retention_days": 7,
-            "ingestion_mode": "live",
+            "idempotency_key": "accepted-run",
         },
     )
     assert accepted.status_code == 201
-    run = client.get(f"/api/collection-runs/{accepted.json()['id']}")
-    assert run.status_code == 200 and run.json()["job_id"] == accepted.json()["job_id"]
+    assert accepted.json()["replayed"] is False
+    assert len(accepted.json()["items"]) == 1
+    accepted_run = accepted.json()["items"][0]
+    run = client.get(f"/api/collection-runs/{accepted_run['id']}")
+    assert run.status_code == 200 and run.json()["job_id"] == accepted_run["job_id"]
     client.app.dependency_overrides.pop(collection_service)
     assert (
         client.patch(

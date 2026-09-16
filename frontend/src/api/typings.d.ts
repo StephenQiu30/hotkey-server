@@ -226,32 +226,18 @@ declare namespace API {
     identity: string;
   };
 
+  type CollectionRunBatchView = {
+    /** Items */
+    items: CollectionRunView[];
+    /** Replayed */
+    replayed: boolean;
+  };
+
   type CollectionRunPage = {
     /** Items */
     items: CollectionRunView[];
     /** Next Cursor */
     next_cursor: string | null;
-  };
-
-  type CollectionRunRequest = {
-    /** Expected Version */
-    expected_version: number;
-    /** Ingestion Mode */
-    ingestion_mode: "live" | "backfill";
-    /** Operation */
-    operation?: string;
-    /** Policy Version */
-    policy_version: string;
-    /** Request Value */
-    request_value: string;
-    /** Retention Days */
-    retention_days: number;
-    /** Since */
-    since: string;
-    /** Source */
-    source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
-    /** Until */
-    until: string;
   };
 
   type CollectionRunView = {
@@ -803,6 +789,13 @@ declare namespace API {
     items: MonitorView[];
     /** Next Cursor */
     next_cursor: string | null;
+  };
+
+  type MonitorRunRequest = {
+    /** Expected Version */
+    expected_version: number;
+    /** Idempotency Key */
+    idempotency_key: string;
   };
 
   type MonitorStateChange = {

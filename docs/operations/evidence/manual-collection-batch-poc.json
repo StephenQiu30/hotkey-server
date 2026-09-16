@@ -1,0 +1,58 @@
+{
+  "scope": "S02-T03C manual collection batch orchestration",
+  "date": "2026-09-16",
+  "environment": {
+    "database": "PostgreSQL 16.15 disposable Compose database",
+    "broker": "RabbitMQ 4.1.8 disposable Compose vhost",
+    "schema_revision": "0019_collection_retry_budget",
+    "browser": "Playwright Chromium against the final production frontend image",
+    "source_data": "synthetic admitted SourceService; no external requests"
+  },
+  "red": {
+    "result": "test collection failed",
+    "assertion": "manual and scheduled triggers require one atomic monitor-level batch use case",
+    "observed": "CollectionRunBatchInput and create_monitor_runs did not exist"
+  },
+  "green": {
+    "http_request_body": ["expected_version", "idempotency_key"],
+    "http_response": "CollectionRunBatchView with items and replayed",
+    "window_policy_retention_owner": "backend active monitor snapshot",
+    "two_query_batch": {
+      "collection_runs": 2,
+      "jobs": 2,
+      "outbox_rows": 2,
+      "reserved_requests": 2
+    },
+    "replay": "same run ids, replayed=true, reserved_requests remains 2",
+    "insufficient_budget": "HTTP/service code request_budget_exhausted with no new run, job or outbox",
+    "scheduler": "one batch call per monitor and completed slot",
+    "generated_client": "frontend/src/api/collection.ts createCollectionRun",
+    "handwritten_frontend_endpoints": 0,
+    "browser": "one click emitted one POST and rendered a queued manual run"
+  },
+  "local_verification": {
+    "backend": "174 passed with 2 upstream deprecation warnings",
+    "ruff": "passed",
+    "mypy": "131 source and verification files",
+    "dependency_audit": "no known Python vulnerabilities; production frontend audit 0",
+    "frontend": "contract, boundary, negative boundary, Prettier and TypeScript/Vite checks passed",
+    "browser": "5 Chromium tests passed on a disposable Compose stack",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore": {
+      "postgres_version": "16.15",
+      "schema_revision": "0019_collection_retry_budget",
+      "dump_bytes": 87933,
+      "withdrawal_replay_idempotent": true
+    },
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+  },
+  "remote_ci": {
+    "status": "pending"
+  },
+  "limitations": [
+    "The browser controls synthetic monitor and collection responses to verify the generated client wiring deterministically.",
+    "No external platform request or existing MinIO instance was used.",
+    "This slice does not complete real-source admission, multi-page comments, multi-root replies or seven-day observation."
+  ]
+}

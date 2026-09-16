@@ -37,11 +37,11 @@ export async function getCollectionRun(
 export async function createCollectionRun(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: API.createCollectionRunParams,
-  body: API.CollectionRunRequest,
+  body: API.MonitorRunRequest,
   options?: RequestOptions
 ) {
   const { identity: param0, ...queryParams } = params;
-  return request<API.CollectionRunView>(`/api/monitors/${param0}/runs`, {
+  return request<API.CollectionRunBatchView>(`/api/monitors/${param0}/runs`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

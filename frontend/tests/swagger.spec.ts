@@ -74,11 +74,18 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   expect(capability.required).toContain("pipeline");
   expect(capability.required).toContain("eligible_for_collection");
   expect(capability.required).toContain("requires_operations");
-  const runInput = document.components.schemas.CollectionRunRequest;
+  const runInput = document.components.schemas.MonitorRunRequest;
+  const runBatch = document.components.schemas.CollectionRunBatchView;
   const runView = document.components.schemas.CollectionRunView;
-  expect(runInput.required).toContain("request_value");
-  expect(runInput.required).toContain("ingestion_mode");
-  expect(runInput.properties.query_variant).toBe(undefined);
+  expect(runInput.required.sort()).toEqual([
+    "expected_version",
+    "idempotency_key",
+  ]);
+  expect(Object.keys(runInput.properties).sort()).toEqual([
+    "expected_version",
+    "idempotency_key",
+  ]);
+  expect(runBatch.required.sort()).toEqual(["items", "replayed"]);
   expect(runView.properties.operation.enum).toEqual([
     "search_posts",
     "fetch_post",

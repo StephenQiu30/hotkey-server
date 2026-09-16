@@ -714,6 +714,27 @@
         "title": "BudgetSpec",
         "type": "object"
       },
+      "CollectionRunBatchView": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionRunView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "replayed"
+        ],
+        "title": "CollectionRunBatchView",
+        "type": "object"
+      },
       "CollectionRunPage": {
         "properties": {
           "items": {
@@ -740,82 +761,6 @@
           "next_cursor"
         ],
         "title": "CollectionRunPage",
-        "type": "object"
-      },
-      "CollectionRunRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "expected_version": {
-            "minimum": 1.0,
-            "title": "Expected Version",
-            "type": "integer"
-          },
-          "ingestion_mode": {
-            "enum": [
-              "live",
-              "backfill"
-            ],
-            "title": "Ingestion Mode",
-            "type": "string"
-          },
-          "operation": {
-            "const": "search_posts",
-            "default": "search_posts",
-            "title": "Operation",
-            "type": "string"
-          },
-          "policy_version": {
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Policy Version",
-            "type": "string"
-          },
-          "request_value": {
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Request Value",
-            "type": "string"
-          },
-          "retention_days": {
-            "maximum": 365.0,
-            "minimum": 1.0,
-            "title": "Retention Days",
-            "type": "integer"
-          },
-          "since": {
-            "format": "date-time",
-            "title": "Since",
-            "type": "string"
-          },
-          "source": {
-            "enum": [
-              "x",
-              "bilibili",
-              "weibo",
-              "xiaohongshu",
-              "douyin",
-              "bluesky"
-            ],
-            "title": "Source",
-            "type": "string"
-          },
-          "until": {
-            "format": "date-time",
-            "title": "Until",
-            "type": "string"
-          }
-        },
-        "required": [
-          "expected_version",
-          "source",
-          "request_value",
-          "since",
-          "until",
-          "policy_version",
-          "retention_days",
-          "ingestion_mode"
-        ],
-        "title": "CollectionRunRequest",
         "type": "object"
       },
       "CollectionRunView": {
@@ -2408,6 +2353,29 @@
           "next_cursor"
         ],
         "title": "MonitorPage",
+        "type": "object"
+      },
+      "MonitorRunRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_.:-]+$",
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "idempotency_key"
+        ],
+        "title": "MonitorRunRequest",
         "type": "object"
       },
       "MonitorStateChange": {
@@ -7304,18 +7272,6 @@
           },
           {
             "in": "header",
-            "name": "idempotency-key",
-            "required": true,
-            "schema": {
-              "maxLength": 128,
-              "minLength": 1,
-              "pattern": "^[a-zA-Z0-9_.:-]+$",
-              "title": "Idempotency-Key",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
             "name": "X-CSRF-Token",
             "required": false,
             "schema": {
@@ -7336,7 +7292,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CollectionRunRequest"
+                "$ref": "#/components/schemas/MonitorRunRequest"
               }
             }
           },
@@ -7347,7 +7303,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CollectionRunView"
+                  "$ref": "#/components/schemas/CollectionRunBatchView"
                 }
               }
             },

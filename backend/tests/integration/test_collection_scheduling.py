@@ -1,13 +1,15 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
 
 from collection.models import CollectionBudgetUsage, CollectionRun
 from collection.scheduling import CollectionScheduler
-from collection.schemas import CollectionRunInput
+from collection.schemas import CollectionRunBatchInput, CollectionRunInput
 from collection.services import CollectionService
+from core.clock import utcnow
 from core.errors import AppError
 from jobs.models import Job, Outbox
 from monitors.schemas import MonitorInput, MonitorStateChange
@@ -22,14 +24,14 @@ class AdmittedSources(SourceService):
         return []
 
 
-def active_monitor(database, *, daily_requests=4):
+def active_monitor(database, *, daily_requests=4, aliases=None):
     sources = AdmittedSources()
     service = MonitorService(database, sources)
     created = service.create_monitor(
         MonitorInput.model_validate(
             {
                 "title": "周期预算",
-                "query_spec": {"include_any": ["AI"]},
+                "query_spec": {"include_any": ["AI"], "aliases": aliases or []},
                 "source_ids": ["bilibili"],
                 "schedule": {"interval_minutes": 1440},
                 "budget": {
@@ -85,6 +87,77 @@ def test_request_budget_is_atomic_across_concurrent_run_keys(database):
         assert session.scalar(select(func.count()).select_from(Outbox)) == 4
 
 
+def test_manual_batch_creates_all_queries_atomically_and_replays(database):
+    sources = AdmittedSources()
+    monitor = active_monitor(database, daily_requests=100, aliases=["人工智能"])
+    service = CollectionService(database, sources, evidence_configured=True)
+    request = CollectionRunBatchInput(
+        monitor_id=monitor.id,
+        expected_version=monitor.current_version,
+        idempotency_key="manual-batch-one",
+        trigger="manual",
+        ingestion_mode="live",
+    )
+
+    created = service.create_monitor_runs(request)
+    replayed = service.create_monitor_runs(request)
+
+    assert created.replayed is False
+    assert replayed.replayed is True
+    assert [run.id for run in replayed.items] == [run.id for run in created.items]
+    assert [run.request_value for run in created.items] == ["AI", "人工智能"]
+    assert len({run.window_since for run in created.items}) == 1
+    assert len({run.window_until for run in created.items}) == 1
+    assert {run.retention_days for run in created.items} == {7}
+    with database() as session:
+        usage = session.scalar(select(CollectionBudgetUsage))
+        assert usage is not None and usage.reserved_requests == 2
+        rows = list(session.scalars(select(CollectionRun)))
+        assert len(rows) == 2
+        assert {run.policy_version for run in rows} == {
+            f"monitor-version-{monitor.current_version}"
+        }
+        assert session.scalar(select(func.count()).select_from(Job)) == 2
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 2
+
+
+def test_manual_batch_budget_failure_rolls_back_entire_batch(database):
+    sources = AdmittedSources()
+    monitor = active_monitor(database, daily_requests=100, aliases=["人工智能"])
+    service = CollectionService(database, sources, evidence_configured=True)
+    configuration = MonitorService(database, sources).active_configurations()[0]
+    now = utcnow()
+    with database.begin() as session:
+        session.add(
+            CollectionBudgetUsage(
+                id=uuid4(),
+                monitor_version_id=configuration.monitor_version_id,
+                budget_day=now.date(),
+                limit_requests=100,
+                reserved_requests=99,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    with pytest.raises(AppError) as error:
+        service.create_monitor_runs(
+            CollectionRunBatchInput(
+                monitor_id=monitor.id,
+                expected_version=monitor.current_version,
+                idempotency_key="manual-batch-too-large",
+                trigger="manual",
+                ingestion_mode="live",
+            )
+        )
+    assert error.value.code == "request_budget_exhausted"
+    with database() as session:
+        usage = session.scalar(select(CollectionBudgetUsage))
+        assert usage is not None and usage.reserved_requests == 99
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 0
+        assert session.scalar(select(func.count()).select_from(Job)) == 0
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 0
+
+
 def test_scheduler_creates_only_latest_completed_slot_and_is_idempotent(database):
     sources = AdmittedSources()
     monitor = active_monitor(database, daily_requests=4)
@@ -108,6 +181,20 @@ def test_scheduler_creates_only_latest_completed_slot_and_is_idempotent(database
         "paused",
     )
     assert scheduler.schedule_due(datetime(2026, 9, 16, 12, 34, tzinfo=UTC)) == 0
+
+
+def test_scheduler_uses_the_same_batch_orchestration_for_all_queries(database):
+    sources = AdmittedSources()
+    active_monitor(database, daily_requests=100, aliases=["人工智能"])
+    scheduler = CollectionScheduler(database, sources, evidence_configured=True)
+    now = datetime(2026, 9, 15, 12, 34, tzinfo=UTC)
+
+    assert scheduler.schedule_due(now) == 2
+    assert scheduler.schedule_due(now) == 0
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 2
+        usage = session.scalar(select(CollectionBudgetUsage))
+        assert usage is not None and usage.reserved_requests == 2
 
 
 def test_scheduler_without_evidence_configuration_writes_nothing(database):
