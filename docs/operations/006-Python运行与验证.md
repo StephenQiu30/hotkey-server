@@ -311,7 +311,7 @@ Red阶段3项聚焦断言失败：成功页提交后Job仍为running，暂停监
 
 Red阶段稳定操作ID测试因审核端点不存在而失败。Green/Refactor后，真实PostgreSQL测试让同一内容命中两个主题：忽略主题甲后默认列表仍保留主题乙；主题甲默认筛选为空，显式ignored筛选可见并能恢复；主题乙跟进状态持久化，重复跟进不新增审计。完整181项后端测试通过并保留2条上游弃用提示；Ruff覆盖161个文件，严格mypy覆盖133个源/验证文件，Python与前端生产依赖审计均无已知漏洞。OpenAPI/UmiOpenAPI、前端边界/负向样例、Prettier和TypeScript/Vite构建通过。
 
-一次性`hotkey-inbox-review` Compose在PostgreSQL 16.15、RabbitMQ 4.1.8与0020 schema上完成真实prefork诊断，结果为succeeded/attempts=1；backend替换后代理返回401。Chromium 7项通过，受控收件箱用例验证三次PATCH、主题隔离、恢复、跟进以及主题/来源/24小时筛选参数；工作台空态和390px主流程继续通过。PostgreSQL custom dump为100117字节，恢复后撤权清单重放两次幂等；固定旧应用只读快照回退通过。停机worker=0、backend=143、scheduler=0且无SIGKILL，隔离容器和卷已删除。结构化证据见[inbox-match-review-poc.json](evidence/inbox-match-review-poc.json)。
+一次性`hotkey-inbox-review` Compose在PostgreSQL 16.15、RabbitMQ 4.1.8与0020 schema上完成真实prefork诊断，结果为succeeded/attempts=1；backend替换后代理返回401。Chromium 7项通过，受控收件箱用例验证三次PATCH、主题隔离、恢复、跟进以及主题/来源/24小时筛选参数；工作台空态和390px主流程继续通过。PostgreSQL custom dump为100117字节，恢复后撤权清单重放两次幂等；固定旧应用只读快照回退通过。停机worker=0、backend=143、scheduler=0且无SIGKILL，隔离容器和卷已删除。功能提交`952d501e5551122c4f51ffcafa4188386d447cef`的[远端CI #35063725148](https://github.com/StephenQiu30/hotkey-server/actions/runs/35063725148)在3分31秒内复现全部门禁，远端dump为99152字节。结构化证据见[inbox-match-review-poc.json](evidence/inbox-match-review-poc.json)。
 
 浏览器内容和匹配为明确合成数据，负责验证生成客户端接线；真实PostgreSQL测试负责状态、筛选和审计语义。没有访问外部平台或现有MinIO，也没有证明真实收件箱、真实评论、生产负载或七日观察，因此EV-007-003与完整TASK-007-S02-T03仍未完成。
 

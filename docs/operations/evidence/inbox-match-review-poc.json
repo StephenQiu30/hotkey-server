@@ -38,7 +38,19 @@
     "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
   },
   "remote_ci": {
-    "status": "pending"
+    "status": "success",
+    "run_id": 35063725148,
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35063725148",
+    "commit": "952d501e5551122c4f51ffcafa4188386d447cef",
+    "duration": "3m31s",
+    "backend_tests": "181 passed with 2 warnings",
+    "browser": "7 passed",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore_schema": "0020_trend_alerts",
+    "backup_restore_dump_bytes": 99152,
+    "old_application_rollback": "success",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
   },
   "limitations": [
     "The browser uses controlled synthetic inbox content to make review transitions deterministic; PostgreSQL integration tests prove persisted filter and audit semantics.",
