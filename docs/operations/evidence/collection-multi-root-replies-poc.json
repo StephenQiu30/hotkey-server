@@ -61,6 +61,19 @@
     "The first full regression exposed test and backup fixtures that still used the former four-request activation budget; they were updated to the five-request path and the unchanged suite then passed.",
     "The first Compose smoke overlapped the deliberate backend replacement and exited 137; rerunning the two gates sequentially in CI order passed."
   ],
+  "delivery": {
+    "feature_commit": "0433fa8d287b55e13eec2646d476547943de8f23",
+    "remote_ci_run_id": 35061534325,
+    "remote_ci_url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35061534325",
+    "remote_ci_conclusion": "success",
+    "remote_ci_duration": "3m48s",
+    "remote_backend_tests": "180 passed with 2 warnings",
+    "remote_browser": "6 passed",
+    "remote_compose_prefork_attempts": 1,
+    "remote_proxy_replacement_status": 401,
+    "remote_backup_restore_dump_bytes": 99015,
+    "remote_shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+  },
   "boundaries": [
     "The source pages and operation admission were synthetic and do not establish a live platform capability or usage right.",
     "The existing MinIO instance was not connected; this slice reused the previously verified evidence store contract.",

@@ -355,4 +355,4 @@ Red阶段来源预估用例期望3个查询合计15次而旧实现只返回12次
 
 真实PostgreSQL 16.15和RabbitMQ 4.1.8下180项pytest通过并保留2条上游弃用提示；Ruff检查161个文件，严格mypy检查133个源/验证文件，Python与前端生产依赖审计为0已知漏洞。OpenAPI运行时与快照相同，共39组路径；UmiOpenAPI、前端边界/负向样例、Prettier和TypeScript/Vite构建通过。隔离`hotkey-s03-multi-root`栈完成真实prefork诊断`succeeded/attempts=1`、backend替换代理401、Chromium 6项、PostgreSQL备份恢复与删除清单两次幂等重放，dump为99114字节；固定0019旧应用在只读隔离快照完成回退读取。停机worker=0、backend=143、scheduler=0且无SIGKILL，随后删除本次容器、网络和卷。结构化证据见[collection-multi-root-replies-poc.json](evidence/collection-multi-root-replies-poc.json)。
 
-首轮全量回归发现使用旧四请求估算的低预算测试与备份夹具无法启用监控；夹具统一到五请求链后全量通过。第一次Compose smoke与backend替换被并行执行，替换过程使smoke命令退出137；按CI顺序串行复跑后任务一次成功。验证只使用合成来源和内存EvidenceStore，没有请求外部平台或连接现有MinIO；真实评论链、超过两页/两父级的全量树和七日观察仍未验收。
+首轮全量回归发现使用旧四请求估算的低预算测试与备份夹具无法启用监控；夹具统一到五请求链后全量通过。第一次Compose smoke与backend替换被并行执行，替换过程使smoke命令退出137；按CI顺序串行复跑后任务一次成功。功能提交`0433fa8d287b55e13eec2646d476547943de8f23`的[远端CI #35061534325](https://github.com/StephenQiu30/hotkey-server/actions/runs/35061534325)在3分48秒内复现180项后端、6项Chromium、prefork一次执行、代理替换、99015字节备份恢复、旧应用回退和无SIGKILL停机门禁并成功。验证只使用合成来源和内存EvidenceStore，没有请求外部平台或连接现有MinIO；真实评论链、超过两页/两父级的全量树和七日观察仍未验收。
