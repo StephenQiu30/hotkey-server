@@ -65,6 +65,10 @@ jobs:
           PY
       - run: npx playwright install --with-deps chromium && npm run test:e2e
         working-directory: frontend
+      - run: uv run --project backend python backend/scripts/verify_backup_restore.py
+        env:
+          HOTKEY_BACKUP_POC_DATABASE_URL: postgresql+psycopg://hotkey:learning@127.0.0.1:15435/hotkey
+          PYTHONPATH: backend/src
       - run: uv run --project backend python backend/scripts/verify_shutdown.py
       - if: failure()
         uses: actions/upload-artifact@v4

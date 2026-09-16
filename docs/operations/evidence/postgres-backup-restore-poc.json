@@ -1,0 +1,88 @@
+{
+  "scope": "S06-T01B PostgreSQL backup restore and withdrawal replay",
+  "observed_at": "2026-09-16",
+  "data_classification": {
+    "synthetic": true,
+    "contains_real_platform_content": false,
+    "external_platform_accessed": false,
+    "existing_minio_connected": false,
+    "paid_service_used": false
+  },
+  "red": {
+    "command": "verify_backup_restore.py before implementation",
+    "exit_code": 2,
+    "failure": "the registered verification script did not exist"
+  },
+  "guardrails": {
+    "default_compose_project_rejected": true,
+    "non_hotkey_database_rejected": true,
+    "loopback_database_required": true,
+    "compose_postgres_project_label_verified": true,
+    "source_database_dropped": false,
+    "persistent_volume_removed_by_script": false,
+    "passed": true
+  },
+  "backup": {
+    "schema_revision": "0018_withdrawal_lifecycle",
+    "tool": "pg_dump (PostgreSQL) 16.15 (Debian 16.15-1.pgdg12+2)",
+    "format": "custom",
+    "dump_bytes_positive": true,
+    "local_dump_bytes_observed": [
+      88260,
+      90798,
+      87928
+    ],
+    "backup_taken_before_withdrawal": true,
+    "manifest_entries": 1,
+    "manifest_file_mode": "0600",
+    "passed": true
+  },
+  "restore_and_replay": {
+    "isolated_restore_database": true,
+    "before_replay": {
+      "content_visibility": "available",
+      "raw_page_object_state": "available",
+      "withdrawal_records": 0
+    },
+    "after_first_replay": {
+      "content_visibility": "deleted",
+      "raw_page_object_state": "delete_pending",
+      "withdrawal_records": 1,
+      "applied": 1,
+      "missing": 0
+    },
+    "after_second_replay": {
+      "content_visibility": "deleted",
+      "raw_page_object_state": "delete_pending",
+      "withdrawal_records": 1,
+      "applied": 1,
+      "missing": 0
+    },
+    "idempotent": true,
+    "passed": true
+  },
+  "cleanup": {
+    "restore_database_removed": true,
+    "dump_removed": true,
+    "manifest_removed": true,
+    "source_fixture_removed": true,
+    "verified_after_cleanup": true
+  },
+  "automation": {
+    "script": "backend/scripts/verify_backup_restore.py",
+    "ci_position": "after Chromium E2E and before graceful shutdown",
+    "ruff": "passed",
+    "mypy": "strict check passed for 130 source and script files",
+    "backend_tests": "161 passed with disposable PostgreSQL 16 and RabbitMQ 4.1; 2 upstream deprecation warnings",
+    "frontend": "UmiOpenAPI drift, boundaries, Prettier, TypeScript/Vite build and production dependency audit passed",
+    "compose": "real prefork job, backend replacement proxy, Chromium 3-test suite, backup restore verifier and graceful shutdown passed in CI order locally",
+    "remote_ci": null
+  },
+  "limitations": [
+    "The drill uses an isolated disposable Compose database and synthetic rows; it is not a restore of a production snapshot.",
+    "The PostgreSQL dump contains MinIO object metadata only. Existing MinIO object bytes, versions, object lock, retention and incomplete multipart uploads remain unverified.",
+    "Backup scheduling, encryption, off-host retention, restore point objectives and backup expiry remain deployment responsibilities and were not exercised.",
+    "The migration remains forward-only. An old-application read-only rollback window was not exercised.",
+    "No real source, production credential, external model or seven-day observation was used, so EV-007-010 remains incomplete."
+  ]
+}

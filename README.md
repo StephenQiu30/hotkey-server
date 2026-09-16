@@ -45,6 +45,6 @@ npm run build --prefix frontend
 
 语义检索需要后端容器可访问的现有自建 Ollama 服务，并同时配置 `HOTKEY_EMBEDDING_BASE_URL` 和该模型的 `HOTKEY_EMBEDDING_MODEL_DIGEST`。模型和维度固定为 `qwen3-embedding:latest` 与 1024；数据库镜像包含 pgvector 0.8.6。未配置时知识精确检索保持可用，语义索引和语义查询返回明确的不可用状态。
 
-删除操作先在数据库建立在线屏障，再由运维显式执行 `python -m cli deletion-export <私有路径>` 导出0600权限清单、`deletion-replay <私有路径>` 在恢复后重放、`evidence-reconcile --limit 20` 有界清理MinIO对象。最后一项需要完整的 `HOTKEY_S3_*` 配置；应用不会创建bucket、修改对象锁或生命周期策略。现有实例完成TLS、删除权限、版本历史和未完成multipart生命周期核对前，不能将合成POC视为生产物理删除验收。
+删除操作先在数据库建立在线屏障，再由运维显式执行 `python -m cli deletion-export <私有路径>` 导出0600权限清单、`deletion-replay <私有路径>` 在恢复后重放、`evidence-reconcile --limit 20` 有界清理MinIO对象。CI已在可丢弃Compose库中用真实`pg_dump -Fc`和`pg_restore`验证“旧备份恢复→删除清单重放两次”的顺序。对象清理需要完整的 `HOTKEY_S3_*` 配置；应用不会创建bucket、修改对象锁或生命周期策略。现有实例完成TLS、删除权限、版本历史和未完成multipart生命周期核对前，不能将数据库恢复POC视为生产物理删除或完整灾备验收。
 
 旧实现、旧契约和旧验收文档已从工作树删除，可通过 Git 历史查阅；新服务不兼容旧接口、不读取旧库、不自动迁移旧账号。已有持久卷不会被清理。使用与贡献请参阅 [规范](AGENTS.md)、[安全说明](SECURITY.md) 和 [LICENSE](LICENSE)。
