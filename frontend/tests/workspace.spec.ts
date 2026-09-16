@@ -114,23 +114,111 @@ test("owner login, monitor edit, real diagnostic and revocation", async ({
   await expect(
     page.getByRole("button", { name: `启用 ${title}-更新` }),
   ).toBeDisabled();
+  let currentJob: Record<string, unknown> | null = null;
+  let jobReads = 0;
+  let runReads = 0;
+  await page.route("**/api/v1/jobs", async (route) => {
+    if (route.request().method() === "POST") {
+      const response = await route.fetch();
+      currentJob = await response.json();
+      await route.fulfill({ response });
+      return;
+    }
+    jobReads += 1;
+    const job = currentJob;
+    if (job === null) {
+      await route.fulfill({ json: { items: [], next_cursor: null } });
+      return;
+    }
+    const active = jobReads === 1;
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            ...job,
+            status: active ? "queued" : "succeeded",
+            attempts: active ? 0 : 1,
+          },
+        ],
+        next_cursor: null,
+      },
+    });
+  });
+  await page.route("**/api/v1/collection-runs?**", async (route) => {
+    runReads += 1;
+    if (currentJob === null) {
+      await route.fulfill({ json: { items: [], next_cursor: null } });
+      return;
+    }
+    const activeState = runReads === 1 ? "queued" : "running";
+    const active = runReads <= 2;
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            id: "00000000-0000-0000-0000-000000000201",
+            job_id: currentJob.id,
+            parent_run_id: null,
+            monitor_version_id: "00000000-0000-0000-0000-000000000202",
+            source: "bilibili",
+            operation: "search_posts",
+            request_value: "轮询验证",
+            retention_days: 7,
+            trigger: "manual",
+            ingestion_mode: "live",
+            schedule_slot: null,
+            budget_day: "2026-09-16",
+            reserved_requests: 1,
+            state: active ? activeState : "completed",
+            outcome: active ? null : "ok",
+            fencing_token: 1,
+            pages_count: active ? 0 : 1,
+            items_count: active ? 0 : 1,
+            bytes_count: active ? 0 : 128,
+            stop_reason: null,
+            window_since: "2026-09-16T00:00:00Z",
+            window_until: "2026-09-16T01:00:00Z",
+            created_at: "2026-09-16T01:00:00Z",
+            completed_at: active ? null : "2026-09-16T01:00:01Z",
+          },
+        ],
+        next_cursor: null,
+      },
+    });
+  });
   const jobResponse = page.waitForResponse(
     (r) => r.url().endsWith("/api/v1/jobs") && r.request().method() === "POST",
   );
   await page.getByRole("button", { name: "运行诊断" }).click();
   const job = await (await jobResponse).json();
-  await expect
-    .poll(
-      async () => {
-        await page.getByRole("button", { name: "刷新", exact: true }).click();
-        return page
-          .getByRole("row")
-          .filter({ hasText: job.id.slice(0, 8) })
-          .textContent();
-      },
-      { timeout: 20000 },
-    )
-    .toContain("已完成");
+  const jobRow = page.getByRole("row").filter({ hasText: job.id.slice(0, 8) });
+  await expect(jobRow).toContainText("排队中");
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const hiddenReads = { jobs: jobReads, runs: runReads };
+  await page.waitForTimeout(4500);
+  expect({ jobs: jobReads, runs: runReads }).toEqual(hiddenReads);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(jobRow).toContainText("已完成", { timeout: 20000 });
+  const collectionRun = page.getByRole("article").filter({
+    has: page.getByRole("heading", { name: "搜索：轮询验证" }),
+  });
+  await expect(collectionRun).toContainText("已完成", { timeout: 20000 });
+  await page.waitForTimeout(4500);
+  const settledReads = { jobs: jobReads, runs: runReads };
+  await page.waitForTimeout(4500);
+  expect({ jobs: jobReads, runs: runReads }).toEqual(settledReads);
   await page.reload();
   await expect(
     page.getByRole("heading", { name: title + "-更新", exact: true }),

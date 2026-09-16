@@ -48,6 +48,16 @@ const monitorStates: Record<Monitor["state"], string> = {
   active: "运行中",
   paused: "已暂停",
 };
+const POLL_INTERVAL_MS = 2000;
+
+function jobIsActive(job: Job): boolean {
+  return job.status === "queued" || job.status === "running";
+}
+
+function runIsActive(run: CollectionRun): boolean {
+  return run.state === "queued" || run.state === "running";
+}
+
 export function App() {
   const [session, setSession] = useState<"loading" | "in" | "out">("loading");
   const [error, setError] = useState("");
@@ -131,6 +141,78 @@ export function App() {
       generation.current++;
     };
   }, [session, refresh]);
+  const hasActiveWork = jobs.some(jobIsActive) || runs.some(runIsActive);
+  useEffect(() => {
+    if (session !== "in" || !hasActiveWork) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let activeController: AbortController | undefined;
+
+    const schedule = () => {
+      if (
+        stopped ||
+        document.visibilityState !== "visible" ||
+        timer ||
+        activeController
+      )
+        return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        void poll();
+      }, POLL_INTERVAL_MS);
+    };
+
+    const poll = async () => {
+      if (stopped || document.visibilityState !== "visible") return;
+      const controller = new AbortController();
+      activeController = controller;
+      const observedGeneration = generation.current;
+      let continuePolling = true;
+      try {
+        const [nextJobs, nextRuns] = await Promise.all([
+          listJobs({}, { signal: controller.signal }),
+          listCollectionRuns({}, { signal: controller.signal }),
+        ]);
+        if (
+          stopped ||
+          controller.signal.aborted ||
+          observedGeneration !== generation.current
+        )
+          return;
+        setJobs(nextJobs.items);
+        setJobCursor(nextJobs.next_cursor);
+        setRuns(nextRuns.items);
+        setRunCursor(nextRuns.next_cursor);
+        continuePolling =
+          nextJobs.items.some(jobIsActive) || nextRuns.items.some(runIsActive);
+        if (!continuePolling) await refresh();
+      } catch (error: unknown) {
+        if (!controller.signal.aborted && !stopped) setError(message(error));
+      } finally {
+        if (activeController === controller) activeController = undefined;
+        if (continuePolling) schedule();
+      }
+    };
+
+    const visibilityChanged = () => {
+      if (document.visibilityState === "visible") {
+        schedule();
+        return;
+      }
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      activeController?.abort();
+    };
+
+    document.addEventListener("visibilitychange", visibilityChanged);
+    schedule();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      activeController?.abort();
+      document.removeEventListener("visibilitychange", visibilityChanged);
+    };
+  }, [hasActiveWork, refresh, session]);
   async function action(work: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -476,7 +558,7 @@ export function App() {
             <div>
               <h2>任务链路诊断</h2>
               <p className="muted small">
-                验证任务投递与结果入库，不采集社交媒体数据。点击刷新查看最新结果。
+                验证任务投递与结果入库，不采集社交媒体数据。活动任务会自动更新。
               </p>
             </div>
             <button
