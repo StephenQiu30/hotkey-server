@@ -438,6 +438,25 @@ section {
 .trend-source {
   margin-top: 14px;
 }
+.trend-alerts {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.trend-alert-rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.trend-alert-form label {
+  flex-basis: 150px;
+  margin-bottom: 0;
+}
 .trend-reasons {
   display: block;
   color: #8a4b32;

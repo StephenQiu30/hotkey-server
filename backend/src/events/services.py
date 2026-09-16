@@ -33,7 +33,21 @@ from events.schemas import (
     EventView,
 )
 from evidence.services import raw_page_run_ids
-from notifications.services import record_event_change
+from notifications.schemas import (
+    TrendAlertEvaluationView,
+    TrendAlertRuleInput,
+    TrendAlertRuleUpdate,
+    TrendAlertRuleView,
+)
+from notifications.services import (
+    active_trend_alert_event_ids,
+    active_trend_alert_rules,
+    create_trend_alert_rule,
+    list_trend_alert_rules,
+    record_event_change,
+    record_trend_alert,
+    update_trend_alert_rule,
+)
 
 
 @dataclass(frozen=True)
@@ -288,8 +302,9 @@ class EventService:
             reasons.append("no_live_coverage")
         return reasons
 
-    def trends(
+    def _trends(
         self,
+        session: Session,
         identity: UUID,
         since: datetime,
         until: datetime,
@@ -304,28 +319,25 @@ class EventService:
         if bucket_count > 168:
             raise AppError("trend_window_too_large", 422)
 
-        with self.factory() as session:
-            event = self._event(session, identity)
-            member_ids = list(
-                session.scalars(
-                    select(EventMember.content_id).where(EventMember.event_id == event.id)
-                )
+        event = self._event(session, identity)
+        member_ids = list(
+            session.scalars(select(EventMember.content_id).where(EventMember.event_id == event.id))
+        )
+        records = content_trend_records(session, member_ids, until)
+        raw_page_ids = {
+            raw_page_id
+            for record in records
+            for raw_page_id in (
+                [record.initial_raw_page_id] if record.initial_raw_page_id is not None else []
             )
-            records = content_trend_records(session, member_ids, until)
-            raw_page_ids = {
-                raw_page_id
-                for record in records
-                for raw_page_id in (
-                    [record.initial_raw_page_id] if record.initial_raw_page_id is not None else []
-                )
-            }
-            raw_page_ids.update(
-                observation.raw_page_id for record in records for observation in record.observations
-            )
-            raw_to_run = raw_page_run_ids(session, raw_page_ids)
-            run_contexts = collection_run_contexts(session, set(raw_to_run.values()))
-            sources = {record.source for record in records}
-            coverage = collection_coverage_runs(session, sources, since, until)
+        }
+        raw_page_ids.update(
+            observation.raw_page_id for record in records for observation in record.observations
+        )
+        raw_to_run = raw_page_run_ids(session, raw_page_ids)
+        run_contexts = collection_run_contexts(session, set(raw_to_run.values()))
+        sources = {record.source for record in records}
+        coverage = collection_coverage_runs(session, sources, since, until)
 
         def mode(raw_page_id: UUID | None) -> str | None:
             if raw_page_id is None:
@@ -422,6 +434,129 @@ class EventService:
             bucket_hours=bucket_hours,
             sources=result_sources,
         )
+
+    def trends(
+        self,
+        identity: UUID,
+        since: datetime,
+        until: datetime,
+        bucket_hours: Literal[1, 6, 24],
+    ) -> EventTrendView:
+        with self.factory() as session:
+            return self._trends(session, identity, since, until, bucket_hours)
+
+    def trend_alert_rules(self, identity: UUID) -> list[TrendAlertRuleView]:
+        with self.factory() as session:
+            self._event(session, identity)
+            return list_trend_alert_rules(session, identity)
+
+    def create_trend_alert_rule(
+        self, identity: UUID, data: TrendAlertRuleInput
+    ) -> TrendAlertRuleView:
+        with self.factory.begin() as session:
+            event = self._event(session, identity, lock=True)
+            if event.status != "active":
+                raise AppError("event_archived", 409)
+            return create_trend_alert_rule(
+                session,
+                event_id=identity,
+                data=data,
+                created_at=utcnow(),
+            )
+
+    def update_trend_alert_rule(
+        self,
+        identity: UUID,
+        rule_id: UUID,
+        data: TrendAlertRuleUpdate,
+    ) -> TrendAlertRuleView:
+        with self.factory.begin() as session:
+            event = self._event(session, identity, lock=True)
+            if event.status != "active":
+                raise AppError("event_archived", 409)
+            return update_trend_alert_rule(
+                session,
+                event_id=identity,
+                rule_id=rule_id,
+                data=data,
+                updated_at=utcnow(),
+            )
+
+    @staticmethod
+    def _eligible_bucket(now: datetime, bucket_hours: int) -> tuple[datetime, datetime]:
+        now = now.astimezone(UTC)
+        boundary = now.replace(
+            hour=(now.hour // bucket_hours) * bucket_hours,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        if now < boundary + timedelta(minutes=5):
+            boundary -= timedelta(hours=bucket_hours)
+        return boundary - timedelta(hours=bucket_hours), boundary
+
+    def _evaluate_trend_alerts(
+        self, session: Session, identity: UUID, now: datetime
+    ) -> TrendAlertEvaluationView:
+        event = self._event(session, identity, lock=True)
+        if event.status != "active":
+            return TrendAlertEvaluationView(evaluated_rules=0, created_notifications=0)
+        rules = active_trend_alert_rules(session, identity, lock=True)
+        created = 0
+        for rule in rules:
+            starts_at, ends_at = self._eligible_bucket(now, rule.bucket_hours)
+            trend = self._trends(
+                session,
+                identity,
+                starts_at,
+                ends_at,
+                rule.bucket_hours,
+            )
+            source = next((item for item in trend.sources if item.source == rule.source), None)
+            if source is None or len(source.buckets) != 1:
+                continue
+            bucket = source.buckets[0]
+            if bucket.coverage_status != "comparable":
+                continue
+            metric_value = getattr(bucket, rule.metric)
+            if metric_value < rule.threshold_count:
+                continue
+            created += int(
+                record_trend_alert(
+                    session,
+                    rule=rule,
+                    bucket_start=bucket.starts_at,
+                    bucket_end=bucket.ends_at,
+                    metric_value=metric_value,
+                    created_at=now.astimezone(UTC),
+                )
+            )
+        return TrendAlertEvaluationView(
+            evaluated_rules=len(rules),
+            created_notifications=created,
+        )
+
+    def evaluate_trend_alerts(
+        self, identity: UUID, now: datetime | None = None
+    ) -> TrendAlertEvaluationView:
+        with self.factory.begin() as session:
+            return self._evaluate_trend_alerts(session, identity, now or utcnow())
+
+    def evaluate_due_trend_alerts(self, now: datetime | None = None) -> int:
+        evaluated_at = now or utcnow()
+        with self.factory() as session:
+            rule_event_ids = active_trend_alert_event_ids(session)
+            event_ids = list(
+                session.scalars(
+                    select(Event.id)
+                    .where(Event.id.in_(rule_event_ids), Event.status == "active")
+                    .order_by(Event.id)
+                )
+            )
+        created = 0
+        for event_id in event_ids:
+            created += self.evaluate_trend_alerts(event_id, evaluated_at).created_notifications
+        return created
 
     def merge(self, target_id: UUID, data: EventMergeInput) -> EventView:
         if target_id == data.source_event_id:

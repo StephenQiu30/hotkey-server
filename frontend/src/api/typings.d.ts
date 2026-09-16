@@ -345,6 +345,10 @@ declare namespace API {
     identity: string;
   };
 
+  type createEventTrendAlertRuleParams = {
+    identity: string;
+  };
+
   type DiagnosticInput = {
     /** Kind */
     kind: string;
@@ -355,6 +359,10 @@ declare namespace API {
     code: string;
     /** Request Id */
     request_id: string;
+  };
+
+  type evaluateEventTrendAlertsParams = {
+    identity: string;
   };
 
   type EventInput = {
@@ -731,6 +739,10 @@ declare namespace API {
     cursor?: string | null;
   };
 
+  type listEventTrendAlertRulesParams = {
+    identity: string;
+  };
+
   type listInboxContentsParams = {
     limit?: number;
     cursor?: string | null;
@@ -860,7 +872,7 @@ declare namespace API {
 
   type NotificationView = {
     /** Change Id */
-    change_id: string;
+    change_id: string | null;
     /** Created At */
     created_at: string;
     /** Event Id */
@@ -874,13 +886,16 @@ declare namespace API {
       | "event_merged_in"
       | "event_merged_out"
       | "event_split_in"
-      | "event_split_out";
+      | "event_split_out"
+      | "trend_threshold_reached";
     /** Message */
     message: string;
     /** Read At */
     read_at: string | null;
     /** Rule Version */
     rule_version: number;
+    /** Trend Occurrence Id */
+    trend_occurrence_id: string | null;
   };
 
   type pauseMonitorParams = {
@@ -1035,7 +1050,62 @@ declare namespace API {
     identity: string;
   };
 
+  type TrendAlertEvaluationView = {
+    /** Created Notifications */
+    created_notifications: number;
+    /** Evaluated Rules */
+    evaluated_rules: number;
+  };
+
+  type TrendAlertRuleInput = {
+    /** Bucket Hours */
+    bucket_hours: 1 | 6 | 24;
+    /** Metric */
+    metric: "new_posts" | "new_discussions" | "observed_reply_delta";
+    /** Source */
+    source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
+    /** Threshold Count */
+    threshold_count: number;
+  };
+
+  type TrendAlertRuleUpdate = {
+    /** Enabled */
+    enabled: boolean;
+    /** Expected Version */
+    expected_version: number;
+    /** Threshold Count */
+    threshold_count: number;
+  };
+
+  type TrendAlertRuleView = {
+    /** Bucket Hours */
+    bucket_hours: 1 | 6 | 24;
+    /** Created At */
+    created_at: string;
+    /** Enabled */
+    enabled: boolean;
+    /** Event Id */
+    event_id: string;
+    /** Id */
+    id: string;
+    /** Metric */
+    metric: "new_posts" | "new_discussions" | "observed_reply_delta";
+    /** Source */
+    source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
+    /** Threshold Count */
+    threshold_count: number;
+    /** Updated At */
+    updated_at: string;
+    /** Version */
+    version: number;
+  };
+
   type TrendBucketHours = 1 | 6 | 24;
+
+  type updateEventTrendAlertRuleParams = {
+    identity: string;
+    rule_id: string;
+  };
 
   type updateMonitorParams = {
     identity: string;

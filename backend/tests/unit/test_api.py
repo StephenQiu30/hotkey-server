@@ -72,6 +72,22 @@ def test_swagger_contract_has_stable_client_operation_ids(monkeypatch):
         ("/api/events/{identity}/merge", "post"): "mergeEvent",
         ("/api/events/{identity}/split", "post"): "splitEvent",
         ("/api/events/{identity}/trends", "get"): "getEventTrends",
+        (
+            "/api/events/{identity}/trend-alert-rules",
+            "get",
+        ): "listEventTrendAlertRules",
+        (
+            "/api/events/{identity}/trend-alert-rules",
+            "post",
+        ): "createEventTrendAlertRule",
+        (
+            "/api/events/{identity}/trend-alert-rules/{rule_id}",
+            "patch",
+        ): "updateEventTrendAlertRule",
+        (
+            "/api/events/{identity}/trend-alerts/evaluate",
+            "post",
+        ): "evaluateEventTrendAlerts",
         ("/api/events/{identity}/analysis-runs", "post"): "createEventAnalysisRun",
         ("/api/events/{identity}/analysis-runs", "get"): "listEventAnalysisRuns",
         ("/api/analysis-runs/{identity}", "get"): "getAnalysisRun",

@@ -24,6 +24,7 @@ def database():
                 "TRUNCATE knowledge_chunks, knowledge_citations, knowledge_versions, "
                 "knowledge_entries, "
                 "analysis_labels, analysis_samples, analysis_runs, notifications, "
+                "trend_alert_occurrences, trend_alert_rules, "
                 "event_members, event_revisions, events, "
                 "collection_checkpoints, "
                 "collection_budget_usage, monitor_matches, "

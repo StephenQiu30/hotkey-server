@@ -22,6 +22,7 @@ type Props = {
     contentIds: string[],
     revision: number,
   ) => Promise<void>;
+  onNotificationsChanged: () => Promise<void>;
   onMore: () => void;
 };
 
@@ -33,6 +34,7 @@ export function EventDossiers({
   onRemove,
   onMerge,
   onSplit,
+  onNotificationsChanged,
   onMore,
 }: Props) {
   const [title, setTitle] = useState("");
@@ -113,7 +115,11 @@ export function EventDossiers({
                     </button>
                   </div>
                 ))}
-                <EventTrends eventId={item.id} />
+                <EventTrends
+                  eventId={item.id}
+                  active={item.status === "active"}
+                  onNotificationsChanged={onNotificationsChanged}
+                />
                 <EventAnalysis
                   eventId={item.id}
                   eventRevision={item.current_revision}

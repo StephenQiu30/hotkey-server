@@ -133,6 +133,84 @@ export async function splitEvent(
   });
 }
 
+/** Event Trend Alert Rules GET /api/events/${param0}/trend-alert-rules */
+export async function listEventTrendAlertRules(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.listEventTrendAlertRulesParams,
+  options?: RequestOptions
+) {
+  const { identity: param0, ...queryParams } = params;
+  return request<API.TrendAlertRuleView[]>(
+    `/api/events/${param0}/trend-alert-rules`,
+    {
+      method: "GET",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
+/** Create Event Trend Alert Rule POST /api/events/${param0}/trend-alert-rules */
+export async function createEventTrendAlertRule(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.createEventTrendAlertRuleParams,
+  body: API.TrendAlertRuleInput,
+  options?: RequestOptions
+) {
+  const { identity: param0, ...queryParams } = params;
+  return request<API.TrendAlertRuleView>(
+    `/api/events/${param0}/trend-alert-rules`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
+/** Update Event Trend Alert Rule PATCH /api/events/${param0}/trend-alert-rules/${param1} */
+export async function updateEventTrendAlertRule(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.updateEventTrendAlertRuleParams,
+  body: API.TrendAlertRuleUpdate,
+  options?: RequestOptions
+) {
+  const { identity: param0, rule_id: param1, ...queryParams } = params;
+  return request<API.TrendAlertRuleView>(
+    `/api/events/${param0}/trend-alert-rules/${param1}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      params: { ...queryParams },
+      data: body,
+      ...(options || {}),
+    }
+  );
+}
+
+/** Evaluate Event Trend Alerts POST /api/events/${param0}/trend-alerts/evaluate */
+export async function evaluateEventTrendAlerts(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.evaluateEventTrendAlertsParams,
+  options?: RequestOptions
+) {
+  const { identity: param0, ...queryParams } = params;
+  return request<API.TrendAlertEvaluationView>(
+    `/api/events/${param0}/trend-alerts/evaluate`,
+    {
+      method: "POST",
+      params: { ...queryParams },
+      ...(options || {}),
+    }
+  );
+}
+
 /** Event Trends GET /api/events/${param0}/trends */
 export async function getEventTrends(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)

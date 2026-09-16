@@ -3,6 +3,7 @@ import json
 import logging
 import signal
 import threading
+from datetime import timedelta
 from uuid import UUID
 
 from alembic import command
@@ -13,6 +14,7 @@ from collection.scheduling import CollectionScheduler
 from core.clock import utcnow
 from core.config import Settings
 from db.session import Database
+from events.services import EventService
 from jobs.execution import cancel, enqueue, reconcile
 from jobs.models import Job
 from migrations.config import migration_config
@@ -95,10 +97,16 @@ def main() -> None:
                 sources_service,
                 evidence_configured=settings.s3_configured,
             )
+            events = EventService(factory)
+            next_trend_alert_check = utcnow()
             while not stopped.is_set():
                 try:
+                    now = utcnow()
                     reconcile(factory, settings.recovery_seconds)
-                    collector.schedule_due(utcnow())
+                    collector.schedule_due(now)
+                    if now >= next_trend_alert_check:
+                        events.evaluate_due_trend_alerts(now)
+                        next_trend_alert_check = now + timedelta(minutes=1)
                     for _ in range(100):
                         if stopped.is_set() or not dispatch_one(factory, app):
                             break

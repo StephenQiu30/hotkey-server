@@ -463,6 +463,7 @@ export function App() {
               await refresh();
             });
           }}
+          onNotificationsChanged={refresh}
           onMore={() => void more("events")}
         />
         <KnowledgeSearch events={events} />

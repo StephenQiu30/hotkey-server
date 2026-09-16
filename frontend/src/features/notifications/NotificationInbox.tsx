@@ -7,6 +7,7 @@ const kindLabels: Record<Notification["kind"], string> = {
   event_merged_out: "事件归档",
   event_split_in: "拆分创建",
   event_split_out: "内容拆分",
+  trend_threshold_reached: "趋势阈值",
 };
 
 function time(value: string): string {
@@ -41,7 +42,7 @@ export function NotificationInbox({
             事件提醒 <span className="count">{unreadCount} 未读</span>
           </h2>
           <p className="muted small">
-            记录事件成员、合并和拆分变化；已读状态会持久保存。
+            记录事件变化和可比较趋势提醒；已读状态会持久保存。
           </p>
         </div>
       </div>
@@ -80,7 +81,7 @@ export function NotificationInbox({
       ) : (
         <div className="empty">
           <h3>还没有事件提醒</h3>
-          <p>事件成员、合并或拆分发生变化后，提醒会显示在这里。</p>
+          <p>事件变化或趋势达到规则阈值后，提醒会显示在这里。</p>
         </div>
       )}
       {nextCursor && (

@@ -1,7 +1,8 @@
 from base64 import b64decode, urlsafe_b64encode
 from binascii import Error as Base64Error
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, or_, select
@@ -11,12 +12,31 @@ from sqlalchemy.orm import Session, sessionmaker
 from audit.services import audit
 from core.clock import utcnow
 from core.errors import AppError
-from notifications.models import Notification
-from notifications.schemas import NotificationPage, NotificationView
+from notifications.models import Notification, TrendAlertOccurrence, TrendAlertRule
+from notifications.schemas import (
+    NotificationPage,
+    NotificationView,
+    TrendAlertMetric,
+    TrendAlertRuleInput,
+    TrendAlertRuleUpdate,
+    TrendAlertRuleView,
+)
 
 EventChangeType = Literal[
     "add_member", "remove_member", "merge_in", "merge_out", "split_in", "split_out"
 ]
+
+
+@dataclass(frozen=True)
+class TrendAlertRuleSnapshot:
+    id: UUID
+    event_id: UUID
+    source: str
+    metric: TrendAlertMetric
+    bucket_hours: Literal[1, 6, 24]
+    threshold_count: int
+    version: int
+
 
 CHANGE_DETAILS: dict[EventChangeType, tuple[str, str]] = {
     "add_member": ("event_member_added", "事件新增了一条内容"),
@@ -43,6 +63,7 @@ def record_event_change(
             id=uuid4(),
             event_id=event_id,
             change_id=change_id,
+            trend_occurrence_id=None,
             rule_version=1,
             kind=kind,
             message=message,
@@ -57,6 +78,175 @@ def record_event_change(
             ]
         )
     )
+
+
+def _rule_view(rule: TrendAlertRule) -> TrendAlertRuleView:
+    return TrendAlertRuleView.model_validate(rule, from_attributes=True)
+
+
+def list_trend_alert_rules(session: Session, event_id: UUID) -> list[TrendAlertRuleView]:
+    rules = session.scalars(
+        select(TrendAlertRule)
+        .where(TrendAlertRule.event_id == event_id)
+        .order_by(TrendAlertRule.created_at, TrendAlertRule.id)
+    )
+    return [_rule_view(rule) for rule in rules]
+
+
+def create_trend_alert_rule(
+    session: Session,
+    *,
+    event_id: UUID,
+    data: TrendAlertRuleInput,
+    created_at: datetime,
+) -> TrendAlertRuleView:
+    identity = session.scalar(
+        insert(TrendAlertRule)
+        .values(
+            id=uuid4(),
+            event_id=event_id,
+            source=data.source,
+            metric=data.metric,
+            bucket_hours=data.bucket_hours,
+            threshold_count=data.threshold_count,
+            version=1,
+            enabled=True,
+            created_at=created_at,
+            updated_at=created_at,
+        )
+        .on_conflict_do_nothing(
+            index_elements=[
+                TrendAlertRule.event_id,
+                TrendAlertRule.source,
+                TrendAlertRule.metric,
+                TrendAlertRule.bucket_hours,
+            ]
+        )
+        .returning(TrendAlertRule.id)
+    )
+    if identity is None:
+        raise AppError("trend_alert_rule_exists", 409)
+    rule = session.get(TrendAlertRule, identity)
+    assert rule is not None
+    audit(session, "trend_alert_rule_created", str(rule.id))
+    return _rule_view(rule)
+
+
+def update_trend_alert_rule(
+    session: Session,
+    *,
+    event_id: UUID,
+    rule_id: UUID,
+    data: TrendAlertRuleUpdate,
+    updated_at: datetime,
+) -> TrendAlertRuleView:
+    rule = session.scalar(
+        select(TrendAlertRule)
+        .where(TrendAlertRule.id == rule_id, TrendAlertRule.event_id == event_id)
+        .with_for_update()
+    )
+    if rule is None:
+        raise AppError("trend_alert_rule_not_found", 404)
+    if rule.version != data.expected_version:
+        raise AppError("trend_alert_rule_version_conflict", 409)
+    if rule.threshold_count != data.threshold_count or rule.enabled != data.enabled:
+        rule.threshold_count = data.threshold_count
+        rule.enabled = data.enabled
+        rule.version += 1
+        rule.updated_at = updated_at
+        audit(session, "trend_alert_rule_updated", str(rule.id))
+    return _rule_view(rule)
+
+
+def active_trend_alert_rules(
+    session: Session, event_id: UUID, *, lock: bool = False
+) -> list[TrendAlertRuleSnapshot]:
+    query = (
+        select(TrendAlertRule)
+        .where(TrendAlertRule.event_id == event_id, TrendAlertRule.enabled.is_(True))
+        .order_by(TrendAlertRule.id)
+    )
+    rules = session.scalars(query.with_for_update() if lock else query)
+    return [
+        TrendAlertRuleSnapshot(
+            id=rule.id,
+            event_id=rule.event_id,
+            source=rule.source,
+            metric=cast(TrendAlertMetric, rule.metric),
+            bucket_hours=cast(Literal[1, 6, 24], rule.bucket_hours),
+            threshold_count=rule.threshold_count,
+            version=rule.version,
+        )
+        for rule in rules
+    ]
+
+
+def active_trend_alert_event_ids(session: Session) -> list[UUID]:
+    return list(
+        session.scalars(
+            select(TrendAlertRule.event_id)
+            .where(TrendAlertRule.enabled.is_(True))
+            .distinct()
+            .order_by(TrendAlertRule.event_id)
+        )
+    )
+
+
+def record_trend_alert(
+    session: Session,
+    *,
+    rule: TrendAlertRuleSnapshot,
+    bucket_start: datetime,
+    bucket_end: datetime,
+    metric_value: int,
+    created_at: datetime,
+) -> bool:
+    occurrence_id = session.scalar(
+        insert(TrendAlertOccurrence)
+        .values(
+            id=uuid4(),
+            rule_id=rule.id,
+            event_id=rule.event_id,
+            rule_version=rule.version,
+            bucket_start=bucket_start,
+            bucket_end=bucket_end,
+            metric_value=metric_value,
+            created_at=created_at,
+        )
+        .on_conflict_do_nothing(
+            index_elements=[
+                TrendAlertOccurrence.rule_id,
+                TrendAlertOccurrence.rule_version,
+                TrendAlertOccurrence.bucket_start,
+            ]
+        )
+        .returning(TrendAlertOccurrence.id)
+    )
+    if occurrence_id is None:
+        return False
+    metric_labels = {
+        "new_posts": "新增根帖",
+        "new_discussions": "新增评论/回复",
+        "observed_reply_delta": "已观察回复增量",
+    }
+    session.add(
+        Notification(
+            id=uuid4(),
+            event_id=rule.event_id,
+            change_id=None,
+            trend_occurrence_id=occurrence_id,
+            rule_version=rule.version,
+            kind="trend_threshold_reached",
+            message=(
+                f"{rule.source} {rule.bucket_hours}小时桶{metric_labels[rule.metric]}"
+                f"达到 {metric_value}（阈值 {rule.threshold_count}）"
+            ),
+            created_at=created_at,
+            read_at=None,
+        )
+    )
+    audit(session, "trend_alert_triggered", str(occurrence_id))
+    return True
 
 
 def _encode_cursor(identity: UUID) -> str:

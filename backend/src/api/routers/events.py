@@ -17,6 +17,12 @@ from events.schemas import (
     EventView,
     TrendBucketHours,
 )
+from notifications.schemas import (
+    TrendAlertEvaluationView,
+    TrendAlertRuleInput,
+    TrendAlertRuleUpdate,
+    TrendAlertRuleView,
+)
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -108,6 +114,62 @@ def event_trends(
     bucket_hours: TrendBucketHours = TrendBucketHours.daily,
 ) -> EventTrendView:
     return service.trends(identity, since, until, cast(Literal[1, 6, 24], int(bucket_hours)))
+
+
+@router.get(
+    "/{identity}/trend-alert-rules",
+    response_model=list[TrendAlertRuleView],
+    responses=error_responses(*READ_ERROR_CODES, 404),
+    operation_id="listEventTrendAlertRules",
+)
+def event_trend_alert_rules(
+    identity: UUID, service: Events, owner: Authenticated
+) -> list[TrendAlertRuleView]:
+    return service.trend_alert_rules(identity)
+
+
+@router.post(
+    "/{identity}/trend-alert-rules",
+    response_model=TrendAlertRuleView,
+    status_code=201,
+    responses=error_responses(*WRITE_ERROR_CODES, 404, 409),
+    operation_id="createEventTrendAlertRule",
+)
+def create_event_trend_alert_rule(
+    identity: UUID,
+    data: TrendAlertRuleInput,
+    service: Events,
+    owner: Authenticated,
+) -> TrendAlertRuleView:
+    return service.create_trend_alert_rule(identity, data)
+
+
+@router.patch(
+    "/{identity}/trend-alert-rules/{rule_id}",
+    response_model=TrendAlertRuleView,
+    responses=error_responses(*WRITE_ERROR_CODES, 404, 409),
+    operation_id="updateEventTrendAlertRule",
+)
+def update_event_trend_alert_rule(
+    identity: UUID,
+    rule_id: UUID,
+    data: TrendAlertRuleUpdate,
+    service: Events,
+    owner: Authenticated,
+) -> TrendAlertRuleView:
+    return service.update_trend_alert_rule(identity, rule_id, data)
+
+
+@router.post(
+    "/{identity}/trend-alerts/evaluate",
+    response_model=TrendAlertEvaluationView,
+    responses=error_responses(*WRITE_ERROR_CODES, 404),
+    operation_id="evaluateEventTrendAlerts",
+)
+def evaluate_event_trend_alerts(
+    identity: UUID, service: Events, owner: Authenticated
+) -> TrendAlertEvaluationView:
+    return service.evaluate_trend_alerts(identity)
 
 
 @router.post(

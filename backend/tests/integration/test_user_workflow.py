@@ -273,6 +273,45 @@ def test_event_api_creates_a_revisioned_empty_dossier(client):
     assert trend.status_code == 200, trend.json()
     assert trend.json()["metric_version"] == "event-trend-v1"
     assert trend.json()["sources"] == []
+    alert_rule = client.post(
+        f"/api/events/{event['id']}/trend-alert-rules",
+        json={
+            "source": "bilibili",
+            "metric": "new_posts",
+            "bucket_hours": 24,
+            "threshold_count": 3,
+        },
+    )
+    assert alert_rule.status_code == 201, alert_rule.json()
+    rule = alert_rule.json()
+    assert rule["version"] == 1 and rule["enabled"] is True
+    assert client.get(f"/api/events/{event['id']}/trend-alert-rules").json() == [rule]
+    duplicate_rule = client.post(
+        f"/api/events/{event['id']}/trend-alert-rules",
+        json={
+            "source": "bilibili",
+            "metric": "new_posts",
+            "bucket_hours": 24,
+            "threshold_count": 5,
+        },
+    )
+    assert duplicate_rule.status_code == 409
+    assert duplicate_rule.json()["code"] == "trend_alert_rule_exists"
+    checked = client.post(f"/api/events/{event['id']}/trend-alerts/evaluate")
+    assert checked.status_code == 200
+    assert checked.json() == {"evaluated_rules": 1, "created_notifications": 0}
+    disabled = client.patch(
+        f"/api/events/{event['id']}/trend-alert-rules/{rule['id']}",
+        json={"expected_version": 1, "threshold_count": 3, "enabled": False},
+    )
+    assert disabled.status_code == 200
+    assert disabled.json()["version"] == 2 and disabled.json()["enabled"] is False
+    stale = client.patch(
+        f"/api/events/{event['id']}/trend-alert-rules/{rule['id']}",
+        json={"expected_version": 1, "threshold_count": 4, "enabled": True},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["code"] == "trend_alert_rule_version_conflict"
     missing = client.post(
         f"/api/events/{event['id']}/members",
         json={"content_id": "00000000-0000-0000-0000-000000000001"},
