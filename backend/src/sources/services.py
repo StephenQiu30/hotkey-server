@@ -45,6 +45,10 @@ FOLLOWUP_REFERENCE_LIMITS = {
     "list_comments": 1,
     "list_replies": 2,
 }
+OPERATION_ATTEMPT_REQUESTS = {
+    "bilibili.list_comments": 2,
+    "bilibili.list_replies": 2,
+}
 
 
 def capability(
@@ -305,7 +309,7 @@ class SourceService:
                     queries=queries,
                     rules=rules,
                     estimated_requests=len(queries)
-                    * self._request_cost(source.operations, "search_posts"),
+                    * self._request_cost(source_id, source.operations, "search_posts"),
                     pipeline_connected=search.pipeline == "connected",
                 )
             )
@@ -362,7 +366,12 @@ class SourceService:
         return True
 
     @staticmethod
+    def attempt_request_cost(source: SourceName, operation: str) -> int:
+        return OPERATION_ATTEMPT_REQUESTS.get(f"{source}.{operation}", 1)
+
+    @staticmethod
     def _request_cost(
+        source: SourceName,
         operations: list[SourceOperationCapability],
         operation_name: str,
         path: frozenset[str] = frozenset(),
@@ -370,9 +379,9 @@ class SourceService:
         if operation_name in path:
             raise ValueError("cyclic source operation dependency")
         operation = next(item for item in operations if item.operation == operation_name)
-        return 1 + sum(
+        return SourceService.attempt_request_cost(source, operation_name) + sum(
             FOLLOWUP_REFERENCE_LIMITS[required]
-            * SourceService._request_cost(operations, required, path | {operation_name})
+            * SourceService._request_cost(source, operations, required, path | {operation_name})
             for required in operation.requires_operations
         )
 
@@ -380,7 +389,8 @@ class SourceService:
         terms = set([*query_spec.include_any, *query_spec.aliases])
         catalog = {source.id: source for source in self.catalog()}
         return sum(
-            len(terms) * self._request_cost(catalog[source_id].operations, operation.operation)
+            len(terms)
+            * self._request_cost(source_id, catalog[source_id].operations, operation.operation)
             for source_id in source_ids
             if (
                 operation := next(

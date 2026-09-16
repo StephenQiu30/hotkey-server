@@ -189,6 +189,11 @@ def test_selected_content_creates_and_replays_the_expected_followup(database):
     comments_replay = service.start_comment_tracking(comments_match_id)
     assert comments_replay.replayed is True
     assert comments_replay.run.id == comments.run.id
+    with database() as session:
+        persisted = session.get(CollectionRun, comments.run.id)
+        usage = session.scalar(select(CollectionBudgetUsage))
+        assert persisted is not None and persisted.reserved_requests == 2
+        assert usage is not None and usage.reserved_requests == 5
 
 
 def test_comment_tracking_failures_leave_match_budget_and_queue_unchanged(database):

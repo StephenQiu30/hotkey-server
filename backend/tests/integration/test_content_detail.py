@@ -40,7 +40,7 @@ def seed_discussion(database) -> dict[str, UUID]:
                 "title": "评论上下文测试",
                 "query_spec": {"include_any": ["AI"]},
                 "source_ids": ["bilibili"],
-                "budget": {"daily_requests": 120, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 192, "content_purchase_cost": 0},
             }
         )
     )

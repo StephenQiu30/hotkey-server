@@ -25,6 +25,7 @@ from sources.schemas import (
 
 SEARCH_URL = "https://search.bilibili.com/all"
 API_URL = "https://api.bilibili.com"
+HOME_URL = "https://www.bilibili.com/"
 MAX_BYTES = 2 * 1024 * 1024
 BVID_PATTERN = re.compile(rb'bvid:\\?"(BV[1-9A-HJ-NP-Za-km-z]{10})')
 
@@ -156,6 +157,49 @@ class Bilibili:
             result.code = "network_error"
         return result, None
 
+    def _bootstrap_anonymous_session(self, operation: str) -> SourceResult | None:
+        result = SourceResult.model_validate(
+            {
+                "source": "bilibili",
+                "adapter_version": "bilibili-public-poc-v1",
+                "operation": operation,
+                "status": "failed",
+                "observed_at": utcnow(),
+            }
+        )
+        try:
+            response = self.client.head(
+                HOME_URL,
+                follow_redirects=False,
+                timeout=httpx.Timeout(10),
+                headers={
+                    "Accept": "text/html",
+                    "Referer": HOME_URL,
+                    "User-Agent": "Mozilla/5.0 HotKey-Source-POC/0.2",
+                },
+            )
+            result.http_status = response.status_code
+            if response.status_code == 200:
+                return None
+            result.code = {
+                401: "credential_required",
+                403: "access_denied",
+                404: "not_found",
+                412: "access_denied",
+                429: "rate_limited",
+            }.get(
+                response.status_code,
+                "redirect_blocked" if response.is_redirect else "upstream_unavailable",
+            )
+            retry = response.headers.get("Retry-After", "")
+            if response.status_code == 429 and retry.isascii() and retry.isdigit():
+                result.retry_after_seconds = min(int(retry[:10]), 86400)
+        except httpx.TimeoutException:
+            result.code = "timeout"
+        except httpx.HTTPError:
+            result.code = "network_error"
+        return result
+
     @staticmethod
     def _data(result: SourceResult, body: bytes) -> Any | None:
         try:
@@ -262,11 +306,17 @@ class Bilibili:
             "next": request.cursor,
             "ps": request.limit,
         }
-        result, body = self._fetch(
-            "list_comments",
-            API_URL + "/x/v2/reply/main",
-            parameters,
-        )
+        bootstrap_failure = self._bootstrap_anonymous_session("list_comments")
+        if bootstrap_failure is None:
+            result, body = self._fetch(
+                "list_comments",
+                API_URL + "/x/v2/reply/main",
+                parameters,
+            )
+            network_requests = 2
+        else:
+            result, body = bootstrap_failure, None
+            network_requests = 1
         if body is not None:
             data = self._data(result, body)
             if data is not None:
@@ -318,6 +368,7 @@ class Bilibili:
             media_type="application/json",
             request_fingerprint=fingerprint,
             page_key=f"comments:{fingerprint[:32]}",
+            network_requests=network_requests,
         )
 
     def comments(self, request: BilibiliCommentsInput) -> SourceResult:
@@ -331,11 +382,17 @@ class Bilibili:
             "pn": request.page,
             "ps": request.limit,
         }
-        result, body = self._fetch(
-            "list_replies",
-            API_URL + "/x/v2/reply/reply",
-            parameters,
-        )
+        bootstrap_failure = self._bootstrap_anonymous_session("list_replies")
+        if bootstrap_failure is None:
+            result, body = self._fetch(
+                "list_replies",
+                API_URL + "/x/v2/reply/reply",
+                parameters,
+            )
+            network_requests = 2
+        else:
+            result, body = bootstrap_failure, None
+            network_requests = 1
         if body is not None:
             data = self._data(result, body)
             if data is not None:
@@ -379,6 +436,7 @@ class Bilibili:
             media_type="application/json",
             request_fingerprint=fingerprint,
             page_key=f"replies:{fingerprint[:32]}",
+            network_requests=network_requests,
         )
 
     def replies(self, request: BilibiliRepliesInput) -> SourceResult:

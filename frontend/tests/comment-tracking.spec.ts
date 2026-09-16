@@ -39,7 +39,7 @@ test("one inbox match starts persisted comment tracking through the generated AP
             },
             source_ids: ["bilibili"],
             schedule: { interval_minutes: 60, retention_days: 7 },
-            budget: { daily_requests: 120, content_purchase_cost: 0 },
+            budget: { daily_requests: 192, content_purchase_cost: 0 },
             created_at: now,
             updated_at: now,
           },

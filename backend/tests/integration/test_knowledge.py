@@ -63,7 +63,7 @@ def _raw_page(database, start: datetime, source: SourceName = "bilibili") -> UUI
                 "title": "知识检索测试",
                 "query_spec": {"include_any": ["热点"]},
                 "source_ids": [source],
-                "budget": {"daily_requests": 120, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 192, "content_purchase_cost": 0},
             }
         )
     )

@@ -25,6 +25,7 @@ class FetchedPage(BaseModel):
     media_type: Literal["application/json", "text/html"]
     request_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
     page_key: str = Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.:-]+$")
+    network_requests: int = Field(default=1, ge=1, le=4)
 
 
 class CollectionPageFetcher(Protocol):

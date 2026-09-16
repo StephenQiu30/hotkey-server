@@ -436,3 +436,15 @@ Red阶段后端操作ID测试精确失败于端点缺失，Chromium用例精确�
 投影使用数据库窗口查询，每个来源操作最多返回最近一次成功与最近一次失败。`completed`且outcome为`ok|empty|partial`视为成功，failed state或failed outcome视为失败，取消不算来源故障；完成时间相同时用运行ID稳定排序。真实PostgreSQL用例验证先成功、后`access_denied`为degraded，更晚empty成功恢复healthy；其他操作仍为unobserved。FastAPI/Pydantic自动维护Swagger/OpenAPI，UmiOpenAPI只更新`frontend/src/api/typings.d.ts`，业务页面继续调用已有生成的`listSources`，没有手写URL、HTTP方法或DTO。
 
 本地完整验收为196项后端测试通过并保留2条上游弃用提示；Ruff检查166个后端文件，严格mypy检查135个源/验证文件，Python和前端生产依赖无已知漏洞。OpenAPI/UmiOpenAPI漂移、前端边界/负向边界、Prettier和TypeScript/Vite构建通过。一次性Compose中的真实prefork诊断attempts=1，Chromium 11项全部通过，覆盖异常恢复文案、未观察空态、Swagger及390px无横向溢出；正常停机worker=0、backend=143、scheduler=0且无SIGKILL，临时资源已删除。功能提交`17ef2e3e78bfb4f2e425ebd6b9f8a2225d676448`的[远端CI #35109249296](https://github.com/StephenQiu30/hotkey-server/actions/runs/35109249296)在3分41秒内复现相同门禁并成功，备份恢复使用99570字节custom dump，旧0019应用以数据库强制只读角色成功读取隔离快照。结构化证据见[source-runtime-health-poc.json](evidence/source-runtime-health-poc.json)。本片使用受控运行事实，没有访问外部平台或现有MinIO，不代表平台授权已经恢复、真实评论可用或七日稳定性已验收。
+
+## 007 S02-T02L B站匿名公开会话与请求预算（2026-09-16）
+
+受控对照使用相同公开评论引用：搜索、正文和评论在一个短生命周期`httpx.Client`中均返回HTTP 200/ok；全新client直接请求同一评论接口则返回HTTP 200/`access_denied`。B站公开首页的HEAD请求会为匿名访问设置`b_nut`和`buvid3`，因此根因是产品每个任务创建全新client后跳过了公开匿名会话建立步骤。验证没有记录Cookie值、正文、作者或平台对象ID。
+
+`list_comments/list_replies`现在在各自任务的同一个client内先HEAD公开首页，再请求JSON接口；预检失败会停止，不继续请求评论接口。匿名Cookie不进入数据库、对象存储、日志或跨任务缓存。内部`FetchedPage.network_requests`记录本次尝试的实际网络次数；预算策略将搜索/正文计为1、评论/回复计为2，并在首次子运行、后续页、手动追踪和瞬时重试时原子预留完整成本。查询预览的单关键词首批有界展开从5次调整为8次，小时监控默认日预算从120调整为192；少于完整操作成本时不创建任务或续页。
+
+Red用例分别失败于缺少HEAD、缺少网络次数字段、3关键词仍估算15次和真实PostgreSQL仍按旧成本预留。Green后全新`PublicCollectionFetcher`以6次总网络请求完成一次低频真实链：搜索1次、正文1次、评论2次、回复2次，四项均HTTP 200/ok，解析出1条正文、3条根评论与5条回复。聚焦真实PostgreSQL 6项通过；完整后端在真实PostgreSQL/RabbitMQ下200项通过并保留2条上游弃用提示，测试数据库和vhost随后删除。Ruff覆盖166个后端文件，严格mypy覆盖135个源/验证文件；FastAPI OpenAPI、UmiOpenAPI逐文件漂移、Axios边界、Prettier和TypeScript/Vite构建通过。
+
+全新隔离Compose按CI顺序完成真实prefork诊断`succeeded/attempts=1`、Web容器不替换而backend替换后的代理401、空库Chromium 11项、99579字节custom dump与撤权清单两次幂等重放、固定0019旧应用数据库强制只读快照回退；正常停机worker=0、backend=143、scheduler=0且无SIGKILL。第一次浏览器复跑沿用了已创建事件的可丢弃卷，空态断言按设计失败；删除该隔离项目卷后按完整顺序原样通过。主运行`hotkey-local-main`随后从本次代码重建，Web 8010与API 8867可用，所有持久角色运行，ready为200，运行时OpenAPI与42路径快照一致且默认预算为192。
+
+结构化证据见[EV-007-003-bilibili-anonymous-session-poc.json](evidence/007/EV-007-003-bilibili-anonymous-session-poc.json)。本片证明全新任务client可低频读取公开评论与回复，并使预算反映会话预检；尚未把修复后的评论/回复重新写入真实产品持久链，也未复验现有MinIO、生产准入和七日稳定运行，因此EV-007-003保持部分通过，EV-007-004保持未完成。

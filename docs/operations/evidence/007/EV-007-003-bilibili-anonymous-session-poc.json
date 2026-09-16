@@ -1,0 +1,105 @@
+{
+  "scope": "S02-T02L Bilibili anonymous public session and request budget",
+  "observed_at": "2026-09-16",
+  "purpose": "personal non-commercial learning",
+  "red": {
+    "shared_client": {
+      "search_posts": "http_200_ok",
+      "fetch_post": "http_200_ok",
+      "list_comments": "http_200_ok"
+    },
+    "fresh_client_same_comment_reference": {
+      "list_comments": "http_200_access_denied"
+    },
+    "anonymous_session_observation": {
+      "homepage_head_status": 200,
+      "cookie_names_observed": [
+        "b_nut",
+        "buvid3"
+      ],
+      "cookie_values_recorded": false
+    },
+    "root_cause": "PublicCollectionFetcher creates a fresh client for each job, while the comment endpoint requires the anonymous public session established by the Bilibili homepage."
+  },
+  "implementation": {
+    "session_scope": "one short-lived httpx client and one collection page attempt",
+    "bootstrap": "HEAD https://www.bilibili.com/ before list_comments and list_replies",
+    "cookie_persistence": false,
+    "account_or_authenticated_cookie_used": false,
+    "environment_proxy_used": false,
+    "preflight_failure_behavior": "stop before the comment or reply API request",
+    "network_request_contract": {
+      "search_posts": 1,
+      "fetch_post": 1,
+      "list_comments": 2,
+      "list_replies": 2
+    }
+  },
+  "green_live_probe": {
+    "storage_used": false,
+    "social_content_or_identifiers_recorded": false,
+    "total_network_requests": 6,
+    "operations": {
+      "search_posts": {
+        "status": "ok",
+        "http_status": 200,
+        "references": 1,
+        "network_requests": 1
+      },
+      "fetch_post": {
+        "status": "ok",
+        "http_status": 200,
+        "items": 1,
+        "references": 1,
+        "network_requests": 1
+      },
+      "list_comments": {
+        "status": "ok",
+        "http_status": 200,
+        "items": 3,
+        "reply_roots": 2,
+        "network_requests": 2
+      },
+      "list_replies": {
+        "status": "ok",
+        "http_status": 200,
+        "items": 5,
+        "network_requests": 2
+      }
+    }
+  },
+  "budget": {
+    "single_keyword_first_page_fanout_before": 5,
+    "single_keyword_first_page_fanout_after": 8,
+    "three_keyword_preview": 24,
+    "hourly_default_daily_requests": 192,
+    "comment_or_reply_continuation_requests": 2,
+    "comment_or_reply_retry_requests": 2
+  },
+  "local_verification": {
+    "backend": "200 passed with PostgreSQL and RabbitMQ, 2 upstream deprecation warnings",
+    "postgresql_budget_focus": "6 passed",
+    "ruff": "166 backend files formatted and linted",
+    "mypy": "135 source and verification files",
+    "openapi_and_umiopenapi": "passed",
+    "frontend_boundaries_format_build": "passed",
+    "compose_prefork": "succeeded with one attempt",
+    "dynamic_proxy_replacement": "web container unchanged and proxied status 401",
+    "browser": "11 Chromium tests passed",
+    "backup_restore": "99579-byte custom dump and idempotent withdrawal replay passed",
+    "old_application_rollback": "fixed 0019 application read an isolated database-enforced read-only snapshot",
+    "shutdown": "worker 0, backend 143, scheduler 0, no SIGKILL",
+    "local_runtime": "hotkey-local-main rebuilt and running on web 8010 and API 8867; runtime OpenAPI matches the 42-path snapshot",
+    "test_resources_cleaned": "hotkey_test database and RabbitMQ vhost removed"
+  },
+  "acceptance_boundary": {
+    "fresh_client_public_comments": "passed_once",
+    "fresh_client_public_replies": "passed_once",
+    "real_comment_and_reply_persistence": "not_retested_in_this_slice",
+    "existing_minio_end_to_end": "not_retested",
+    "production_operation_admission": "not_ready",
+    "seven_day_observation": "not_started",
+    "EV-007-003": "partial",
+    "EV-007-004": "not_complete"
+  }
+}

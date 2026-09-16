@@ -58,7 +58,7 @@ def _shared_page(database) -> tuple[UUID, UUID, UUID, bytes, str]:
                 "title": "删除生命周期测试",
                 "query_spec": {"include_any": ["热点"]},
                 "source_ids": ["bilibili"],
-                "budget": {"daily_requests": 120, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 192, "content_purchase_cost": 0},
             }
         )
     )

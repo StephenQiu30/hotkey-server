@@ -538,7 +538,8 @@ class CollectionService:
                 )
                 if usage is None:
                     raise AppError("collection_budget_missing", 500)
-                if usage.reserved_requests >= usage.limit_requests:
+                request_cost = self.sources.attempt_request_cost(source, operation)
+                if usage.reserved_requests + request_cost > usage.limit_requests:
                     raise AppError("request_budget_exhausted", 429)
                 now = utcnow()
                 key = (
@@ -565,7 +566,7 @@ class CollectionService:
                     ingestion_mode=parent.ingestion_mode,
                     schedule_slot=parent.schedule_slot,
                     budget_day=parent.budget_day,
-                    reserved_requests=1,
+                    reserved_requests=request_cost,
                     state="queued",
                     outcome=None,
                     fencing_token=0,
@@ -580,7 +581,7 @@ class CollectionService:
                     completed_at=None,
                 )
                 session.add(run)
-                usage.reserved_requests += 1
+                usage.reserved_requests += request_cost
                 usage.updated_at = now
                 session.flush()
             mark_monitor_match_comment_tracking(session, context)
@@ -844,7 +845,10 @@ class CollectionService:
             )
             if usage is None:
                 raise AppError("collection_budget_missing", 500)
-            if usage.reserved_requests >= usage.limit_requests:
+            request_cost = self.sources.attempt_request_cost(
+                cast(SourceName, run.source), run.operation
+            )
+            if usage.reserved_requests + request_cost > usage.limit_requests:
                 if not fail_lease(session, lease):
                     return False
                 self._mark_failed(run, "retry_budget_exhausted")
@@ -855,9 +859,9 @@ class CollectionService:
             if disposition == "exhausted":
                 self._mark_failed(run, f"{reason}_retry_exhausted")
                 return True
-            usage.reserved_requests += 1
+            usage.reserved_requests += request_cost
             usage.updated_at = utcnow()
-            run.reserved_requests += 1
+            run.reserved_requests += request_cost
             run.state = "queued"
             run.stop_reason = reason[:80]
             run.completed_at = None
@@ -958,12 +962,13 @@ class CollectionService:
             :remaining
         ]
         created = 0
+        request_cost = self.sources.attempt_request_cost(cast(SourceName, parent.source), operation)
         for request_value in candidates:
             if not self.sources.request_value_is_valid(
                 cast(SourceName, parent.source), operation, request_value
             ):
                 return created, stop_reasons["invalid_reference"]
-            if usage.reserved_requests >= usage.limit_requests:
+            if usage.reserved_requests + request_cost > usage.limit_requests:
                 return created, stop_reasons["budget_exhausted"]
             child_id = uuid4()
             key = (
@@ -987,7 +992,7 @@ class CollectionService:
                     ingestion_mode=parent.ingestion_mode,
                     schedule_slot=parent.schedule_slot,
                     budget_day=parent.budget_day,
-                    reserved_requests=1,
+                    reserved_requests=request_cost,
                     state="queued",
                     outcome=None,
                     fencing_token=0,
@@ -1002,7 +1007,7 @@ class CollectionService:
                     completed_at=None,
                 )
             )
-            usage.reserved_requests += 1
+            usage.reserved_requests += request_cost
             usage.updated_at = utcnow()
             created += 1
         return created, None
@@ -1193,7 +1198,10 @@ class CollectionService:
             )
             if usage is None:
                 raise AppError("collection_budget_missing", 500)
-            if usage.reserved_requests >= usage.limit_requests:
+            request_cost = self.sources.attempt_request_cost(
+                cast(SourceName, run.source), run.operation
+            )
+            if usage.reserved_requests + request_cost > usage.limit_requests:
                 page_budget_exhausted = True
             else:
                 disposition = continue_lease(session, lease)
@@ -1202,9 +1210,9 @@ class CollectionService:
                 if disposition == "exhausted":
                     self._mark_failed(run, "page_attempts_exhausted")
                 else:
-                    usage.reserved_requests += 1
+                    usage.reserved_requests += request_cost
                     usage.updated_at = utcnow()
-                    run.reserved_requests += 1
+                    run.reserved_requests += request_cost
                     run.state = "queued"
                     run.completed_at = None
                     continuation = True

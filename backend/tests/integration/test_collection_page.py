@@ -1029,14 +1029,14 @@ def test_post_detail_expands_two_root_comments_with_independent_reply_pages(data
             == 2
         )
         usage = session.scalar(select(CollectionBudgetUsage))
-        assert usage is not None and usage.reserved_requests == 7
+        assert usage is not None and usage.reserved_requests == 12
         persisted_comments = session.get(CollectionRun, comments.id)
         persisted_replies = session.get(CollectionRun, replies.id)
         persisted_second_replies = session.get(CollectionRun, second_replies.id)
-        assert persisted_comments is not None and persisted_comments.reserved_requests == 2
-        assert persisted_replies is not None and persisted_replies.reserved_requests == 2
+        assert persisted_comments is not None and persisted_comments.reserved_requests == 4
+        assert persisted_replies is not None and persisted_replies.reserved_requests == 4
         assert (
-            persisted_second_replies is not None and persisted_second_replies.reserved_requests == 1
+            persisted_second_replies is not None and persisted_second_replies.reserved_requests == 2
         )
         comment_job = session.get(Job, comments.job_id)
         reply_job = session.get(Job, replies.job_id)
@@ -1068,7 +1068,7 @@ def test_comment_page_budget_exhaustion_keeps_committed_page_without_next_epoch(
                 "query_spec": {"include_any": ["AI"]},
                 "source_ids": ["bilibili"],
                 "schedule": {"interval_minutes": 1440, "retention_days": 7},
-                "budget": {"daily_requests": 5, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 8, "content_purchase_cost": 0},
             }
         )
     )
@@ -1096,6 +1096,12 @@ def test_comment_page_budget_exhaustion_keeps_committed_page_without_next_epoch(
         active.id,
         active.current_version,
         "comment-page-budget-second-blocker",
+    )
+    create_collection_run(
+        collection,
+        active.id,
+        active.current_version,
+        "comment-page-budget-third-blocker",
     )
 
     def reference_page(operation, request, reference, page_key):
@@ -1192,12 +1198,12 @@ def test_comment_page_budget_exhaustion_keeps_committed_page_without_next_epoch(
         job = session.get(Job, comments.job_id)
         usage = session.scalar(select(CollectionBudgetUsage))
         assert persisted is not None
-        assert persisted.pages_count == 1 and persisted.reserved_requests == 1
+        assert persisted.pages_count == 1 and persisted.reserved_requests == 2
         assert persisted.state == "completed" and persisted.outcome == "partial"
         assert persisted.stop_reason == "page_budget_exhausted"
         assert job is not None and job.status == "succeeded" and job.epoch == 1
-        assert usage is not None and usage.reserved_requests == 5
-        assert session.scalar(select(func.count()).select_from(Outbox)) == 5
+        assert usage is not None and usage.reserved_requests == 7
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 6
         assert (
             session.scalar(
                 select(func.count())
@@ -1218,7 +1224,7 @@ def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(datab
                 "query_spec": {"include_any": ["AI"]},
                 "source_ids": ["bilibili"],
                 "schedule": {"interval_minutes": 1440, "retention_days": 7},
-                "budget": {"daily_requests": 5, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 8, "content_purchase_cost": 0},
             }
         )
     )
@@ -1250,6 +1256,9 @@ def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(datab
     create("budget-second-competing-run")
     create("budget-third-competing-run")
     create("budget-fourth-competing-run")
+    create("budget-fifth-competing-run")
+    create("budget-sixth-competing-run")
+    create("budget-seventh-competing-run")
     payload = b'{"references":["BV1BVFWeHEaV"]}'
     page = FetchedPage(
         result=SourceResult(
@@ -1282,8 +1291,8 @@ def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(datab
     assert persisted.outcome == "partial"
     assert persisted.stop_reason == "detail_budget_exhausted"
     with database() as session:
-        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 5
-        assert session.scalar(select(func.count()).select_from(Job)) == 5
+        assert session.scalar(select(func.count()).select_from(CollectionRun)) == 8
+        assert session.scalar(select(func.count()).select_from(Job)) == 8
 
 
 def test_pausing_monitor_before_page_boundary_prevents_source_fetch(database):
@@ -1519,6 +1528,43 @@ def test_rate_limit_retry_reserves_budget_and_second_attempt_commits_once(databa
     assert fetcher.calls == 2
 
 
+def test_comment_retry_reserves_full_anonymous_session_request_cost(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "评论重试预算", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    parent = create_collection_run(
+        collection, active.id, active.current_version, "comment-retry-parent"
+    )
+    created = create_collection_run(
+        collection, active.id, active.current_version, "comment-rate-limit-retry"
+    )
+    with database.begin() as session:
+        run = session.get(CollectionRun, created.id)
+        usage = session.scalar(select(CollectionBudgetUsage))
+        assert run is not None and usage is not None
+        run.parent_run_id = parent.id
+        run.operation = "list_comments"
+        run.request_value = "aid:113"
+        run.reserved_requests = 2
+        usage.reserved_requests = 3
+
+    lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert lease is not None
+    assert not CollectionExecutor(
+        collection,
+        sources,
+        StaticFetcher(failed_page("rate_limited", 12)),
+        MemoryStore(),
+    ).execute(lease)
+
+    with database() as session:
+        run = session.get(CollectionRun, created.id)
+        usage = session.scalar(select(CollectionBudgetUsage))
+        assert run is not None and usage is not None
+        assert run.state == "queued" and run.reserved_requests == 4
+        assert usage.reserved_requests == 5
+
+
 def test_transient_failure_stops_after_three_attempts_without_fourth_outbox(database):
     sources = AdmittedSources()
     active = monitor(MonitorService(database, sources), "重试上限", ["AI"])
@@ -1560,7 +1606,7 @@ def test_retry_budget_exhaustion_atomically_fails_without_retry_outbox(database)
                 "query_spec": {"include_any": ["AI"]},
                 "source_ids": ["bilibili"],
                 "schedule": {"interval_minutes": 1440, "retention_days": 7},
-                "budget": {"daily_requests": 5, "content_purchase_cost": 0},
+                "budget": {"daily_requests": 8, "content_purchase_cost": 0},
             }
         )
     )
@@ -1573,7 +1619,7 @@ def test_retry_budget_exhaustion_atomically_fails_without_retry_outbox(database)
     target = create_collection_run(
         collection, active.id, active.current_version, "retry-budget-target"
     )
-    for index in range(4):
+    for index in range(7):
         create_collection_run(
             collection,
             active.id,
@@ -1600,8 +1646,8 @@ def test_retry_budget_exhaustion_atomically_fails_without_retry_outbox(database)
         assert run is not None and job is not None and usage is not None
         assert run.state == "failed" and run.stop_reason == "retry_budget_exhausted"
         assert job.status == "failed" and job.epoch == 1
-        assert usage.reserved_requests == 5
-        assert session.scalar(select(func.count()).select_from(Outbox)) == 5
+        assert usage.reserved_requests == 8
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 8
 
 
 def test_missing_evidence_configuration_creates_no_run_or_job(database):

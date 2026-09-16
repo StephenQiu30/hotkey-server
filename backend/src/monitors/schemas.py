@@ -19,7 +19,7 @@ class ScheduleSpec(BaseModel):
 
 
 class BudgetSpec(BaseModel):
-    daily_requests: int = Field(default=120, ge=1, le=1000)
+    daily_requests: int = Field(default=192, ge=1, le=1000)
     content_purchase_cost: Literal[0] = 0
 
 

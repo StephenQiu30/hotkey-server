@@ -151,7 +151,7 @@ def main() -> None:
                     "title": f"backup-restore-poc-{suffix}",
                     "query_spec": {"include_any": ["恢复演练"]},
                     "source_ids": ["bilibili"],
-                    "budget": {"daily_requests": 120, "content_purchase_cost": 0},
+                    "budget": {"daily_requests": 192, "content_purchase_cost": 0},
                 }
             )
         )

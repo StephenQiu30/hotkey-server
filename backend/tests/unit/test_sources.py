@@ -50,7 +50,15 @@ def adapter(handler):
 
 
 def bilibili_adapter(handler):
-    return Bilibili(httpx.Client(transport=httpx.MockTransport(handler)))
+    def with_anonymous_session(request):
+        if request.method == "HEAD" and request.url == "https://www.bilibili.com/":
+            return httpx.Response(
+                200,
+                headers={"Set-Cookie": "b_nut=synthetic; Domain=.bilibili.com; Path=/; Secure"},
+            )
+        return handler(request)
+
+    return Bilibili(httpx.Client(transport=httpx.MockTransport(with_anonymous_session)))
 
 
 def test_priority_source_catalog_separates_support_rights_and_pipeline():
@@ -210,7 +218,7 @@ def test_query_preview_compiles_without_network_and_exposes_rule_boundaries():
     }
     assert xiaohongshu.queries == []
     assert all(rule.mode == "unsupported" for rule in xiaohongshu.rules)
-    assert preview.estimated_requests == 15
+    assert preview.estimated_requests == 24
     assert all(not source.pipeline_connected for source in preview.sources)
 
     admitted = SourceService(
@@ -609,6 +617,7 @@ def test_bilibili_bounded_search_post_comments_and_replies():
     assert comments.items[0].kind == "comment"
     assert [reference.external_id for reference in comments.references] == ["aid:113/root:201"]
     assert comments_page.payload is not None
+    assert comments_page.network_requests == 2
     assert comments.response_sha256 == sha256(comments_page.payload).hexdigest()
     assert comments_page.page_key.startswith("comments:")
     assert comments.items[0].root_id == "video:113"
@@ -618,8 +627,86 @@ def test_bilibili_bounded_search_post_comments_and_replies():
     assert replies.items[0].parent_id == "comment:201"
     assert replies.cursor is None
     assert replies_page.payload is not None
+    assert replies_page.network_requests == 2
     assert replies.response_sha256 == sha256(replies_page.payload).hexdigest()
     assert replies_page.page_key.startswith("replies:")
+
+
+def test_bilibili_comments_bootstrap_anonymous_session_before_api_request():
+    calls: list[tuple[str, str]] = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        if request.method == "HEAD":
+            assert request.url == "https://www.bilibili.com/"
+            return httpx.Response(
+                200,
+                headers={
+                    "Set-Cookie": ("buvid3=synthetic-session; Domain=.bilibili.com; Path=/; Secure")
+                },
+            )
+        assert request.headers["Cookie"] == "buvid3=synthetic-session"
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {"cursor": {"next": 0, "is_end": True}, "replies": []},
+            },
+        )
+
+    page = Bilibili(httpx.Client(transport=httpx.MockTransport(handler))).comments_page(
+        BilibiliCommentsInput(aid=113)
+    )
+
+    assert calls == [("HEAD", "/"), ("GET", "/x/v2/reply/main")]
+    assert page.result.status == "empty"
+    assert page.network_requests == 2
+
+
+def test_bilibili_replies_bootstrap_anonymous_session_before_api_request():
+    calls: list[tuple[str, str]] = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        if request.method == "HEAD":
+            return httpx.Response(
+                200,
+                headers={"Set-Cookie": "b_nut=synthetic; Domain=.bilibili.com; Path=/; Secure"},
+            )
+        assert request.headers["Cookie"] == "b_nut=synthetic"
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {"page": {"num": 1, "size": 20, "count": 0}, "replies": []},
+            },
+        )
+
+    page = Bilibili(httpx.Client(transport=httpx.MockTransport(handler))).replies_page(
+        BilibiliRepliesInput(aid=113, root_id=201)
+    )
+
+    assert calls == [("HEAD", "/"), ("GET", "/x/v2/reply/reply")]
+    assert page.result.status == "empty"
+    assert page.network_requests == 2
+
+
+def test_bilibili_anonymous_session_failure_stops_before_comment_api():
+    calls: list[tuple[str, str]] = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        assert request.method == "HEAD"
+        return httpx.Response(403)
+
+    page = Bilibili(httpx.Client(transport=httpx.MockTransport(handler))).comments_page(
+        BilibiliCommentsInput(aid=113)
+    )
+
+    assert calls == [("HEAD", "/")]
+    assert page.result.status == "failed" and page.result.code == "access_denied"
+    assert page.payload is None
+    assert page.network_requests == 1
 
 
 def test_bilibili_post_without_replies_does_not_create_comment_reference():
