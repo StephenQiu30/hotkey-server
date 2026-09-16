@@ -48,7 +48,8 @@
   "acceptance_boundary": {
     "local_development_connection_and_object_protocol": "passed",
     "public_tls_chain": "not_passed",
-    "production_container_network": "not_tested",
+    "local_product_container_network": "passed_in_S02-T02H",
+    "remote_production_container_network": "not_tested",
     "bucket_lifecycle_and_object_lock": "not_tested",
     "real_source_ingestion": "not_tested",
     "EV-007-003": "not_complete"

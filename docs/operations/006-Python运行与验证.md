@@ -402,3 +402,11 @@ Red阶段后端操作ID测试精确失败于端点缺失，Chromium用例精确�
 公开端点使用配置声明的TLS时，严格证书校验在bucket访问前失败。本项目没有关闭证书校验或加入不安全兼容分支。同一份配置明确给出的主机回环HTTP端点可用：`verify_minio.py` 在1秒内将一条合成JSON的确定性gzip对象写入预先存在的bucket，第二次重投返回同一对象；65字节完整读回的SHA-256为 `d0ca6df230d1274f6dccd4b1e691367467aa12809b9ec75319789bb7176f3ad6`。随后按精确键删除所有版本/删除标记，带版本列举和`stat`均证明无余留。
 
 聚焦配置/适配器的12项pytest通过，Ruff通过，仓库官方mypy目标检查133个源文件且无错误，证据JSON可解析。结构化证据见 [existing-minio-poc.json](evidence/existing-minio-poc.json)。这一结果证明现有实例、已有凭据和bucket可在本机开发路径承载当前对象协议。主机回环端点不能直接作为生产容器配置；公开证书链、可从生产网络到达的端点、对象锁/生命周期与真实来源页入库仍需后续验收，因此不独立完成EV-007-003。
+
+## 007 S02-T02H Compose 容器到现有 MinIO 验证（2026-09-16）
+
+验证复用当前 `backend/Dockerfile` 产出的Linux/arm64 `hotkey-backend:local`镜像，将`verify_minio.py`以只读方式挂载，使用默认Docker bridge与`host.docker.internal`/主机网关映射访问已有主机转发端口。容器去除全部Linux capabilities、启用`no-new-privileges`和只读根文件系统，只提供16MiB临时`/tmp`。私有值通过仓库外的0600临时env文件传入，验证结束后`finally`已删除，命令与输出均不含私有值。
+
+首次启动在访问网络前因挂载脚本的Python模块路径缺失退出；显式使用镜像内`PYTHONPATH=/app/src`后原样重试通过，没有改应用代码、网络或安全策略。容器对一个65字节确定性gzip对象完成首次上传、幂等重投、完整读回SHA-256、全版本精确删除和`stat`不存在校验；容器退出0，对象hash为`63bdd909ee9377fa0e42701387cf1036c546381ceb33b76582508fbfa634a6cf`。
+
+结构化证据见 [existing-minio-container-poc.json](evidence/existing-minio-container-poc.json)。这证明本机Compose部署可显式使用`host.docker.internal:<existing-port>`复用已有MinIO，不需要host network或业务代码地址重写。公开TLS证书链、远程生产网络、对象锁/生命周期和真实来源入库仍未验收，不独立完成EV-007-003。
