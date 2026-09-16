@@ -427,4 +427,4 @@ Red阶段后端操作ID测试精确失败于端点缺失，Chromium用例精确�
 
 真实prefork链完成搜索与正文并派生评论：搜索以`partial/page_limit`结算、正文`ok`，评论请求返回`access_denied`并原子失败，未继续请求回复。搜索、正文和评论拒绝响应共3个RawPage、3个Checkpoint；3个对象均从fixture按SHA-256完整读回，正文形成1个内容版本/观察。随后通过应用删除账本删除全部3个对象和所有版本，0失败、0余留；隔离PostgreSQL、RabbitMQ、MinIO卷、容器和临时env全部删除。没有对评论拒绝高频重试，总内容采购费用为0。
 
-结构化证据见 [EV-007-003-bilibili-live-canary.json](evidence/007/EV-007-003-bilibili-live-canary.json)。它证明真实来源的搜索/正文持久主链和拒绝状态处理，但不证明真实评论/回复持久化、现有MinIO当前可用、生产来源准入或七日稳定性；EV-007-003仅部分通过，EV-007-004保持未完成。
+结构化证据见 [EV-007-003-bilibili-live-canary.json](evidence/007/EV-007-003-bilibili-live-canary.json)。功能提交`c8d2c320301a9bd489ccacfaad99b7f772449a38`的[远端CI #35095350599](https://github.com/StephenQiu30/hotkey-server/actions/runs/35095350599)在3分31秒内通过，复现194项后端测试、10项Chromium、OpenAPI/UmiOpenAPI契约、真实PostgreSQL/RabbitMQ prefork、代理替换、备份恢复、旧应用回退和无SIGKILL停机门禁。它证明真实来源的搜索/正文持久主链和拒绝状态处理，但不证明真实评论/回复持久化、现有MinIO当前可用、生产来源准入或七日稳定性；EV-007-003仅部分通过，EV-007-004保持未完成。

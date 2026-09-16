@@ -126,6 +126,25 @@
     "temporary_private_env_files_remaining": 0,
     "temporary_social_database_remaining": false
   },
+  "verification": {
+    "local_gates": {
+      "backend_tests": "98 unit and architecture tests passed with 2 upstream warnings",
+      "ruff": "166 files passed format and lint checks",
+      "mypy": "135 source and script files passed",
+      "openapi_and_generated_client": "passed",
+      "frontend_boundaries_format_build": "passed",
+      "compose_config_and_host_gateway": "passed"
+    },
+    "feature_commit": "c8d2c320301a9bd489ccacfaad99b7f772449a38",
+    "remote_ci": {
+      "run_id": 35095350599,
+      "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35095350599",
+      "conclusion": "success",
+      "duration": "3m31s",
+      "backend_tests": "194 passed with 2 warnings",
+      "browser_tests": "10 passed"
+    }
+  },
   "acceptance_boundary": {
     "public_operation_structure": "verified_once_for_all_four_operations",
     "real_search_and_post_persistence": "passed_with_temporary_storage_fixture",
