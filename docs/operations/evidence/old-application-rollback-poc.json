@@ -29,6 +29,12 @@
     "read_only_role_removed": true,
     "temporary_source_removed": true
   },
+  "delivery": {
+    "feature_commit": "1fe2955759f8de99d5f6d868c21f6ddc4e765f95",
+    "remote_ci": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35059802024",
+    "remote_ci_conclusion": "success",
+    "remote_ci_duration": "3m20s"
+  },
   "boundaries": [
     "No legacy route, redirect, dual endpoint, relaxed schema check, or destructive downgrade was added.",
     "The exercise did not switch production traffic or restore existing MinIO objects.",
