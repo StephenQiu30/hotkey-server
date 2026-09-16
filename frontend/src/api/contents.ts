@@ -13,6 +13,7 @@ export async function listInboxContents(
     params: {
       // limit has a default value: 20
       limit: "20",
+
       ...params,
     },
     ...(options || {}),

@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import func, select, update
 
+from audit.models import Audit
 from collection.execution import CollectionExecutor
 from collection.models import CollectionBudgetUsage, CollectionCheckpoint, CollectionRun
 from collection.schemas import CollectionRunInput, PageCommitInput
@@ -995,12 +996,12 @@ def test_post_detail_expands_two_root_comments_with_independent_reply_pages(data
         "comment:446",
     }
     assert inbox["comment:441"].relation_status == "resolved"
-    assert inbox["comment:441"].monitor_titles == ["评论上下文"]
+    assert [match.monitor_title for match in inbox["comment:441"].matches] == ["评论上下文"]
     assert inbox["comment:442"].relation_status == "resolved"
     assert inbox["comment:442"].parent_external_id == "comment:441"
-    assert inbox["comment:442"].monitor_titles == ["评论上下文"]
+    assert [match.monitor_title for match in inbox["comment:442"].matches] == ["评论上下文"]
     assert inbox["comment:446"].parent_external_id == "comment:443"
-    assert inbox["comment:446"].monitor_titles == ["评论上下文"]
+    assert [match.monitor_title for match in inbox["comment:446"].matches] == ["评论上下文"]
     comment_run = collection.run(comments.id)
     assert comment_run.outcome == "partial"
     assert comment_run.stop_reason == "page_limit"
@@ -1769,8 +1770,115 @@ def test_inbox_only_returns_matched_content_with_latest_observation(database):
     assert page.items[0].relation_status == "root"
     assert page.items[0].text == "AI 首次观察"
     assert page.items[0].reply_count == 0
-    assert page.items[0].monitor_titles == ["AI 观察"]
+    assert [match.monitor_title for match in page.items[0].matches] == ["AI 观察"]
     assert page.next_cursor is None
+
+
+def test_inbox_review_is_scoped_to_one_monitor_match(database):
+    sources = AdmittedSources()
+    monitors = MonitorService(database, sources)
+    collection = CollectionService(database, sources, evidence_configured=True)
+    store = MemoryStore()
+    first = monitor(monitors, "AI 主题", ["AI"])
+    second = monitor(monitors, "观察主题", ["AI"])
+    for active, key in ((first, "match-first"), (second, "match-second")):
+        run_and_commit(
+            collection,
+            store,
+            active.id,
+            active.current_version,
+            key,
+            "AI 观察",
+            0,
+        )
+
+    initial = ContentService(database).inbox(limit=20, cursor=None)
+    assert len(initial.items) == 1
+    matches = {match.monitor_title: match for match in initial.items[0].matches}
+    assert set(matches) == {"AI 主题", "观察主题"}
+
+    from monitors.schemas import MonitorMatchReviewInput
+
+    ignored = monitors.review_match(
+        matches["AI 主题"].id,
+        MonitorMatchReviewInput(review_state="ignored"),
+    )
+    assert ignored.review_state == "ignored"
+
+    default_page = ContentService(database).inbox(limit=20, cursor=None)
+    assert [match.monitor_title for match in default_page.items[0].matches] == ["观察主题"]
+    assert (
+        not ContentService(database)
+        .inbox(
+            limit=20,
+            cursor=None,
+            monitor_id=first.id,
+        )
+        .items
+    )
+    ignored_page = ContentService(database).inbox(
+        limit=20,
+        cursor=None,
+        monitor_id=first.id,
+        review_state="ignored",
+    )
+    assert [match.monitor_title for match in ignored_page.items[0].matches] == ["AI 主题"]
+    assert (
+        not ContentService(database)
+        .inbox(
+            limit=20,
+            cursor=None,
+            source="x",
+        )
+        .items
+    )
+    assert (
+        not ContentService(database)
+        .inbox(
+            limit=20,
+            cursor=None,
+            discovered_since=utcnow() + timedelta(days=1),
+        )
+        .items
+    )
+
+    restored = monitors.review_match(
+        matches["AI 主题"].id,
+        MonitorMatchReviewInput(review_state="new"),
+    )
+    following = monitors.review_match(
+        matches["观察主题"].id,
+        MonitorMatchReviewInput(review_state="following"),
+    )
+    replayed = monitors.review_match(
+        matches["观察主题"].id,
+        MonitorMatchReviewInput(review_state="following"),
+    )
+    assert restored.review_state == "new"
+    assert following.review_state == "following"
+    assert replayed == following
+    persisted = ContentService(database).inbox(
+        limit=20,
+        cursor=None,
+        review_state="following",
+    )
+    assert [match.monitor_title for match in persisted.items[0].matches] == ["观察主题"]
+    with database() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(Audit)
+                .where(Audit.action == "monitor_match_reviewed")
+            )
+            == 3
+        )
+    with pytest.raises(AppError) as missing:
+        monitors.review_match(
+            uuid4(),
+            MonitorMatchReviewInput(review_state="ignored"),
+        )
+    assert missing.value.code == "monitor_match_not_found"
+    assert missing.value.status == 404
 
 
 def test_provider_namespace_is_part_of_content_identity(database):

@@ -1791,11 +1791,11 @@
             "title": "Last Seen At",
             "type": "string"
           },
-          "monitor_titles": {
+          "matches": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/MonitorMatchView"
             },
-            "title": "Monitor Titles",
+            "title": "Matches",
             "type": "array"
           },
           "parent_external_id": {
@@ -1879,7 +1879,7 @@
           "first_seen_at",
           "last_seen_at",
           "reply_count",
-          "monitor_titles"
+          "matches"
         ],
         "title": "InboxItem",
         "type": "object"
@@ -2324,6 +2324,102 @@
           "source_ids"
         ],
         "title": "MonitorInput",
+        "type": "object"
+      },
+      "MonitorMatchReviewInput": {
+        "additionalProperties": false,
+        "properties": {
+          "review_state": {
+            "enum": [
+              "new",
+              "ignored",
+              "following"
+            ],
+            "title": "Review State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_state"
+        ],
+        "title": "MonitorMatchReviewInput",
+        "type": "object"
+      },
+      "MonitorMatchView": {
+        "properties": {
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "match_reason": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Match Reason",
+            "type": "array"
+          },
+          "monitor_id": {
+            "format": "uuid",
+            "title": "Monitor Id",
+            "type": "string"
+          },
+          "monitor_title": {
+            "title": "Monitor Title",
+            "type": "string"
+          },
+          "monitor_version": {
+            "title": "Monitor Version",
+            "type": "integer"
+          },
+          "monitor_version_id": {
+            "format": "uuid",
+            "title": "Monitor Version Id",
+            "type": "string"
+          },
+          "relevance_status": {
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected",
+              "needs_review"
+            ],
+            "title": "Relevance Status",
+            "type": "string"
+          },
+          "review_state": {
+            "enum": [
+              "new",
+              "ignored",
+              "following"
+            ],
+            "title": "Review State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "monitor_id",
+          "monitor_version_id",
+          "monitor_version",
+          "monitor_title",
+          "match_reason",
+          "relevance_status",
+          "review_state",
+          "first_seen_at",
+          "last_seen_at"
+        ],
+        "title": "MonitorMatchView",
         "type": "object"
       },
       "MonitorPage": {
@@ -4053,6 +4149,85 @@
                 }
               ],
               "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "monitor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Monitor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "x",
+                    "bilibili",
+                    "weibo",
+                    "xiaohongshu",
+                    "douyin",
+                    "bluesky"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "review_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "new",
+                    "ignored",
+                    "following"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Review State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "discovered_since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Discovered Since"
             }
           },
           {
@@ -7320,6 +7495,141 @@
         "summary": "Index Knowledge Entry",
         "tags": [
           "knowledge"
+        ]
+      }
+    },
+    "/api/monitor-matches/{identity}": {
+      "patch": {
+        "operationId": "reviewMonitorMatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identity",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonitorMatchReviewInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorMatchView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Authentication required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Request content too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "OwnerSession": []
+          }
+        ],
+        "summary": "Review Monitor Match",
+        "tags": [
+          "monitoring"
         ]
       }
     },

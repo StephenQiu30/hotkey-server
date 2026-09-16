@@ -224,6 +224,27 @@ section {
   color: #245d51;
   font-weight: 600;
 }
+.inbox-filters {
+  margin-bottom: 14px;
+}
+.match-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.match-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 8px;
+  background: #f0f3ed;
+  padding: 10px;
+}
+.match-row > div:first-child {
+  display: grid;
+  gap: 4px;
+}
 .notification-read {
   background: #f8faf6;
 }

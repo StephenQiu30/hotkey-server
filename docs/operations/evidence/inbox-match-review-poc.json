@@ -1,0 +1,48 @@
+{
+  "scope": "S02-T03D monitor-match review and inbox filters",
+  "date": "2026-09-16",
+  "environment": {
+    "database": "PostgreSQL 16.15 disposable Compose database",
+    "broker": "RabbitMQ 4.1.8 disposable Compose broker",
+    "schema_revision": "0020_trend_alerts",
+    "browser": "Playwright Chromium against the final production frontend image",
+    "source": "controlled synthetic content; no external source requests"
+  },
+  "red": {
+    "result": "1 failed",
+    "assertion": "the generated OpenAPI operation map must contain reviewMonitorMatch",
+    "observed": "the review endpoint was absent"
+  },
+  "green": {
+    "default_review_states": ["new", "following"],
+    "explicit_restorable_state": "ignored",
+    "multi_monitor_isolation": "ignoring the first match kept the same content visible through its second match",
+    "filters": ["monitor_id", "source", "review_state", "discovered_since"],
+    "idempotency": "replaying following on an already-following match did not add an audit event",
+    "contract": "FastAPI runtime OpenAPI equals the committed 40-path-group snapshot",
+    "client": "UmiOpenAPI generated listInboxContents parameters and reviewMonitorMatch; no handwritten endpoint",
+    "backend": "181 passed with 2 upstream deprecation warnings",
+    "ruff": "161 files formatted and linted",
+    "mypy": "133 source and verification files",
+    "dependency_audit": "no known Python vulnerabilities; production frontend audit 0",
+    "frontend": "contract, boundary, negative boundary, Prettier and TypeScript/Vite checks passed",
+    "browser": "7 Chromium tests passed",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore": {
+      "schema_revision": "0020_trend_alerts",
+      "dump_bytes": 100117,
+      "withdrawal_replay_idempotent": true
+    },
+    "old_application_rollback": "fixed 0019 application read an isolated old-schema snapshot through a database-enforced read-only role",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+  },
+  "remote_ci": {
+    "status": "pending"
+  },
+  "limitations": [
+    "The browser uses controlled synthetic inbox content to make review transitions deterministic; PostgreSQL integration tests prove persisted filter and audit semantics.",
+    "No external platform request, existing MinIO instance, real user content or seven-day observation was used.",
+    "This slice advances TASK-007-S02-T03 but does not complete EV-007-003 or the full P0 goal."
+  ]
+}

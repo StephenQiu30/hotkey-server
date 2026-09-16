@@ -13,6 +13,9 @@ from monitors.models import Monitor, MonitorMatch, MonitorVersion
 from monitors.schemas import (
     ActiveMonitorConfiguration,
     MonitorInput,
+    MonitorMatchReviewInput,
+    MonitorMatchReviewState,
+    MonitorMatchView,
     MonitorPage,
     MonitorStateChange,
     MonitorUpdate,
@@ -50,19 +53,63 @@ def match_content(
     )
 
 
-def monitor_titles_for_content(session: Session, content_id: UUID) -> list[str]:
-    titles = session.scalars(
-        select(MonitorVersion.title)
-        .join(MonitorMatch, MonitorMatch.monitor_version_id == MonitorVersion.id)
-        .where(MonitorMatch.content_id == content_id)
-        .order_by(MonitorVersion.title)
+def _match_view(match: MonitorMatch, version: MonitorVersion) -> MonitorMatchView:
+    return MonitorMatchView(
+        id=match.id,
+        monitor_id=version.monitor_id,
+        monitor_version_id=version.id,
+        monitor_version=version.version,
+        monitor_title=version.title,
+        match_reason=match.match_reason,
+        relevance_status=cast(
+            Literal["pending", "accepted", "rejected", "needs_review"],
+            match.relevance_status,
+        ),
+        review_state=cast(MonitorMatchReviewState, match.review_state),
+        first_seen_at=match.first_seen_at,
+        last_seen_at=match.last_seen_at,
     )
-    return list(dict.fromkeys(titles))
 
 
-def matched_content_ids_query() -> Select[tuple[UUID]]:
+def monitor_matches_for_content(
+    session: Session,
+    content_id: UUID,
+    *,
+    monitor_id: UUID | None = None,
+    review_state: MonitorMatchReviewState | None = None,
+) -> list[MonitorMatchView]:
+    query = (
+        select(MonitorMatch, MonitorVersion)
+        .join(MonitorVersion, MonitorMatch.monitor_version_id == MonitorVersion.id)
+        .where(MonitorMatch.content_id == content_id)
+        .order_by(MonitorVersion.title, MonitorVersion.version, MonitorMatch.id)
+    )
+    if monitor_id is not None:
+        query = query.where(MonitorVersion.monitor_id == monitor_id)
+    if review_state is None:
+        query = query.where(MonitorMatch.review_state != "ignored")
+    else:
+        query = query.where(MonitorMatch.review_state == review_state)
+    return [_match_view(match, version) for match, version in session.execute(query).tuples()]
+
+
+def matched_content_ids_query(
+    *,
+    monitor_id: UUID | None = None,
+    review_state: MonitorMatchReviewState | None = None,
+) -> Select[tuple[UUID]]:
     """Expose a read-only query contract without leaking monitor ORM models."""
-    return select(MonitorMatch.content_id)
+    query = select(MonitorMatch.content_id)
+    if monitor_id is not None:
+        query = query.join(
+            MonitorVersion,
+            MonitorMatch.monitor_version_id == MonitorVersion.id,
+        ).where(MonitorVersion.monitor_id == monitor_id)
+    if review_state is None:
+        query = query.where(MonitorMatch.review_state != "ignored")
+    else:
+        query = query.where(MonitorMatch.review_state == review_state)
+    return query
 
 
 def content_is_matched(session: Session, monitor_version_id: UUID, content_id: UUID) -> bool:
@@ -260,6 +307,20 @@ class MonitorService:
             audit(session, action, str(identity))
             session.flush()
             return self._view(monitor, version)
+
+    def review_match(self, identity: UUID, data: MonitorMatchReviewInput) -> MonitorMatchView:
+        with self.factory.begin() as session:
+            match = session.get(MonitorMatch, identity, with_for_update=True)
+            if match is None:
+                raise AppError("monitor_match_not_found", 404)
+            version = session.get(MonitorVersion, match.monitor_version_id)
+            if version is None:
+                raise AppError("monitor_version_missing", 500)
+            if match.review_state != data.review_state:
+                match.review_state = data.review_state
+                audit(session, "monitor_match_reviewed", f"{identity}:{data.review_state}")
+                session.flush()
+            return _match_view(match, version)
 
     def monitors(self, limit: int, cursor: UUID | None) -> MonitorPage:
         with self.factory() as session:

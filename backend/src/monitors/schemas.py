@@ -8,6 +8,8 @@ from core.schemas import Input
 from sources.schemas import QuerySpec, SourceName
 
 MonitorState = Literal["draft", "active", "paused"]
+MonitorMatchReviewState = Literal["new", "ignored", "following"]
+MonitorMatchRelevanceStatus = Literal["pending", "accepted", "rejected", "needs_review"]
 
 
 class ScheduleSpec(BaseModel):
@@ -76,3 +78,20 @@ class ActiveMonitorConfiguration(BaseModel):
 class MonitorPage(BaseModel):
     items: list[MonitorView]
     next_cursor: UUID | None
+
+
+class MonitorMatchReviewInput(Input):
+    review_state: MonitorMatchReviewState
+
+
+class MonitorMatchView(BaseModel):
+    id: UUID
+    monitor_id: UUID
+    monitor_version_id: UUID
+    monitor_version: int
+    monitor_title: str
+    match_reason: list[str]
+    relevance_status: MonitorMatchRelevanceStatus
+    review_state: MonitorMatchReviewState
+    first_seen_at: datetime
+    last_seen_at: datetime

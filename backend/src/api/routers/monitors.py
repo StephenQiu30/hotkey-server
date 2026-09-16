@@ -7,6 +7,8 @@ from api.dependencies import Authenticated, Monitors
 from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
 from monitors.schemas import (
     MonitorInput,
+    MonitorMatchReviewInput,
+    MonitorMatchView,
     MonitorPage,
     MonitorStateChange,
     MonitorUpdate,
@@ -81,3 +83,19 @@ def pause_monitor(
     identity: UUID, data: MonitorStateChange, service: Monitors, owner: Authenticated
 ) -> MonitorView:
     return service.change_state(identity, data, "paused")
+
+
+@router.patch(
+    "/monitor-matches/{identity}",
+    response_model=MonitorMatchView,
+    responses=error_responses(*WRITE_ERROR_CODES, 404),
+    tags=["monitoring"],
+    operation_id="reviewMonitorMatch",
+)
+def review_monitor_match(
+    identity: UUID,
+    data: MonitorMatchReviewInput,
+    service: Monitors,
+    owner: Authenticated,
+) -> MonitorMatchView:
+    return service.review_match(identity, data)

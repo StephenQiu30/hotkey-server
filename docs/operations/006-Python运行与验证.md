@@ -305,6 +305,16 @@ Red阶段3项聚焦断言失败：成功页提交后Job仍为running，暂停监
 
 本片使用合成来源响应和内存EvidenceStore，没有访问外部平台或用户现有MinIO，也没有改动HTTP/OpenAPI契约。它关闭了单页结算的两个事务窗口，但多页/多根评论、现有MinIO、真实来源和七日观察仍未验收；EV-007-005与TASK-007-S03-T02仍为部分完成。
 
+## 007 S02-T03D 主题匹配审核与收件箱筛选验证（2026-09-16）
+
+收件箱现在返回每条 `monitor_match` 的主题ID、不可变版本、命中原因、相关性状态和审核状态。默认查询排除ignored关系；主题、来源、发现时间下界和审核状态由FastAPI查询参数表达。`PATCH /api/monitor-matches/{id}` 只更新指定关系，并在真实变化时同事务写审计；相同状态重放不新增审计。FastAPI运行时契约与发布快照一致，共40组路径；UmiOpenAPI只在`frontend/src/api`生成端点与类型，Axios仍只位于根级`request.ts`。
+
+Red阶段稳定操作ID测试因审核端点不存在而失败。Green/Refactor后，真实PostgreSQL测试让同一内容命中两个主题：忽略主题甲后默认列表仍保留主题乙；主题甲默认筛选为空，显式ignored筛选可见并能恢复；主题乙跟进状态持久化，重复跟进不新增审计。完整181项后端测试通过并保留2条上游弃用提示；Ruff覆盖161个文件，严格mypy覆盖133个源/验证文件，Python与前端生产依赖审计均无已知漏洞。OpenAPI/UmiOpenAPI、前端边界/负向样例、Prettier和TypeScript/Vite构建通过。
+
+一次性`hotkey-inbox-review` Compose在PostgreSQL 16.15、RabbitMQ 4.1.8与0020 schema上完成真实prefork诊断，结果为succeeded/attempts=1；backend替换后代理返回401。Chromium 7项通过，受控收件箱用例验证三次PATCH、主题隔离、恢复、跟进以及主题/来源/24小时筛选参数；工作台空态和390px主流程继续通过。PostgreSQL custom dump为100117字节，恢复后撤权清单重放两次幂等；固定旧应用只读快照回退通过。停机worker=0、backend=143、scheduler=0且无SIGKILL，隔离容器和卷已删除。结构化证据见[inbox-match-review-poc.json](evidence/inbox-match-review-poc.json)。
+
+浏览器内容和匹配为明确合成数据，负责验证生成客户端接线；真实PostgreSQL测试负责状态、筛选和审计语义。没有访问外部平台或现有MinIO，也没有证明真实收件箱、真实评论、生产负载或七日观察，因此EV-007-003与完整TASK-007-S02-T03仍未完成。
+
 ## 007 S02-T03A 可见页面活动状态轮询验证（2026-09-16）
 
 工作台从UmiOpenAPI生成的`listJobs`和`listCollectionRuns`读取第一页状态；只有页面可见且任一资源处于queued/running时建立2秒轮询链。每条链同时最多各有一个请求，页面隐藏、组件卸载或退出登录时清除计时并取消在途请求；恢复可见后继续同一有界链。Job和CollectionRun都进入终态后执行一次完整工作台刷新，使新收件箱、提醒和事件状态从数据库回显，随后停止轮询。没有增加请求库、WebSocket、SSE、手写URL或OpenAPI兼容分支。

@@ -11,12 +11,17 @@ import {
 } from "../api/events";
 import { createDiagnosticJob, cancelJob, listJobs } from "../api/jobs";
 import { getSession, logout } from "../api/identity";
-import { activateMonitor, listMonitors, pauseMonitor } from "../api/monitoring";
+import {
+  activateMonitor,
+  listMonitors,
+  pauseMonitor,
+  reviewMonitorMatch,
+} from "../api/monitoring";
 import { listNotifications, markNotificationRead } from "../api/notifications";
 import { listSources } from "../api/sources";
 import { Login } from "../features/identity/Login";
 import { Runs } from "../features/collection/Runs";
-import { Inbox } from "../features/contents/Inbox";
+import { Inbox, type InboxFilters } from "../features/contents/Inbox";
 import { EventDossiers } from "../features/events/EventDossiers";
 import { KnowledgeSearch } from "../features/knowledge/KnowledgeSearch";
 import {
@@ -49,6 +54,26 @@ const monitorStates: Record<Monitor["state"], string> = {
   paused: "已暂停",
 };
 const POLL_INTERVAL_MS = 2000;
+const initialInboxFilters: InboxFilters = {
+  monitorId: "",
+  source: "",
+  reviewState: "",
+  discoveredPeriod: "",
+  discoveredSince: "",
+};
+
+function inboxParams(
+  filters: InboxFilters,
+  cursor?: string | null,
+): API.listInboxContentsParams {
+  return {
+    cursor: cursor ?? undefined,
+    monitor_id: filters.monitorId || undefined,
+    source: filters.source || undefined,
+    review_state: filters.reviewState || undefined,
+    discovered_since: filters.discoveredSince || undefined,
+  };
+}
 
 function jobIsActive(job: Job): boolean {
   return job.status === "queued" || job.status === "running";
@@ -75,6 +100,7 @@ export function App() {
   const [monitorCursor, setMonitorCursor] = useState<string | null>(null);
   const [jobCursor, setJobCursor] = useState<string | null>(null);
   const [contentCursor, setContentCursor] = useState<string | null>(null);
+  const [inboxFilters, setInboxFilters] = useState(initialInboxFilters);
   const [runCursor, setRunCursor] = useState<string | null>(null);
   const [eventCursor, setEventCursor] = useState<string | null>(null);
   const [notificationCursor, setNotificationCursor] = useState<string | null>(
@@ -92,7 +118,7 @@ export function App() {
         listMonitors({}),
         listJobs({}),
         listSources(),
-        listInboxContents({}),
+        listInboxContents(inboxParams(inboxFilters)),
         listCollectionRuns({}),
         listEvents({}),
         listNotifications({}),
@@ -119,7 +145,7 @@ export function App() {
     } finally {
       if (current === generation.current) setLoading(false);
     }
-  }, []);
+  }, [inboxFilters]);
   useEffect(() => {
     const abort = new AbortController();
     getSession({ signal: abort.signal })
@@ -260,7 +286,9 @@ export function App() {
         setJobs((old) => [...old, ...page.items]);
         setJobCursor(page.next_cursor);
       } else if (kind === "contents" && contentCursor) {
-        const page = await listInboxContents({ cursor: contentCursor });
+        const page = await listInboxContents(
+          inboxParams(inboxFilters, contentCursor),
+        );
         setContents((old) => [...old, ...page.items]);
         setContentCursor(page.next_cursor);
       } else if (kind === "runs" && runCursor) {
@@ -379,6 +407,19 @@ export function App() {
           nextCursor={contentCursor}
           busy={busy}
           events={events}
+          monitors={monitors}
+          sources={sources}
+          filters={inboxFilters}
+          onFiltersChange={setInboxFilters}
+          onReview={async (matchId, reviewState) => {
+            await action(async () => {
+              await reviewMonitorMatch(
+                { identity: matchId },
+                { review_state: reviewState },
+              );
+              await refresh();
+            });
+          }}
           onAssign={async (eventId, contentId) => {
             await action(async () => {
               await addEventMember(

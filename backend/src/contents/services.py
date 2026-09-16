@@ -17,8 +17,9 @@ from contents.schemas import (
 )
 from core.clock import utcnow
 from core.errors import AppError
-from monitors.services import matched_content_ids_query, monitor_titles_for_content
-from sources.schemas import SocialObject
+from monitors.schemas import MonitorMatchReviewState
+from monitors.services import matched_content_ids_query, monitor_matches_for_content
+from sources.schemas import SocialObject, SourceName
 
 
 @dataclass(frozen=True)
@@ -738,16 +739,34 @@ class ContentService:
     def _encode_cursor(content: Content) -> str:
         return f"{content.first_seen_at.astimezone(UTC).isoformat()}|{content.id}"
 
-    def inbox(self, limit: int, cursor: str | None) -> InboxPage:
+    def inbox(
+        self,
+        limit: int,
+        cursor: str | None,
+        *,
+        monitor_id: UUID | None = None,
+        source: SourceName | None = None,
+        review_state: MonitorMatchReviewState | None = None,
+        discovered_since: datetime | None = None,
+    ) -> InboxPage:
         with self.factory() as session:
             query = (
                 select(Content)
                 .where(
-                    Content.id.in_(matched_content_ids_query()),
+                    Content.id.in_(
+                        matched_content_ids_query(
+                            monitor_id=monitor_id,
+                            review_state=review_state,
+                        )
+                    ),
                     Content.visibility == "available",
                 )
                 .order_by(Content.first_seen_at.desc(), Content.id.desc())
             )
+            if source is not None:
+                query = query.where(Content.source == source)
+            if discovered_since is not None:
+                query = query.where(Content.first_seen_at >= discovered_since.astimezone(UTC))
             if cursor is not None:
                 first_seen_at, identity = self._decode_cursor(cursor)
                 query = query.where(
@@ -789,7 +808,12 @@ class ContentService:
                         first_seen_at=content.first_seen_at,
                         last_seen_at=content.last_seen_at,
                         reply_count=observation.reply_count if observation else None,
-                        monitor_titles=monitor_titles_for_content(session, content.id),
+                        matches=monitor_matches_for_content(
+                            session,
+                            content.id,
+                            monitor_id=monitor_id,
+                            review_state=review_state,
+                        ),
                     )
                 )
             return InboxPage(

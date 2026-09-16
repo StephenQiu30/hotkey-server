@@ -20,6 +20,7 @@ const messages: Record<string, string> = {
   source_not_eligible: "所选来源尚未通过用途权限和采集连接检查。",
   monitor_budget_insufficient: "每日请求上限不足以覆盖当前查询和检查周期。",
   monitor_not_active: "监控未处于运行状态，请刷新后重试。",
+  monitor_match_not_found: "主题匹配不存在或已被清理，请刷新后重试。",
   evidence_store_not_configured: "证据存储尚未配置，暂不能开始采集。",
   request_budget_exhausted: "今天的请求预算已用完。",
   idempotency_conflict: "本次操作与已有请求不一致，请刷新后重试。",

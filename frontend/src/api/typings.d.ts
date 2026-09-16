@@ -587,8 +587,8 @@ declare namespace API {
     kind: "post" | "comment" | "reply";
     /** Last Seen At */
     last_seen_at: string;
-    /** Monitor Titles */
-    monitor_titles: string[];
+    /** Matches */
+    matches: MonitorMatchView[];
     /** Parent External Id */
     parent_external_id: string | null;
     /** Provider Namespace */
@@ -746,6 +746,17 @@ declare namespace API {
   type listInboxContentsParams = {
     limit?: number;
     cursor?: string | null;
+    monitor_id?: string | null;
+    source?:
+      | "x"
+      | "bilibili"
+      | "weibo"
+      | "xiaohongshu"
+      | "douyin"
+      | "bluesky"
+      | null;
+    review_state?: "new" | "ignored" | "following" | null;
+    discovered_since?: string | null;
   };
 
   type listJobsParams = {
@@ -794,6 +805,34 @@ declare namespace API {
     )[];
     /** Title */
     title: string;
+  };
+
+  type MonitorMatchReviewInput = {
+    /** Review State */
+    review_state: "new" | "ignored" | "following";
+  };
+
+  type MonitorMatchView = {
+    /** First Seen At */
+    first_seen_at: string;
+    /** Id */
+    id: string;
+    /** Last Seen At */
+    last_seen_at: string;
+    /** Match Reason */
+    match_reason: string[];
+    /** Monitor Id */
+    monitor_id: string;
+    /** Monitor Title */
+    monitor_title: string;
+    /** Monitor Version */
+    monitor_version: number;
+    /** Monitor Version Id */
+    monitor_version_id: string;
+    /** Relevance Status */
+    relevance_status: "pending" | "accepted" | "rejected" | "needs_review";
+    /** Review State */
+    review_state: "new" | "ignored" | "following";
   };
 
   type MonitorPage = {
@@ -968,6 +1007,10 @@ declare namespace API {
   type removeEventMemberParams = {
     identity: string;
     content_id: string;
+  };
+
+  type reviewMonitorMatchParams = {
+    identity: string;
   };
 
   type ScheduleSpec = {

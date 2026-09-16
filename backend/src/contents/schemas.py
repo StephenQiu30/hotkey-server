@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import AwareDatetime, BaseModel, Field
 
 from core.schemas import Input
+from monitors.schemas import MonitorMatchView
 from sources.schemas import SourceName
 
 
@@ -24,7 +25,7 @@ class InboxItem(BaseModel):
     first_seen_at: datetime
     last_seen_at: datetime
     reply_count: int | None
-    monitor_titles: list[str]
+    matches: list[MonitorMatchView]
 
 
 class InboxPage(BaseModel):
