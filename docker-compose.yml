@@ -5,6 +5,7 @@ x-app: &app
   init: true
   restart: unless-stopped
   stop_grace_period: 45s
+  extra_hosts: ["host.docker.internal:host-gateway"]
   environment: &environment
     HOTKEY_DATABASE_URL: postgresql+psycopg://hotkey:learning@postgres:5432/hotkey
     HOTKEY_BROKER_URL: amqp://hotkey:learning@rabbitmq:5672/hotkey

@@ -418,3 +418,13 @@ Red阶段后端操作ID测试精确失败于端点缺失，Chromium用例精确�
 现有bucket可达，四项读取均有权限。实例当前是`unversioned`，对象锁为`absent`，生命周期为`absent`。因此现有精确删除不受bucket默认保留锁限制，也不会产生需要额外删除的历史版本；同时服务端没有自动过期规则或`AbortIncompleteMultipartUpload`，不能仅依靠bucket策略保证保留期与中止分片清理。
 
 离线fake client共16项配置/适配器/审计测试通过，Ruff通过，官方mypy检查135个源/脚本文件且无错误。功能提交`79e16970`的[完整远端CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35091475304)通过，包括PostgreSQL、RabbitMQ、OpenAPI/UmiOpenAPI契约、Chromium、备份恢复和回退演练。结构化结果见 [existing-minio-retention-audit.json](evidence/existing-minio-retention-audit.json)。本片不自动修改外部MinIO；应用依旧需以删除账本/对账作为可变保留天数的主路径，生产启用前应在bucket配置有界的未完multipart中止规则并复核是否需要版本历史。该审计不独立完成EV-007-003/010。
+
+## 007 S02-T02J B站公开真实持久链 canary（2026-09-16）
+
+个人非商业学习范围下，先以无登录、无Cookie、无环境代理的有界客户端各请求一次B站搜索、正文、根评论和回复；四项均返回HTTP 200，解析出1条搜索引用、1条正文、3条根评论和首个父级19条回复。输出与仓库证据只保留状态、数量和字节数，没有正文、作者或平台对象ID。
+
+正式产品首轮在真实Worker完成来源搜索后，写入现有MinIO时发现Compose没有固定此前POC使用的主机网关。布局Red测试精确失败后，`x-app`统一加入`host.docker.internal:host-gateway`，backend、worker和scheduler均从同一部署事实继承。原样复跑进一步确认现有MinIO宿主机端口已停止监听；没有启动CI fixture或新建bucket冒充既有实例。为隔离来源链与外部实例状态，使用一次性MinIO fixture继续验证，bucket由产品镜像中的锁定`minio-py 7.2.20`创建。
+
+真实prefork链完成搜索与正文并派生评论：搜索以`partial/page_limit`结算、正文`ok`，评论请求返回`access_denied`并原子失败，未继续请求回复。搜索、正文和评论拒绝响应共3个RawPage、3个Checkpoint；3个对象均从fixture按SHA-256完整读回，正文形成1个内容版本/观察。随后通过应用删除账本删除全部3个对象和所有版本，0失败、0余留；隔离PostgreSQL、RabbitMQ、MinIO卷、容器和临时env全部删除。没有对评论拒绝高频重试，总内容采购费用为0。
+
+结构化证据见 [EV-007-003-bilibili-live-canary.json](evidence/007/EV-007-003-bilibili-live-canary.json)。它证明真实来源的搜索/正文持久主链和拒绝状态处理，但不证明真实评论/回复持久化、现有MinIO当前可用、生产来源准入或七日稳定性；EV-007-003仅部分通过，EV-007-004保持未完成。

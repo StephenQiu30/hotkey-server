@@ -1,0 +1,140 @@
+{
+  "scope": "S02-T02J bounded public Bilibili live persistence canary",
+  "observed_at": "2026-09-16",
+  "usage": {
+    "purpose": "personal non-commercial learning",
+    "access_mode": "public unauthenticated web and JSON endpoints",
+    "accounts_or_cookies_used": false,
+    "environment_proxy_used": false,
+    "content_purchase_cost": 0,
+    "total_source_requests": 9,
+    "social_content_or_identifiers_recorded_in_repository": false
+  },
+  "bounded_probe": {
+    "storage_used": false,
+    "search_posts": {
+      "http_status": 200,
+      "status": "ok",
+      "references": 1
+    },
+    "fetch_post": {
+      "http_status": 200,
+      "status": "ok",
+      "items": 1
+    },
+    "list_comments": {
+      "http_status": 200,
+      "status": "ok",
+      "items": 3,
+      "reply_roots": 2
+    },
+    "list_replies": {
+      "http_status": 200,
+      "status": "ok",
+      "items": 19
+    }
+  },
+  "deployment_findings": {
+    "formal_compose_host_gateway_before_fix": "missing",
+    "formal_compose_host_gateway_after_fix": [
+      "backend",
+      "worker",
+      "scheduler"
+    ],
+    "existing_minio_runtime": "unavailable",
+    "existing_minio_host_listener": "not_listening",
+    "existing_minio_public_tls": "previous_handshake_failure_not_retested",
+    "temporary_minio_fixture_used": true,
+    "fixture_bucket_created_with": "locked minio-py 7.2.20 in product backend image"
+  },
+  "live_product_run": {
+    "acceptance": {
+      "EV-007-003": "partial",
+      "EV-007-004": "not_complete",
+      "comment_operation": "access_denied",
+      "reply_operation": "not_attempted",
+      "search_and_post_persistence": "passed"
+    },
+    "cleanup": {
+      "database_raw_page_states": {
+        "deleted": 3
+      },
+      "delete_failures": 0,
+      "object_versions_remaining": 0,
+      "objects_deleted": 3,
+      "objects_scheduled": 3
+    },
+    "existing_minio_status": "unavailable_at_runtime",
+    "operations": {
+      "fetch_post": {
+        "items": 1,
+        "outcome": "ok",
+        "pages": 1,
+        "response_bytes": 243604,
+        "state": "completed",
+        "stop_reason": null
+      },
+      "list_comments": {
+        "items": 0,
+        "outcome": "failed",
+        "pages": 1,
+        "response_bytes": 39,
+        "state": "failed",
+        "stop_reason": "access_denied"
+      },
+      "search_posts": {
+        "items": 0,
+        "outcome": "partial",
+        "pages": 1,
+        "response_bytes": 286099,
+        "state": "completed",
+        "stop_reason": "page_limit"
+      }
+    },
+    "persistence": {
+      "attempts_by_outcome": {
+        "failed": 1,
+        "succeeded": 2
+      },
+      "checkpoints": 3,
+      "collection_runs": 3,
+      "content_by_kind": {
+        "post": 1
+      },
+      "content_observations": 1,
+      "content_versions": 1,
+      "jobs_by_status": {
+        "failed": 1,
+        "succeeded": 2
+      },
+      "monitor_matches": 0,
+      "outbox_unsent": 0,
+      "raw_object_manifest_sha256": "a570f5b2d644e6bbf2d9f0852c715208ccccd1c7bc5139497289199186589566",
+      "raw_page_hash_readbacks": 3,
+      "raw_pages": 3
+    },
+    "result": "partial",
+    "scope": "bounded Bilibili live persistence canary",
+    "storage_fixture": "temporary_minio"
+  },
+  "safety": {
+    "platform_retry_after_access_denied": false,
+    "raw_objects_hash_read_before_cleanup": 3,
+    "raw_object_versions_remaining": 0,
+    "temporary_containers_remaining": 0,
+    "temporary_volumes_remaining": 0,
+    "temporary_private_env_files_remaining": 0,
+    "temporary_social_database_remaining": false
+  },
+  "acceptance_boundary": {
+    "public_operation_structure": "verified_once_for_all_four_operations",
+    "real_search_and_post_persistence": "passed_with_temporary_storage_fixture",
+    "real_comment_persistence": "failed_access_denied",
+    "real_reply_persistence": "not_attempted_after_comment_denial",
+    "existing_minio_end_to_end": "not_tested_because_instance_unavailable",
+    "production_operation_admission": "not_ready",
+    "seven_day_observation": "not_started",
+    "EV-007-003": "partial",
+    "EV-007-004": "not_complete"
+  }
+}

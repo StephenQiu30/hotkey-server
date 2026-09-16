@@ -30,6 +30,13 @@ def test_deployment_uses_canonical_backend_entrypoint():
     assert "worker.app:app" in compose
 
 
+def test_application_roles_have_an_explicit_host_gateway_for_existing_services():
+    compose = (ROOT / "docker-compose.yml").read_text()
+    app = re.search(r"(?ms)^x-app:.*?(?=^services:)", compose)
+    assert app is not None
+    assert 'extra_hosts: ["host.docker.internal:host-gateway"]' in app.group()
+
+
 def test_production_roles_receive_storage_and_exact_source_admission_configuration():
     production = (ROOT / "docker-compose-prod.yml").read_text()
     for name in (
