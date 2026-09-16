@@ -37,7 +37,18 @@
     "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
   },
   "remote_ci": {
-    "status": "pending"
+    "status": "success",
+    "run_id": 35049798922,
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35049798922",
+    "commit": "9ebd91e87108cd5a632a3eefcd6ea7f7e5d7f254",
+    "duration": "3m19s",
+    "backend_tests": "170 passed with 2 warnings",
+    "browser": "3 passed",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore_schema": "0019_collection_retry_budget",
+    "backup_restore_dump_bytes": 90351,
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
   },
   "test_isolation": {
     "first_red_environment_attempt": "the custom web port was outside the configured Origin allowlist and was excluded from product evidence",

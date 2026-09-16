@@ -99,7 +99,7 @@ cd ..
 uv run --project backend python backend/scripts/verify_shutdown.py
 ```
 
-可选 `HOTKEY_WEB_URL` 改变测试 Web 地址，默认 localhost:8010。Playwright 验证登录、新建/编辑草稿、真实诊断完成、页面刷新保留状态、390px 布局和退出后 401。截图只含合成数据。CI 使用一次性项目，结束时只清理其自身资源。
+可选 `HOTKEY_WEB_URL` 改变测试 Web 地址，默认 localhost:8010；修改API端口时同时设置 `HOTKEY_API_URL`。Playwright 验证登录、新建/编辑草稿、活动Job与CollectionRun自动终态回显、隐藏页停轮询、终态停轮询、页面刷新保留状态、390px布局、Swagger和退出后401。截图与受控状态序列只含合成数据。CI使用一次性项目，结束时只清理其自身资源。
 
 ## 初次替换验证记录（历史）
 
@@ -304,3 +304,13 @@ Red阶段3项聚焦断言失败：成功页提交后Job仍为running，暂停监
 全新隔离`hotkey-s03f` Compose迁移到0019，PostgreSQL 16.15、RabbitMQ 4.1.8的scheduler → RabbitMQ → Celery prefork诊断为succeeded/attempts=1；Web不替换而backend替换后代理返回401。合成owner的3项Chromium测试全部通过，覆盖Swagger自动文档、知识不可用态和主工作台；首次复跑复用了上一次合成事件数据，空态断言按设计失败，清理一次性卷后原样通过。关停worker=0、backend=143、scheduler=0且无SIGKILL，所有`hotkey-s03f`容器与卷已删除。功能提交`134d8facc5cf8e1018cdeb70f785a9d0a900c498`的[远程CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35047820313)在4分09秒内复现全部门禁并成功，远端0019 dump为90351字节。结构化证据见[collection-atomic-settlement-poc.json](evidence/collection-atomic-settlement-poc.json)。
 
 本片使用合成来源响应和内存EvidenceStore，没有访问外部平台或用户现有MinIO，也没有改动HTTP/OpenAPI契约。它关闭了单页结算的两个事务窗口，但多页/多根评论、现有MinIO、真实来源和七日观察仍未验收；EV-007-005与TASK-007-S03-T02仍为部分完成。
+
+## 007 S02-T03A 可见页面活动状态轮询验证（2026-09-16）
+
+工作台从UmiOpenAPI生成的`listJobs`和`listCollectionRuns`读取第一页状态；只有页面可见且任一资源处于queued/running时建立2秒轮询链。每条链同时最多各有一个请求，页面隐藏、组件卸载或退出登录时清除计时并取消在途请求；恢复可见后继续同一有界链。Job和CollectionRun都进入终态后执行一次完整工作台刷新，使新收件箱、提醒和事件状态从数据库回显，随后停止轮询。没有增加请求库、WebSocket、SSE、手写URL或OpenAPI兼容分支。
+
+Red浏览器断言在20秒后仍看到排队中的诊断行。Green用真实登录和真实诊断POST配合受控列表状态序列：隐藏4.5秒内Job与CollectionRun读取次数均不增长；恢复后Job先变为succeeded而CollectionRun仍running，轮询继续；CollectionRun完成后两个连续4.5秒窗口请求次数保持不变。该确定性序列避免将prefork完成速度误当成前端轮询证据；同一隔离栈另行证明真实scheduler→RabbitMQ→Celery prefork任务succeeded且attempts=1。
+
+本地完整门禁为170项后端测试通过并保留2条上游弃用提示，Ruff覆盖158文件，严格mypy覆盖131个源/验证文件；`pip-audit`无已知漏洞，npm生产依赖审计为0；FastAPI OpenAPI、UmiOpenAPI、前端边界/负向样例、Prettier与TypeScript/Vite构建通过。全新`hotkey-s02poll` Compose保持0019，backend替换后代理返回401，Chromium 3项通过，PostgreSQL 16.15备份恢复本地dump为90427字节，停机worker=0、backend=143、scheduler=0且无SIGKILL。功能提交`9ebd91e87108cd5a632a3eefcd6ea7f7e5d7f254`的[远端CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35049798922)在3分19秒内复现全部门禁并成功，远端dump为90351字节。结构化证据见[activity-polling-poc.json](evidence/activity-polling-poc.json)。
+
+验证没有访问外部平台、现有MinIO或真实用户内容，也没有修改HTTP契约、生成客户端、请求预算或来源准入。它证明活动状态自动回显和停轮询边界，不证明真实收件箱、评论多页、七日运行或完整TASK-007-S02-T03。
