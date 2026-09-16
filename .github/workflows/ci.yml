@@ -36,6 +36,8 @@ jobs:
       HOTKEY_E2E_PASSWORD: CI-only-synthetic-password-2026
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
         with:
           version: "0.11.32"
@@ -69,6 +71,9 @@ jobs:
         env:
           HOTKEY_BACKUP_POC_DATABASE_URL: postgresql+psycopg://hotkey:learning@127.0.0.1:15435/hotkey
           PYTHONPATH: backend/src
+      - run: uv run --project backend python backend/scripts/verify_old_application_rollback.py
+        env:
+          HOTKEY_ROLLBACK_POC_DATABASE_URL: postgresql+psycopg://hotkey:learning@127.0.0.1:15435/hotkey
       - run: uv run --project backend python backend/scripts/verify_shutdown.py
       - if: failure()
         uses: actions/upload-artifact@v4

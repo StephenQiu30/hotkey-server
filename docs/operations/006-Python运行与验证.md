@@ -338,3 +338,11 @@ Red阶段的内部页契约用例因cursor被拒绝而失败。Green/Refactor后
 全新隔离`hotkey-s03g` Compose保持0019 schema，scheduler→RabbitMQ→Celery prefork诊断为`succeeded/attempts=1`；运行时OpenAPI等于发布快照，backend替换后代理返回401。Chromium 5项通过。PostgreSQL 16.15 custom dump为90570字节，恢复后删除清单重放两次幂等；停机worker=0、backend=143、scheduler=0且无SIGKILL。功能提交`84effd002d41965accc3fe1359eb3d228d3c5353`的[远端CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35055542112)在2分29秒内复现全部门禁并成功：177项后端、Chromium 5项、prefork attempts=1、代理401、备份恢复dump 90556字节与0/143/0停机通过。结构化证据见[collection-two-page-poc.json](evidence/collection-two-page-poc.json)。
 
 本片使用合成页响应和内存EvidenceStore，没有访问外部平台、连接用户现有MinIO或改变来源准入。它证明有界两页续采的事务、恢复和预算语义，不证明真实平台的页面口径、更广多根评覆盖或七日稳定性。
+
+## 007 S06-T01A 旧应用隔离快照回滚演练（2026-09-16）
+
+旧应用基线固定为 `13545f223ea9257464c6d4f8c91c16c2543eb8d0` / `0019_collection_retry_budget`，当前库为 `0020_trend_alerts`。Red验证将旧应用直连当前库，就绪端点稳定返回503/`schema_mismatch`；这证明不能用放宽revision检查的方式伪造回滚。
+
+`verify_old_application_rollback.py` 在可丢弃Compose项目内导出该固定提交，新建隔离库并用旧迁移重放到0019，创建合成owner和会话后停止可写应用。随后用PostgreSQL `default_transaction_read_only=on`和仅SELECT授权的角色重启旧应用；就绪、既存会话和事件列表读取通过，30张旧库表的计数在HTTP读取前后不变，当前0020库也没有变化。脚本最后删除隔离库、只读角色和临时源码。结构化证据见 [old-application-rollback-poc.json](evidence/old-application-rollback-poc.json)。
+
+这是一次隔离数据库的紧急只读回退演练：不增加旧接口、跳转、双路由、Schema降级或永久旧服务。它没有执行生产流量切换、异地备份或现有MinIO物理对象恢复，因此仍不能独立将EV-007-010标记完整通过。

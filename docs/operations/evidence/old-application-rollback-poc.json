@@ -1,0 +1,37 @@
+{
+  "date": "2026-09-16",
+  "scope": "old_application_isolated_snapshot_rollback",
+  "environment": {
+    "compose_project": "hotkey-rollback-local",
+    "postgres": "16.15",
+    "python": "3.13.14",
+    "baseline_commit": "13545f223ea9257464c6d4f8c91c16c2543eb8d0",
+    "baseline_revision": "0019_collection_retry_budget",
+    "current_revision": "0020_trend_alerts"
+  },
+  "red": {
+    "scenario": "baseline application connected directly to the current database",
+    "http_status": 503,
+    "code": "schema_mismatch"
+  },
+  "green": {
+    "strategy": "restore the pre-release schema in an isolated database and run the pinned baseline with a PostgreSQL-enforced read-only role",
+    "ready": true,
+    "authenticated_session_read": true,
+    "event_list_read": true,
+    "transaction_read_only": "on",
+    "isolated_table_count": 30,
+    "isolated_counts_unchanged": true,
+    "current_database_unchanged": true
+  },
+  "cleanup": {
+    "snapshot_database_removed": true,
+    "read_only_role_removed": true,
+    "temporary_source_removed": true
+  },
+  "boundaries": [
+    "No legacy route, redirect, dual endpoint, relaxed schema check, or destructive downgrade was added.",
+    "The exercise did not switch production traffic or restore existing MinIO objects.",
+    "The exercise used synthetic owner/session data in disposable local infrastructure."
+  ]
+}
