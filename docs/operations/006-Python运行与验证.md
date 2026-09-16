@@ -291,6 +291,6 @@ Red阶段因notifications模块不存在而在测试收集失败。Green阶段�
 
 Red阶段3项用例因采集取消处理器不存在失败，旧fencing用例确认对象会遗留；新增HTTP用例第一次还因测试预算不足在准入阶段失败，修正fixture后不把它作为产品故障。Green/Refactor后5项聚焦测试和170项完整后端测试通过，保留2条上游弃用提示；Ruff覆盖158文件，严格mypy覆盖131个源/脚本文件。`pip-audit`无已知漏洞，npm生产依赖审计为0；FastAPI OpenAPI快照与UmiOpenAPI生成客户端无漂移，前端边界、负向样例、Prettier与TypeScript/Vite构建通过。
 
-隔离`hotkey-s03d` Compose完成0019迁移，真实scheduler/RabbitMQ/Celery prefork诊断为succeeded/attempts=1；Web不替换而backend替换后代理返回401。正确初始化合成owner后Chromium 3项全部通过；首次浏览器运行因验证命令在frontend目录调用不存在的`python`而没有创建owner，Swagger通过而两项登录流程失败，改用仓库根目录的`python3`与显式Compose项目后原样重跑通过。PostgreSQL 16.15 custom dump为90426字节，恢复后删除清单重放两次保持幂等。正常停机worker=0、backend=143、scheduler=0且无SIGKILL，全部容器与卷已删除。结构化证据见[collection-cancellation-poc.json](evidence/collection-cancellation-poc.json)。
+隔离`hotkey-s03d` Compose完成0019迁移，真实scheduler/RabbitMQ/Celery prefork诊断为succeeded/attempts=1；Web不替换而backend替换后代理返回401。正确初始化合成owner后Chromium 3项全部通过；首次浏览器运行因验证命令在frontend目录调用不存在的`python`而没有创建owner，Swagger通过而两项登录流程失败，改用仓库根目录的`python3`与显式Compose项目后原样重跑通过。PostgreSQL 16.15 custom dump为90426字节，恢复后删除清单重放两次保持幂等。正常停机worker=0、backend=143、scheduler=0且无SIGKILL，全部容器与卷已删除。功能提交`ff514541ce3204eac8091eff1dc92806590313c6`的[远端CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35044168135)在3分05秒内复现170项后端、Chromium 3项、prefork/代理/恢复/停机门禁并成功，远端0019 dump为90413字节。结构化证据见[collection-cancellation-poc.json](evidence/collection-cancellation-poc.json)。
 
 验证使用合成来源响应和内存EvidenceStore，没有访问外部平台或用户现有MinIO。它证明应用取消、数据库账本和对象补偿协议，不证明真实平台在途请求中断、现有MinIO权限/TLS/版本行为、多页评论或七日稳定性；EV-007-005与TASK-007-S03-T02继续保持部分完成。

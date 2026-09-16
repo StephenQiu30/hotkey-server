@@ -26,6 +26,19 @@
     "browser": "3 Chromium tests passed after the synthetic owner was initialized correctly",
     "compose": "0019 migration, real prefork job attempts=1, backend replacement proxy=401, graceful worker/scheduler exit=0 and backend exit=143 without SIGKILL"
   },
+  "remote_ci": {
+    "run_id": 35044168135,
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35044168135",
+    "commit": "ff514541ce3204eac8091eff1dc92806590313c6",
+    "conclusion": "success",
+    "duration": "3m5s",
+    "backend_tests": "170 passed with 2 warnings",
+    "browser": "3 passed",
+    "compose_prefork_attempts": 1,
+    "backup_restore_schema": "0019_collection_retry_budget",
+    "backup_restore_dump_bytes": 90413,
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+  },
   "assertions": {
     "queued_http_cancel": "job and collection run cancelled atomically with partial/user_cancelled",
     "source_request_cancel": {
