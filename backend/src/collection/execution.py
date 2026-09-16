@@ -44,6 +44,7 @@ class CollectionExecutor:
                 source=run.source,
                 operation=run.operation,
                 request_value=run.request_value,
+                cursor=run.cursor,
                 since=run.since,
                 until=run.until,
                 limit=20 if run.operation in {"list_comments", "list_replies"} else 1,
@@ -58,7 +59,7 @@ class CollectionExecutor:
                 self.service.fail_run(lease, run.run_id, reason)
             return False
         result = page.result
-        if result.cursor is not None:
+        if result.cursor is not None and run.operation not in {"list_comments", "list_replies"}:
             result = result.model_copy(
                 update={"status": "partial", "code": "page_limit", "cursor": None}
             )

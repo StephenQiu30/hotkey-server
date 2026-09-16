@@ -1,0 +1,58 @@
+{
+  "scope": "S03-T01C bounded two-page root comment and reply collection",
+  "date": "2026-09-16",
+  "environment": {
+    "database": "PostgreSQL 16.15 disposable Compose database",
+    "broker": "RabbitMQ 4.1.8 disposable Compose vhost",
+    "schema_revision": "0019_collection_retry_budget",
+    "browser": "Playwright Chromium against the final production frontend image",
+    "source_data": "synthetic admitted SourceService and in-memory EvidenceStore; no external requests"
+  },
+  "red": {
+    "result": "targeted unit test failed",
+    "assertion": "internal comment page requests accept a validated checkpoint cursor",
+    "observed": "CollectionPageInput rejected cursor as an extra field"
+  },
+  "green": {
+    "root_comment_pages": 2,
+    "reply_pages": 2,
+    "reply_roots_across_root_pages": 1,
+    "collection_runs": 4,
+    "jobs": 4,
+    "outbox_rows": 6,
+    "raw_pages": 6,
+    "checkpoints": 6,
+    "reserved_requests": 6,
+    "continuation": "same CollectionRun and Job; latest database checkpoint cursor; epoch 1 to 2",
+    "old_epoch_claim": "rejected",
+    "page_two_with_cursor": "partial/page_limit without epoch 3",
+    "page_budget_exhaustion": "committed page retained; job succeeded; partial/page_budget_exhausted; no continuation outbox",
+    "message_contract": "job_id, epoch and contract version only",
+    "http_contract_changed": false,
+    "database_migration_added": false
+  },
+  "local_verification": {
+    "backend": "177 passed with 2 upstream deprecation warnings",
+    "ruff": "158 files passed lint and format checks",
+    "mypy": "131 source and verification files",
+    "dependency_audit": "no known Python vulnerabilities; production frontend audit 0",
+    "frontend": "OpenAPI/UmiOpenAPI contract, boundary, negative boundary, Prettier and TypeScript/Vite checks passed with no generated diff",
+    "browser": "5 Chromium tests passed on a disposable Compose stack",
+    "compose_prefork_attempts": 1,
+    "runtime_openapi_equal": true,
+    "proxy_replacement_status": 401,
+    "backup_restore": {
+      "postgres_version": "16.15",
+      "schema_revision": "0019_collection_retry_budget",
+      "dump_bytes": 90570,
+      "withdrawal_replay_idempotent": true
+    },
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+  },
+  "limitations": [
+    "The collection pages and source admission are synthetic and do not establish a live platform capability.",
+    "The existing MinIO instance was not used; evidence persistence was verified with the in-memory adapter and existing object protocol tests.",
+    "The MVP intentionally samples at most two root pages and one reply root with at most two reply pages; broader multi-root coverage remains open.",
+    "This slice does not complete real-source admission, production model taxonomy, old-application rollback or seven-day observation."
+  ]
+}

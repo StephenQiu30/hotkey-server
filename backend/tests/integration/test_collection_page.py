@@ -135,9 +135,11 @@ class StaticFetcher:
     def __init__(self, page: FetchedPage):
         self.page = page
         self.calls = 0
+        self.inputs = []
 
     def fetch(self, data):
         self.calls += 1
+        self.inputs.append(data)
         return self.page
 
 
@@ -806,10 +808,50 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
     )
     comments_lease = claim(database, Dispatch(job_id=comments_job_id, epoch=1))
     assert comments_lease is not None
-    assert CollectionExecutor(collection, sources, StaticFetcher(comments_page), store).execute(
+    comments_first_fetcher = StaticFetcher(comments_page)
+    assert CollectionExecutor(collection, sources, comments_first_fetcher, store).execute(
         comments_lease
     )
     assert not complete(database, comments_lease)
+    assert comments_first_fetcher.inputs[0].cursor is None
+    assert claim(database, Dispatch(job_id=comments_job_id, epoch=1)) is None
+
+    comments_second_payload = b'{"comments":["comment:443"],"next":2}'
+    comments_second_result = result(
+        "第二页观点",
+        1,
+        comments_second_payload,
+        external_id="comment:443",
+        provider_namespace="comment",
+        kind="comment",
+        root_id="video:113",
+        operation="list_comments",
+    ).model_copy(
+        update={
+            "cursor": "2",
+            "references": [
+                SourceReference(
+                    external_id="aid:113/root:443",
+                    canonical_url="https://www.bilibili.com/video/av113#reply443",
+                )
+            ],
+        }
+    )
+    comments_second_page = FetchedPage(
+        result=comments_second_result,
+        payload=comments_second_payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"root-comment-page-two-request").hexdigest(),
+        page_key="comments:root-comment:2",
+    )
+    comments_second_lease = claim(database, Dispatch(job_id=comments_job_id, epoch=2))
+    assert comments_second_lease is not None
+    comments_second_fetcher = StaticFetcher(comments_second_page)
+    assert CollectionExecutor(collection, sources, comments_second_fetcher, store).execute(
+        comments_second_lease
+    )
+    assert comments_second_fetcher.inputs[0].cursor == "1"
+    assert not complete(database, comments_second_lease)
 
     with database() as session:
         replies = session.scalar(
@@ -840,13 +882,50 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
     )
     replies_lease = claim(database, Dispatch(job_id=replies_job_id, epoch=1))
     assert replies_lease is not None
-    assert CollectionExecutor(collection, sources, StaticFetcher(replies_page), store).execute(
+    replies_first_fetcher = StaticFetcher(replies_page)
+    assert CollectionExecutor(collection, sources, replies_first_fetcher, store).execute(
         replies_lease
     )
     assert not complete(database, replies_lease)
+    assert replies_first_fetcher.inputs[0].cursor is None
+    assert claim(database, Dispatch(job_id=replies_job_id, epoch=1)) is None
+
+    replies_second_payload = b'{"replies":["comment:444"],"next":3}'
+    replies_second_result = result(
+        "继续同意",
+        0,
+        replies_second_payload,
+        external_id="comment:444",
+        provider_namespace="comment",
+        kind="reply",
+        root_id="video:113",
+        parent_id="comment:441",
+        operation="list_replies",
+    ).model_copy(update={"cursor": "3"})
+    replies_second_page = FetchedPage(
+        result=replies_second_result,
+        payload=replies_second_payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"reply-page-two-request").hexdigest(),
+        page_key="replies:root-comment:2",
+    )
+    replies_second_lease = claim(database, Dispatch(job_id=replies_job_id, epoch=2))
+    assert replies_second_lease is not None
+    replies_second_fetcher = StaticFetcher(replies_second_page)
+    assert CollectionExecutor(collection, sources, replies_second_fetcher, store).execute(
+        replies_second_lease
+    )
+    assert replies_second_fetcher.inputs[0].cursor == "2"
+    assert not complete(database, replies_second_lease)
 
     inbox = {item.external_id: item for item in ContentService(database).inbox(20, None).items}
-    assert set(inbox) == {"video:113", "comment:441", "comment:442"}
+    assert set(inbox) == {
+        "video:113",
+        "comment:441",
+        "comment:442",
+        "comment:443",
+        "comment:444",
+    }
     assert inbox["comment:441"].relation_status == "resolved"
     assert inbox["comment:441"].monitor_titles == ["评论上下文"]
     assert inbox["comment:442"].relation_status == "resolved"
@@ -861,9 +940,188 @@ def test_post_detail_expands_one_root_comment_and_reply_page_with_context_match(
     with database() as session:
         assert session.scalar(select(func.count()).select_from(CollectionRun)) == 4
         assert session.scalar(select(func.count()).select_from(Job)) == 4
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 6
+        assert session.scalar(select(func.count()).select_from(RawPage)) == 6
+        assert session.scalar(select(func.count()).select_from(CollectionCheckpoint)) == 6
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(CollectionRun)
+                .where(
+                    CollectionRun.parent_run_id == comments.id,
+                    CollectionRun.operation == "list_replies",
+                )
+            )
+            == 1
+        )
+        usage = session.scalar(select(CollectionBudgetUsage))
+        assert usage is not None and usage.reserved_requests == 6
+        persisted_comments = session.get(CollectionRun, comments.id)
+        persisted_replies = session.get(CollectionRun, replies.id)
+        assert persisted_comments is not None and persisted_comments.reserved_requests == 2
+        assert persisted_replies is not None and persisted_replies.reserved_requests == 2
+        comment_job = session.get(Job, comments.job_id)
+        reply_job = session.get(Job, replies.job_id)
+        assert comment_job is not None and comment_job.epoch == 2 and comment_job.attempts == 2
+        assert reply_job is not None and reply_job.epoch == 2 and reply_job.attempts == 2
+        comment_attempts = list(
+            session.scalars(select(Attempt).where(Attempt.job_id == comments.job_id))
+        )
+        reply_attempts = list(
+            session.scalars(select(Attempt).where(Attempt.job_id == replies.job_id))
+        )
+        assert {attempt.outcome for attempt in comment_attempts} == {
+            "page_committed",
+            "succeeded",
+        }
+        assert {attempt.outcome for attempt in reply_attempts} == {
+            "page_committed",
+            "succeeded",
+        }
+
+
+def test_comment_page_budget_exhaustion_keeps_committed_page_without_next_epoch(database):
+    sources = AdmittedSources()
+    monitors = MonitorService(database, sources)
+    created = monitors.create_monitor(
+        MonitorInput.model_validate(
+            {
+                "title": "评论分页预算",
+                "query_spec": {"include_any": ["AI"]},
+                "source_ids": ["bilibili"],
+                "schedule": {"interval_minutes": 1440, "retention_days": 7},
+                "budget": {"daily_requests": 4, "content_purchase_cost": 0},
+            }
+        )
+    )
+    active = monitors.change_state(
+        created.id,
+        MonitorStateChange(expected_version=created.current_version),
+        "active",
+    )
+    collection = CollectionService(database, sources, evidence_configured=True)
+    store = MemoryStore()
+    search = create_collection_run(
+        collection,
+        active.id,
+        active.current_version,
+        "comment-page-budget",
+    )
+    create_collection_run(
+        collection,
+        active.id,
+        active.current_version,
+        "comment-page-budget-blocker",
+    )
+
+    def reference_page(operation, request, reference, page_key):
+        payload = f'{{"reference":"{reference}"}}'.encode()
+        return FetchedPage(
+            result=SourceResult(
+                source="bilibili",
+                adapter_version="synthetic-page-budget-poc",
+                operation=operation,
+                status="ok",
+                observed_at=utcnow(),
+                references=[
+                    SourceReference(
+                        external_id=reference,
+                        canonical_url="https://www.bilibili.com/video/BV1BVFWeHEaV",
+                    )
+                ],
+                response_bytes=len(payload),
+                response_sha256=sha256(payload).hexdigest(),
+            ),
+            payload=payload,
+            media_type="application/json",
+            request_fingerprint=sha256(request).hexdigest(),
+            page_key=page_key,
+        )
+
+    search_lease = claim(database, Dispatch(job_id=search.job_id, epoch=1))
+    assert search_lease is not None
+    assert CollectionExecutor(
+        collection,
+        sources,
+        StaticFetcher(
+            reference_page(
+                "search_posts",
+                b"comment-page-budget-search",
+                "bvid:BV1BVFWeHEaV",
+                "search:comment-page-budget",
+            )
+        ),
+        store,
+    ).execute(search_lease)
+    with database() as session:
+        detail = session.scalar(
+            select(CollectionRun).where(CollectionRun.operation == "fetch_post")
+        )
+        assert detail is not None
+    detail_lease = claim(database, Dispatch(job_id=detail.job_id, epoch=1))
+    assert detail_lease is not None
+    assert CollectionExecutor(
+        collection,
+        sources,
+        StaticFetcher(
+            reference_page(
+                "fetch_post",
+                b"comment-page-budget-detail",
+                "aid:113",
+                "post:comment-page-budget",
+            )
+        ),
+        store,
+    ).execute(detail_lease)
+    with database() as session:
+        comments = session.scalar(
+            select(CollectionRun).where(CollectionRun.operation == "list_comments")
+        )
+        assert comments is not None
+
+    payload = b'{"comments":[],"next":1}'
+    page = FetchedPage(
+        result=SourceResult(
+            source="bilibili",
+            adapter_version="synthetic-page-budget-poc",
+            operation="list_comments",
+            status="ok",
+            observed_at=utcnow(),
+            cursor="1",
+            response_bytes=len(payload),
+            response_sha256=sha256(payload).hexdigest(),
+        ),
+        payload=payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"comment-page-budget-comments").hexdigest(),
+        page_key="comments:comment-page-budget",
+    )
+    comments_lease = claim(database, Dispatch(job_id=comments.job_id, epoch=1))
+    assert comments_lease is not None
+    assert CollectionExecutor(collection, sources, StaticFetcher(page), store).execute(
+        comments_lease
+    )
+    assert not complete(database, comments_lease)
+
+    with database() as session:
+        persisted = session.get(CollectionRun, comments.id)
+        job = session.get(Job, comments.job_id)
+        usage = session.scalar(select(CollectionBudgetUsage))
+        assert persisted is not None
+        assert persisted.pages_count == 1 and persisted.reserved_requests == 1
+        assert persisted.state == "completed" and persisted.outcome == "partial"
+        assert persisted.stop_reason == "page_budget_exhausted"
+        assert job is not None and job.status == "succeeded" and job.epoch == 1
+        assert usage is not None and usage.reserved_requests == 4
         assert session.scalar(select(func.count()).select_from(Outbox)) == 4
-        assert session.scalar(select(func.count()).select_from(RawPage)) == 4
-        assert session.scalar(select(func.count()).select_from(CollectionCheckpoint)) == 4
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(CollectionCheckpoint)
+                .where(CollectionCheckpoint.run_id == comments.id)
+            )
+            == 1
+        )
 
 
 def test_reference_expansion_stops_at_budget_without_creating_a_detail_job(database):

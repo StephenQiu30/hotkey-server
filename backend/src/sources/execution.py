@@ -37,7 +37,7 @@ class PublicCollectionFetcher:
                 return Bilibili(client).comments_page(
                     BilibiliCommentsInput(
                         aid=int(data.request_value.removeprefix("aid:")),
-                        cursor=0,
+                        cursor=int(data.cursor) if data.cursor is not None else 0,
                         limit=data.limit,
                     )
                 )
@@ -47,7 +47,7 @@ class PublicCollectionFetcher:
                     BilibiliRepliesInput(
                         aid=int(aid.removeprefix("aid:")),
                         root_id=int(root.removeprefix("root:")),
-                        page=1,
+                        page=int(data.cursor) if data.cursor is not None else 1,
                         limit=data.limit,
                     )
                 )

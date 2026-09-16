@@ -297,7 +297,12 @@ class Bilibili:
                         raise ValueError("invalid cursor")
                     if cursor and cursor.get("is_end") is False:
                         next_cursor = cursor.get("next")
-                        if not isinstance(next_cursor, int) or next_cursor == request.cursor:
+                        if (
+                            not isinstance(next_cursor, int)
+                            or next_cursor <= 0
+                            or len(str(next_cursor)) > 20
+                            or next_cursor == request.cursor
+                        ):
                             result.status, result.code = "partial", "cursor_stalled"
                         else:
                             result.cursor = str(next_cursor)

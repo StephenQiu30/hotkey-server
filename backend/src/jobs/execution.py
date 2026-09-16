@@ -171,6 +171,37 @@ def reschedule_lease(
     return "scheduled"
 
 
+def continue_lease(session: Session, lease: Lease) -> Literal["scheduled", "exhausted", "stale"]:
+    job = _active_job_for_lease(session, lease)
+    if job is None:
+        return "stale"
+    now = utcnow()
+    if job.attempts >= job.max_attempts or job.deadline <= now:
+        job.status = "failed"
+        job.completed_at = now
+        job.lease_until = None
+        finish_attempt(session, job, "failed", now)
+        return "exhausted"
+    finish_attempt(session, job, "page_committed", now)
+    job.status = "queued"
+    job.epoch += 1
+    job.available_at = now
+    job.lease_until = None
+    session.add(Outbox(id=uuid4(), job_id=job.id, epoch=job.epoch, due_at=now))
+    return "scheduled"
+
+
+def lease_was_continued(session: Session, lease: Lease) -> bool:
+    job = session.scalar(select(Job).where(Job.id == lease.job_id))
+    return (
+        job is not None
+        and job.kind == lease.kind
+        and job.fencing_token == lease.fencing_token
+        and job.status == "queued"
+        and job.epoch == lease.epoch + 1
+    )
+
+
 def cancel_in_session(session: Session, job_id: UUID) -> bool:
     job = session.scalar(select(Job).where(Job.id == job_id).with_for_update())
     if job is None or job.status not in {"queued", "running"}:

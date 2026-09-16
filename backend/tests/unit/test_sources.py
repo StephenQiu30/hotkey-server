@@ -264,6 +264,96 @@ def test_public_fetcher_rejects_invalid_bilibili_reply_reference_before_network(
         )
 
 
+def test_collection_page_cursor_is_numeric_and_only_allowed_for_comment_operations():
+    comments = CollectionPageInput(
+        source="bilibili",
+        operation="list_comments",
+        request_value="aid:113",
+        cursor="1",
+        since="2026-09-01T00:00:00Z",
+        until="2026-09-09T00:00:00Z",
+        limit=20,
+    )
+    replies = CollectionPageInput(
+        source="bilibili",
+        operation="list_replies",
+        request_value="aid:113/root:441",
+        cursor="2",
+        since="2026-09-01T00:00:00Z",
+        until="2026-09-09T00:00:00Z",
+        limit=20,
+    )
+    assert comments.cursor == "1" and replies.cursor == "2"
+    with pytest.raises(ValidationError, match="cursor is only supported"):
+        CollectionPageInput(
+            source="bilibili",
+            operation="search_posts",
+            request_value="AI",
+            cursor="1",
+            since="2026-09-01T00:00:00Z",
+            until="2026-09-09T00:00:00Z",
+        )
+    with pytest.raises(ValidationError):
+        CollectionPageInput(
+            source="bilibili",
+            operation="list_comments",
+            request_value="aid:113",
+            cursor="next",
+            since="2026-09-01T00:00:00Z",
+            until="2026-09-09T00:00:00Z",
+            limit=20,
+        )
+
+
+def test_public_fetcher_maps_checkpoint_cursor_to_bilibili_comment_pages(monkeypatch):
+    seen = []
+
+    class FakeBilibili:
+        def __init__(self, client):
+            self.client = client
+
+        def comments_page(self, data):
+            seen.append(data)
+            return "comments"
+
+        def replies_page(self, data):
+            seen.append(data)
+            return "replies"
+
+    monkeypatch.setattr("sources.execution.Bilibili", FakeBilibili)
+    fetcher = PublicCollectionFetcher()
+    assert (
+        fetcher.fetch(
+            CollectionPageInput(
+                source="bilibili",
+                operation="list_comments",
+                request_value="aid:113",
+                cursor="7",
+                since="2026-09-01T00:00:00Z",
+                until="2026-09-09T00:00:00Z",
+                limit=20,
+            )
+        )
+        == "comments"
+    )
+    assert (
+        fetcher.fetch(
+            CollectionPageInput(
+                source="bilibili",
+                operation="list_replies",
+                request_value="aid:113/root:441",
+                cursor="3",
+                since="2026-09-01T00:00:00Z",
+                until="2026-09-09T00:00:00Z",
+                limit=20,
+            )
+        )
+        == "replies"
+    )
+    assert seen[0].cursor == 7
+    assert seen[1].page == 3
+
+
 def test_last_page_items_and_unknown_count_survive():
     def handler(request):
         assert request.url.host == "public.api.bsky.app"

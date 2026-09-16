@@ -326,3 +326,15 @@ Red阶段的架构测试因Swagger仍包含数字版本路径失败；取消入�
 全新`hotkey-s02b` Compose在0019 schema上完成scheduler→RabbitMQ→Celery prefork诊断，结果为succeeded/attempts=1；backend替换后代理返回401。清理仅该一次性项目的复用卷后，Chromium 4项通过，覆盖新API根路径的Swagger、采集取消、知识不可用态和完整工作台。PostgreSQL 16.15 custom dump为90457字节，删除清单重放两次幂等；停机worker=0、backend=143、scheduler=0且无SIGKILL。功能提交`586b77610341802c9b8efb7b043772ac5eed618b`的[远端CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35051558868)在3分钟内复现171项后端测试、Chromium 4项与全部运行门禁，远端dump同为90457字节。结构化证据见[api-root-poc.json](evidence/api-root-poc.json)与[collection-run-cancel-ui-poc.json](evidence/collection-run-cancel-ui-poc.json)。
 
 验证使用合成owner、合成CollectionRun和可丢弃基础设施，没有访问外部平台或现有MinIO。它证明公开HTTP契约迁移、生成客户端和用户取消接线，不证明真实来源中断、多页评论、现有MinIO或七日稳定性。
+
+## 007 S03-T01C 根评与回复两页续采验证（2026-09-16）
+
+根评与回复运行现在最多各采集2页。第1页保存RawPage、内容与Checkpoint后，同一PostgreSQL事务预留下一请求预算、结束当前Attempt、增加Job epoch并写入立即Outbox。第2个epoch领取同一CollectionRun和Job，从数据库最新Checkpoint恢复数字游标；RabbitMQ消息仍只有job_id、epoch和契约版本。旧epoch无法重新领取。
+
+根评运行的全部已提交页合计只选择1个有回复的根评，不会因第2页再派生新的回复运行。第2页仍有游标时以`partial/page_limit`结束，不写epoch 3；第1页后预算用尽时保留已提交证据和Checkpoint，并将运行与Job原子结算为`partial/page_budget_exhausted`。
+
+Red阶段的内部页契约用例因cursor被拒绝而失败。Green/Refactor后，177项后端测试在真实PostgreSQL/RabbitMQ下通过，保留2条上游弃用提示；Ruff检查158个文件，严格mypy检查131个源/验证文件。`pip-audit`无已知漏洞，npm生产依赖审计为0；FastAPI OpenAPI、UmiOpenAPI生成客户端、前端边界/负向样例、Prettier和TypeScript/Vite构建均通过，HTTP契约与生成文件无变化。
+
+全新隔离`hotkey-s03g` Compose保持0019 schema，scheduler→RabbitMQ→Celery prefork诊断为`succeeded/attempts=1`；运行时OpenAPI等于发布快照，backend替换后代理返回401。Chromium 5项通过。PostgreSQL 16.15 custom dump为90570字节，恢复后删除清单重放两次幂等；停机worker=0、backend=143、scheduler=0且无SIGKILL。结构化证据见[collection-two-page-poc.json](evidence/collection-two-page-poc.json)。
+
+本片使用合成页响应和内存EvidenceStore，没有访问外部平台、连接用户现有MinIO或改变来源准入。它证明有界两页续采的事务、恢复和预算语义，不证明真实平台的页面口径、更广多根评覆盖或七日稳定性。

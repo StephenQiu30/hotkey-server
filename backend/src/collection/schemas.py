@@ -115,6 +115,7 @@ class CollectionExecutionInput(BaseModel):
     source: SourceName
     operation: Literal["search_posts", "fetch_post", "list_comments", "list_replies"]
     request_value: str
+    cursor: str | None = None
     since: datetime
     until: datetime
     policy_version: str

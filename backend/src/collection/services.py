@@ -39,10 +39,12 @@ from jobs.contracts import Lease
 from jobs.execution import (
     cancel_in_session,
     complete_in_session,
+    continue_lease,
     enqueue,
     fail_lease,
     lease_has_status,
     lease_is_active,
+    lease_was_continued,
     reschedule_lease,
 )
 from monitors.schemas import ActiveMonitorConfiguration
@@ -123,6 +125,7 @@ def collection_coverage_runs(
 
 
 class CollectionService:
+    COMMENT_PAGE_LIMIT = 2
     FOLLOWUP_OPERATION = {
         "search_posts": "fetch_post",
         "fetch_post": "list_comments",
@@ -508,6 +511,15 @@ class CollectionService:
             run.state = "running"
             run.fencing_token = lease.fencing_token
             run.started_at = run.started_at or utcnow()
+            checkpoint = session.scalar(
+                select(CollectionCheckpoint)
+                .where(CollectionCheckpoint.run_id == run.id)
+                .order_by(
+                    CollectionCheckpoint.committed_at.desc(),
+                    CollectionCheckpoint.id.desc(),
+                )
+                .limit(1)
+            )
             return CollectionExecutionInput(
                 run_id=run.id,
                 job_id=run.job_id,
@@ -516,6 +528,7 @@ class CollectionService:
                 source=run.source,
                 operation=run.operation,
                 request_value=run.request_value,
+                cursor=checkpoint.cursor if checkpoint is not None else None,
                 since=run.window_since,
                 until=run.window_until,
                 policy_version=run.policy_version,
@@ -689,8 +702,19 @@ class CollectionService:
         )
         if usage is None:
             raise AppError("collection_budget_missing", 500)
+        existing_count = session.scalar(
+            select(func.count())
+            .select_from(CollectionRun)
+            .where(
+                CollectionRun.parent_run_id == parent.id,
+                CollectionRun.operation == operation,
+            )
+        )
+        remaining = max(DISCOVERY_REFERENCE_LIMIT - (existing_count or 0), 0)
+        if remaining == 0:
+            return 0, None
         created = 0
-        for request_value in list(dict.fromkeys(references))[:DISCOVERY_REFERENCE_LIMIT]:
+        for request_value in list(dict.fromkeys(references))[:remaining]:
             if not self.sources.request_value_is_valid(
                 cast(SourceName, parent.source), operation, request_value
             ):
@@ -784,7 +808,7 @@ class CollectionService:
                 )
                 if page_contains_withdrawn_content(session, run.source, data.result.items):
                     raise AppError("content_withdrawn", 409)
-                view = self._commit_uploaded_page(session, run, data, prepared, stored)
+                view = self._commit_uploaded_page(session, run, data, prepared, stored, lease)
                 self._validate_or_settle_run_lease(session, run, lease)
                 return view
         except AppError as error:
@@ -827,6 +851,8 @@ class CollectionService:
             settled = fail_lease(session, lease) or lease_has_status(session, lease, "failed")
         elif run.state == "running":
             settled = lease_is_active(session, lease)
+        elif run.state == "queued":
+            settled = lease_was_continued(session, lease)
         else:
             settled = False
         if not settled:
@@ -839,6 +865,7 @@ class CollectionService:
         data: PageCommitInput,
         prepared: PreparedEvidence,
         stored: StoredObject,
+        lease: Lease,
     ) -> PageCommitView:
         raw_page = record_raw_page(
             session,
@@ -889,19 +916,83 @@ class CollectionService:
             committed_at=utcnow(),
         )
         session.add(checkpoint)
+        prior_followup_stop = (
+            run.stop_reason
+            if run.stop_reason
+            in {
+                reason
+                for reasons in self.FOLLOWUP_STOP_REASONS.values()
+                for reason in reasons.values()
+            }
+            else None
+        )
         run.pages_count += 1
         run.items_count += len(data.result.items)
         run.bytes_count += data.result.response_bytes
         run.stop_reason = data.result.code
-        followup_count, followup_stop = self._create_reference_runs(
-            session,
-            run,
-            [reference.external_id for reference in data.result.references],
-        )
-        if data.result.cursor is None:
-            run.state = "failed" if data.result.status == "failed" else "completed"
-            run.outcome = "partial" if followup_stop else data.result.status
-            run.stop_reason = followup_stop or run.stop_reason
+        continuation = False
+        page_budget_exhausted = False
+        paged_operation = run.operation in {"list_comments", "list_replies"}
+        if (
+            paged_operation
+            and data.result.status != "failed"
+            and data.result.cursor is not None
+            and run.pages_count < self.COMMENT_PAGE_LIMIT
+        ):
+            usage = session.scalar(
+                select(CollectionBudgetUsage)
+                .where(
+                    CollectionBudgetUsage.monitor_version_id == run.monitor_version_id,
+                    CollectionBudgetUsage.budget_day == run.budget_day,
+                )
+                .with_for_update()
+            )
+            if usage is None:
+                raise AppError("collection_budget_missing", 500)
+            if usage.reserved_requests >= usage.limit_requests:
+                page_budget_exhausted = True
+            else:
+                disposition = continue_lease(session, lease)
+                if disposition == "stale":
+                    raise AppError("stale_collection_lease", 409)
+                if disposition == "exhausted":
+                    self._mark_failed(run, "page_attempts_exhausted")
+                else:
+                    usage.reserved_requests += 1
+                    usage.updated_at = utcnow()
+                    run.reserved_requests += 1
+                    run.state = "queued"
+                    run.completed_at = None
+                    continuation = True
+        if run.state == "failed" or data.result.status == "failed":
+            followup_count, followup_stop = 0, None
+        else:
+            followup_count, followup_stop = self._create_reference_runs(
+                session,
+                run,
+                [reference.external_id for reference in data.result.references],
+            )
+        coverage_stop = prior_followup_stop or followup_stop
+        if page_budget_exhausted:
+            run.state = "completed"
+            run.outcome = "partial"
+            run.stop_reason = "page_budget_exhausted"
+            run.completed_at = utcnow()
+        elif run.state == "failed":
+            pass
+        elif continuation:
+            run.stop_reason = coverage_stop
+        else:
+            if data.result.status == "failed":
+                run.state = "failed"
+                run.outcome = "failed"
+            else:
+                run.state = "completed"
+                page_limited = paged_operation and data.result.cursor is not None
+                run.outcome = "partial" if coverage_stop or page_limited else data.result.status
+                run.stop_reason = coverage_stop or (
+                    "page_limit" if page_limited else run.stop_reason
+                )
             run.completed_at = utcnow()
         session.flush()
         return PageCommitView(

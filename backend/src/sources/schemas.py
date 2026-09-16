@@ -150,6 +150,7 @@ class CollectionPageInput(BaseModel):
     source: SourceName
     operation: Literal["search_posts", "fetch_post", "list_comments", "list_replies"]
     request_value: str = Field(min_length=1, max_length=100)
+    cursor: str | None = Field(default=None, max_length=20, pattern=r"^[1-9][0-9]*$")
     since: AwareDatetime
     until: AwareDatetime
     limit: int = Field(default=1, ge=1, le=20)
@@ -158,6 +159,8 @@ class CollectionPageInput(BaseModel):
     def valid_request(self) -> Self:
         if self.since >= self.until:
             raise ValueError("since must precede until")
+        if self.cursor is not None and self.operation not in {"list_comments", "list_replies"}:
+            raise ValueError("cursor is only supported for comment operations")
         if self.operation == "fetch_post" and not re.fullmatch(
             rf"bvid:{BILIBILI_BVID[1:-1]}", self.request_value
         ):
