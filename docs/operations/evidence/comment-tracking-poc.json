@@ -46,7 +46,18 @@
     "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL or OOM"
   },
   "remote_ci": {
-    "status": "pending"
+    "status": "success",
+    "run_id": 35079689852,
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35079689852",
+    "commit": "4c1695b42c40ee95259eff8a0fa2956fe0c8aab7",
+    "duration": "3m48s",
+    "backend_tests": "189 passed with 2 warnings",
+    "browser": "10 passed",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore_dump_bytes": 99480,
+    "old_application_rollback": "success",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
   },
   "limitations": [
     "Synthetic database facts verify transaction and identity boundaries; controlled browser responses verify generated-client wiring.",

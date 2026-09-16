@@ -391,6 +391,6 @@ Red浏览器用例精确失败于事件成员中不存在展开按钮。Green/Re
 
 Red阶段后端操作ID测试精确失败于端点缺失，Chromium用例精确失败于收件箱没有“追踪评论”按钮。Green/Refactor后真实PostgreSQL集成测试覆盖已有一个抽样详情任务后为用户选择的第二帖子建立独立任务、重复调用不重复扣预算、详情页直接进入评论任务，以及未配置证据存储、预算耗尽、监控失活、根身份歧义和跨监控版本证据时命中/预算/队列零变化。完整后端189项通过并保留2条上游弃用提示；严格mypy检查133个源/验证文件，`pip-audit`与npm生产依赖审计无已知漏洞。FastAPI运行时契约与42组路径快照一致，生成客户端只位于`frontend/src/api`并继续使用根级Axios `request.ts`；边界、负向边界、Prettier与TypeScript/Vite构建通过。
 
-全新`hotkey-comment-tracking`一次性Compose完成`scheduler → RabbitMQ → Celery prefork → PostgreSQL`诊断，结果为`succeeded/attempts=1`；Web不替换而backend替换后代理返回401。空库Chromium 10项通过，包括Swagger、新评论追踪调用与完整工作台。PostgreSQL 16.15 custom dump为99472字节，恢复后撤权清单重放两次幂等；固定0019应用从数据库强制只读的隔离旧Schema快照完成读取。正常停机worker=0、backend=143、scheduler=0且无SIGKILL，随后删除该项目容器、网络和卷。结构化证据见[comment-tracking-poc.json](evidence/comment-tracking-poc.json)。
+全新`hotkey-comment-tracking`一次性Compose完成`scheduler → RabbitMQ → Celery prefork → PostgreSQL`诊断，结果为`succeeded/attempts=1`；Web不替换而backend替换后代理返回401。空库Chromium 10项通过，包括Swagger、新评论追踪调用与完整工作台。PostgreSQL 16.15 custom dump为99472字节，恢复后撤权清单重放两次幂等；固定0019应用从数据库强制只读的隔离旧Schema快照完成读取。正常停机worker=0、backend=143、scheduler=0且无SIGKILL，随后删除该项目容器、网络和卷。功能提交`4c1695b42c40ee95259eff8a0fa2956fe0c8aab7`的[远端CI #35079689852](https://github.com/StephenQiu30/hotkey-server/actions/runs/35079689852)在3分48秒内复现189项后端、10项Chromium、prefork一次执行、代理401、99480字节备份恢复、旧应用回退与无SIGKILL停机门禁并成功。结构化证据见[comment-tracking-poc.json](evidence/comment-tracking-poc.json)。
 
 验证内容、来源页和浏览器响应均为明确合成数据，没有访问外部平台或用户现有MinIO。它证明用户动作与持久采集账本的原子接线，不证明真实平台评论、用途准入、现有MinIO权限、真实内容盲测或七日稳定运行；`TASK-007-S03-T01`和EV-007-004仍保持部分完成。
