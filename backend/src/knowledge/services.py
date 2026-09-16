@@ -12,15 +12,23 @@ from ai.contracts import EmbeddingProvider, EmbeddingProviderError
 from analysis.schemas import AnalysisRunView
 from analysis.services import analysis_knowledge_snapshot, controlled_comment_statistics
 from audit.services import audit
-from contents.schemas import ContentWithdrawalInput, ContentWithdrawalView
+from contents.schemas import (
+    ContentWithdrawalInput,
+    ContentWithdrawalManifest,
+    ContentWithdrawalReplayView,
+    ContentWithdrawalView,
+)
 from contents.services import (
+    apply_withdrawal_manifest_entry,
     content_version_contexts,
     current_content_version_ids,
+    export_withdrawal_manifest,
     withdraw_content,
 )
 from core.clock import utcnow
 from core.errors import AppError
 from events.services import event_title_for_knowledge
+from evidence.services import schedule_raw_page_deletions
 from knowledge.models import KnowledgeChunk, KnowledgeCitation, KnowledgeEntry, KnowledgeVersion
 from knowledge.schemas import (
     CommentCountQuestion,
@@ -260,42 +268,75 @@ class KnowledgeService:
         data: ContentWithdrawalInput,
     ) -> ContentWithdrawalView:
         with self.factory.begin() as session:
-            withdrawn = withdraw_content(session, identity, data.reason)
-            affected_entry_ids: set[UUID] = set()
-            if withdrawn.version_ids:
-                rows = session.execute(
-                    select(KnowledgeChunk, KnowledgeVersion.entry_id)
-                    .join(KnowledgeVersion, KnowledgeVersion.id == KnowledgeChunk.version_id)
-                    .join(
-                        KnowledgeCitation,
-                        KnowledgeCitation.version_id == KnowledgeVersion.id,
-                    )
-                    .where(KnowledgeCitation.content_version_id.in_(withdrawn.version_ids))
-                    .with_for_update()
+            return self._withdraw_in_session(session, identity, data.reason)
+
+    @staticmethod
+    def _withdraw_in_session(
+        session: Session,
+        identity: UUID,
+        reason: Literal["deleted", "purpose_revoked"],
+    ) -> ContentWithdrawalView:
+        withdrawn = withdraw_content(session, identity, reason)
+        affected_entry_ids: set[UUID] = set()
+        if withdrawn.version_ids:
+            rows = session.execute(
+                select(KnowledgeChunk, KnowledgeVersion.entry_id)
+                .join(KnowledgeVersion, KnowledgeVersion.id == KnowledgeChunk.version_id)
+                .join(
+                    KnowledgeCitation,
+                    KnowledgeCitation.version_id == KnowledgeVersion.id,
                 )
-                for chunk, entry_id in rows:
-                    chunk.embedding = None
-                    chunk.embedding_model = None
-                    chunk.embedding_model_digest = None
-                    chunk.embedding_dimensions = None
-                    chunk.index_state = "deleted" if withdrawn.visibility == "deleted" else "stale"
-                    chunk.error_code = (
-                        "content_deleted"
-                        if withdrawn.visibility == "deleted"
-                        else "content_purpose_revoked"
-                    )
-                    chunk.indexed_at = None
-                    affected_entry_ids.add(entry_id)
-            audit(
-                session,
-                "content_withdrawn",
-                f"{identity}:{data.reason}:{len(affected_entry_ids)}",
+                .where(KnowledgeCitation.content_version_id.in_(withdrawn.version_ids))
+                .with_for_update()
             )
-            return ContentWithdrawalView(
-                id=withdrawn.id,
-                visibility=withdrawn.visibility,
-                affected_knowledge_entries=len(affected_entry_ids),
-            )
+            for chunk, entry_id in rows:
+                chunk.embedding = None
+                chunk.embedding_model = None
+                chunk.embedding_model_digest = None
+                chunk.embedding_dimensions = None
+                chunk.index_state = "deleted" if withdrawn.visibility == "deleted" else "stale"
+                chunk.error_code = (
+                    "content_deleted"
+                    if withdrawn.visibility == "deleted"
+                    else "content_purpose_revoked"
+                )
+                chunk.indexed_at = None
+                affected_entry_ids.add(entry_id)
+        if withdrawn.visibility == "deleted":
+            schedule_raw_page_deletions(session, withdrawn.raw_page_ids)
+        audit(
+            session,
+            "content_withdrawn",
+            f"{identity}:{reason}:{len(affected_entry_ids)}",
+        )
+        return ContentWithdrawalView(
+            id=withdrawn.id,
+            visibility=withdrawn.visibility,
+            affected_knowledge_entries=len(affected_entry_ids),
+        )
+
+    def export_withdrawal_manifest(self) -> ContentWithdrawalManifest:
+        with self.factory() as session:
+            return export_withdrawal_manifest(session)
+
+    def replay_withdrawal_manifest(
+        self,
+        manifest: ContentWithdrawalManifest,
+    ) -> ContentWithdrawalReplayView:
+        applied = 0
+        missing = 0
+        with self.factory.begin() as session:
+            for entry in manifest.entries:
+                identity = apply_withdrawal_manifest_entry(session, entry)
+                if identity is None:
+                    missing += 1
+                    continue
+                reason: Literal["deleted", "purpose_revoked"] = (
+                    "deleted" if entry.visibility == "deleted" else "purpose_revoked"
+                )
+                self._withdraw_in_session(session, identity, reason)
+                applied += 1
+        return ContentWithdrawalReplayView(applied=applied, missing=missing)
 
     def index(self, identity: UUID) -> KnowledgeEntryView:
         with self.factory() as session:

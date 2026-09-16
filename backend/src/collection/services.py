@@ -17,14 +17,19 @@ from collection.schemas import (
     PageCommitInput,
     PageCommitView,
 )
-from contents.services import upsert_content
+from contents.services import (
+    lock_content_identities,
+    page_contains_withdrawn_content,
+    upsert_content,
+)
 from core.clock import utcnow
 from core.errors import AppError
-from evidence.contracts import EvidenceStore
+from evidence.contracts import EvidenceStore, StoredObject
 from evidence.services import (
     PreparedEvidence,
     prepare_evidence,
     raw_page_identity,
+    record_failed_upload_cleanup,
     record_raw_page,
     upload,
 )
@@ -537,82 +542,128 @@ class CollectionService:
             run, existing = self._page_state(session, data, prepared, lock=False)
             if existing is not None:
                 return self._duplicate_view(run, existing)
+            if page_contains_withdrawn_content(session, run.source, data.result.items):
+                raise AppError("content_withdrawn", 409)
         stored = upload(store, prepared)
-        with self.factory.begin() as session:
-            run, existing = self._page_state(session, data, prepared, lock=True)
-            if existing is not None:
-                return self._duplicate_view(run, existing)
-            raw_page = record_raw_page(
-                session,
-                run_id=run.id,
-                source=run.source,
-                operation=run.operation,
-                request_fingerprint=data.request_fingerprint,
-                media_type=data.media_type,
-                observed_at=data.result.observed_at,
-                retention_until=data.retention_until,
-                policy_version=data.policy_version,
-                response_bytes=data.result.response_bytes,
-                prepared=prepared,
-                stored=stored,
-            )
-            session.flush()
-            query_spec = monitor_query_spec(session, run.monitor_version_id)
-            new_contents = 0
-            new_versions = 0
-            for item in data.result.items:
-                written = upsert_content(
-                    session, item, run.source, raw_page.id, data.result.observed_at
+        try:
+            with self.factory.begin() as session:
+                run, existing = self._page_state(session, data, prepared, lock=True)
+                if existing is not None:
+                    return self._duplicate_view(run, existing)
+                lock_content_identities(
+                    session,
+                    run.source,
+                    {(item.provider_namespace, item.external_id) for item in data.result.items},
                 )
-                new_contents += int(written.new_content)
-                new_versions += int(written.new_version)
-                reasons = query_match_reasons(query_spec, item.text)
-                if (
-                    not reasons
-                    and written.root_content_id is not None
-                    and content_is_matched(session, run.monitor_version_id, written.root_content_id)
-                ):
-                    reasons = ["root_context"]
-                if reasons:
-                    match_content(
+                if page_contains_withdrawn_content(session, run.source, data.result.items):
+                    raise AppError("content_withdrawn", 409)
+                return self._commit_uploaded_page(session, run, data, prepared, stored)
+        except AppError as error:
+            if error.code != "content_withdrawn":
+                raise
+            try:
+                store.delete(stored.key, stored.sha256)
+            except Exception:
+                with self.factory.begin() as session:
+                    cleanup_run = session.get(CollectionRun, data.run_id)
+                    if cleanup_run is None:
+                        raise AppError("collection_run_not_found", 404) from error
+                    record_failed_upload_cleanup(
                         session,
-                        run.monitor_version_id,
-                        written.content_id,
-                        reasons,
-                        data.result.observed_at,
+                        run_id=cleanup_run.id,
+                        source=cleanup_run.source,
+                        operation=cleanup_run.operation,
+                        request_fingerprint=data.request_fingerprint,
+                        media_type=data.media_type,
+                        observed_at=data.result.observed_at,
+                        retention_until=data.retention_until,
+                        policy_version=data.policy_version,
+                        response_bytes=data.result.response_bytes,
+                        prepared=prepared,
+                        stored=stored,
                     )
-            checkpoint = CollectionCheckpoint(
-                id=uuid4(),
-                run_id=run.id,
-                page_key=data.page_key,
-                cursor=data.result.cursor,
-                raw_page_id=raw_page.id,
-                item_count=len(data.result.items),
-                committed_at=utcnow(),
+                raise AppError("content_withdrawn_evidence_cleanup_failed", 503) from error
+            raise
+
+    def _commit_uploaded_page(
+        self,
+        session: Session,
+        run: CollectionRun,
+        data: PageCommitInput,
+        prepared: PreparedEvidence,
+        stored: StoredObject,
+    ) -> PageCommitView:
+        raw_page = record_raw_page(
+            session,
+            run_id=run.id,
+            source=run.source,
+            operation=run.operation,
+            request_fingerprint=data.request_fingerprint,
+            media_type=data.media_type,
+            observed_at=data.result.observed_at,
+            retention_until=data.retention_until,
+            policy_version=data.policy_version,
+            response_bytes=data.result.response_bytes,
+            prepared=prepared,
+            stored=stored,
+        )
+        session.flush()
+        query_spec = monitor_query_spec(session, run.monitor_version_id)
+        new_contents = 0
+        new_versions = 0
+        for item in data.result.items:
+            written = upsert_content(
+                session, item, run.source, raw_page.id, data.result.observed_at
             )
-            session.add(checkpoint)
-            run.pages_count += 1
-            run.items_count += len(data.result.items)
-            run.bytes_count += data.result.response_bytes
-            run.stop_reason = data.result.code
-            followup_count, followup_stop = self._create_reference_runs(
-                session,
-                run,
-                [reference.external_id for reference in data.result.references],
-            )
-            if data.result.cursor is None:
-                run.state = "failed" if data.result.status == "failed" else "completed"
-                run.outcome = "partial" if followup_stop else data.result.status
-                run.stop_reason = followup_stop or run.stop_reason
-                run.completed_at = utcnow()
-            session.flush()
-            return PageCommitView(
-                run_id=run.id,
-                checkpoint_id=checkpoint.id,
-                raw_page_id=raw_page.id,
-                item_count=len(data.result.items),
-                new_content_count=new_contents,
-                new_version_count=new_versions,
-                followup_run_count=followup_count,
-                duplicate=False,
-            )
+            new_contents += int(written.new_content)
+            new_versions += int(written.new_version)
+            reasons = query_match_reasons(query_spec, item.text)
+            if (
+                not reasons
+                and written.root_content_id is not None
+                and content_is_matched(session, run.monitor_version_id, written.root_content_id)
+            ):
+                reasons = ["root_context"]
+            if reasons:
+                match_content(
+                    session,
+                    run.monitor_version_id,
+                    written.content_id,
+                    reasons,
+                    data.result.observed_at,
+                )
+        checkpoint = CollectionCheckpoint(
+            id=uuid4(),
+            run_id=run.id,
+            page_key=data.page_key,
+            cursor=data.result.cursor,
+            raw_page_id=raw_page.id,
+            item_count=len(data.result.items),
+            committed_at=utcnow(),
+        )
+        session.add(checkpoint)
+        run.pages_count += 1
+        run.items_count += len(data.result.items)
+        run.bytes_count += data.result.response_bytes
+        run.stop_reason = data.result.code
+        followup_count, followup_stop = self._create_reference_runs(
+            session,
+            run,
+            [reference.external_id for reference in data.result.references],
+        )
+        if data.result.cursor is None:
+            run.state = "failed" if data.result.status == "failed" else "completed"
+            run.outcome = "partial" if followup_stop else data.result.status
+            run.stop_reason = followup_stop or run.stop_reason
+            run.completed_at = utcnow()
+        session.flush()
+        return PageCommitView(
+            run_id=run.id,
+            checkpoint_id=checkpoint.id,
+            raw_page_id=raw_page.id,
+            item_count=len(data.result.items),
+            new_content_count=new_contents,
+            new_version_count=new_versions,
+            followup_run_count=followup_count,
+            duplicate=False,
+        )

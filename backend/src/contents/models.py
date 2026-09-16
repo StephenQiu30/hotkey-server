@@ -85,3 +85,26 @@ class ContentObservation(Base):
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     reply_count: Mapped[int | None] = mapped_column(Integer)
     raw_page_id: Mapped[UUID] = mapped_column(ForeignKey("raw_pages.id"))
+
+
+class ContentWithdrawalRecord(Base):
+    __tablename__ = "content_withdrawal_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "source",
+            "provider_namespace",
+            "external_id",
+            name="uq_content_withdrawal_records_identity",
+        ),
+        CheckConstraint(
+            "visibility IN ('unavailable', 'deleted')",
+            name="ck_content_withdrawal_records_visibility",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(32))
+    provider_namespace: Mapped[str] = mapped_column(String(100))
+    external_id: Mapped[str] = mapped_column(String(1024))
+    visibility: Mapped[str] = mapped_column(String(16))
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -1,7 +1,15 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.base import Base
@@ -16,6 +24,12 @@ class RawPage(Base):
         ),
         CheckConstraint("response_bytes >= 0 AND object_bytes >= 0", name="ck_raw_pages_bytes"),
         CheckConstraint("retention_until > observed_at", name="ck_raw_pages_retention"),
+        CheckConstraint(
+            "object_state IN ('available', 'delete_pending', 'deleted', 'failed')",
+            name="ck_raw_pages_object_state",
+        ),
+        CheckConstraint("cleanup_attempts >= 0", name="ck_raw_pages_cleanup_attempts"),
+        Index("ix_raw_pages_object_cleanup", "object_state", "observed_at", "id"),
     )
     id: Mapped[UUID] = mapped_column(primary_key=True)
     run_id: Mapped[UUID] = mapped_column(
@@ -34,3 +48,7 @@ class RawPage(Base):
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     retention_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     policy_version: Mapped[str] = mapped_column(String(64))
+    object_state: Mapped[str] = mapped_column(String(16), server_default="available")
+    cleanup_attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    cleanup_error_code: Mapped[str | None] = mapped_column(String(64))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

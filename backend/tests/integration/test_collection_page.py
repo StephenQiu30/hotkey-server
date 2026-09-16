@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
@@ -8,12 +9,14 @@ from collection.execution import CollectionExecutor
 from collection.models import CollectionCheckpoint, CollectionRun
 from collection.schemas import CollectionRunInput, PageCommitInput
 from collection.services import CollectionService
-from contents.models import Content, ContentObservation, ContentVersion
-from contents.services import ContentService
+from contents.models import Content, ContentObservation, ContentVersion, ContentWithdrawalRecord
+from contents.schemas import ContentWithdrawalManifestEntry
+from contents.services import ContentService, apply_withdrawal_manifest_entry
 from core.clock import utcnow
 from core.errors import AppError
 from evidence.contracts import StoredObject
 from evidence.models import RawPage
+from evidence.services import EvidenceDeletionService
 from jobs.contracts import Dispatch
 from jobs.execution import claim, complete, reconcile
 from jobs.models import Job, JobResult, Outbox
@@ -60,6 +63,13 @@ class MemoryStore:
             size=len(payload),
         )
 
+    def delete(self, key: str, expected_sha256: str) -> None:
+        payload = self.objects.get(key)
+        if payload is None:
+            return
+        assert sha256(payload).hexdigest() == expected_sha256
+        del self.objects[key]
+
 
 class FenceChangingStore(MemoryStore):
     def __init__(self, database, run_id):
@@ -74,6 +84,33 @@ class FenceChangingStore(MemoryStore):
             assert run is not None
             run.fencing_token += 1
         return stored
+
+
+class WithdrawalDuringPutStore(MemoryStore):
+    def __init__(self, database, *, fail_delete: bool = False):
+        super().__init__()
+        self.database = database
+        self.fail_delete = fail_delete
+
+    def put(self, key: str, payload: bytes, expected_sha256: str) -> StoredObject:
+        stored = super().put(key, payload, expected_sha256)
+        with self.database.begin() as session:
+            apply_withdrawal_manifest_entry(
+                session,
+                ContentWithdrawalManifestEntry(
+                    source="bilibili",
+                    provider_namespace="video",
+                    external_id="BV1BVFWeHEaV",
+                    visibility="deleted",
+                    effective_at=utcnow(),
+                ),
+            )
+        return stored
+
+    def delete(self, key: str, expected_sha256: str) -> None:
+        if self.fail_delete:
+            raise RuntimeError("synthetic_delete_failure")
+        super().delete(key, expected_sha256)
 
 
 class StaticFetcher:
@@ -1201,6 +1238,94 @@ def test_invalid_page_is_rejected_before_object_upload(database):
     with pytest.raises(AppError, match="collection_result_mismatch"):
         collection.commit_page(page, store)
 
+    assert store.objects == {}
+
+
+def test_withdrawal_tombstone_rejects_recollected_page_before_object_upload(database):
+    sources = AdmittedSources()
+    monitors = MonitorService(database, sources)
+    collection = CollectionService(database, sources, evidence_configured=True)
+    active = monitor(monitors, "删除防复活", ["AI"])
+    now = utcnow()
+    with database.begin() as session:
+        session.add(
+            ContentWithdrawalRecord(
+                id=uuid4(),
+                source="bilibili",
+                provider_namespace="video",
+                external_id="BV1BVFWeHEaV",
+                visibility="deleted",
+                requested_at=now,
+                updated_at=now,
+            )
+        )
+    store = MemoryStore()
+
+    with pytest.raises(AppError, match="content_withdrawn"):
+        run_and_commit(
+            collection,
+            store,
+            active.id,
+            active.current_version,
+            "withdrawn-content-recollection",
+            "不得复活的合成正文",
+            0,
+        )
+
+    assert store.objects == {}
+
+
+def test_withdrawal_race_after_upload_removes_object_and_rejects_commit(database):
+    sources = AdmittedSources()
+    monitors = MonitorService(database, sources)
+    collection = CollectionService(database, sources, evidence_configured=True)
+    active = monitor(monitors, "删除竞态", ["AI"])
+    store = WithdrawalDuringPutStore(database)
+
+    with pytest.raises(AppError, match="content_withdrawn"):
+        run_and_commit(
+            collection,
+            store,
+            active.id,
+            active.current_version,
+            "withdrawal-during-upload",
+            "不得落库的合成正文",
+            0,
+        )
+
+    assert store.objects == {}
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(RawPage)) == 0
+        assert session.scalar(select(func.count()).select_from(Content)) == 0
+
+
+def test_withdrawal_race_tracks_failed_compensation_for_reconciliation(database):
+    sources = AdmittedSources()
+    monitors = MonitorService(database, sources)
+    collection = CollectionService(database, sources, evidence_configured=True)
+    active = monitor(monitors, "删除补偿", ["AI"])
+    store = WithdrawalDuringPutStore(database, fail_delete=True)
+
+    with pytest.raises(AppError, match="content_withdrawn_evidence_cleanup_failed"):
+        run_and_commit(
+            collection,
+            store,
+            active.id,
+            active.current_version,
+            "withdrawal-cleanup-retry",
+            "需对账删除的合成正文",
+            0,
+        )
+
+    with database() as session:
+        raw_page = session.scalar(select(RawPage))
+        assert raw_page is not None
+        assert raw_page.object_state == "failed"
+        assert raw_page.cleanup_attempts == 1
+        assert session.scalar(select(func.count()).select_from(Content)) == 0
+
+    store.fail_delete = False
+    assert EvidenceDeletionService(database, store).reconcile(1).deleted == 1
     assert store.objects == {}
 
 

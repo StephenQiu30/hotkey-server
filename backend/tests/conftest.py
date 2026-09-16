@@ -28,7 +28,8 @@ def database():
                 "collection_checkpoints, "
                 "collection_budget_usage, monitor_matches, "
                 "content_observations, "
-                "content_versions, contents, raw_pages, collection_runs, login_sessions, "
+                "content_versions, contents, content_withdrawal_records, raw_pages, "
+                "collection_runs, login_sessions, "
                 "owners, monitor_versions, monitors, audit_events, job_results, outbox, "
                 "job_attempts, jobs"
             )

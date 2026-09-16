@@ -8,7 +8,7 @@ from uuid import UUID
 from alembic import command
 from sqlalchemy import select
 
-from cli import sources
+from cli import deletions, sources
 from collection.scheduling import CollectionScheduler
 from core.clock import utcnow
 from core.config import Settings
@@ -24,6 +24,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="HotKey Python foundation")
     sub = parser.add_subparsers(dest="command", required=True)
     sources.register(sub.add_parser("source-probe"))
+    deletions.register(sub)
     sub.add_parser("migrate")
     sub.add_parser("dispatch")
     sub.add_parser("reconcile")
@@ -45,7 +46,9 @@ def main() -> None:
     database = Database(settings)
     factory = database.sessions
     try:
-        if args.command == "owner-init":
+        if args.command in {"deletion-export", "deletion-replay", "evidence-reconcile"}:
+            deletions.run(args, settings, factory)
+        elif args.command == "owner-init":
             import getpass
             import sys
 

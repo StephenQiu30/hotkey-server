@@ -8,8 +8,14 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
-from contents.models import Content, ContentObservation, ContentVersion
-from contents.schemas import InboxItem, InboxPage
+from contents.models import Content, ContentObservation, ContentVersion, ContentWithdrawalRecord
+from contents.schemas import (
+    ContentWithdrawalManifest,
+    ContentWithdrawalManifestEntry,
+    InboxItem,
+    InboxPage,
+)
+from core.clock import utcnow
 from core.errors import AppError
 from monitors.services import matched_content_ids_query, monitor_titles_for_content
 from sources.schemas import SocialObject
@@ -79,6 +85,172 @@ class WithdrawnContent:
     id: UUID
     visibility: str
     version_ids: tuple[UUID, ...]
+    raw_page_ids: tuple[UUID, ...]
+
+
+def _record_withdrawal(
+    session: Session,
+    *,
+    source: str,
+    provider_namespace: str,
+    external_id: str,
+    visibility: Literal["unavailable", "deleted"],
+    effective_at: datetime,
+) -> ContentWithdrawalRecord:
+    record = session.scalar(
+        select(ContentWithdrawalRecord)
+        .where(
+            ContentWithdrawalRecord.source == source,
+            ContentWithdrawalRecord.provider_namespace == provider_namespace,
+            ContentWithdrawalRecord.external_id == external_id,
+        )
+        .with_for_update()
+    )
+    if record is None:
+        record = ContentWithdrawalRecord(
+            id=uuid4(),
+            source=source,
+            provider_namespace=provider_namespace,
+            external_id=external_id,
+            visibility=visibility,
+            requested_at=effective_at,
+            updated_at=effective_at,
+        )
+        session.add(record)
+    else:
+        if record.visibility != "deleted":
+            record.visibility = visibility
+        record.updated_at = max(record.updated_at, effective_at)
+    return record
+
+
+def export_withdrawal_manifest(session: Session) -> ContentWithdrawalManifest:
+    records = list(
+        session.scalars(
+            select(ContentWithdrawalRecord).order_by(
+                ContentWithdrawalRecord.requested_at,
+                ContentWithdrawalRecord.id,
+            )
+        )
+    )
+    return ContentWithdrawalManifest(
+        schema_version="content-withdrawal-manifest-v1",
+        generated_at=utcnow(),
+        entries=[
+            ContentWithdrawalManifestEntry(
+                source=record.source,
+                provider_namespace=record.provider_namespace,
+                external_id=record.external_id,
+                visibility=record.visibility,
+                effective_at=record.updated_at,
+            )
+            for record in records
+        ],
+    )
+
+
+def apply_withdrawal_manifest_entry(
+    session: Session,
+    entry: ContentWithdrawalManifestEntry,
+) -> UUID | None:
+    lock_content_identities(
+        session,
+        entry.source,
+        {(entry.provider_namespace, entry.external_id)},
+    )
+    _record_withdrawal(
+        session,
+        source=entry.source,
+        provider_namespace=entry.provider_namespace,
+        external_id=entry.external_id,
+        visibility=entry.visibility,
+        effective_at=entry.effective_at,
+    )
+    content = session.scalar(
+        select(Content)
+        .where(
+            Content.source == entry.source,
+            Content.provider_namespace == entry.provider_namespace,
+            Content.external_id == entry.external_id,
+        )
+        .with_for_update()
+    )
+    return content.id if content is not None else None
+
+
+def page_contains_withdrawn_content(
+    session: Session,
+    source: str,
+    items: list[SocialObject],
+) -> bool:
+    identities = {(item.provider_namespace, item.external_id) for item in items}
+    if not identities:
+        return False
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(ContentWithdrawalRecord)
+            .where(
+                ContentWithdrawalRecord.source == source,
+                or_(
+                    *[
+                        and_(
+                            ContentWithdrawalRecord.provider_namespace == namespace,
+                            ContentWithdrawalRecord.external_id == external_id,
+                        )
+                        for namespace, external_id in identities
+                    ]
+                ),
+            )
+        )
+        or 0
+    ) > 0
+
+
+def lock_content_identities(
+    session: Session,
+    source: str,
+    identities: set[tuple[str, str]],
+) -> None:
+    """Serialize collection and withdrawal for stable provider identities."""
+    for namespace, external_id in sorted(identities):
+        payload = f"{source}\0{namespace}\0{external_id}".encode()
+        lock_key = int.from_bytes(sha256(payload).digest()[:8], byteorder="big", signed=True)
+        session.execute(select(func.pg_advisory_xact_lock(lock_key)))
+
+
+def redact_deleted_content_for_raw_page(session: Session, raw_page_id: UUID) -> int:
+    content_ids = set(
+        session.scalars(
+            select(Content.id)
+            .join(ContentVersion, ContentVersion.content_id == Content.id)
+            .where(
+                ContentVersion.raw_page_id == raw_page_id,
+                Content.visibility == "deleted",
+            )
+        )
+    )
+    if not content_ids:
+        return 0
+    contents = list(
+        session.scalars(select(Content).where(Content.id.in_(content_ids)).with_for_update())
+    )
+    versions = list(
+        session.scalars(
+            select(ContentVersion)
+            .where(ContentVersion.content_id.in_(content_ids))
+            .with_for_update()
+        )
+    )
+    for content in contents:
+        content.author_ref = ""
+        content.canonical_url = None
+        content.parent_external_id = None
+    for version in versions:
+        marker = f"[deleted:{version.id}]"
+        version.text = marker
+        version.text_sha256 = sha256(marker.encode()).hexdigest()
+    return len(content_ids)
 
 
 def _latest_versions(
@@ -371,12 +543,34 @@ def withdraw_content(
     identity: UUID,
     reason: Literal["deleted", "purpose_revoked"],
 ) -> WithdrawnContent:
+    content = session.get(Content, identity)
+    if content is None:
+        raise AppError("content_not_found", 404)
+    lock_content_identities(
+        session,
+        content.source,
+        {(content.provider_namespace, content.external_id)},
+    )
     content = session.scalar(select(Content).where(Content.id == identity).with_for_update())
     if content is None:
         raise AppError("content_not_found", 404)
-    requested_visibility = "deleted" if reason == "deleted" else "unavailable"
+    requested_visibility: Literal["unavailable", "deleted"] = (
+        "deleted" if reason == "deleted" else "unavailable"
+    )
     if content.visibility != "deleted":
         content.visibility = requested_visibility
+    final_visibility: Literal["unavailable", "deleted"] = (
+        "deleted" if content.visibility == "deleted" else "unavailable"
+    )
+    now = utcnow()
+    _record_withdrawal(
+        session,
+        source=content.source,
+        provider_namespace=content.provider_namespace,
+        external_id=content.external_id,
+        visibility=final_visibility,
+        effective_at=now,
+    )
     version_ids = tuple(
         session.scalars(
             select(ContentVersion.id)
@@ -384,10 +578,25 @@ def withdraw_content(
             .order_by(ContentVersion.version)
         )
     )
+    raw_page_ids = tuple(
+        sorted(
+            {
+                *session.scalars(
+                    select(ContentVersion.raw_page_id).where(ContentVersion.content_id == identity)
+                ),
+                *session.scalars(
+                    select(ContentObservation.raw_page_id).where(
+                        ContentObservation.content_id == identity
+                    )
+                ),
+            }
+        )
+    )
     return WithdrawnContent(
         id=content.id,
         visibility=content.visibility,
         version_ids=version_ids,
+        raw_page_ids=raw_page_ids,
     )
 
 

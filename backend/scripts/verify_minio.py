@@ -36,7 +36,7 @@ def main() -> None:
             raise RuntimeError("evidence_idempotency_failed")
     finally:
         if put_attempted:
-            store.client.remove_object(store.bucket, prepared.key)
+            store.delete(prepared.key, prepared.object_sha256)
 
     try:
         store.client.stat_object(store.bucket, prepared.key)
@@ -55,6 +55,7 @@ def main() -> None:
                 "idempotent_put": True,
                 "readback_verified": True,
                 "isolated_object_removed": True,
+                "all_object_versions_removed": True,
             },
             sort_keys=True,
         )

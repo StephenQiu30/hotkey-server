@@ -3,6 +3,7 @@ from io import BytesIO
 
 import urllib3
 from minio import Minio
+from minio.deleteobjects import DeleteObject
 from minio.error import S3Error
 
 from core.config import Settings
@@ -98,3 +99,44 @@ class MinioEvidenceStore:
             metadata={"sha256": expected_sha256},
         )
         return self._verified(key, expected_sha256, len(payload))
+
+    def delete(self, key: str, expected_sha256: str) -> None:
+        size = self._existing_size(key)
+        if size is not None:
+            try:
+                self._verified(key, expected_sha256, size)
+            except RuntimeError as error:
+                raise RuntimeError("evidence_object_conflict") from error
+        versions = [
+            item
+            for item in self.client.list_objects(
+                self.bucket,
+                prefix=key,
+                recursive=True,
+                include_version=True,
+            )
+            if item.object_name == key
+        ]
+        if versions:
+            errors = list(
+                self.client.remove_objects(
+                    self.bucket,
+                    [DeleteObject(item.object_name, item.version_id) for item in versions],
+                )
+            )
+            if errors:
+                raise RuntimeError("evidence_delete_failed")
+        elif size is not None:
+            self.client.remove_object(self.bucket, key)
+        remaining = [
+            item
+            for item in self.client.list_objects(
+                self.bucket,
+                prefix=key,
+                recursive=True,
+                include_version=True,
+            )
+            if item.object_name == key
+        ]
+        if remaining or self._existing_size(key) is not None:
+            raise RuntimeError("evidence_delete_failed")
