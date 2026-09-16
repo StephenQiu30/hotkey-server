@@ -1,0 +1,82 @@
+{
+  "evidence_id": "EV-007-003",
+  "slice": "S02-T02M existing MinIO real comment chain",
+  "observed_at": "2026-09-16T15:37:15Z",
+  "environment": {
+    "object_store": "user-selected existing Homebrew MinIO instance",
+    "object_store_health": 200,
+    "project_bucket": "created once for HotKey and empty after cleanup",
+    "unrelated_bucket_count_before": 16,
+    "unrelated_bucket_count_after": 16,
+    "database": "isolated PostgreSQL 16 with pgvector 0.8.6",
+    "broker": "isolated RabbitMQ 4.1",
+    "consumer": "Celery prefork",
+    "scheduler": "not started; existing dispatch_one published only the manual chain",
+    "source": "public Bilibili pages with the admitted anonymous-session flow",
+    "content_purchase_cost": 0
+  },
+  "safety": {
+    "credentials_recorded": false,
+    "private_endpoint_recorded": false,
+    "keyword_recorded": false,
+    "content_or_author_recorded": false,
+    "platform_object_ids_recorded": false,
+    "unrelated_buckets_listed_or_modified": false,
+    "server_configuration_changed": false,
+    "default_production_admission_changed": false
+  },
+  "execution": {
+    "published_messages": 5,
+    "source_network_requests": 8,
+    "outbox_unsent": 0,
+    "operations": {
+      "search_posts": {"runs": 1, "pages": 1, "items": 0, "outcome": "partial", "stop_reason": "page_limit", "reserved_requests": 1},
+      "fetch_post": {"runs": 1, "pages": 1, "items": 1, "outcome": "ok", "stop_reason": null, "reserved_requests": 1},
+      "list_comments": {"runs": 1, "pages": 1, "items": 3, "outcome": "ok", "stop_reason": null, "reserved_requests": 2},
+      "list_replies": {"runs": 2, "pages": 2, "items": 21, "outcome": "ok", "stop_reason": null, "reserved_requests": 4}
+    }
+  },
+  "persistence": {
+    "collection_runs": 5,
+    "jobs": 5,
+    "attempts": 5,
+    "raw_pages": 5,
+    "raw_page_hash_readbacks": 5,
+    "checkpoints": 5,
+    "contents_by_kind": {"post": 1, "comment": 3, "reply": 21},
+    "content_versions": 25,
+    "content_observations": 25,
+    "monitor_matches": 24,
+    "relation_statuses": {"root": 1, "resolved": 22, "unresolved": 2},
+    "budget_reserved": 8,
+    "raw_object_manifest_sha256": "77964bc88cf0455d93f1c49ba6cd3fed85f52c9c9d4eb3abe6a7a69acefca203"
+  },
+  "cleanup": {
+    "objects_scheduled": 5,
+    "objects_deleted": 5,
+    "delete_failures": 0,
+    "database_raw_page_states": {"deleted": 5},
+    "project_bucket_object_versions_remaining": 0,
+    "temporary_containers_remaining": 0,
+    "temporary_volumes_remaining": 0,
+    "temporary_networks_remaining": 0,
+    "temporary_secret_files_remaining": 0,
+    "existing_minio_health_after": 200,
+    "main_application_health_after": 200
+  },
+  "acceptance_boundary": {
+    "existing_minio_local_product_chain": "passed_once",
+    "real_post_comment_reply_persistence": "passed_once",
+    "bounded_relation_coverage": "22 resolved and 2 unresolved because referenced parents were outside the bounded sample",
+    "EV-007-003": "partial",
+    "EV-007-004": "partial",
+    "public_tls_endpoint": "not_retested",
+    "remote_production_network": "not_tested",
+    "least_privilege_credentials": "not_ready",
+    "automatic_retention_and_multipart_abort": "not_ready",
+    "production_source_admission": "not_ready",
+    "x_discovery": "not_ready",
+    "other_domestic_comment_sources": "not_ready",
+    "seven_day_observation": "not_started"
+  }
+}

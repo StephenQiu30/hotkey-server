@@ -452,3 +452,11 @@ Red用例分别失败于缺少HEAD、缺少网络次数字段、3关键词仍估
 随后按3.44已登记的一次性同协议MinIO fixture原样复验真实产品链。为避免定时任务创建第二条采集链，隔离scheduler停止后只使用已有`dispatch_one`发布手动根任务及其派生Outbox；最初停止scheduler时手动运行保持queued且没有访问平台，该编排超时不计作来源失败。真实Celery prefork随后以8次来源网络请求完成5个运行：搜索`partial/page_limit`、正文ok、3条根评论ok，以及两个父级合计21条回复ok。5个RawPage和5个Checkpoint全部写入对象存储并按压缩对象hash与解压payload hash完整读回；数据库形成1条post、3条comment、21条reply、25个版本/观察和24个主题命中，预算账本精确为8，Outbox无未发送记录。
 
 关系解析结果为1个root、22个resolved和2个unresolved；后两条回复引用的父评论不在当前有界样本中，没有伪造关系。随后应用删除账本调度并删除5/5对象，0失败、数据库5页均为deleted、对象版本0余留；隔离PostgreSQL、RabbitMQ、MinIO卷、容器和临时override全部删除，主运行保持可用。该结果使真实评论/回复持久化在临时协议fixture上通过并将EV-007-004推进为部分；用户现有MinIO本次未运行，生产准入默认仍关闭，EV-007-003整体仍保持部分通过。
+
+## 007 S02-T02M 现有MinIO真实评论链复验（2026-09-16）
+
+执行前只读确认用户选定的Homebrew MinIO已监听回环9000端口且健康检查200，当时共有16个其他bucket且没有HotKey专用bucket。本片创建唯一`hotkey-evidence`，不列名、读取、修改或删除其他bucket/对象；本地凭据只写入0600临时env并在验收后删除，不进入仓库、证据或命令输出。
+
+全新隔离PostgreSQL 16/RabbitMQ 4.1、Celery prefork与不启scheduler的产品拓扑中，现有`dispatch_one`只发布人工根任务及派生Outbox。5条消息以8次来源请求完成搜索`partial/page_limit`、正文ok、3条根评论ok和两个父级共21条回复ok。数据库形成1条post、3条comment、21条reply、25个版本/观察和24个主题命中；5个RawPage均从现有MinIO按压缩对象SHA-256与解压payload SHA-256完整读回。对账为5个run、5个Job/Attempt、5个Checkpoint、8次预算与0个未发送Outbox；关系为1个root、22个resolved和2个因有界样本缺父评论而保留的unresolved。
+
+应用删除账本随后安排并删除5/5对象，0失败，数据库5页均为deleted，专用bucket对象版本0余留，其他bucket数量仍为16。隔离容器、网络、卷和临时文件全部删除；现有MinIO、主Web和主API ready均为200。结构化证据见[EV-007-003-existing-minio-canary.json](evidence/007/EV-007-003-existing-minio-canary.json)。这证明现有MinIO本机产品路径上的真实B站有界评论链单次通过；最小权限凭据、公开TLS/远端生产网络、生产准入、X发现、其他国内平台与七日观察仍未验收，EV-007-003/004仍为部分通过。
