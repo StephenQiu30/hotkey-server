@@ -301,6 +301,6 @@ Red阶段3项用例因采集取消处理器不存在失败，旧fencing用例确
 
 Red阶段3项聚焦断言失败：成功页提交后Job仍为running，暂停监控后执行器仍返回可完成，重投无法按终态收口。Green/Refactor后30项采集聚焦测试和170项全量后端测试通过，保留2条上游弃用提示；Ruff覆盖158文件，严格mypy覆盖131个源/验证文件。`pip-audit`无已知漏洞，npm生产依赖审计为0；FastAPI OpenAPI快照、UmiOpenAPI客户端和HTTP契约未变更且无漂移。
 
-全新隔离`hotkey-s03f` Compose迁移到0019，PostgreSQL 16.15、RabbitMQ 4.1.8的scheduler → RabbitMQ → Celery prefork诊断为succeeded/attempts=1；Web不替换而backend替换后代理返回401。合成owner的3项Chromium测试全部通过，覆盖Swagger自动文档、知识不可用态和主工作台；首次复跑复用了上一次合成事件数据，空态断言按设计失败，清理一次性卷后原样通过。关停worker=0、backend=143、scheduler=0且无SIGKILL，所有`hotkey-s03f`容器与卷已删除。结构化证据见[collection-atomic-settlement-poc.json](evidence/collection-atomic-settlement-poc.json)。
+全新隔离`hotkey-s03f` Compose迁移到0019，PostgreSQL 16.15、RabbitMQ 4.1.8的scheduler → RabbitMQ → Celery prefork诊断为succeeded/attempts=1；Web不替换而backend替换后代理返回401。合成owner的3项Chromium测试全部通过，覆盖Swagger自动文档、知识不可用态和主工作台；首次复跑复用了上一次合成事件数据，空态断言按设计失败，清理一次性卷后原样通过。关停worker=0、backend=143、scheduler=0且无SIGKILL，所有`hotkey-s03f`容器与卷已删除。功能提交`134d8facc5cf8e1018cdeb70f785a9d0a900c498`的[远程CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35047820313)在4分09秒内复现全部门禁并成功，远端0019 dump为90351字节。结构化证据见[collection-atomic-settlement-poc.json](evidence/collection-atomic-settlement-poc.json)。
 
 本片使用合成来源响应和内存EvidenceStore，没有访问外部平台或用户现有MinIO，也没有改动HTTP/OpenAPI契约。它关闭了单页结算的两个事务窗口，但多页/多根评论、现有MinIO、真实来源和七日观察仍未验收；EV-007-005与TASK-007-S03-T02仍为部分完成。

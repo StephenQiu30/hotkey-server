@@ -26,6 +26,19 @@
     "browser": "3 Chromium tests passed on a fresh synthetic database",
     "compose": "real prefork job attempts=1, backend replacement proxy=401, graceful worker/scheduler exit=0 and backend exit=143 without SIGKILL"
   },
+  "remote_ci": {
+    "run_id": 35047820313,
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35047820313",
+    "commit": "134d8facc5cf8e1018cdeb70f785a9d0a900c498",
+    "conclusion": "success",
+    "duration": "4m9s",
+    "backend_tests": "170 passed with 2 warnings",
+    "browser": "3 passed",
+    "compose_prefork_attempts": 1,
+    "backup_restore_schema": "0019_collection_retry_budget",
+    "backup_restore_dump_bytes": 90351,
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+  },
   "assertions": {
     "successful_final_page": "raw page, content, checkpoint, collection run and job committed in one transaction",
     "failed_final_page": "collection run, job and attempt settled failed in one transaction",
