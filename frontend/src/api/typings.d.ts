@@ -304,6 +304,49 @@ declare namespace API {
     until: string;
   };
 
+  type ContentDetailItem = {
+    /** Canonical Url */
+    canonical_url: string | null;
+    /** External Id */
+    external_id: string;
+    /** First Seen At */
+    first_seen_at: string;
+    /** Id */
+    id: string;
+    /** Kind */
+    kind: "post" | "comment" | "reply";
+    /** Last Seen At */
+    last_seen_at: string;
+    /** Parent External Id */
+    parent_external_id: string | null;
+    /** Provider Namespace */
+    provider_namespace: string;
+    /** Published At */
+    published_at: string;
+    /** Relation Status */
+    relation_status: "root" | "unresolved" | "resolved";
+    /** Reply Count */
+    reply_count: number | null;
+    /** Root External Id */
+    root_external_id: string;
+    /** Source */
+    source: "x" | "bilibili" | "weibo" | "xiaohongshu" | "douyin" | "bluesky";
+    /** Text */
+    text: string;
+    /** Version */
+    version: number;
+  };
+
+  type ContentDetailView = {
+    /** Discussion */
+    discussion: ContentDetailItem[];
+    /** Next Cursor */
+    next_cursor: string | null;
+    parent: ContentDetailItem | null;
+    root: ContentDetailItem | null;
+    selected: ContentDetailItem;
+  };
+
   type ContentWithdrawalInput = {
     /** Reason */
     reason: "deleted" | "purpose_revoked";
@@ -544,6 +587,12 @@ declare namespace API {
 
   type getCollectionRunParams = {
     identity: string;
+  };
+
+  type getContentDetailParams = {
+    identity: string;
+    limit?: number;
+    cursor?: string | null;
   };
 
   type getEventParams = {

@@ -1,0 +1,47 @@
+{
+  "scope": "S03-T01E persisted content detail and discussion context",
+  "date": "2026-09-16",
+  "environment": {
+    "database": "PostgreSQL 16.15 disposable databases",
+    "broker": "RabbitMQ 4.1.8 disposable vhost and Compose broker",
+    "schema_revision": "0020_trend_alerts",
+    "browser": "Playwright Chromium against a production frontend image",
+    "source": "controlled synthetic content; no external source requests or existing MinIO connection"
+  },
+  "red": {
+    "result": "1 failed",
+    "assertion": "the generated OpenAPI operation map must contain getContentDetail",
+    "observed": "GET /api/contents/{identity} was absent"
+  },
+  "green": {
+    "contract": "FastAPI runtime OpenAPI equals the committed 41-path-group snapshot",
+    "client": "UmiOpenAPI generated getContentDetail and DTOs under frontend/src/api; no handwritten endpoint request",
+    "relationship_guard": "resolved discussion is returned only while the source and root external identity still resolve to one root candidate",
+    "visibility_guard": "unknown and withdrawn selected content return content_not_found; withdrawn discussion rows are excluded",
+    "pagination": "stable ascending first_seen_at and UUID cursor; two pages had no duplicates",
+    "side_effects": "Job and CollectionRun counts were unchanged by detail reads",
+    "backend": "184 passed with 2 upstream deprecation warnings",
+    "ruff": "162 files formatted and linted",
+    "mypy": "133 source and verification files",
+    "dependency_audit": "no known Python vulnerabilities; production frontend audit 0",
+    "frontend": "contract, boundary, negative boundary, Prettier and TypeScript/Vite checks passed",
+    "browser": "8 Chromium tests passed; the detail request count stayed zero before user action and both generated pages rendered",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore": {
+      "schema_revision": "0020_trend_alerts",
+      "dump_bytes": 99488,
+      "withdrawal_replay_idempotent": true
+    },
+    "old_application_rollback": "fixed 0019 application read an isolated old-schema snapshot through a database-enforced read-only role",
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+  },
+  "remote_ci": {
+    "status": "pending"
+  },
+  "limitations": [
+    "Synthetic browser responses verify generated-client wiring while PostgreSQL integration tests verify persisted identity, visibility, pagination and side-effect boundaries.",
+    "No external platform request, existing MinIO instance, real user content or seven-day observation was used.",
+    "This slice advances TASK-007-S03-T01 and EV-007-004 but does not complete either one or the full P0 goal."
+  ]
+}

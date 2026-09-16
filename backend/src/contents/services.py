@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from contents.models import Content, ContentObservation, ContentVersion, ContentWithdrawalRecord
 from contents.schemas import (
+    ContentDetailItem,
+    ContentDetailView,
     ContentWithdrawalManifest,
     ContentWithdrawalManifestEntry,
     InboxItem,
@@ -738,6 +740,170 @@ class ContentService:
     @staticmethod
     def _encode_cursor(content: Content) -> str:
         return f"{content.first_seen_at.astimezone(UTC).isoformat()}|{content.id}"
+
+    @staticmethod
+    def _detail_items(session: Session, rows: list[Content]) -> dict[UUID, ContentDetailItem]:
+        identities = {row.id for row in rows}
+        versions = _latest_versions(
+            session,
+            identities,
+            datetime.max.replace(tzinfo=UTC),
+        )
+        ranked_observations = (
+            select(
+                ContentObservation.id.label("id"),
+                func.row_number()
+                .over(
+                    partition_by=ContentObservation.content_id,
+                    order_by=(
+                        ContentObservation.observed_at.desc(),
+                        ContentObservation.id.desc(),
+                    ),
+                )
+                .label("rank"),
+            )
+            .where(ContentObservation.content_id.in_(identities))
+            .subquery()
+        )
+        observations = {
+            observation.content_id: observation
+            for observation in session.scalars(
+                select(ContentObservation).join(
+                    ranked_observations,
+                    and_(
+                        ranked_observations.c.id == ContentObservation.id,
+                        ranked_observations.c.rank == 1,
+                    ),
+                )
+            )
+        }
+        items = {}
+        for row in rows:
+            version = versions.get(row.id)
+            if version is None:
+                continue
+            observation = observations.get(row.id)
+            items[row.id] = ContentDetailItem(
+                id=row.id,
+                source=row.source,
+                provider_namespace=row.provider_namespace,
+                external_id=row.external_id,
+                kind=row.kind,
+                root_external_id=row.root_external_id,
+                parent_external_id=row.parent_external_id,
+                relation_status=row.relation_status,
+                text=version.text,
+                version=version.version,
+                canonical_url=row.canonical_url,
+                published_at=version.published_at,
+                first_seen_at=row.first_seen_at,
+                last_seen_at=row.last_seen_at,
+                reply_count=observation.reply_count if observation else None,
+            )
+        return items
+
+    def detail(self, identity: UUID, limit: int, cursor: str | None) -> ContentDetailView:
+        decoded_cursor = self._decode_cursor(cursor) if cursor is not None else None
+        with self.factory() as session:
+            selected = session.scalar(
+                select(Content).where(
+                    Content.id == identity,
+                    Content.visibility == "available",
+                )
+            )
+            if selected is None:
+                raise AppError("content_not_found", 404)
+
+            root_candidates = list(
+                session.scalars(
+                    select(Content)
+                    .where(
+                        Content.source == selected.source,
+                        Content.kind == "post",
+                        Content.external_id == selected.root_external_id,
+                    )
+                    .order_by(Content.id)
+                    .limit(2)
+                )
+            )
+            root = root_candidates[0] if len(root_candidates) == 1 else None
+            root_is_resolved = (
+                root is not None
+                and root.visibility == "available"
+                and (
+                    (selected.kind == "post" and root.id == selected.id)
+                    or (selected.kind != "post" and selected.relation_status == "resolved")
+                )
+            )
+
+            parent = None
+            if (
+                root_is_resolved
+                and selected.kind == "reply"
+                and selected.parent_external_id is not None
+            ):
+                parent_candidates = list(
+                    session.scalars(
+                        select(Content)
+                        .where(
+                            Content.source == selected.source,
+                            Content.kind.in_(("comment", "reply")),
+                            Content.external_id == selected.parent_external_id,
+                        )
+                        .order_by(Content.id)
+                        .limit(2)
+                    )
+                )
+                if len(parent_candidates) == 1:
+                    parent = parent_candidates[0]
+
+            discussion_rows: list[Content] = []
+            if root_is_resolved:
+                discussion_query = (
+                    select(Content)
+                    .where(
+                        Content.source == selected.source,
+                        Content.root_external_id == selected.root_external_id,
+                        Content.kind.in_(("comment", "reply")),
+                        Content.relation_status == "resolved",
+                        Content.visibility == "available",
+                    )
+                    .order_by(Content.first_seen_at, Content.id)
+                )
+                if decoded_cursor is not None:
+                    first_seen_at, cursor_identity = decoded_cursor
+                    discussion_query = discussion_query.where(
+                        or_(
+                            Content.first_seen_at > first_seen_at,
+                            and_(
+                                Content.first_seen_at == first_seen_at,
+                                Content.id > cursor_identity,
+                            ),
+                        )
+                    )
+                discussion_rows = list(session.scalars(discussion_query.limit(limit + 1)))
+
+            visible_context = [
+                row
+                for row in (selected, root, parent)
+                if row is not None and row.visibility == "available"
+            ]
+            page_rows = discussion_rows[:limit]
+            items = self._detail_items(session, [*visible_context, *page_rows])
+            selected_item = items.get(selected.id)
+            if selected_item is None:
+                raise AppError("content_not_found", 404)
+            return ContentDetailView(
+                selected=selected_item,
+                root=items.get(root.id) if root_is_resolved and root is not None else None,
+                parent=items.get(parent.id) if parent is not None else None,
+                discussion=[items[row.id] for row in page_rows if row.id in items],
+                next_cursor=(
+                    self._encode_cursor(discussion_rows[limit - 1])
+                    if len(discussion_rows) > limit
+                    else None
+                ),
+            )
 
     def inbox(
         self,

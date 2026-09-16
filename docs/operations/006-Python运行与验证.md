@@ -366,3 +366,13 @@ Red阶段来源预估用例期望3个查询合计15次而旧实现只返回12次
 真实PostgreSQL 16.15和RabbitMQ 4.1.8下180项pytest通过并保留2条上游弃用提示；Ruff检查161个文件，严格mypy检查133个源/验证文件，Python与前端生产依赖审计为0已知漏洞。OpenAPI运行时与快照相同，共39组路径；UmiOpenAPI、前端边界/负向样例、Prettier和TypeScript/Vite构建通过。隔离`hotkey-s03-multi-root`栈完成真实prefork诊断`succeeded/attempts=1`、backend替换代理401、Chromium 6项、PostgreSQL备份恢复与删除清单两次幂等重放，dump为99114字节；固定0019旧应用在只读隔离快照完成回退读取。停机worker=0、backend=143、scheduler=0且无SIGKILL，随后删除本次容器、网络和卷。结构化证据见[collection-multi-root-replies-poc.json](evidence/collection-multi-root-replies-poc.json)。
 
 首轮全量回归发现使用旧四请求估算的低预算测试与备份夹具无法启用监控；夹具统一到五请求链后全量通过。第一次Compose smoke与backend替换被并行执行，替换过程使smoke命令退出137；按CI顺序串行复跑后任务一次成功。功能提交`0433fa8d287b55e13eec2646d476547943de8f23`的[远端CI #35061534325](https://github.com/StephenQiu30/hotkey-server/actions/runs/35061534325)在3分48秒内复现180项后端、6项Chromium、prefork一次执行、代理替换、99015字节备份恢复、旧应用回退和无SIGKILL停机门禁并成功。验证只使用合成来源和内存EvidenceStore，没有请求外部平台或连接现有MinIO；真实评论链、超过两页/两父级的全量树和七日观察仍未验收。
+
+## 007 S03-T01E 内容详情与评论上下文验证（2026-09-16）
+
+FastAPI新增自动文档化的`GET /api/contents/{identity}`，读取选中内容、当前唯一可解析的根帖与父评论，以及同一根帖下已解析且可用的评论/回复。评论列表默认50、最大100，按`(first_seen_at,id)`稳定正向分页。读取会再次确认同来源根外部ID和父外部ID当前只有一个候选；即使历史关系曾经resolved，后续出现命名空间碰撞也不会把不同根帖的讨论混合。未解析关系保留选中内容并返回空上下文，已撤权和未知内容统一返回`content_not_found`。
+
+工作台在用户点击“查看评论上下文”前不发详情请求；点击后只调用UmiOpenAPI生成的`getContentDetail`，展示根帖、父评论和等价列表，并可继续读取下一页。详情读取不创建Job、CollectionRun或来源请求。Red阶段稳定操作ID断言确认接口不存在；Green的真实PostgreSQL测试固定根帖、评论、回复、歧义双根和撤权内容，验证两页无重复、关系隔离以及读取前后任务账本计数不变。
+
+本地完整门禁为184项后端测试通过并保留2条上游弃用提示，Ruff覆盖162个文件，严格mypy覆盖133个源/验证文件；`pip-audit`无已知漏洞，npm生产依赖审计为0。FastAPI运行时契约与41组路径的发布快照相同，UmiOpenAPI、前端边界/负向样例、Prettier和TypeScript/Vite构建通过。一次性`hotkey-detail-stack`在PostgreSQL 16.15和RabbitMQ 4.1.8上完成prefork诊断`succeeded/attempts=1`、backend替换代理401、Chromium 8项、99488字节备份恢复与删除重放、固定0019旧应用隔离只读回退；停机worker=0、backend=143、scheduler=0且无SIGKILL，全部隔离资源已删除。结构化证据见[content-discussion-poc.json](evidence/content-discussion-poc.json)。
+
+浏览器和数据库使用明确的合成内容，没有请求外部平台或连接用户现有MinIO。本片证明持久评论事实的只读产品入口、身份歧义屏障和生成客户端接线，不证明真实平台评论内容、超过既有两页/两父级口径的全量树、现有MinIO或七日稳定性；`TASK-007-S03-T01`和EV-007-004仍保持部分完成。

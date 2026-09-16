@@ -20,6 +20,24 @@ export async function listInboxContents(
   });
 }
 
+/** Content Detail GET /api/contents/${param0} */
+export async function getContentDetail(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.getContentDetailParams,
+  options?: RequestOptions
+) {
+  const { identity: param0, ...queryParams } = params;
+  return request<API.ContentDetailView>(`/api/contents/${param0}`, {
+    method: "GET",
+    params: {
+      // limit has a default value: 50
+      limit: "50",
+      ...queryParams,
+    },
+    ...(options || {}),
+  });
+}
+
 /** Withdraw Content POST /api/contents/${param0}/withdraw */
 export async function withdrawContent(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)

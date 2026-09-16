@@ -9,7 +9,7 @@ from monitors.schemas import MonitorMatchView
 from sources.schemas import SourceName
 
 
-class InboxItem(BaseModel):
+class ContentDetailItem(BaseModel):
     id: UUID
     source: SourceName
     provider_namespace: str
@@ -25,11 +25,22 @@ class InboxItem(BaseModel):
     first_seen_at: datetime
     last_seen_at: datetime
     reply_count: int | None
+
+
+class InboxItem(ContentDetailItem):
     matches: list[MonitorMatchView]
 
 
 class InboxPage(BaseModel):
     items: list[InboxItem]
+    next_cursor: str | None
+
+
+class ContentDetailView(BaseModel):
+    selected: ContentDetailItem
+    root: ContentDetailItem | None
+    parent: ContentDetailItem | None
+    discussion: list[ContentDetailItem]
     next_cursor: str | None
 
 

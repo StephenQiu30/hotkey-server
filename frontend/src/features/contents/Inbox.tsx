@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { sourceLabels } from "../monitors/MonitorEditor";
+import { ContentDiscussion } from "./ContentDiscussion";
 
 type Content = API.InboxItem;
 type ReviewState = API.MonitorMatchReviewInput["review_state"];
@@ -244,6 +245,11 @@ export function Inbox({
                   查看来源
                 </a>
               )}
+              <ContentDiscussion
+                contentId={item.id}
+                externalId={item.external_id}
+                kind={item.kind}
+              />
               {(() => {
                 const assigned = events.find((event) =>
                   event.members.some((member) => member.content_id === item.id),

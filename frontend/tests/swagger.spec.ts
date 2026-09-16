@@ -58,6 +58,9 @@ test("Swagger UI renders the FastAPI generated contract", async ({ page }) => {
   expect(
     document.paths["/api/contents/{identity}/withdraw"].post.operationId,
   ).toBe("withdrawContent");
+  expect(document.paths["/api/contents/{identity}"].get.operationId).toBe(
+    "getContentDetail",
+  );
   expect(
     document.paths["/api/monitor-matches/{identity}"].patch.operationId,
   ).toBe("reviewMonitorMatch");

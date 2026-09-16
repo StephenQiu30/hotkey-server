@@ -6,7 +6,12 @@ from pydantic import AwareDatetime
 
 from api.dependencies import Authenticated, Contents, Knowledge
 from api.responses import READ_ERROR_CODES, WRITE_ERROR_CODES, error_responses
-from contents.schemas import ContentWithdrawalInput, ContentWithdrawalView, InboxPage
+from contents.schemas import (
+    ContentDetailView,
+    ContentWithdrawalInput,
+    ContentWithdrawalView,
+    InboxPage,
+)
 from monitors.schemas import MonitorMatchReviewState
 from sources.schemas import SourceName
 
@@ -38,6 +43,23 @@ def inbox_contents(
         review_state=review_state,
         discovered_since=discovered_since,
     )
+
+
+@router.get(
+    "/contents/{identity}",
+    response_model=ContentDetailView,
+    responses=error_responses(*READ_ERROR_CODES, 404),
+    tags=["contents"],
+    operation_id="getContentDetail",
+)
+def content_detail(
+    identity: UUID,
+    service: Contents,
+    owner: Authenticated,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: Annotated[str | None, Query(max_length=100)] = None,
+) -> ContentDetailView:
+    return service.detail(identity, limit, cursor)
 
 
 @router.post(
