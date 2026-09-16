@@ -32,6 +32,7 @@
       90798,
       87928
     ],
+    "remote_ci_dump_bytes_observed": 90422,
     "backup_taken_before_withdrawal": true,
     "manifest_entries": 1,
     "manifest_file_mode": "0600",
@@ -76,7 +77,13 @@
     "backend_tests": "161 passed with disposable PostgreSQL 16 and RabbitMQ 4.1; 2 upstream deprecation warnings",
     "frontend": "UmiOpenAPI drift, boundaries, Prettier, TypeScript/Vite build and production dependency audit passed",
     "compose": "real prefork job, backend replacement proxy, Chromium 3-test suite, backup restore verifier and graceful shutdown passed in CI order locally",
-    "remote_ci": null
+    "remote_ci": {
+      "feature_commit": "0aa7b5068eb3f4d71371f986206f02455af49dcb",
+      "run_id": 35040730933,
+      "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35040730933",
+      "conclusion": "success",
+      "duration": "2m35s"
+    }
   },
   "limitations": [
     "The drill uses an isolated disposable Compose database and synthetic rows; it is not a restore of a production snapshot.",
