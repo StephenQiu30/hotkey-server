@@ -3,10 +3,10 @@ from hashlib import sha256
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from collection.execution import CollectionExecutor
-from collection.models import CollectionCheckpoint, CollectionRun
+from collection.models import CollectionBudgetUsage, CollectionCheckpoint, CollectionRun
 from collection.schemas import CollectionRunInput, PageCommitInput
 from collection.services import CollectionService
 from contents.models import Content, ContentObservation, ContentVersion, ContentWithdrawalRecord
@@ -123,6 +123,17 @@ class StaticFetcher:
         return self.page
 
 
+class SequenceFetcher:
+    def __init__(self, pages: list[FetchedPage]):
+        self.pages = pages
+        self.calls = 0
+
+    def fetch(self, data):
+        page = self.pages[self.calls]
+        self.calls += 1
+        return page
+
+
 def monitor(service: MonitorService, title: str, terms: list[str]):
     created = service.create_monitor(
         MonitorInput.model_validate(
@@ -172,6 +183,47 @@ def result(
         ],
         response_bytes=len(payload),
         response_sha256=sha256(payload).hexdigest(),
+    )
+
+
+def failed_page(code: str, retry_after_seconds: int | None = None) -> FetchedPage:
+    return FetchedPage(
+        result=SourceResult(
+            source="bilibili",
+            adapter_version="synthetic-retry-poc",
+            operation="search_posts",
+            status="failed",
+            code=code,
+            observed_at=utcnow(),
+            http_status=429 if code == "rate_limited" else 500,
+            retry_after_seconds=retry_after_seconds,
+        ),
+        payload=None,
+        media_type="application/json",
+        request_fingerprint=sha256(f"failure:{code}".encode()).hexdigest(),
+        page_key=f"failure:{code}",
+    )
+
+
+def create_collection_run(
+    service: CollectionService,
+    monitor_id,
+    version: int,
+    key: str,
+):
+    return service.create_run(
+        CollectionRunInput(
+            monitor_id=monitor_id,
+            expected_version=version,
+            source="bilibili",
+            request_value="AI",
+            since="2026-09-14T00:00:00Z",
+            until="2026-09-15T00:00:00Z",
+            idempotency_key=key,
+            policy_version="synthetic-policy-v1",
+            retention_days=7,
+            ingestion_mode="live",
+        )
     )
 
 
@@ -887,6 +939,174 @@ def test_worker_crash_after_page_commit_completes_job_without_refetch(database):
     assert fetcher.calls == 1
 
 
+def test_permanent_source_failure_atomically_fails_run_and_job(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "永久失败", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    created = create_collection_run(
+        collection, active.id, active.current_version, "permanent-source-failure"
+    )
+    lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert lease is not None
+
+    should_complete = CollectionExecutor(
+        collection,
+        sources,
+        StaticFetcher(failed_page("schema_changed")),
+        MemoryStore(),
+    ).execute(lease)
+    if should_complete:
+        assert complete(database, lease)
+
+    with database() as session:
+        run = session.get(CollectionRun, created.id)
+        job = session.get(Job, created.job_id)
+        assert run is not None and job is not None
+        assert run.state == "failed" and run.outcome == "failed"
+        assert run.stop_reason == "schema_changed"
+        assert job.status == "failed"
+        assert job.completed_at is not None
+
+
+def test_rate_limit_retry_reserves_budget_and_second_attempt_commits_once(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "限流恢复", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    created = create_collection_run(
+        collection, active.id, active.current_version, "rate-limit-retry"
+    )
+    payload = b'{"page":"after-rate-limit"}'
+    success = FetchedPage(
+        result=result("AI 限流后成功", 0, payload),
+        payload=payload,
+        media_type="application/json",
+        request_fingerprint=sha256(b"after-rate-limit").hexdigest(),
+        page_key="search:after-rate-limit",
+    )
+    fetcher = SequenceFetcher([failed_page("rate_limited", 12), success])
+    executor = CollectionExecutor(collection, sources, fetcher, MemoryStore())
+    before = utcnow()
+    first = claim(database, Dispatch(job_id=created.job_id, epoch=1))
+    assert first is not None
+    assert not executor.execute(first)
+
+    with database.begin() as session:
+        run = session.get(CollectionRun, created.id)
+        job = session.get(Job, created.job_id)
+        usage = session.scalar(
+            select(CollectionBudgetUsage).where(
+                CollectionBudgetUsage.monitor_version_id == created.monitor_version_id
+            )
+        )
+        assert run is not None and job is not None and usage is not None
+        assert run.state == "queued" and run.reserved_requests == 2
+        assert run.stop_reason == "rate_limited"
+        assert job.status == "queued" and job.epoch == 2
+        assert (
+            before + timedelta(seconds=11) <= job.available_at <= utcnow() + timedelta(seconds=13)
+        )
+        assert usage.reserved_requests == 2
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 2
+        session.execute(update(Job).where(Job.id == created.job_id).values(available_at=utcnow()))
+
+    second = claim(database, Dispatch(job_id=created.job_id, epoch=2))
+    assert second is not None and executor.execute(second)
+    assert complete(database, second)
+    with database() as session:
+        run = session.get(CollectionRun, created.id)
+        job = session.get(Job, created.job_id)
+        assert run is not None and job is not None
+        assert run.state == "completed" and run.pages_count == 1
+        assert job.status == "succeeded" and job.attempts == 2
+        assert session.scalar(select(func.count()).select_from(RawPage)) == 1
+    assert fetcher.calls == 2
+
+
+def test_transient_failure_stops_after_three_attempts_without_fourth_outbox(database):
+    sources = AdmittedSources()
+    active = monitor(MonitorService(database, sources), "重试上限", ["AI"])
+    collection = CollectionService(database, sources, evidence_configured=True)
+    created = create_collection_run(collection, active.id, active.current_version, "retry-limit")
+    executor = CollectionExecutor(
+        collection,
+        sources,
+        StaticFetcher(failed_page("network_error")),
+        MemoryStore(),
+    )
+
+    for epoch in (1, 2, 3):
+        with database.begin() as session:
+            session.execute(
+                update(Job).where(Job.id == created.job_id).values(available_at=utcnow())
+            )
+        lease = claim(database, Dispatch(job_id=created.job_id, epoch=epoch))
+        assert lease is not None
+        assert not executor.execute(lease)
+
+    with database() as session:
+        run = session.get(CollectionRun, created.id)
+        job = session.get(Job, created.job_id)
+        assert run is not None and job is not None
+        assert run.state == "failed" and run.stop_reason == "network_error_retry_exhausted"
+        assert run.reserved_requests == 3
+        assert job.status == "failed" and job.attempts == 3 and job.epoch == 3
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 3
+
+
+def test_retry_budget_exhaustion_atomically_fails_without_retry_outbox(database):
+    sources = AdmittedSources()
+    monitors = MonitorService(database, sources)
+    created_monitor = monitors.create_monitor(
+        MonitorInput.model_validate(
+            {
+                "title": "重试预算",
+                "query_spec": {"include_any": ["AI"]},
+                "source_ids": ["bilibili"],
+                "schedule": {"interval_minutes": 1440, "retention_days": 7},
+                "budget": {"daily_requests": 4, "content_purchase_cost": 0},
+            }
+        )
+    )
+    active = monitors.change_state(
+        created_monitor.id,
+        MonitorStateChange(expected_version=created_monitor.current_version),
+        "active",
+    )
+    collection = CollectionService(database, sources, evidence_configured=True)
+    target = create_collection_run(
+        collection, active.id, active.current_version, "retry-budget-target"
+    )
+    for index in range(3):
+        create_collection_run(
+            collection,
+            active.id,
+            active.current_version,
+            f"retry-budget-competing-{index}",
+        )
+    lease = claim(database, Dispatch(job_id=target.job_id, epoch=1))
+    assert lease is not None
+    assert not CollectionExecutor(
+        collection,
+        sources,
+        StaticFetcher(failed_page("rate_limited", 12)),
+        MemoryStore(),
+    ).execute(lease)
+
+    with database() as session:
+        run = session.get(CollectionRun, target.id)
+        job = session.get(Job, target.job_id)
+        usage = session.scalar(
+            select(CollectionBudgetUsage).where(
+                CollectionBudgetUsage.monitor_version_id == target.monitor_version_id
+            )
+        )
+        assert run is not None and job is not None and usage is not None
+        assert run.state == "failed" and run.stop_reason == "retry_budget_exhausted"
+        assert job.status == "failed" and job.epoch == 1
+        assert usage.reserved_requests == 4
+        assert session.scalar(select(func.count()).select_from(Outbox)) == 4
+
+
 def test_missing_evidence_configuration_creates_no_run_or_job(database):
     sources = AdmittedSources()
     active = monitor(MonitorService(database, sources), "无对象存储", ["AI"])
@@ -1006,11 +1226,15 @@ def test_executor_rechecks_source_eligibility_before_fetch(database):
     lease = claim(database, Dispatch(job_id=created.job_id, epoch=1))
     assert lease is not None
 
-    assert CollectionExecutor(collection, RevokedSources(), fetcher, MemoryStore()).execute(lease)
-    assert complete(database, lease)
+    assert not CollectionExecutor(collection, RevokedSources(), fetcher, MemoryStore()).execute(
+        lease
+    )
     persisted = collection.run(created.id)
     assert persisted.state == "failed" and persisted.stop_reason == "source_not_eligible"
     assert fetcher.calls == 0
+    with database() as session:
+        job = session.get(Job, created.job_id)
+        assert job is not None and job.status == "failed"
 
 
 def test_inbox_only_returns_matched_content_with_latest_observation(database):

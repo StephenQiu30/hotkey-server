@@ -33,7 +33,8 @@ from evidence.services import (
     record_raw_page,
     upload,
 )
-from jobs.execution import enqueue
+from jobs.contracts import Lease
+from jobs.execution import enqueue, fail_lease, reschedule_lease
 from monitors.services import (
     active_monitor_configuration,
     content_is_matched,
@@ -388,17 +389,77 @@ class CollectionService:
             )
             return state in {"completed", "failed", "cancelled"}
 
-    def fail_run(self, identity: UUID, fencing_token: int, reason: str) -> bool:
+    @staticmethod
+    def _running_run_for_lease(
+        session: Session,
+        identity: UUID,
+        lease: Lease,
+    ) -> CollectionRun | None:
+        run = session.scalar(
+            select(CollectionRun).where(CollectionRun.id == identity).with_for_update()
+        )
+        if (
+            run is None
+            or run.job_id != lease.job_id
+            or run.state != "running"
+            or run.fencing_token != lease.fencing_token
+        ):
+            return None
+        return run
+
+    @staticmethod
+    def _mark_failed(run: CollectionRun, reason: str) -> None:
+        run.state = "failed"
+        run.outcome = "failed"
+        run.stop_reason = reason[:80]
+        run.completed_at = utcnow()
+
+    def fail_run(self, lease: Lease, identity: UUID, reason: str) -> bool:
         with self.factory.begin() as session:
-            run = session.scalar(
-                select(CollectionRun).where(CollectionRun.id == identity).with_for_update()
-            )
-            if run is None or run.state != "running" or run.fencing_token != fencing_token:
+            run = self._running_run_for_lease(session, identity, lease)
+            if run is None or not fail_lease(session, lease):
                 return False
-            run.state = "failed"
-            run.outcome = "failed"
+            self._mark_failed(run, reason)
+            return True
+
+    def defer_run(
+        self,
+        lease: Lease,
+        identity: UUID,
+        reason: str,
+        delay_seconds: int,
+    ) -> bool:
+        with self.factory.begin() as session:
+            run = self._running_run_for_lease(session, identity, lease)
+            if run is None:
+                return False
+            usage = session.scalar(
+                select(CollectionBudgetUsage)
+                .where(
+                    CollectionBudgetUsage.monitor_version_id == run.monitor_version_id,
+                    CollectionBudgetUsage.budget_day == run.budget_day,
+                )
+                .with_for_update()
+            )
+            if usage is None:
+                raise AppError("collection_budget_missing", 500)
+            if usage.reserved_requests >= usage.limit_requests:
+                if not fail_lease(session, lease):
+                    return False
+                self._mark_failed(run, "retry_budget_exhausted")
+                return True
+            disposition = reschedule_lease(session, lease, delay_seconds)
+            if disposition == "stale":
+                return False
+            if disposition == "exhausted":
+                self._mark_failed(run, f"{reason}_retry_exhausted")
+                return True
+            usage.reserved_requests += 1
+            usage.updated_at = utcnow()
+            run.reserved_requests += 1
+            run.state = "queued"
             run.stop_reason = reason[:80]
-            run.completed_at = utcnow()
+            run.completed_at = None
             return True
 
     @staticmethod

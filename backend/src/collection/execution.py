@@ -10,6 +10,13 @@ from sources.services import SourceService
 
 
 class CollectionExecutor:
+    TRANSIENT_FAILURES = {
+        "rate_limited",
+        "timeout",
+        "network_error",
+        "upstream_unavailable",
+    }
+
     def __init__(
         self,
         service: CollectionService,
@@ -29,7 +36,8 @@ class CollectionExecutor:
         if run is None:
             return self.service.result_committed_for_job(lease.job_id)
         if self.sources.activation_issues([run.source], run.operation):
-            return self.service.fail_run(run.run_id, run.fencing_token, "source_not_eligible")
+            self.service.fail_run(lease, run.run_id, "source_not_eligible")
+            return False
         page = self.fetcher.fetch(
             CollectionPageInput(
                 source=run.source,
@@ -41,11 +49,13 @@ class CollectionExecutor:
             )
         )
         if page.payload is None:
-            return self.service.fail_run(
-                run.run_id,
-                run.fencing_token,
-                page.result.code or "source_request_failed",
-            )
+            reason = page.result.code or "source_request_failed"
+            if reason in self.TRANSIENT_FAILURES:
+                delay_seconds = page.result.retry_after_seconds or min(2**lease.fencing_token, 30)
+                self.service.defer_run(lease, run.run_id, reason, delay_seconds)
+            else:
+                self.service.fail_run(lease, run.run_id, reason)
+            return False
         result = page.result
         if result.cursor is not None:
             result = result.model_copy(

@@ -6,7 +6,15 @@ from sqlalchemy import func, select
 
 from core.clock import utcnow
 from jobs.contracts import Dispatch
-from jobs.execution import cancel, claim, complete, enqueue, reconcile
+from jobs.execution import (
+    cancel,
+    claim,
+    complete,
+    enqueue,
+    fail_lease,
+    reconcile,
+    reschedule_lease,
+)
 from jobs.models import Job, JobResult, Outbox
 
 pytestmark = pytest.mark.integration
@@ -68,6 +76,36 @@ def test_expired_lease_fences_old_result_and_caps_attempts(database):
     assert replacement is not None
     assert not complete(database, lease)
     assert complete(database, replacement)
+
+
+def test_replacement_lease_rejects_old_failure_and_reschedule(database):
+    with database.begin() as session:
+        job_id = enqueue(session, "retry-fencing", kind="collect_page").id
+    old = claim(database, Dispatch(job_id=job_id, epoch=1))
+    assert old is not None
+    with database.begin() as session:
+        job = session.get(Job, job_id)
+        assert job is not None
+        job.lease_until = utcnow() - timedelta(seconds=1)
+    assert reconcile(database) == 1
+    with database.begin() as session:
+        job = session.get(Job, job_id)
+        assert job is not None
+        job.available_at = utcnow() - timedelta(seconds=1)
+    replacement = claim(database, Dispatch(job_id=job_id, epoch=2))
+    assert replacement is not None
+
+    with database.begin() as session:
+        assert reschedule_lease(session, old, 5) == "stale"
+        assert not fail_lease(session, old)
+    with database() as session:
+        job = session.get(Job, job_id)
+        assert job is not None and job.status == "running" and job.epoch == 2
+    with database.begin() as session:
+        assert fail_lease(session, replacement)
+    with database() as session:
+        job = session.get(Job, job_id)
+        assert job is not None and job.status == "failed"
 
 
 def test_cancelled_job_cannot_commit(database):

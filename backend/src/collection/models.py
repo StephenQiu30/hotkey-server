@@ -47,7 +47,7 @@ class CollectionRun(Base):
             "(trigger = 'scheduled' AND schedule_slot IS NOT NULL)",
             name="ck_collection_runs_schedule_slot",
         ),
-        CheckConstraint("reserved_requests = 1", name="ck_collection_runs_reserved_requests"),
+        CheckConstraint("reserved_requests >= 1", name="ck_collection_runs_reserved_requests"),
         CheckConstraint(
             "operation IN ('search_posts', 'fetch_post', 'list_comments', 'list_replies')",
             name="ck_collection_runs_operation",

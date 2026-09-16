@@ -21,6 +21,7 @@ from collection.schemas import CollectionRunInput
 from collection.services import CollectionService
 from contents.models import Content, ContentVersion, ContentWithdrawalRecord
 from contents.schemas import ContentWithdrawalInput, ContentWithdrawalManifest
+from db.health import SCHEMA_REVISION
 from evidence.models import RawPage
 from jobs.models import Attempt, Job, JobResult, Outbox
 from knowledge.services import KnowledgeService
@@ -29,8 +30,6 @@ from monitors.schemas import MonitorInput, MonitorStateChange
 from monitors.services import MonitorService
 from sources.schemas import SourceName
 from sources.services import SourceService
-
-EXPECTED_SCHEMA_REVISION = "0018_withdrawal_lifecycle"
 
 
 class AdmittedSources(SourceService):
@@ -141,7 +140,7 @@ def main() -> None:
     try:
         with source_engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        if revision != EXPECTED_SCHEMA_REVISION:
+        if revision != SCHEMA_REVISION:
             raise RuntimeError("backup_poc_schema_revision_mismatch")
 
         sources = AdmittedSources()

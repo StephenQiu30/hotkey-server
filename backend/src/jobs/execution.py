@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import Literal
 from uuid import UUID, uuid4
 
 from sqlalchemy import and_, or_, select
@@ -97,6 +98,63 @@ def complete(factory: sessionmaker[Session], lease: Lease) -> bool:
         job.lease_until = None
         finish_attempt(session, job, "succeeded", now)
         return True
+
+
+def fail_lease(session: Session, lease: Lease) -> bool:
+    job = session.scalar(select(Job).where(Job.id == lease.job_id).with_for_update())
+    now = utcnow()
+    if (
+        job is None
+        or job.status != "running"
+        or job.epoch != lease.epoch
+        or job.kind != lease.kind
+        or job.fencing_token != lease.fencing_token
+        or job.lease_until is None
+        or job.lease_until <= now
+        or job.deadline <= now
+    ):
+        return False
+    job.status = "failed"
+    job.completed_at = now
+    job.lease_until = None
+    finish_attempt(session, job, "failed", now)
+    return True
+
+
+def reschedule_lease(
+    session: Session,
+    lease: Lease,
+    delay_seconds: int,
+) -> Literal["scheduled", "exhausted", "stale"]:
+    if delay_seconds < 1 or delay_seconds > 86400:
+        raise ValueError("retry delay must contain 1-86400 seconds")
+    job = session.scalar(select(Job).where(Job.id == lease.job_id).with_for_update())
+    now = utcnow()
+    if (
+        job is None
+        or job.status != "running"
+        or job.epoch != lease.epoch
+        or job.kind != lease.kind
+        or job.fencing_token != lease.fencing_token
+        or job.lease_until is None
+        or job.lease_until <= now
+        or job.deadline <= now
+    ):
+        return "stale"
+    due_at = now + timedelta(seconds=delay_seconds)
+    if job.attempts >= job.max_attempts or due_at >= job.deadline:
+        job.status = "failed"
+        job.completed_at = now
+        job.lease_until = None
+        finish_attempt(session, job, "failed", now)
+        return "exhausted"
+    finish_attempt(session, job, "retry_scheduled", now)
+    job.status = "queued"
+    job.epoch += 1
+    job.available_at = due_at
+    job.lease_until = None
+    session.add(Outbox(id=uuid4(), job_id=job.id, epoch=job.epoch, due_at=due_at))
+    return "scheduled"
 
 
 def cancel(factory: sessionmaker[Session], job_id: UUID) -> bool:

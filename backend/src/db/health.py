@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.schemas import HealthView
 
-SCHEMA_REVISION = "0018_withdrawal_lifecycle"
+SCHEMA_REVISION = "0019_collection_retry_budget"
 
 
 def readiness(factory: sessionmaker[Session]) -> HealthView:

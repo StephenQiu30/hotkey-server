@@ -1,0 +1,75 @@
+{
+  "scope": "S03-T02A source failure retry and ledger consistency",
+  "date": "2026-09-16",
+  "environment": {
+    "database": "PostgreSQL 16 disposable Compose database",
+    "broker": "RabbitMQ 4.1 disposable test vhost and Compose worker",
+    "schema_revision": "0019_collection_retry_budget",
+    "source": "explicitly synthetic responses only"
+  },
+  "red": {
+    "command_scope": "four focused PostgreSQL integration cases",
+    "result": "4 failed",
+    "observed_failures": [
+      "a permanently failed collection run was followed by a succeeded job",
+      "Retry-After did not schedule a new epoch",
+      "transient failures had no bounded retry transition",
+      "a full daily budget did not settle retry intent explicitly"
+    ]
+  },
+  "green": {
+    "focused": "38 passed",
+    "backend": "166 passed with 2 upstream deprecation warnings",
+    "ruff": "158 files formatted and linted",
+    "mypy": "131 source and verification files",
+    "dependency_audit": "no known Python vulnerabilities; production frontend audit 0",
+    "contract": "FastAPI OpenAPI snapshot and UmiOpenAPI generated client unchanged and current",
+    "browser": "3 Chromium tests passed",
+    "compose": "0019 migration, real prefork job attempts=1, backend replacement proxy=401, graceful worker/scheduler exit=0 and backend exit=143 without SIGKILL"
+  },
+  "assertions": {
+    "retry_after_seconds": 12,
+    "first_failure": {
+      "run_state": "queued",
+      "job_state": "queued",
+      "job_epoch": 2,
+      "run_reserved_requests": 2,
+      "daily_reserved_requests": 2,
+      "outbox_rows": 2
+    },
+    "second_attempt": {
+      "run_state": "completed",
+      "job_state": "succeeded",
+      "attempts": 2,
+      "raw_pages": 1
+    },
+    "retry_limit": {
+      "attempts": 3,
+      "final_run_state": "failed",
+      "final_job_state": "failed",
+      "final_reason": "network_error_retry_exhausted",
+      "outbox_rows": 3
+    },
+    "budget_limit": {
+      "reserved": 4,
+      "limit": 4,
+      "retry_outbox_created": false,
+      "final_reason": "retry_budget_exhausted"
+    },
+    "permanent_failure": "collection run and job both failed in one transaction",
+    "fencing": "an expired epoch could neither fail nor reschedule the replacement lease"
+  },
+  "backup_restore_regression": {
+    "schema_revision": "0019_collection_retry_budget",
+    "dump_format": "custom",
+    "dump_bytes": 90404,
+    "withdrawal_replay_twice": "deleted/delete_pending/1 tombstone",
+    "cleanup": "restore database, dump, manifest and source fixture removed"
+  },
+  "limitations": [
+    "No external platform request, real 429 response, account session or existing MinIO instance was used.",
+    "The retry taxonomy covers rate_limited, timeout, network_error and upstream_unavailable only.",
+    "Comment and reply continuation pages and multiple reply roots remain outside this slice.",
+    "This evidence does not complete EV-007-005, real source admission or seven-day observation."
+  ]
+}
