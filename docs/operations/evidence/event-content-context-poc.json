@@ -43,7 +43,22 @@
       "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35067915354",
       "failure": "workspace polling test observed the real diagnostic as completed before its controlled queued assertion"
     },
-    "final_status": "pending"
+    "final_status": "success",
+    "final_run": {
+      "status": "success",
+      "run_id": 35068391771,
+      "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35068391771",
+      "commit": "92d8a849d17a8ac120a33155968014f58de11b7e",
+      "duration": "3m30s",
+      "backend_tests": "184 passed with 2 warnings",
+      "browser": "9 passed",
+      "compose_prefork_attempts": 1,
+      "proxy_replacement_status": 401,
+      "backup_restore_schema": "0020_trend_alerts",
+      "backup_restore_dump_bytes": 99360,
+      "old_application_rollback": "success",
+      "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
+    }
   },
   "limitations": [
     "The browser response is controlled and verifies generated-client wiring; it does not prove real platform comment retrieval.",
