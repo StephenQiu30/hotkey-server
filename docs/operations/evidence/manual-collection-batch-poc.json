@@ -48,7 +48,18 @@
     "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
   },
   "remote_ci": {
-    "status": "pending"
+    "status": "success",
+    "run_id": 35053536106,
+    "url": "https://github.com/StephenQiu30/hotkey-server/actions/runs/35053536106",
+    "feature_commit": "d17ed696425d82e9114b4ad74ad9e934010a6eb2",
+    "verified_commit": "d94f4f502374289555c1eff80a6cfe4aa2a3d667",
+    "duration": "3m6s",
+    "backend_tests": "174 passed with 2 warnings",
+    "browser": "5 passed",
+    "compose_prefork_attempts": 1,
+    "proxy_replacement_status": 401,
+    "backup_restore_dump_bytes": 90562,
+    "shutdown": "worker=0, backend=143, scheduler=0; no SIGKILL"
   },
   "limitations": [
     "The browser controls synthetic monitor and collection responses to verify the generated client wiring deterministically.",
