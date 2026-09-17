@@ -1,8 +1,8 @@
 # HotKey 工程规范
 
-本文件适用于整个仓库。当前工作树仅保留规范文件，应用实现、设计、需求、计划、验收记录与运行配置已清理。以下技术和目录规则约束后续实现，不表示相关文件或能力已经存在。个人学习项目，固定 SQLAlchemy 2 和 RabbitMQ。
+本文件适用于整个仓库。应用实现、旧设计、需求、计划、验收记录与运行配置已清理，清理基线仅保留规范文件。后续按用户要求重建的调研与需求文档见 `docs/README.md`；它们不表示应用实现已经恢复。以下技术和目录规则约束后续实现，不表示相关能力已经存在。个人学习项目，固定 SQLAlchemy 2 和 RabbitMQ。
 
-本文件是保留的工程规范入口；文档格式遵循 [正式文档模板](docs/TEMPLATE.md)。后续实现前应重新建立对应设计、需求、计划和验收依据。
+本文件是保留的工程规范入口；文档格式遵循 [正式文档模板](docs/TEMPLATE.md)，当前编号以 [文档台账](docs/README.md) 为准。后续实现前应建立对应设计、需求、计划和验收依据。
 
 ## 任务开始前的目录与选型门禁
 
@@ -18,7 +18,7 @@
 - Next 配置位于 `frontend/next.config.ts`，页面 CSP 使用 `frontend/src/proxy.ts` 的逐请求 nonce。浏览器对 `/api/*` 的请求保持同源，Compose 服务环境将 `HOTKEY_API_ORIGIN` 指向 `http://backend:8080`，本机开发默认 `http://127.0.0.1:8867`；容器内 Web 端口固定为 `8080`。生产镜像使用 standalone 输出和非 root 用户，生产文件系统保持只读。
 - Flutter 移动端仓库 `app` 暂不实现。
 - 唯一 HTTP 契约由 FastAPI 路由与 Pydantic 模型生成，运行时位于 `/openapi.json`，可复现快照为 `docs/openapi/openapi.json`；前端端点函数与类型全部由 `@umijs/openapi` 生成，禁止手写端点请求。
-- `docs/` 保存 PRD、Design、Plan、Acceptance、Operations。历史实现从 Git 查询，不在工作树中归档。目标能力不得描述为已完成。
+- `docs/` 保存 Research、PRD、Design、Plan、Acceptance、Operations。历史实现从 Git 查询，不在工作树中归档。目标能力不得描述为已完成。
 - 修改前阅读相关设计和测试。行为变化先验证失败，再实现；修复需针对实际故障验证。
 - API 路由负责协议、认证和验证；业务服务负责事务；SQLAlchemy 模型负责持久化。禁止路由直接执行 SQL 或发布消息。
 - Session 不跨线程或任务共享。同步数据库端点使用同步路由；进程拥有连接池，Celery 在 fork 后初始化。

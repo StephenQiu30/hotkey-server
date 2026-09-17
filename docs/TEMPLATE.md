@@ -2,10 +2,15 @@
 
 所有正式文档遵守根 `AGENTS.md`。同一交付项复用一个三位 `doc_no` 和同一主题；除索引 `README.md` 外，文件名使用 `NNN-中文主题.md`。SPEC 与 CHECKLIST 不建立独立目录，统一写入对应 Plan。
 
+根目录 `BACKLOG.md` 是项目进度索引，不是新的正式文档层，不占用 doc_no。它保存里程碑、优先级、先行切片、责任与状态；详细任务、CHK 和 EV 保留在各 Plan 中。
+
+编号以 `docs/README.md` 的当前文档台账为准。用户要求清理后从空文档基线重建时，从 `001` 登记新交付项，不从已清理的历史文档推算起始编号。同一主题的 Research、PRD、Design、Plan 和 Acceptance 共用编号；独立专项另行登记。未提交草案的编号错误可按用户要求统一纠正，需同步文件名、元数据、内部 ID 与所有引用，并在台账记录映射；不得借纠错改变已有需求含义。
+
 ## 状态枚举
 
 | Layer | 状态 |
 |---|---|
+| Research | `draft`、`reviewed` |
 | Design | `proposed`、`accepted`、`superseded` |
 | PRD | `draft`、`approved`、`implemented`、`cancelled` |
 | Plan | `planned`、`in_progress`、`blocked`、`completed` |
@@ -23,11 +28,29 @@
 | 未决项 | `OPEN-NNN-001` | `OPEN-003-002` |
 | 验收 | `AC-NNN-001` | `AC-004-002` |
 | 任务 | `TASK-NNN-S01-T01` | `TASK-002-S02-T03` |
-| 规格 | `SPEC-NNN-{API|DATA|JOB|UI|SEC|OBS|OPS}-001` | `SPEC-003-JOB-001` |
+| 规格 | `SPEC-NNN-TYPE-001`，TYPE 为 API、DATA、JOB、UI、SEC、OBS 或 OPS | `SPEC-003-JOB-001` |
 | 检查 | `CHK-NNN-G0-001` 至 `CHK-NNN-G6-001` | `CHK-005-G5-002` |
 | 证据 | `EV-NNN-001` | `EV-005-004` |
 
 编号一旦使用不得改变含义；拆分大需求时申请新 `doc_no`，不得使用 `001-A` 或 `1.1`。`OPEN` 只用于尚未决策的问题；关闭时保留原条目、结论与日期，并映射到承接结论的 `DEC`、`RSK`、`BR`/`FR`/`NFR`，不得静默删除。
+
+## Research
+
+```yaml
+---
+layer: Research
+scope: shared
+doc_no: "NNN"
+title: 主题调研
+status: draft
+version: v1.0
+owner: HotKey Team
+canonical_path: docs/research/NNN-主题调研.md
+prd: docs/prd/NNN-主题.md
+---
+```
+
+正文至少包含调研对象、日期与版本、一手资料、已确认功能、文档与实现差异、与产品需求的映射、费用和许可条件、验证边界。区分源码事实、项目方声明、产品建议与真实运行结果；未运行不得写成已验收。
 
 ## Design
 
@@ -88,6 +111,8 @@ plan: docs/plans/NNN-主题计划.md
 
 不得把未校准的性能数字写成无条件承诺；必须同时记录数据规模、并发、硬件、缓存冷热、统计窗口与排除条件。
 
+拆分为逐项 PRD 时，新文件使用独立编号，并在元数据中增加 `parent`（父级文档路径）与 `source_requirement`（原始需求 ID）。原始需求及其优先级不重编号，本地规则使用新文档编号。保留父级验收场景，新增正常、边界、失败与权限场景；按真实覆盖关系关联细化规则，不把父级笼统场景当成全部细节已覆盖。尚未建立的 `design` / `plan` 使用 `null`，不链接不存在的文件。
+
 ## Plan（含 SPEC 与 CHECKLIST）
 
 ```yaml
@@ -122,6 +147,8 @@ prd: docs/prd/NNN-主题.md
 8. 验证命令、灰度、迁移、回滚和完成定义。
 
 Checklist 示例：
+
+每个执行阶段都应有任务、进入条件、完成输出及对应 checklist；依赖明确到先行 Plan 的具体切片，避免把关联关系写成循环前置。未建立 Design 时可以先写 planned 的计划，将设计列为实施前置并使用 design: null；不因此允许跳过设计直接实现。Plan 编写进度与产品验收进度分开，BACKLOG 以真实 AC/Acceptance 更新完成状态。
 
 ```markdown
 - [ ] `CHK-NNN-G3-001` → `AC-NNN-001`：失败测试已保存；证据为测试名称和失败摘要。
