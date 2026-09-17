@@ -52,7 +52,7 @@ def test_environment_overlay_is_a_protected_test_deployment():
     ):
         assert name in environment
     assert "HOTKEY_ENVIRONMENT: production" in environment
-    assert "HOTKEY_COOKIE_SECURE: \"true\"" in environment
+    assert 'HOTKEY_COOKIE_SECURE: "true"' in environment
     assert "target: production" in environment
     assert "HOTKEY_BACKEND_IMAGE=hotkey-backend:env" in environment_example
     assert "HOTKEY_WEB_IMAGE=hotkey-web:env" in environment_example
