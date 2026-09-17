@@ -98,20 +98,12 @@ fi
 gh pr merge --squash --subject "$pr_title" --body "$pr_body"
 ```
 
-## Async Watch Helper
+## Check Monitoring
 
-Preferred: use the asyncio watcher to monitor review comments, CI, and head
-updates in parallel:
-
-```
-python3 .codex/skills/land/land_watch.py
-```
-
-Exit codes:
-
-- 2: Review comments detected (address feedback)
-- 3: CI checks failed
-- 4: PR head updated (autofix commit detected)
+Monitor configured CI checks with `gh pr checks --watch`.
+Review comments and PR head changes must be checked separately using
+`gh pr view`; the removed local watcher is no longer available.
+If no checks are configured, report that fact rather than claiming CI passed.
 
 ## Failure Handling
 

@@ -1,1 +1,0 @@
-"""External model transport adapters."""
