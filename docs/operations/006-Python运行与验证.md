@@ -9,20 +9,22 @@ version: v1.0
 
 # Python 运行与验证
 
-本手册只描述已实现的基础工作台，不代表完整 006 产品验收。SQLAlchemy 和 RabbitMQ 固定，当前依赖精确版本以 `backend/uv.lock`、`frontend/package-lock.json` 为准。
+本手册只描述已实现的基础工作台，不代表完整 006 产品验收。SQLAlchemy 和 RabbitMQ 固定，当前依赖精确版本以 `backend/uv.lock`、`frontend/package-lock.json` 为准。Compose v2.24.4+ 用于生产覆盖的 `!reset` 和本地 Compose Watch。
 
 ## 运行角色与入口
 
-唯一根 Compose 包含 postgres、rabbitmq、migrate、backend、worker、scheduler、web。migrate 成功后才启动应用；Worker 使用 prefork 子进程池，数据库连接在 fork 后建立。API 的 lifespan 负责数据库资源关闭。没有双栈 profile、旧接口代理或旧库读取。
+唯一服务拓扑包含 postgres、rabbitmq、migrate、backend、worker、scheduler、web。`docker-compose.yml` 是本地开发入口；`docker-compose-env.yml` 是共享测试/预发覆盖；`docker-compose-prod.yml` 是线上覆盖。后两个文件只定义环境差异，不重复服务拓扑。migrate 成功后才启动应用；Worker 使用 prefork 子进程池，数据库连接在 fork 后建立。API 的 lifespan 负责数据库资源关闭。没有双栈 profile、旧接口代理或旧库读取。
 
 ```sh
-docker compose up -d --build
+# 在第一个终端启动并监听源码变化
+docker compose up --build --watch
+# 在另一个终端初始化账号
 docker compose exec backend python -m cli owner-init learner
 ```
 
 交互输入 12–128 位密码，不通过命令参数传入。owner 只能初始化一次，数据库唯一约束阻止并发创建第二账号。打开 http://localhost:8010；当前有监控草稿、只读监控收件箱和诊断任务。B站搜索、正文、一页根评论和一页回复的持久链已实现但默认不准入；真实来源用途与现有MinIO完成验收前不会采集。多页展开、分析和报告尚未接入。
 
-本地默认地址：Web 8010、API 8867、PostgreSQL 15435、RabbitMQ AMQP 15673，全部绑定回环地址。默认数据服务凭据只用于本机学习；不生成默认应用账号。修改 Web 端口时必须同步 `HOTKEY_ALLOWED_ORIGINS`，它是精确 HTTP Origin 的 JSON 数组，不接受通配符或 URL 路径。
+本地默认地址：Web 8010、API 8867、PostgreSQL 15435、RabbitMQ AMQP 15673，全部绑定回环地址。Next.js 开发服务器将 `/api` 同源重写到 backend；容器内地址为 `http://backend:8080`，本机 `npm run dev` 默认使用 `http://127.0.0.1:8867`。前端源文件同步后由 Next.js 热更新；后端源文件同步后 Uvicorn 自动重载；Worker 和 Scheduler 的源文件同步后对应容器重启。依赖清单变化会重建镜像。修改数据库迁移后仍需显式执行 `docker compose exec backend python -m cli migrate`。默认数据服务凭据只用于本机学习；不生成默认应用账号。修改 Web 端口时必须同步 `HOTKEY_ALLOWED_ORIGINS`，它是精确 HTTP Origin 的 JSON 数组，不接受通配符或 URL 路径。
 
 API `/health/live` 只报告进程存活；`/health/ready` 检查数据库可达和迁移版本，返回 scope=database_schema，不代表消息消费者或来源健康。实际队列路径使用以下诊断验证：
 
@@ -33,17 +35,29 @@ docker compose exec -T backend python -m cli show <job_id>
 
 重复同一幂等键返回同一个任务。任务结果在 PostgreSQL，Celery 不使用 result backend。应用角色设定 45 秒停机宽限，覆盖 20 秒任务硬期限及收尾。正常停止使用 `docker compose stop`；不要对用户持久栈执行 `down --volumes`。
 
-## 生产覆盖实验
+## 测试/预发环境启动
 
-要求 Compose v2.24.4+（支持 `!reset`）。复制 `.env.prod.example` 为私有 `.env.prod`，替换每个密码和域名；URL 内密码需要百分号编码，必须与数据库/队列凭据一致。已有卷内账号密码不会因环境变量修改自动变化，需要单独轮换。
+复制 `.env.env.example` 为私有 `.env.env`，替换数据库、RabbitMQ 和 MinIO 凭据及 HTTPS Origin。占位密码不能部署；URL 中的密码需百分号编码。样例还设置了独立镜像标签，以免与同一 Docker Engine 上的本地或生产构建相互覆盖。为环境栈指定独立 Compose project 名称会创建独立的 `database_data` 和 `queue_data` 卷；若多个栈部署在同一主机，还要给每个 Web 设置不同的 `HOTKEY_WEB_PORT`：
 
 ```sh
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml config --quiet
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml up -d --build
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml exec backend python -m cli owner-init learner
+docker compose --env-file .env.env -p hotkey-env -f docker-compose.yml -f docker-compose-env.yml config --quiet
+docker compose --env-file .env.env -p hotkey-env -f docker-compose.yml -f docker-compose-env.yml up -d --build
+docker compose --env-file .env.env -p hotkey-env -f docker-compose.yml -f docker-compose-env.yml exec backend python -m cli owner-init learner
 ```
 
-生产覆盖不发布数据库、队列和 API 端口；Web 仍只绑定本机，由外部 HTTPS 反向代理访问。生产配置强制 Secure Cookie、HTTPS 精确 Origin。TLS 终止、备份恢复、公网网关和长期容量不属于本轮本地验证结果。
+该配置移除 PostgreSQL、RabbitMQ 和 API 的宿主端口，只将 Web 绑定到回环地址供同机 HTTPS 入口代理；Cookie 使用 Secure。`.env.env` 含密码，不要提交或复制到日志。
+
+## 线上启动配置
+
+复制 `.env.prod.example` 为私有 `.env.prod`，替换每个密码和域名；URL 内密码需要百分号编码，必须与数据库/队列凭据一致。样例镜像标签将线上构建与本地、测试/预发镜像隔开。已有卷内账号密码不会因环境变量修改自动变化，需要单独轮换。部署命令中的 `-p hotkey-prod` 仅适用于新建且独立的数据栈；已有环境必须继续使用原 Compose project 名称，否则 Compose 会选择另一组空卷。
+
+```sh
+docker compose --env-file .env.prod -p hotkey-prod -f docker-compose.yml -f docker-compose-prod.yml config --quiet
+docker compose --env-file .env.prod -p hotkey-prod -f docker-compose.yml -f docker-compose-prod.yml up -d --build
+docker compose --env-file .env.prod -p hotkey-prod -f docker-compose.yml -f docker-compose-prod.yml exec backend python -m cli owner-init learner
+```
+
+生产覆盖不发布数据库、队列和 API 端口；Web 仍只绑定本机，由外部 HTTPS 反向代理访问。若和其他栈共机运行，先为各入口分配唯一的 `HOTKEY_WEB_PORT`。生产配置强制 Secure Cookie、HTTPS 精确 Origin，并对应用容器启用只读根文件系统、删除 Linux capabilities、禁止提权和临时目录挂载。TLS 终止、备份恢复、公网网关和长期容量不属于本轮本地验证结果。`.env.prod` 与 `.env.env` 均为私密环境文件，不能提交。
 
 ## 契约、结构和依赖检查
 
@@ -58,9 +72,9 @@ uv run --directory backend/src python -m tools.export_openapi --check
 uv run --project backend pip-audit
 npm ci --prefix frontend
 npm run check:contract --prefix frontend
-npm run check:boundaries --prefix frontend
-npm run test:boundaries --prefix frontend
 npm run format:check --prefix frontend
+npm run lint --prefix frontend
+npm run typecheck --prefix frontend
 npm run build --prefix frontend
 npm audit --prefix frontend --omit=dev --audit-level=high
 ```

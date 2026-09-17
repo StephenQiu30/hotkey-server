@@ -1,5 +1,5 @@
-# Apply with: docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose-prod.yml ...
-x-production: &production
+# Shared test/staging runtime overlay. Use with docker-compose.yml; production has its own overlay.
+x-environment: &environment
   HOTKEY_ENVIRONMENT: production
   HOTKEY_DATABASE_URL: ${HOTKEY_DATABASE_URL:?Set a PostgreSQL psycopg URL}
   HOTKEY_BROKER_URL: ${HOTKEY_BROKER_URL:?Set an AMQP URL}
@@ -17,14 +17,6 @@ x-production: &production
   HOTKEY_EMBEDDING_MODEL_DIGEST: ${HOTKEY_EMBEDDING_MODEL_DIGEST:-}
   HOTKEY_EMBEDDING_DIMENSIONS: ${HOTKEY_EMBEDDING_DIMENSIONS:-1024}
   HOTKEY_EMBEDDING_TIMEOUT_SECONDS: ${HOTKEY_EMBEDDING_TIMEOUT_SECONDS:-15}
-x-runtime: &runtime
-  init: true
-  read_only: true
-  cap_drop: [ALL]
-  security_opt: [no-new-privileges:true]
-  tmpfs:
-    - /tmp:rw,noexec,nosuid,size=64m
-  pids_limit: 256
 services:
   postgres:
     ports: !reset []
@@ -37,27 +29,19 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set broker password}
     restart: unless-stopped
   migrate:
-    <<: *runtime
-    environment: *production
+    environment: *environment
   backend:
-    <<: *runtime
-    environment: *production
+    environment: *environment
     command: [uvicorn, main:create_app, --factory, --host, 0.0.0.0, --port, "8080", --no-access-log]
     ports: !reset []
     develop: !reset {}
   worker:
-    <<: *runtime
-    environment: *production
+    environment: *environment
     develop: !reset {}
   scheduler:
-    <<: *runtime
-    environment: *production
+    environment: *environment
     develop: !reset {}
   web:
-    <<: *runtime
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,size=64m
-      - /app/.next/cache:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0755
     build:
       target: production
     develop: !reset {}

@@ -54,9 +54,11 @@ jobs:
       - run: uv run --project backend pip-audit
       - run: uv run --directory backend/src python -m tools.export_openapi --check
       - run: npm ci --prefix frontend
-      - run: npm run check:contract --prefix frontend && npm run check:boundaries --prefix frontend && npm run test:boundaries --prefix frontend && npm run format:check --prefix frontend && npm run build --prefix frontend
+      - run: npm run check:contract --prefix frontend && npm run format:check --prefix frontend && npm run lint --prefix frontend && npm run typecheck --prefix frontend && npm run build --prefix frontend
       - run: npm audit --prefix frontend --omit=dev --audit-level=high
       - run: docker compose config --quiet
+      - run: docker compose --env-file .env.env.example -p hotkey-ci-env -f docker-compose.yml -f docker-compose-env.yml config --quiet
+      - run: docker compose --env-file .env.prod.example -p hotkey-ci-prod -f docker-compose.yml -f docker-compose-prod.yml config --quiet
       - run: docker compose up -d --build
       - run: uv run --project backend python backend/scripts/verify_compose.py
       - run: uv run --project backend python backend/scripts/verify_proxy_replacement.py

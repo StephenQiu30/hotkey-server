@@ -1,6 +1,6 @@
 # HotKey
 
-A personal, noncommercial learning project for social-media monitoring. The only server stack is Python, FastAPI, SQLAlchemy 2, PostgreSQL, Alembic, Celery and RabbitMQ. The workspace uses React, TypeScript and Vite. Business operations use the single `/api/*` root without a numeric URL version or a legacy compatibility route.
+A personal, noncommercial learning project for social-media monitoring. The only server stack is Python, FastAPI, SQLAlchemy 2, PostgreSQL, Alembic, Celery and RabbitMQ. The Web workspace uses Next.js App Router, TypeScript, Tailwind CSS, shadcn/ui, Radix UI, ESLint and Prettier. Business operations use the single `/api/*` root without a numeric URL version or a legacy compatibility route.
 
 Implemented: single-owner initialization, revocable cookie sessions, CSRF protection, versioned monitor drafts, and idempotent diagnostic jobs through a transactional Outbox and a real prefork worker. An active monitor can start collection from the workspace. The generated UmiOpenAPI client sends only the current version and idempotency key; the backend shares one batch orchestration path with the scheduler, derives sources, queries, window, policy and retention from the active snapshot, and reserves the complete first-page batch atomically. While the page is visible, the workspace polls generated Job and CollectionRun clients every two seconds only when queued or running work exists. It cancels polling when hidden, performs one complete refresh after both resources become terminal, and then stops. Active collection runs expose a cancel action that calls the generated Job cancellation client and then reloads the persisted terminal state.
 
@@ -11,11 +11,13 @@ The September 15 replanning defines **monitors → discovery inbox → comment t
 From the repository root, with Docker Compose v2.24.4+:
 
 ```sh
-docker compose up -d --build
+# In the first terminal
+docker compose up --build --watch
+# In another terminal
 docker compose exec backend python -m cli owner-init learner
 ```
 
-Enter a password of at least 12 characters interactively and visit http://localhost:8010. No default owner exists. Ports bind to loopback only. Use the production override behind HTTPS for a production-like experiment.
+Enter a password of at least 12 characters interactively and visit http://localhost:8010. No default owner exists. Ports bind to loopback only. Next.js hot-updates frontend edits; backend source syncs and reloads, while Worker and Scheduler restart after source sync. Migrations remain explicit. `docker-compose-env.yml` is the shared test/staging overlay; `docker-compose-prod.yml` is the separate online configuration. See the [operations guide](docs/operations/006-Python运行与验证.md) for commands and environment variables.
 
 See the [Chinese README](README.md), [design and source research](docs/design/006-社交媒体关键词监控与评论分析设计.md), [implementation plan](docs/plans/006-社交媒体关键词监控与评论分析计划.md), and [operations](docs/operations/006-Python运行与验证.md). FastAPI generates the runtime OpenAPI document and Swagger UI. Its reproducible snapshot is `docs/openapi/openapi.json`; `@umijs/openapi` generates all frontend endpoint functions and types under `frontend/src/api/`, while Axios is confined to `frontend/src/request.ts`.
 

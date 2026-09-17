@@ -1,1 +1,7 @@
 src/api/
+node_modules/
+.next/
+dist/
+test-results/
+playwright-report/
+vite.config.ts

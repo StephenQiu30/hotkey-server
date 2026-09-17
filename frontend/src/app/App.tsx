@@ -1,3 +1,6 @@
+"use client";
+
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createCollectionRun, listCollectionRuns } from "../api/collection";
 import { listInboxContents, withdrawContent } from "../api/contents";
@@ -333,9 +336,9 @@ export function App() {
   return (
     <>
       <header>
-        <a href="/" className="brand">
+        <Link href="/" className="brand">
           HotKey<span>个人观察室</span>
-        </a>
+        </Link>
         <button
           className="secondary"
           disabled={busy}

@@ -10,6 +10,7 @@ skills-lock.json
 .env
 .env.*
 !.env.example
+!.env.env.example
 !.env.prod.example
 
 # Dependencies and language caches
@@ -25,6 +26,8 @@ htmlcov/
 
 # Build output and reports
 dist/
+.next/
+.vercel/
 build/
 coverage/
 artifacts/

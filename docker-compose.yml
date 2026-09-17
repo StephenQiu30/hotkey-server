@@ -1,6 +1,26 @@
 name: hotkey
+x-backend-development: &backend-development
+  develop:
+    watch:
+      - action: sync
+        path: ./backend/src
+        target: /app/src
+      - action: rebuild
+        path: ./backend/pyproject.toml
+      - action: rebuild
+        path: ./backend/uv.lock
+x-worker-development: &worker-development
+  develop:
+    watch:
+      - action: sync+restart
+        path: ./backend/src
+        target: /app/src
+      - action: rebuild
+        path: ./backend/pyproject.toml
+      - action: rebuild
+        path: ./backend/uv.lock
 x-app: &app
-  image: hotkey-backend:local
+  image: ${HOTKEY_BACKEND_IMAGE:-hotkey-backend:local}
   build: ./backend
   init: true
   restart: unless-stopped
@@ -34,6 +54,7 @@ services:
       POSTGRES_PASSWORD: learning
     ports: ["127.0.0.1:${HOTKEY_DB_PORT:-15435}:5432"]
     volumes: ["database_data:/var/lib/postgresql/data"]
+    restart: unless-stopped
     healthcheck:
       test: [CMD-SHELL, "pg_isready -U hotkey -d hotkey"]
       interval: 3s
@@ -47,13 +68,14 @@ services:
       RABBITMQ_DEFAULT_VHOST: hotkey
     ports: ["127.0.0.1:${HOTKEY_AMQP_PORT:-15673}:5672"]
     volumes: ["queue_data:/var/lib/rabbitmq"]
+    restart: unless-stopped
     healthcheck:
       test: [CMD, rabbitmq-diagnostics, -q, ping]
       interval: 5s
       timeout: 5s
       retries: 30
   migrate:
-    image: hotkey-backend:local
+    image: ${HOTKEY_BACKEND_IMAGE:-hotkey-backend:local}
     build: ./backend
     environment: *environment
     command: [python, -m, cli, migrate]
@@ -61,8 +83,8 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
   backend:
-    <<: *app
-    command: [uvicorn, main:create_app, --factory, --host, 0.0.0.0, --port, "8080", --no-access-log]
+    <<: [*app, *backend-development]
+    command: [uvicorn, main:create_app, --factory, --host, 0.0.0.0, --port, "8080", --reload, --reload-dir, /app/src, --no-access-log]
     ports: ["127.0.0.1:${HOTKEY_BACKEND_PORT:-8867}:8080"]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/ready',timeout=4)"]
@@ -70,16 +92,51 @@ services:
       timeout: 5s
       retries: 20
   worker:
-    <<: *app
+    <<: [*app, *worker-development]
     command: [celery, -A, worker.app:app, worker, --loglevel=WARNING, --pool=prefork, --concurrency=2]
   scheduler:
-    <<: *app
+    <<: [*app, *worker-development]
     command: [python, -m, cli, scheduler]
   web:
-    build: ./frontend
+    image: ${HOTKEY_WEB_IMAGE:-hotkey-web:local}
+    build:
+      context: ./frontend
+      target: development
+      args:
+        HOTKEY_API_ORIGIN: ${HOTKEY_API_ORIGIN:-http://backend:8080}
     ports: ["127.0.0.1:${HOTKEY_WEB_PORT:-8010}:8080"]
+    environment:
+      HOTKEY_API_ORIGIN: ${HOTKEY_API_ORIGIN:-http://backend:8080}
     depends_on:
       backend: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 45s
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+        - action: sync
+          path: ./frontend/public
+          target: /app/public
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/package-lock.json
+        - action: rebuild
+          path: ./frontend/tsconfig.json
+        - action: rebuild
+          path: ./frontend/next.config.ts
+        - action: rebuild
+          path: ./frontend/postcss.config.mjs
+        - action: rebuild
+          path: ./frontend/eslint.config.mjs
+        - action: rebuild
+          path: ./frontend/components.json
 volumes:
   database_data:
   queue_data:

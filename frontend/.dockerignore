@@ -1,5 +1,13 @@
 node_modules
 dist
+.next
 test-results
 playwright-report
 .env*
+.git
+coverage
+.DS_Store
+tests
+scripts
+playwright.config.ts
+openapi2ts.config.ts

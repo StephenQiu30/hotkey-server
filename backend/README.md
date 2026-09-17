@@ -33,7 +33,9 @@ uv run --project backend ruff check backend
 uv run --directory backend mypy
 uv run --project backend pytest backend/tests -q
 uv run --directory backend/src python -m tools.export_openapi --check
-docker compose up -d --build
+# 在第一个终端启动本地开发栈
+docker compose up --build --watch
+# 在另一个终端初始化账号
 docker compose exec backend python -m cli owner-init learner
 ```
 
