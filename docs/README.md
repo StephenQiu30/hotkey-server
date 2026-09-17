@@ -10,12 +10,15 @@
 |---|---|---|---|---|---|
 | 001 | 热点事件监控平台 | [鱼皮项目功能对照调研](research/001-热点事件监控平台调研.md) · draft | [功能与非功能需求](prd/001-热点事件监控平台功能与非功能需求.md) · draft | 尚未建立总体设计 | [总计划](plans/001-热点事件监控平台总计划.md) · planned；Acceptance 未建立 |
 | 002 | X 免费采集与热点监控专项 | 一手资料包含在专项设计 | 尚未建立独立专项 PRD；受 001 总体需求约束 | [专项设计](design/002-X免费采集与热点监控设计.md) · proposed | [专项计划](plans/002-X免费采集与热点监控计划.md) · planned；Acceptance 未建立 |
+| 043 | 模型服务接入与模型配置 | [OpenRouter / Vercel / 本地模型调研](research/043-模型服务接入与模型配置调研.md) · draft | [模型配置 PRD](prd/043-模型服务接入与模型配置.md) · draft | [模型服务设计](design/043-模型服务接入与模型配置设计.md) · proposed | [执行计划](plans/043-模型服务接入与模型配置计划.md) · planned；Acceptance 未建立 |
+| 044 | 模型平台信息采集与变更监控 | [调研](research/044-模型平台信息采集与变更监控调研.md) · draft | [PRD](prd/044-模型平台信息采集与变更监控.md) · draft | [设计](design/044-模型平台信息采集与变更监控设计.md) · proposed | [计划](plans/044-模型平台信息采集与变更监控计划.md) · planned；Acceptance 未建立 |
+| 045 | 模型联网检索与线索采集 | [调研](research/045-模型联网检索与线索采集调研.md) · draft | [PRD](prd/045-模型联网检索与线索采集.md) · draft | [设计](design/045-模型联网检索与线索采集设计.md) · proposed | [计划](plans/045-模型联网检索与线索采集计划.md) · planned；Acceptance 未建立 |
 
 阅读顺序：先看 001 调研与需求，再看 [逐项 PRD 索引](prd/README.md)；002 提供 X 来源专项可行性。当前不以候选采集器支持范围代替产品需求，不把专项设计当成平台总体设计。
 
 ### 逐项需求交付台账
 
-以下 40 个编号已登记为独立需求交付项，当前各有 PRD 草案及 planned 的执行计划；尚未建立各自的 Research、Design 或 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。
+003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 草案及 planned 的执行计划；尚未建立各自的 Research、Design 或 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
 
 | 编号 | PRD 主题 | 来源需求 | 优先级 | PRD 状态 | Plan |
 |---|---|---|---|---|---|
@@ -59,8 +62,11 @@
 | 040 | [可用性与可访问性](prd/040-可用性与可访问性.md) | NFR-001-014 | P0 | draft | [计划](plans/040-可用性与可访问性计划.md) · planned |
 | 041 | [分析有效性与不确定性](prd/041-分析有效性与不确定性.md) | NFR-001-015 | P0 | draft | [计划](plans/041-分析有效性与不确定性计划.md) · planned |
 | 042 | [容量与部署可重复性](prd/042-容量与部署可重复性.md) | NFR-001-016 | P0 | draft | [计划](plans/042-容量与部署可重复性计划.md) · planned |
+| 043 | [模型服务接入与模型配置](prd/043-模型服务接入与模型配置.md) | FR-001-025 | P1 | draft | [计划](plans/043-模型服务接入与模型配置计划.md) · planned |
+| 044 | [模型平台信息采集与变更监控](prd/044-模型平台信息采集与变更监控.md) | FR-001-026 | P1 | draft | [计划](plans/044-模型平台信息采集与变更监控计划.md) · planned |
+| 045 | [模型联网检索与线索采集](prd/045-模型联网检索与线索采集.md) | FR-001-027 | P1 | draft | [计划](plans/045-模型联网检索与线索采集计划.md) · planned |
 
-新增独立交付项从下一个未占用编号 **043** 登记；001 后续总体 Design、Plan、Acceptance 继续使用 001，003—042 后续同主题文档复用各自编号。文档规范见 [TEMPLATE.md](TEMPLATE.md)。只有真实实施与验证发生后，才建立 Acceptance。
+新增独立交付项从下一个未占用编号 **046** 登记；001 后续总体 Design、Plan、Acceptance 继续使用 001，003—045 后续同主题文档复用各自编号。文档规范见 [TEMPLATE.md](TEMPLATE.md)。只有真实实施与验证发生后，才建立 Acceptance。
 
 ## 本轮编号纠正
 
