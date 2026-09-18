@@ -6,7 +6,7 @@ Python 3.12、FastAPI、Uvicorn、Pydantic 2、SQLAlchemy 2、psycopg 3、Alembi
 
 ## 执行入口
 
-后端初始化完成后，在 `backend/` 执行 `uv sync --locked`；从 `backend/src/` 执行以下独立入口：
+复制 `.env.example` 为未跟踪的 `.env` 并填写数据库凭据。在 `backend/` 执行 `uv sync --locked`；从 `backend/src/` 执行以下独立入口：
 
 ```bash
 uv run --locked uvicorn main:create_app --factory
@@ -20,4 +20,4 @@ API、Worker 和 CLI 分别启动。数据库迁移作为独立步骤执行。
 
 ## 状态
 
-后端应用、依赖锁文件和运行配置尚未建立。
+后端底座已建立应用工厂、数据库会话、Alembic、结构化日志、健康检查、Swagger UI、Scalar、Kafka Worker、管理 CLI 和架构测试。各业务领域已固定包边界，模型、Schema、服务与迁移在对应业务切片落地时增加。

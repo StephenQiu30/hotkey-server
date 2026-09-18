@@ -1,0 +1,58 @@
+[project]
+name = "hotkey-backend"
+version = "0.1.0"
+description = "HotKey API, worker, and management commands"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.16,<2",
+    "confluent-kafka>=2.11,<3",
+    "fastapi[standard]>=0.116,<1",
+    "httpx>=0.28,<1",
+    "minio>=7.2,<8",
+    "psycopg[binary,pool]>=3.2,<4",
+    "pydantic-settings>=2.10,<3",
+    "redis>=6.2,<7",
+    "scalar-fastapi>=1.4,<2",
+    "sqlalchemy>=2.0,<3",
+    "structlog>=25.4,<26",
+    "tenacity>=9.1,<10",
+    "typer>=0.16,<1",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17,<2",
+    "pytest>=8.4,<9",
+    "pytest-cov>=6.2,<7",
+    "ruff>=0.12,<1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/versions/*.py" = ["D"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+plugins = ["pydantic.mypy"]
+strict = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["confluent_kafka.*"]
+ignore_missing_imports = true

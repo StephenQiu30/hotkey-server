@@ -22,7 +22,7 @@ HotKey/
     └── AGENTS.md
 ```
 
-`frontend/` 已建立可构建的 Web 工程、设计令牌、同源 API 代理和 OpenAPI 生成配置。`backend/` 尚未建立应用代码、迁移和 Compose。
+`frontend/` 已建立可构建的 Web 工程、设计令牌、同源 API 代理和 OpenAPI 生成配置。`backend/` 已建立 FastAPI 应用、运行入口、依赖锁、迁移底座和测试边界；根 Compose 尚未建立。
 
 ## 2. 固定技术栈
 
