@@ -18,6 +18,7 @@
 - Next 配置位于 `frontend/next.config.ts`，页面 CSP 使用 `frontend/src/proxy.ts` 的逐请求 nonce。浏览器对 `/api/*` 的请求保持同源，Compose 服务环境将 `HOTKEY_API_ORIGIN` 指向 `http://backend:8080`，本机开发默认 `http://127.0.0.1:8867`；容器内 Web 端口固定为 `8080`。生产镜像使用 standalone 输出和非 root 用户，生产文件系统保持只读。
 - 独立客户端仓库固定为同级 `hotkey-app`，使用 Flutter + Dart；Web 只在本仓库 `frontend/` 实现。两个仓库各自维护根 PROJECT.md 与 HANDOVER.md。
 - Web 依赖统一由 pnpm 管理，提交 pnpm-lock.yaml 并在 package.json 声明 packageManager；不混用 npm/yarn 锁文件。
+- Web 设计固定为组件优先的无边框系统：路由组合 feature/pattern/ui 组件，默认信息表面不用装饰性边框；输入、焦点、错误与浮层保留必要轮廓。布局只使用 Tailwind 命名尺度和 `sm/md/lg/xl/2xl` 响应式层级，禁止原始像素值和任意布局尺寸。`frontend/scripts/check-design-system.mjs` 及负向测试必须通过。
 - 唯一 HTTP 契约由 FastAPI 路由与 Pydantic 模型生成，运行时位于 `/openapi.json`，可复现快照为 `docs/openapi/openapi.json`；前端端点函数与类型全部由 `@umijs/openapi` 生成，禁止手写端点请求。
 - `docs/` 保存 Research、PRD、Design、Plan、Acceptance、Operations。历史实现从 Git 查询，不在工作树中归档。目标能力不得描述为已完成。
 - 修改前阅读相关设计和测试。行为变化先验证失败，再实现；修复需针对实际故障验证。
