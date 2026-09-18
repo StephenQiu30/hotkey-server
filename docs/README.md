@@ -4,6 +4,8 @@
 
 总体实施顺序与进度见 [BACKLOG](../BACKLOG.md)，具体任务和阶段 checklist 见 [执行计划索引](plans/README.md)。
 
+项目技术选型见根 [PROJECT.md](../PROJECT.md)，当前交接见 [HANDOVER.md](../HANDOVER.md)。2026-09-18 已按用户决定将当前设计/计划中的消息依赖调整为 Kafka，并补入 Redis；Web 归属 `frontend/`，独立客户端为 Flutter `hotkey-app`。该调整不代表消息执行设计或产品验收完成。
+
 ## 文档台账
 
 | 编号 | 主题 | Research | PRD | Design | Plan / Acceptance |

@@ -1,6 +1,8 @@
 # HotKey BACKLOG
 
-更新时间：2026-09-17。这是**总体进度与实施顺序的唯一台账**。正式执行依据是 [平台总计划](docs/plans/001-热点事件监控平台总计划.md)、[逐项 Plan](docs/plans/README.md) 和 [PRD](docs/prd/README.md)。
+更新时间：2026-09-18。这是**总体进度与实施顺序的唯一台账**。正式执行依据是 [平台总计划](docs/plans/001-热点事件监控平台总计划.md)、[逐项 Plan](docs/plans/README.md) 和 [PRD](docs/prd/README.md)。
+
+技术基线见 [PROJECT.md](PROJECT.md)，交接见 [HANDOVER.md](HANDOVER.md)。2026-09-18 已固定 Redis/Kafka、server 内 Web 与独立 Flutter App；此项规范调整不推进产品验收进度。
 
 当前阶段：**规划文件已建立，开发与产品验收尚未启动**。45 份 Plan 已编写不代表产品能力已交付；所有执行 checklist 初始未勾选，没有产品验收通过记录。
 
@@ -47,7 +49,7 @@ M0 的外部准入结论可能仍为“未就绪”。这不阻止 M1 和受控�
 
 - [ ] BL-M1-01：042 S01 已建立最小运行、迁移、隔离依赖、架构门禁、OpenAPI/客户端及前端验证入口。
 - [ ] BL-M1-02：身份、所有者授权、秘密保护、预算、关联日志和删除标记契约在新资料入库前可用。
-- [ ] BL-M1-03：真实 PostgreSQL/RabbitMQ 下确认响应丢失、重复投递和进程中断有证据；受控任务可取消/恢复。
+- [ ] BL-M1-03：真实 PostgreSQL/Redis/Kafka 下确认响应丢失、重复投递和进程中断有证据；受控任务可取消/恢复。
 - [ ] BL-M1-04：最小备份清单与可执行备份能力可用；尚未完成 B0 恢复和容量验证的质量项保持未完成。
 
 ### M2 checklist

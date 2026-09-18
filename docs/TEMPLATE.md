@@ -2,6 +2,8 @@
 
 所有正式文档遵守根 `AGENTS.md`。同一交付项复用一个三位 `doc_no` 和同一主题；除索引 `README.md` 外，文件名使用 `NNN-中文主题.md`。SPEC 与 CHECKLIST 不建立独立目录，统一写入对应 Plan。
 
+根目录 `PROJECT.md` 是技术选型入口，`HANDOVER.md` 是交接快照；两者不占用 doc_no，不代替正式 Design/Acceptance。
+
 根目录 `BACKLOG.md` 是项目进度索引，不是新的正式文档层，不占用 doc_no。它保存里程碑、优先级、先行切片、责任与状态；详细任务、CHK 和 EV 保留在各 Plan 中。
 
 编号以 `docs/README.md` 的当前文档台账为准。用户要求清理后从空文档基线重建时，从 `001` 登记新交付项，不从已清理的历史文档推算起始编号。同一主题的 Research、PRD、Design、Plan 和 Acceptance 共用编号；独立专项另行登记。未提交草案的编号错误可按用户要求统一纠正，需同步文件名、元数据、内部 ID 与所有引用，并在台账记录映射；不得借纠错改变已有需求含义。
