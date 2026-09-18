@@ -3,7 +3,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[2] / "src"
+BACKEND = Path(__file__).resolve().parents[2]
+SRC = BACKEND / "src"
 
 
 def _imports(path: Path) -> set[str]:
@@ -20,6 +21,19 @@ def _imports(path: Path) -> set[str]:
 def test_backend_has_no_wrapper_package() -> None:
     assert not (SRC / "app").exists()
     assert not (SRC / "hotkey").exists()
+
+
+def test_schema_sql_is_the_only_ddl_source() -> None:
+    assert (BACKEND / "database" / "schema.sql").is_file()
+    assert not (BACKEND / "alembic.ini").exists()
+    assert not (BACKEND / "migrations").exists()
+    assert "alembic" not in (BACKEND / "pyproject.toml").read_text().lower()
+
+
+def test_runtime_does_not_create_or_drop_schema() -> None:
+    runtime_source = "\n".join(path.read_text() for path in SRC.rglob("*.py"))
+    assert ".create_all(" not in runtime_source
+    assert ".drop_all(" not in runtime_source
 
 
 def test_routers_do_not_import_persistence_or_service_implementations() -> None:

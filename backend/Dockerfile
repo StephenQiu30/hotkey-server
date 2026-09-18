@@ -12,8 +12,7 @@ WORKDIR /srv/backend
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-COPY alembic.ini ./
-COPY migrations ./migrations
+COPY database ./database
 COPY src ./src
 
 RUN useradd --create-home --uid 10001 hotkey \

@@ -22,7 +22,7 @@ HotKey/
     └── AGENTS.md
 ```
 
-`frontend/` 已建立可构建的 Web 工程、设计令牌、同源 API 代理和 OpenAPI 生成配置。`backend/` 已建立 FastAPI 应用、运行入口、依赖锁、迁移底座和测试边界；根 Compose 尚未建立。
+`frontend/` 已建立可构建的 Web 工程、设计令牌、同源 API 代理和 OpenAPI 生成配置。`backend/` 已建立 FastAPI 应用、运行入口、依赖锁、唯一数据库 SQL 事实源和测试边界；根 Compose 尚未建立。
 
 ## 2. 固定技术栈
 
@@ -56,7 +56,8 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 | FastAPI + Pydantic | API、验证、错误契约及唯一 OpenAPI 源 |
 | Uvicorn + pydantic-settings | ASGI 运行与类型化配置 |
 | psycopg 3 | PostgreSQL 驱动，默认使用同步 SQLAlchemy Session |
-| SQLAlchemy 2 + Alembic | ORM 与数据库迁移；保持单一模型和迁移体系 |
+| SQLAlchemy 2 | 运行时 ORM 映射与事务；不创建或修改数据库结构 |
+| `database/schema.sql` | 唯一 PostgreSQL DDL 事实源；只用于初始化全新空库 |
 | PostgreSQL | 业务事实、权限、任务、进度、幂等记录与 Outbox 的持久存储 |
 | Redis | 缓存、限流和可重建临时状态；关键权限、预算与任务状态仍有数据库依据 |
 | Kafka | 任务事件与异步消息传输，由 Python Worker 消费 |
@@ -81,6 +82,7 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 5. `worker/` 维护 Kafka 客户端和消费者生命周期，`jobs/` 维护任务状态机；拟定入口 `python -m worker`。在 031/042 设计中明确 topic、partition key、consumer group、重试、死信、延迟/周期调度和再均衡处理，不能把 Kafka 当作已有任务调度器。
 6. API、Worker 各自创建数据库连接池和消息客户端，Session 不跨线程/任务共享。同步数据库调用不直接放入异步路由。
 7. FastAPI 从路由装饰器、类型注解和 Pydantic 模型自动生成 `/openapi.json`。Swagger UI、Scalar 和 Umi OpenAPI 共用该地址，不维护独立契约文件；Flutter 使用同一契约。客户端由生成命令更新，CI 负责自动生成与差异检查。
+8. 数据库结构只由 `backend/database/schema.sql` 定义，SQLAlchemy Model 必须与其同批更新。当前不支持存量库自动就地升级；保留数据时采用备份、全新建库、完整建表和校验后导入流程。
 
 ## 4. 产品约束与未定事项
 
