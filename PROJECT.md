@@ -63,8 +63,14 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 | MinIO | 复用既有对象存储，保存有权限与保留期约束的文件及证据 |
 | Docker Compose | 根目录唯一运行编排；开发/生产差异通过配置叠加 |
 | Ruff + mypy + pytest | 格式/静态检查、类型、单元/集成/架构验证 |
+| uv | 依赖、虚拟环境与 `uv.lock`，按锁文件安装 |
+| HTTPX + Tenacity | HTTP 客户端与有界重试 |
+| structlog + Typer | 结构化日志与命令行 |
+| redis-py + confluent-kafka + minio | Redis、Kafka、MinIO 客户端 |
+| Swagger UI | `/docs` 交互文档，读取唯一 `/openapi.json` |
+| scalar-fastapi | `/scalar` 增强交互文档，与 Swagger UI 共用契约 |
 
-必要配套包含 ASGI 服务、PostgreSQL/Redis/Kafka 客户端及配置管理。Web 固定 Node.js 24.19.0、Next.js 16.3.5、React 19.2.8 与 pnpm 12.3.4；其余运行版本在对应切片中锁定。
+身份切片采用 `pwdlib[argon2]` 处理密码；选定 JWT 时使用 PyJWT。依赖按真实使用方引入。Web 固定 Node.js 24.19.0、Next.js 16.3.5、React 19.2.8 与 pnpm 12.3.4；后端依赖版本在初始化时写入 `uv.lock`。
 
 ## 3. 数据与任务执行边界
 

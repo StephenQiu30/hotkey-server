@@ -80,7 +80,41 @@
 | Worker 入口 | 在 `backend/src/` 执行 `python -m worker` |
 | CLI 入口 | 在 `backend/src/` 执行 `python -m cli` |
 
-Kafka、Redis、MinIO 客户端及锁文件工具在底座 Design 中明确后安装，不在实现中临时引入第二套工具链。
+后端依赖统一使用 uv、`pyproject.toml` 和 `uv.lock`，作为普通应用管理，不构建安装包。CI 和镜像使用 `uv sync --locked`；精确版本在底座初始化时解析、验证并提交，不手工编辑锁文件。
+
+### 通用工具与复用边界
+
+| 能力 | 固定工具 | 放置与使用规则 |
+|---|---|---|
+| 配置校验 | `pydantic-settings` | `core/config.py`；禁止手写环境变量解析框架 |
+| HTTP 请求 | `httpx` | 领域 adapters 使用复用的 Client/AsyncClient；明确连接、读取、写入和连接池超时 |
+| 结构化日志 | `structlog` + 标准 logging | `core/logging.py` 统一配置，输出结构化日志，按请求绑定并清理 request_id |
+| 有限重试 | `tenacity` | 只用于适配器中可安全重试的调用；明确异常类型、次数、时间预算和退避 |
+| 命令行 | `typer` | `cli/commands.py` 定义命令，`cli/__main__.py` 启动；不自行解析 argv |
+| Redis | `redis`（redis-py） | 复用官方连接池，设置超时与资源释放；业务缓存规则留在所属领域 |
+| Kafka | `confluent-kafka` | `worker/messaging.py` 适配；确认投递结果，业务提交后提交 offset |
+| 对象存储 | `minio` | `evidence/adapters/minio.py`；复用官方签名、上传和下载能力 |
+| 密码哈希 | `pwdlib[argon2]` | 身份切片按需安装；不手写密码加密或哈希算法 |
+| JWT | `PyJWT` | 仅在身份 Design 选定 JWT 后安装；不自行编码签名、解码或验证令牌 |
+| 标准通用能力 | `datetime`、`zoneinfo`、`uuid`、`pathlib`、`contextlib` | 标准库能完成的功能直接使用，不建立重复工具类 |
+
+- 工具选型固定，依赖随真实使用方加入；禁止为凑工具清单安装未使用的框架。
+- 仅为业务契约、生命周期和外部服务差异做薄封装，不创建通用 HttpUtils、RedisUtils、BaseService 或万能工具包。
+- 直接复用 FastAPI/Starlette 的依赖注入、异常处理、中间件、表单解析和响应序列化能力；不另造 Web 框架。
+- Tenacity 不承担持久任务调度或消费重试状态；不得无条件重试写操作，避免 SDK 重试与应用重试叠加。
+- 同步 SDK 不直接运行在异步路由中；连接池、HTTP Client 和消息客户端由所属进程生命周期统一创建与关闭。
+- 日志禁止输出原始请求、响应、Token、Cookie 和连接字符串；外部异常先映射为业务错误，再交由 API 输出。
+
+### 接口文档
+
+- FastAPI 路由与 Pydantic Schema 是唯一契约源；运行时统一提供 `/openapi.json`，Swagger UI 使用 `/docs`。
+- 增强交互文档默认使用 `scalar-fastapi`，入口 `/scalar`，与 Swagger UI 共用 `/openapi.json`；不额外开启 ReDoc。
+- Knife4j 只有在明确要求该产品时作为替代 UI 接入，不能安装 Spring Boot starter 到 Python 后端。接入前验证实际 OpenAPI 版本、nullable、联合类型、认证与调试兼容性；不得只修改 Schema 版本号冒充兼容。
+- 不手写第二份 Swagger JSON，不另用注解体系生成契约；文档 UI 和 Umi OpenAPI 客户端读取同一份契约。
+- `api/docs.py` 负责文档 UI 注册，由 `main.py` 装配；文档页面使用 `include_in_schema=False`，不得进入生成客户端。
+- 端点必须填写中文 summary、必要 description、tag、operation_id、参数约束、成功和错误模型、适用示例及认证方式。
+- Swagger UI 与增强文档的静态资源固定版本；生产文档在受控入口开放或关闭，调试功能沿用真实 API 权限。
+- 文档验收包含 Schema 加载、分组、认证、参数输入、实际调试、错误展示和 Umi OpenAPI 生成；页面能打开不等于契约兼容。
 
 ### 后端目录标准
 
@@ -89,6 +123,7 @@ Kafka、Redis、MinIO 客户端及锁文件工具在底座 Design 中明确后�
 ```text
 backend/
 ├── pyproject.toml                 # 依赖、Python 版本、检查和测试配置
+├── uv.lock                        # uv 生成的唯一依赖锁文件
 ├── Dockerfile
 ├── alembic.ini
 ├── migrations/
@@ -99,11 +134,13 @@ backend/
 │   ├── api/
 │   │   ├── router.py              # 注册所有 HTTP 路由
 │   │   ├── dependencies.py        # 身份、Session、服务的类型化注入
+│   │   ├── docs.py                # 接口文档 UI 注册
 │   │   ├── middleware.py          # 请求 ID 和访问日志
 │   │   ├── exception_handlers.py  # 业务异常转 HTTP 响应
 │   │   └── routers/<resource>.py  # 资源接口，不含业务实现
 │   ├── core/
 │   │   ├── config.py              # pydantic-settings
+│   │   ├── logging.py             # structlog 与标准 logging 配置
 │   │   ├── errors.py              # 与 HTTP 无关的异常
 │   │   └── schemas.py             # 公共输入输出基类
 │   ├── db/

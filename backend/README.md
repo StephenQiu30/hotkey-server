@@ -6,15 +6,17 @@ Python 3.12、FastAPI、Uvicorn、Pydantic 2、SQLAlchemy 2、psycopg 3、Alembi
 
 ## 执行入口
 
-后端初始化完成后，从 `backend/src/` 执行：
+后端初始化完成后，在 `backend/` 执行 `uv sync --locked`；从 `backend/src/` 执行以下独立入口：
 
 ```bash
-uvicorn main:create_app --factory
-python -m worker
-python -m cli
+uv run --locked uvicorn main:create_app --factory
+uv run --locked python -m worker
+uv run --locked python -m cli
 ```
 
 API、Worker 和 CLI 分别启动。数据库迁移作为独立步骤执行。
+
+接口文档入口为 Swagger UI `/docs`、Scalar `/scalar`，共用 `/openapi.json`。
 
 ## 状态
 
