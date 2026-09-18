@@ -131,7 +131,7 @@
 }
 
 @layer components {
-  .foundation-mesh {
+  .hero-mesh {
     background:
       radial-gradient(circle at 16% 34%, rgb(0 223 216 / 42%), transparent 28%),
       radial-gradient(circle at 42% 18%, rgb(0 124 240 / 40%), transparent 30%),
@@ -145,7 +145,7 @@
     filter: saturate(112%);
   }
 
-  .foundation-grid {
+  .hero-grid {
     background-image:
       linear-gradient(
         to right,

@@ -1,8 +1,8 @@
 # HotKey 工程规范
 
-本文件适用于整个仓库。应用实现、旧设计、需求、计划、验收记录与运行配置已清理，清理基线仅保留规范文件。后续按用户要求重建的调研与需求文档见 `docs/README.md`；它们不表示应用实现已经恢复。以下技术和目录规则约束后续实现，不表示相关能力已经存在。个人学习项目，后端固定 Python、SQLAlchemy 2、FastAPI、PostgreSQL、Redis、Kafka；前端固定 pnpm、Next.js、shadcn/ui、Radix UI、Tailwind CSS、Axios、ESLint、Prettier。
+本文件适用于整个仓库。后端固定 Python、SQLAlchemy 2、FastAPI、PostgreSQL、Redis、Kafka；前端固定 pnpm、Next.js、shadcn/ui、Radix UI、Tailwind CSS、Axios、ESLint、Prettier。
 
-项目技术基线见 [PROJECT.md](PROJECT.md)，当前交接见 [HANDOVER.md](HANDOVER.md)。本文件是工程规范入口；文档格式遵循 [正式文档模板](docs/TEMPLATE.md)，当前编号以 [文档台账](docs/README.md) 为准。后续实现前应建立对应设计、需求、计划和验收依据。
+实现切片必须具备 Design、需求、Plan 和 Acceptance；正式文档使用 `docs/TEMPLATE.md`，编号登记在 `docs/README.md`。
 
 ## 任务开始前的目录与选型门禁
 
@@ -14,7 +14,7 @@
 
 - `backend/` 是唯一后端：Python 3.12、FastAPI、Pydantic、SQLAlchemy 2、Alembic、PostgreSQL、Redis、Kafka。禁止恢复 Go 后端、独立旧 Agent 或兼容旧接口。
 - `frontend/` 是唯一 Web 前端，采用 pnpm、Next.js App Router、React、TypeScript、Tailwind CSS、shadcn/ui、Radix UI、Axios、ESLint 和 Prettier。工作台入口由 `frontend/src/app/` 管理；公开产品页与 SEO 路由必须以真实可公开内容为基础，登录工作台使用 `noindex`，不可加入 sitemap。
-- 后续品牌资产必须有唯一母版，页面图标通过 Next.js Metadata API 引用，不重复维护或使用 Vercel 品牌资产。
+- 品牌资产只保留唯一母版，页面图标通过 Next.js Metadata API 引用。
 - Next 配置位于 `frontend/next.config.ts`，页面 CSP 使用 `frontend/src/proxy.ts` 的逐请求 nonce。浏览器对 `/api/*` 的请求保持同源，Compose 服务环境将 `HOTKEY_API_ORIGIN` 指向 `http://backend:8080`，本机开发默认 `http://127.0.0.1:8867`；容器内 Web 端口固定为 `8080`。生产镜像使用 standalone 输出和非 root 用户，生产文件系统保持只读。
 - 独立客户端仓库固定为同级 `hotkey-app`，使用 Flutter + Dart；Web 只在本仓库 `frontend/` 实现。两个仓库各自维护根 PROJECT.md 与 HANDOVER.md。
 - Web 依赖统一由 pnpm 管理，提交 pnpm-lock.yaml 并在 package.json 声明 packageManager；不混用 npm/yarn 锁文件。

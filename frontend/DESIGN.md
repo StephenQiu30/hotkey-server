@@ -1,56 +1,34 @@
-# HotKey Web 设计实现约束
+# HotKey Web 设计规范
 
-仓库根 [DESIGN.md](../DESIGN.md) 保留完整的 Vercel 设计规范，是不可在本实现文件中改写的视觉参考。本文件只记录 HotKey Web 对该规范的组件映射、无边框取舍与工程约束。
+## 视觉
 
-## 1. 视觉基线
+- 使用 Geist；Geist Mono 仅用于数据和技术标识。
+- 颜色、字体和圆角统一定义在 `src/app/globals.css`，业务组件只使用语义令牌。
+- 页面通过留白、排版和表面明度建立层级，静态信息区不使用装饰性边框。
+- 输入、选择、错误、键盘焦点和浮层保留必要轮廓。
+- 布局只使用 Tailwind 命名尺度和 `sm`、`md`、`lg`、`xl`、`2xl`，禁止原始像素值和任意布局尺寸。
 
-- 字体：Geist 用于界面与标题，Geist Mono 只用于技术标签、数据与代码。
-- 主色：`#171717`；页面：`#ffffff`；柔和表面：`#fafafa` / `#f5f5f5`；正文：`#4d4d4d`；弱文字最低使用 `#666666` 以保持小字号可读性。
-- 强调色仅使用根设计中的蓝青、紫粉、珊瑚琥珀三组渐变，并仅用于 Hero 或大面积信号表达。
-- 间距、字号、行高、字距、圆角和容器只使用 Tailwind 命名尺度；标题最高使用 `font-semibold`，正文不用等宽字体。
-- `src/app/globals.css` 是颜色、字体和圆角令牌的唯一实现入口。业务组件只使用 `bg-background`、`text-muted-foreground` 等语义令牌，不复制十六进制颜色。
-- 禁止原始像素值和任意布局尺寸；项目中的 xxl 统一使用 Tailwind 官方 `2xl` 名称。
+## 组件
 
-## 2. 无边框规则
+- shadcn/Radix 基础组件放在 `src/components/ui/`。
+- 跨页面复用组件按功能领域放在 `src/components/<feature>/`。
+- 页面专属组件放在对应 `src/app/<route>/components/`；根页面使用 `src/app/components/`。
+- 不创建 `features`、`common`、`patterns` 或 `shared` 目录。
+- `page.tsx` 只处理页面入口、数据边界和组件组合。
+- 组件至少被两个页面稳定复用后才能迁入 `src/components/<feature>/`。
 
-“无边框”指默认信息层级不依赖可见描边：
+每个切片在 Design 阶段记录组件名称、所属领域、复用范围、目标路径、数据来源及正常、空、加载、部分、错误和无权限状态。
 
-- 页面区块、导航和静态信息卡使用留白、背景明度与排版形成分组。
-- `Card` 默认不带边框、ring 或投影；浮层可使用 shadcn 默认的轻量 ring 与阴影，以表明遮盖关系。
-- 输入框、选择器、错误态和键盘焦点必须保留轮廓。它们是操作和可访问性反馈，不按装饰边框删除。
-- 表格只在行列辨识确有需要时使用 hairline；空态、骨架屏和只读摘要优先使用柔和表面。
-- 同一页面只使用一种 CTA 圆角尺度。工作台使用 `rounded-md` / `rounded-lg`，营销 Hero 才可通过组件 variant 使用完整 pill。
+## API 与状态
 
-## 3. 组件与状态
+- Umi OpenAPI 将端点和类型直接生成到 `src/api/`。
+- 所有生成请求统一使用 `src/request.ts`，页面不得手写端点或创建第二套 HTTP 客户端。
+- App Router 统一提供 loading、error、global-error 和 not-found 边界。
+- `src/components/system/PageState` 处理页面错误、空态、无权限和恢复操作。
 
-- 基础组件由 shadcn CLI 添加并保存在 `src/components/ui/`；底层固定为 Radix。
-- 使用组件提供的 variant/size，图标来自 Lucide。按钮内图标设置 `data-icon="inline-start|inline-end"`。
-- Card 使用 `CardHeader`、`CardTitle`、`CardDescription`、`CardContent`、`CardFooter` 等完整组合。
-- 不建立 `src/features/`。需要被多个页面复用的业务组件按领域放在 `src/components/<feature>/`，例如监控组件进入 `src/components/monitoring/`，事件组件进入 `src/components/events/`。
-- shadcn 基础组件只进入 `src/components/ui/`；其他复用组件必须按明确的功能领域归类，例如全局页面状态进入 `src/components/system/`。不得使用 `common`、`patterns`、`shared` 等职责不明确的目录。
-- 只服务单个页面或单个路由树的组件放在对应路由目录的 `components/` 中。根页面使用 `src/app/components/`；嵌套路由使用 `src/app/<route>/components/`，并且不得从所属路由树外部导入。
-- `page.tsx` 只负责页面入口、数据边界和组件组合。页面专属组件不提前提升为公共组件；确认至少两个页面存在稳定复用后，才迁移到对应的 `src/components/<feature>/`。
-- 每个业务页面必须覆盖正常、空、加载、部分、错误和无权限状态；禁止在页面组件中复制后端权限或业务规则。
-- Umi OpenAPI 根据 Swagger/OpenAPI 快照把端点与类型直接生成到 `src/api/`，不增加 `generated/` 中间层；浏览器请求只调用这些生成文件，传输错误由 `src/request.ts` 统一承接。
+## 可访问性与运行
 
-组件目录必须在切片 Design 阶段确定。设计文档逐项记录组件名称、所属 feature、复用范围、目标路径、数据来源和状态覆盖；未明确这些信息前不创建组件目录。评审顺序固定为：先判断是否为 shadcn 基础组件，再判断是否已被多个页面复用并确定其功能领域，其余组件保留在页面自己的 `components/` 中。
-
-## 4. 响应与可访问性
-
-- base 使用手机优先单列；`sm` 允许紧凑双列；`md` 展开导航；`lg` 使用桌面结构；`xl` 与 `2xl` 增加外围留白并保持命名最大宽度。
-- 交互触点通过 Button 等组件的语义 size variant 保证，页面不得写尺寸补丁。
-- 所有交互支持键盘焦点；装饰图形使用 `aria-hidden`；导航和状态区域提供语义名称。
-- 动效尊重 `prefers-reduced-motion`，不以动画作为唯一状态提示。
-- 新页面必须在桌面和窄屏浏览器中实际检查，再记录为视觉验收证据。
-
-## 5. 可用性与维护性
-
-- App Router 提供 loading、error、global-error 与 not-found 边界，局部失败不得产生空白页。
-- `src/components/system/PageState` 承接错误、空态、无权限和恢复操作；Skeleton 承接加载状态。
-- `/health` 只证明 Web 进程可响应，后端依赖状态由后端 readiness 负责。
-- 前端不维护独立检查脚本；目录边界和设计约束通过本文件、组件封装、ESLint、TypeScript、Prettier、生产构建与代码审查共同保持。
-- 生产镜像保持 standalone、非 root、只读文件系统，并通过容器健康检查暴露运行状态。
-
-## 6. 品牌资产
-
-`src/app/icon.svg` 是当前唯一图标母版，并由 Next.js Metadata 文件约定自动引用。不得使用 Vercel 标志、字样或其他品牌资产。后续替换母版时同步产品设计与各平台导出物。
+- 交互支持键盘焦点，装饰图形使用 `aria-hidden`，状态区域提供语义名称。
+- 动效遵循 `prefers-reduced-motion`。
+- 页面必须完成桌面和窄屏浏览器检查。
+- 生产镜像使用 standalone、非 root、只读文件系统和 `/health` 健康检查。

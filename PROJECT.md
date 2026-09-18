@@ -1,6 +1,6 @@
 # HotKey Server 项目与技术选型
 
-更新日期：2026-09-18。本文是 `hotkey-server` 的技术选型入口，按用户本次决定固定。工程规则见 [AGENTS.md](AGENTS.md)，交接见 [HANDOVER.md](HANDOVER.md)，产品进度见 [BACKLOG.md](BACKLOG.md)。
+更新日期：2026-09-18。本文固定仓库边界、技术栈和运行约束。
 
 ## 1. 定位与仓库边界
 
@@ -22,7 +22,7 @@ HotKey/
     └── AGENTS.md
 ```
 
-`frontend/` 已用官方脚手架建立可构建的 Web 工程、依赖锁、设计令牌、同源 API 代理、OpenAPI 生成配置和固定目录约束；当前基础页只证明工程与视觉基线，不代表产品功能已实现。`backend/` 仍只有目录说明，后端源码、迁移、Compose 与运行依赖尚未初始化。
+`frontend/` 已建立可构建的 Web 工程、设计令牌、同源 API 代理和 OpenAPI 生成配置。`backend/` 尚未建立应用代码、迁移和 Compose。
 
 ## 2. 固定技术栈
 
@@ -60,7 +60,7 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 | Docker Compose | 根目录唯一运行编排；开发/生产差异通过配置叠加 |
 | Ruff + mypy + pytest | 格式/静态检查、类型、单元/集成/架构验证 |
 
-必要配套包含 ASGI 服务、PostgreSQL/Redis/Kafka 的 Python 客户端及配置管理；具体客户端库和兼容版本在 042 底座切片锁定。Web 当前锁定 Node.js 24.19.0、Next.js 16.3.5、React 19.2.8 与 pnpm 12.3.4；Python、Flutter/Dart 与其他服务镜像版本仍需在对应初始化切片记录，不把“最新”写作可复现版本。
+必要配套包含 ASGI 服务、PostgreSQL/Redis/Kafka 客户端及配置管理。Web 固定 Node.js 24.19.0、Next.js 16.3.5、React 19.2.8 与 pnpm 12.3.4；其余运行版本在对应切片中锁定。
 
 ## 3. 数据与任务执行边界
 
@@ -70,9 +70,7 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 4. Redis 的数据丢失不能导致任务或证据丢失。缓存设有效期与失效规则；限流故障时采用明确的保守策略。执行权、不可超额预算与撤权不能只依赖 Redis 锁或缓存。
 5. `worker/` 维护 Kafka 客户端和消费者生命周期，`jobs/` 维护任务状态机；拟定入口 `python -m worker`。在 031/042 设计中明确 topic、partition key、consumer group、重试、死信、延迟/周期调度和再均衡处理，不能把 Kafka 当作已有任务调度器。
 6. API、Worker 各自创建数据库连接池和消息客户端，Session 不跨线程/任务共享。同步数据库调用不直接放入异步路由。
-7. 唯一 HTTP 契约为 FastAPI/Pydantic；计划快照 `docs/openapi/openapi.json`，Web 和 Flutter 均由该契约生成客户端。Web 已配置 `@umijs/openapi` 生成链，但快照尚不存在，因此没有伪造端点或 DTO；Flutter 生成器在 App 初始化时确定。
-
-**RabbitMQ 与 Celery 已退出当前技术基线。** 原来的 Celery 入口、broker 配置与任务结果后端不再沿用；Redis 不额外承担第二套任务消息队列。当前没有运行中的旧实现，本次不涉及生产消息或数据库迁移。
+7. 唯一 HTTP 契约为 FastAPI/Pydantic，快照固定在 `docs/openapi/openapi.json`。Web 使用 Umi OpenAPI 生成客户端，Flutter 使用同一契约。
 
 ## 4. 产品约束与未定事项
 
@@ -85,16 +83,8 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 
 按总体 Design → 需求/Plan → 失败验证 → 实现 → 回归/Acceptance 推进。先依据 [001 总计划](docs/plans/001-热点事件监控平台总计划.md) 完成总体设计，再通过 [042](docs/plans/042-容量与部署可重复性计划.md) 建立底座；[031](docs/plans/031-可靠执行与幂等计划.md) 承接 Kafka 消费和恢复语义。
 
-初始化后必须执行后端 Ruff/mypy/pytest、OpenAPI 漂移与客户端生成检查、前端 ESLint/Prettier/类型/构建和浏览器验证。Web 已提供并通过 ESLint、Prettier、TypeScript、目录边界及生产构建入口；后端与完整 OpenAPI 漂移门禁仍待建立。集成测试使用隔离的真实 PostgreSQL、Redis、Kafka；验证重复事件、提交后中断、消费者再均衡、Redis 失效和任务恢复。
+交付前执行后端 Ruff、mypy、pytest、OpenAPI 漂移与客户端生成检查，以及前端 ESLint、Prettier、类型检查、生产构建和浏览器验证。集成测试使用隔离的 PostgreSQL、Redis、Kafka，并验证重复事件、提交后中断、消费者再均衡、Redis 失效和任务恢复。
 
-## 6. 决策与维护
+## 6. 维护
 
-| 日期 | 决策 | 影响 |
-|---|---|---|
-| 2026-09-18 | 用户固定 pnpm/Next.js/shadcn/ui/Radix UI/Tailwind CSS/Axios/ESLint/Prettier | Web 唯一归属 `frontend/` |
-| 2026-09-18 | 用户固定 Python/ORM/FastAPI/PGSQL/Redis/Kafka；ORM 沿用 SQLAlchemy 2 | 同步工程规范、当前 Design/Plan、真实依赖验证要求；停用旧 RabbitMQ/Celery 规划 |
-| 2026-09-18 | `hotkey-web` 本地重命名为 `hotkey-app`，固定 Flutter | 关闭前端归属冲突，两个仓库分别维护根 PROJECT/HANDOVER |
-| 2026-09-18 | 用官方 Next.js 与 shadcn Radix 脚手架初始化 `frontend/` | 固定 Web 版本、目录边界、无边框令牌、CSP nonce、同源代理和 OpenAPI 生成入口；产品功能仍未开始验收 |
-| 2026-09-18 | 固定组件优先的无边框设计与命名响应式尺度 | 使用 `sm/md/lg/xl/2xl`，禁止原始像素值和任意布局尺寸；增加自动设计门禁、统一页面状态与健康检查 |
-
-修改选型时同步本文、AGENTS、相关设计/计划和 HANDOVER；只有真实实施与验证后才更新 BACKLOG 完成状态。本文不占正式 doc_no，也不代替完整总体设计。独立客户端 GitHub 仓库已同步更名为 `hotkey-app`。
+技术、目录或运行约束变化时同步更新本文、AGENTS、HANDOVER 和对应 Design。产品进度只在完成实际验收后更新 BACKLOG。

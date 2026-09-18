@@ -1,10 +1,8 @@
-# HotKey Web frontend
+# HotKey Web
 
-HotKey 的唯一 Web 前端。工程由官方 `create-next-app` 与 shadcn CLI 初始化，固定使用 pnpm、Next.js App Router、React、TypeScript、shadcn/ui（Radix）、Tailwind CSS、Axios、ESLint 和 Prettier。
+技术栈：pnpm、Next.js App Router、React、TypeScript、shadcn/ui、Radix UI、Tailwind CSS、Axios、ESLint、Prettier。
 
-## 本地运行
-
-要求使用 `package.json` 声明的 pnpm 版本。首次运行复制环境变量示例，只设置服务端可见的后端来源：
+## 运行
 
 ```bash
 cp .env.example .env.local
@@ -12,42 +10,34 @@ pnpm install
 pnpm dev
 ```
 
-浏览器访问 `http://localhost:3000`。浏览器 API 请求固定使用同源 `/api/*`，`src/proxy.ts` 将其转发到 `HOTKEY_API_ORIGIN`；客户端代码不得读取或拼接后端来源。
+浏览器请求统一使用同源 `/api/*`，`src/proxy.ts` 根据 `HOTKEY_API_ORIGIN` 转发。
 
-## 固定目录
+## 目录
 
 ```text
-frontend/
-├── Dockerfile               # Node 24、standalone、非 root 生产镜像
-├── src/
-│   ├── app/                 # App Router；各页面专属组件放本路由 components/
-│   ├── api/                 # @umijs/openapi 直接生成，禁止手改
-│   ├── components/ui/       # shadcn CLI 管理的基础组件
-│   ├── components/<feature>/# 被多个页面复用的业务组件
-│   ├── lib/                 # 无业务语义的纯工具
-│   ├── proxy.ts             # CSP nonce 与同源 API 代理
-│   └── request.ts           # 唯一 Axios 传输封装
-├── DESIGN.md                # DESIGN.md 到代码令牌的实现约束
-├── components.json          # shadcn Radix 配置
-├── next.config.ts           # standalone 等 Next.js 配置
-└── openapi2ts.config.ts     # FastAPI OpenAPI 客户端生成配置
+src/
+├── app/                  # 路由；页面专属组件放对应路由的 components/
+├── api/                  # Umi OpenAPI 生成文件
+├── components/ui/        # shadcn 基础组件
+├── components/<feature>/ # 跨页面复用组件
+├── lib/                  # 纯工具
+├── proxy.ts              # CSP 与同源 API 代理
+└── request.ts            # Axios 请求封装
 ```
 
-不建立 `features/`、`common/`、`patterns/`、`shared/`，不手写 API 端点或第二套 HTTP 客户端。页面专属组件放在对应 `app/<route>/components/`；至少被两个页面稳定复用的组件才按明确功能领域进入 `components/<feature>/`。前端不维护单独的 `scripts/` 目录，工程检查统一使用框架和工具链的标准命令。
+不创建 `features`、`common`、`patterns`、`shared` 或 `scripts` 目录。复用组件按功能领域分类；页面组件保留在所属路由中。组件归属、复用范围、目标路径、数据来源和状态覆盖必须在 Design 阶段确定。
 
-设计采用组件优先的无边框体系：页面组合自己的 `components/`、可复用的 `components/<feature>/` 和 `components/ui/`，默认信息表面不使用装饰性边框。布局只使用 Tailwind 命名尺度以及 `sm`、`md`、`lg`、`xl`、`2xl` 响应式层级；不写原始像素值或任意布局尺寸。新增页面必须先在 Design 中列出组件归属、复用范围、目标路径、数据来源和状态覆盖，再开始实现。
+## API
 
-## OpenAPI 客户端
-
-FastAPI/Pydantic 是唯一 HTTP 契约源。后端生成并提交 `../docs/openapi/openapi.json` 后执行：
+FastAPI OpenAPI 快照位于 `../docs/openapi/openapi.json`。生成客户端：
 
 ```bash
 pnpm openapi:generate
 ```
 
-生成结果直接进入 `src/api/` 并复用 `src/request.ts`，不再增加 `generated/` 中间层。当前仓库尚未建立 OpenAPI 快照，因此初始化阶段不伪造端点或 DTO。
+生成结果直接写入 `src/api/`，统一调用 `src/request.ts`。请求封装负责凭据、超时、响应数据提取以及错误标准化。
 
-## 质量门禁
+## 检查
 
 ```bash
 pnpm lint
@@ -56,11 +46,4 @@ pnpm format:check
 pnpm build
 ```
 
-生产镜像固定监听 `8080`，使用 standalone 输出并以 UID 1001 的非 root 用户运行：
-
-```bash
-docker build -t hotkey-frontend .
-docker run --rm -p 8080:8080 -e HOTKEY_API_ORIGIN=http://host.docker.internal:8867 hotkey-frontend
-```
-
-视觉实现遵循本目录 [DESIGN.md](DESIGN.md)；产品能力仍以根目录 BACKLOG 与各切片 Acceptance 为准，基础页面不代表采集、分析或提醒能力已上线。
+生产镜像监听 `8080`，使用 standalone 输出、非 root 用户和只读文件系统。

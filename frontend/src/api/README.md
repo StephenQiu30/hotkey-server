@@ -1,7 +1,3 @@
-# Generated API client
+# API 客户端
 
-The files in this directory are produced directly from
-`../docs/openapi/openapi.json` by running `pnpm openapi:generate`. Do not
-hand-write endpoint functions or response types here. Umi OpenAPI writes the
-generated client directly to `src/api/`; its functions use `src/request.ts` and
-keep browser traffic on the same-origin `/api/*` path.
+执行 `pnpm openapi:generate` 根据 `docs/openapi/openapi.json` 生成。文件统一调用 `src/request.ts`，禁止手动修改。

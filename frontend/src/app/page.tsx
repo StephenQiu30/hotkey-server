@@ -1,9 +1,9 @@
 import { connection } from "next/server";
 
-import { FoundationHome } from "@/app/components/foundation-home";
+import { HomeContent } from "@/app/components/home-content";
 
 export default async function Home() {
   await connection();
 
-  return <FoundationHome />;
+  return <HomeContent />;
 }
