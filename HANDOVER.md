@@ -21,6 +21,8 @@
 
 ## 待完成
 
+后端采用模块化单体与按业务领域分组的分层结构，目录、事务、依赖和执行入口固定在 [backend/README.md](backend/README.md)。
+
 1. 建立后端应用、迁移、根 Compose 和 OpenAPI 快照。
 2. 生成前端 API 客户端并验证真实请求与错误契约。
 3. 接入 PostgreSQL、Redis、Kafka 后完成隔离集成验证。

@@ -46,12 +46,16 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 
 ### Python 后端与基础设施
 
+架构固定为模块化单体，按业务领域分组；Router 处理 HTTP，Service 处理业务与事务，Pydantic Schema 定义契约，SQLAlchemy Model 定义持久化。Repository 按需引入。目录和依赖标准见 [后端规范](backend/README.md)。
+
 **Python + SQLAlchemy 2 ORM + FastAPI + PostgreSQL（PGSQL）+ Redis + Kafka。**
 
 | 技术 | 职责 |
 |---|---|
 | Python 3.12 | 沿用已定语言基线；业务代码位于 `backend/src/` |
 | FastAPI + Pydantic | API、验证、错误契约及唯一 OpenAPI 源 |
+| Uvicorn + pydantic-settings | ASGI 运行与类型化配置 |
+| psycopg 3 | PostgreSQL 驱动，默认使用同步 SQLAlchemy Session |
 | SQLAlchemy 2 + Alembic | ORM 与数据库迁移；保持单一模型和迁移体系 |
 | PostgreSQL | 业务事实、权限、任务、进度、幂等记录与 Outbox 的持久存储 |
 | Redis | 缓存、限流和可重建临时状态；关键权限、预算与任务状态仍有数据库依据 |

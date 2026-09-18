@@ -47,6 +47,9 @@
 
 ## FastAPI 目录与命名（必须执行）
 
+- 后端固定为模块化单体，按业务领域分组，采用 Router、Service、Schema、Model 分层；完整目录标准在 `backend/README.md`。Repository 仅在查询复杂或需复用时增加，不创建通用 BaseRepository、ServiceImpl 或每层一套空接口。
+- 后端切片在 Design 阶段明确领域归属、变更路径、路由与 DTO、服务入口、事务所有者、跨领域依赖及消息恢复行为；业务和目录规范确定后再创建模块。
+- 最外层业务用例提交或回滚事务；依赖注入只管理 Session 创建与释放。跨领域原子写共用 Session，内层函数不自行提交。HTTP 和 Worker 各自装配服务，业务服务不依赖 HTTP 上下文。
 - 后端工程及 Compose HTTP 服务均为 `backend`，作为普通应用运行，不构建独立安装包；禁止恢复 `server/` 别名。部署入口为 `main:create_app`。
 - 应用代码统一放在 `backend/src/`；禁止在 src 下增加 hotkey 或 app 包装层；`main.py` 只做应用工厂和 lifespan 装配；`api/router.py` 汇总路由，`api/routers/*.py` 按资源组织，依赖和 HTTP 横切逻辑分别在 dependencies.py、middleware.py、exception_handlers.py。
 - `identity/`、`monitors/`、`jobs/` 拥有各自 models.py、schemas.py、services.py。models 定义 SQLAlchemy 持久结构，schemas 定义 Pydantic 契约，services 拥有事务和业务行为。禁止用通用 Workspace/BaseService 聚合无关领域；不为每个简单查询增加无意义仓储层。
