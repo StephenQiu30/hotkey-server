@@ -2,7 +2,9 @@
 
 本文件适用于整个仓库。后端固定 Python、SQLAlchemy 2、FastAPI、PostgreSQL、Redis、Kafka；前端固定 pnpm、Next.js、shadcn/ui、Radix UI、Tailwind CSS、Axios、ESLint、Prettier。
 
-实现切片必须具备 Design、需求、Plan 和 Acceptance；正式文档使用 `docs/TEMPLATE.md`，编号登记在 `docs/README.md`。
+本文件是架构、目录和实现规则的唯一执行规范。PROJECT 固定技术选型，模块 README 记录使用方式，HANDOVER 记录实现状态；这些文件不得定义冲突的架构规则。变更架构或目录时必须先更新本文件和对应 Design，再修改代码。
+
+实现前明确 Design、需求、Plan 和验收标准；完成真实验证后建立 Acceptance。正式文档使用 `docs/TEMPLATE.md`，编号登记在 `docs/README.md`。
 
 ## 任务开始前的目录与选型门禁
 
@@ -47,7 +49,7 @@
 
 ## FastAPI 目录与命名（必须执行）
 
-- 后端固定为模块化单体，按业务领域分组，采用 Router、Service、Schema、Model 分层；完整目录标准在 `backend/README.md`。Repository 仅在查询复杂或需复用时增加，不创建通用 BaseRepository、ServiceImpl 或每层一套空接口。
+- 后端固定为模块化单体，按业务领域分组，采用 Router、Service、Schema、Model 分层。Repository 仅在查询复杂或需复用时增加，不创建通用 BaseRepository、ServiceImpl 或每层一套空接口。
 - 后端切片在 Design 阶段明确领域归属、变更路径、路由与 DTO、服务入口、事务所有者、跨领域依赖及消息恢复行为；业务和目录规范确定后再创建模块。
 - 最外层业务用例提交或回滚事务；依赖注入只管理 Session 创建与释放。跨领域原子写共用 Session，内层函数不自行提交。HTTP 和 Worker 各自装配服务，业务服务不依赖 HTTP 上下文。
 - 后端工程及 Compose HTTP 服务均为 `backend`，作为普通应用运行，不构建独立安装包；禁止恢复 `server/` 别名。部署入口为 `main:create_app`。
@@ -62,3 +64,145 @@
 - 不因“异步更先进”将同步psycopg调用放进`async def`路由。只有整条调用链非阻塞且有独立并发/连接池验证时才引入AsyncSession，并保证每个并发task独立Session。
 
 - `sources/` 的适配器不依赖 API、ORM、Worker 或 CLI；业务来源契约不导入 HTTP 客户端。来源探测只经独立 CLI 显式执行，查询预览不发送网络请求。未通过持久化采集验收前，来源连接状态保持 not_connected。
+
+### 固定技术与运行入口
+
+| 项目 | 固定要求 |
+|---|---|
+| HTTP 服务 | Python 3.12、FastAPI、Uvicorn |
+| 契约与配置 | Pydantic 2、pydantic-settings；配置使用 `HOTKEY_` 前缀 |
+| 数据访问 | SQLAlchemy 2、psycopg 3、PostgreSQL；默认同步 Session |
+| 迁移 | Alembic；独立发布步骤，不在应用启动时自动执行 |
+| 缓存与事件 | Redis 负责可重建状态；Kafka 负责持久任务事件 |
+| 对象存储 | MinIO，适配器归 `evidence/adapters/` |
+| 工具 | Ruff、mypy、pytest、HTTPX；依赖精确版本随锁文件提交 |
+| API 入口 | 在 `backend/src/` 执行 `uvicorn main:create_app --factory` |
+| Worker 入口 | 在 `backend/src/` 执行 `python -m worker` |
+| CLI 入口 | 在 `backend/src/` 执行 `python -m cli` |
+
+Kafka、Redis、MinIO 客户端及锁文件工具在底座 Design 中明确后安装，不在实现中临时引入第二套工具链。
+
+### 后端目录标准
+
+以下为目标结构；按实际切片创建文件。领域模块无持久化需求时不创建 models.py，无查询复用需求时不创建 repositories.py。Python 包必须有 `__init__.py`，图中省略。
+
+```text
+backend/
+├── pyproject.toml                 # 依赖、Python 版本、检查和测试配置
+├── Dockerfile
+├── alembic.ini
+├── migrations/
+│   ├── env.py                     # 使用 db.metadata 注册的模型
+│   └── versions/                  # 不可改写的已发布迁移
+├── src/
+│   ├── main.py                    # 唯一 create_app 与 lifespan 装配
+│   ├── api/
+│   │   ├── router.py              # 注册所有 HTTP 路由
+│   │   ├── dependencies.py        # 身份、Session、服务的类型化注入
+│   │   ├── middleware.py          # 请求 ID 和访问日志
+│   │   ├── exception_handlers.py  # 业务异常转 HTTP 响应
+│   │   └── routers/<resource>.py  # 资源接口，不含业务实现
+│   ├── core/
+│   │   ├── config.py              # pydantic-settings
+│   │   ├── errors.py              # 与 HTTP 无关的异常
+│   │   └── schemas.py             # 公共输入输出基类
+│   ├── db/
+│   │   ├── base.py                # 唯一 DeclarativeBase
+│   │   ├── session.py             # Engine 与 Session 工厂
+│   │   └── metadata.py            # 仅用于模型注册
+│   ├── <domain>/                  # 按业务领域命名
+│   │   ├── models.py              # 表、关系、索引和约束
+│   │   ├── schemas.py             # 输入、输出和服务 DTO
+│   │   ├── services.py            # 业务规则、资源权限、事务
+│   │   ├── repositories.py        # 按需拆出的查询与持久化
+│   │   └── adapters/              # 按需隔离外部 SDK
+│   ├── worker/
+│   │   ├── __main__.py
+│   │   ├── app.py                 # 生命周期和服务装配
+│   │   └── messaging.py           # Kafka 收发与提交位点
+│   └── cli/
+│       ├── __main__.py
+│       └── commands.py
+└── tests/
+    ├── conftest.py                # 隔离环境与公共 fixture
+    ├── unit/
+    ├── integration/
+    └── architecture/
+```
+
+| 领域目录 | 唯一业务主责 |
+|---|---|
+| `identity/` | 身份、账号及授权规则 |
+| `monitors/` | 监控配置与规则 |
+| `jobs/` | 任务、Outbox、执行状态机、取消与恢复 |
+| `sources/` | 来源契约、来源适配器与采集能力 |
+| `evidence/` | 证据元数据、文件与 MinIO 适配器 |
+| `ai/` | 模型调用契约及 SDK 适配器 |
+| `audit/` | 跨领域审计记录 |
+
+新增领域必须先在切片 Design 登记主责、依赖和目标目录，再更新本表；不得把业务代码堆入 `core/`、全局 `utils/` 或全局 `models/`。
+
+### 依赖、事务与资源边界
+
+| 层 | 允许依赖 | 禁止事项 |
+|---|---|---|
+| Router | Schema、API 依赖别名 | SQLAlchemy、直接导入或构造 Service、发布消息 |
+| API dependencies | Session 工厂、Service、身份依赖 | 业务编排、自动提交事务 |
+| Service | 本领域 ORM/Repository、Schema、显式领域服务、适配器契约 | HTTP 上下文、直接访问其他领域 ORM、循环依赖 |
+| Schema | Pydantic、标准类型、公共 Schema | ORM、Session、FastAPI |
+| Model/Repository | SQLAlchemy、db 基类、本领域数据结构 | HTTP、调用上层 Service、独立 commit |
+| Adapter | 外部 SDK、所属领域契约 | HTTP 路由、任务状态机、修改其他领域数据 |
+| Worker/CLI | 业务服务、运行资源与装配 | 复制业务规则、调用 HTTP 路由实现 |
+
+- 服务简单时使用函数；需要持有注入依赖时使用类。只为实际可替换边界定义 Protocol，不要求每个服务都配接口与实现类。
+- 最外层用例显式开启并结束事务；跨领域写入由编排方传入同一 Session，内层只读写或 flush。独立任务重新取得 Session。
+- Session 按请求或任务创建，不跨并发执行单元共享；请求依赖清理时仅释放或回滚未完成事务。响应 DTO 在 Session 有效期内构造，禁止响应序列化触发隐式数据库访问。
+- Engine、连接池和外部客户端按进程初始化，由 API lifespan 或 Worker 生命周期释放；导入模块时不建立网络连接。
+- 同步数据库使用 `def` 路由；异步 Worker 调用同步业务时，整个用例及 Session 生命周期在同一个受控执行单元内完成。不得在事件循环中直接调用阻塞数据库或 SDK。
+- API 与 Worker 独立运行；FastAPI lifespan 不启动业务消费者。存活检查验证进程，就绪检查验证必需依赖；必需资源初始化失败必须阻止服务就绪。
+- 数据写入和 Outbox 原子提交；Worker 幂等完成业务事务后再提交 offset。失败重投、死信、取消和恢复策略必须在任务 Design 中明确。
+
+### 前后端契约与目录标准
+
+```text
+frontend/src/
+├── app/
+│   ├── page.tsx
+│   ├── components/               # 根页面专属组件
+│   └── <route>/
+│       ├── page.tsx
+│       └── components/           # 对应页面或路由树专属组件
+├── components/
+│   ├── ui/                       # shadcn/Radix 基础组件
+│   └── <feature>/                # 按功能分类的跨页面复用组件
+├── api/                          # Umi OpenAPI 生成文件
+├── lib/                          # 无业务语义的纯工具
+├── request.ts                    # 唯一 Axios 传输层
+└── proxy.ts                      # 同源代理与 CSP
+```
+
+- HTTP 契约链固定为 FastAPI/Pydantic → `docs/openapi/openapi.json` → Umi OpenAPI → `frontend/src/api/` → `src/request.ts`。后端输入、输出 Schema 分离；响应不得暴露敏感字段。
+- 每个端点显式声明稳定的 `operation_id`、tag、成功状态、响应模型和适用错误响应。客户端生成物与对应契约变更同批交付。
+- 页面专属组件不得被所属路由树外部导入；需要跨页面复用时迁移至对应 `components/<feature>/`。不创建 `src/features`、`common`、`patterns`、`shared` 或前端 `scripts` 目录。
+
+### 设计阶段必须交付的内容
+
+| 内容 | 必须明确 |
+|---|---|
+| 文件清单 | 新增、修改、移动、生成文件的确切路径及职责 |
+| 领域边界 | 主责模块、服务入口、允许依赖及跨领域调用 |
+| 数据 | ORM、Schema、迁移、约束、事务所有者与回滚行为 |
+| HTTP | 方法、路径、身份和资源权限、operation_id、响应与错误 |
+| 任务 | 消息契约、幂等、offset、超时、重试、取消与恢复 |
+| 前端 | 组件名称、分类、复用范围、路径、数据来源和各状态 |
+| 验收 | 必要场景、验证命令、隔离依赖、完成条件及证据位置 |
+
+无明确职责或没有当前使用方的文件不得提前创建。实现改变以上决策时，同步更新 Design 和本规范。
+
+### 实施验收要求
+
+- 后端初始化时配置 Ruff、严格 mypy、pytest 及 `src` 导入路径；建立架构测试约束实际模块和依赖方向。
+- 单元测试验证业务规则；集成测试验证 HTTP/OpenAPI、事务、迁移、依赖释放及真实隔离 PostgreSQL、Redis、Kafka 行为。
+- 数据库或消息改动必须验证回滚、重复消费和进程重启恢复；不能用 mock 通过代替真实集成验收。
+- 前端运行 ESLint、TypeScript、Prettier 和生产构建；页面变更完成桌面与窄屏浏览器检查。
+- 文档变更检查路径、命名和规则一致性。规划目录不代表代码已经存在，测试目标不代表已经通过。

@@ -46,7 +46,7 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 
 ### Python 后端与基础设施
 
-架构固定为模块化单体，按业务领域分组；Router 处理 HTTP，Service 处理业务与事务，Pydantic Schema 定义契约，SQLAlchemy Model 定义持久化。Repository 按需引入。目录和依赖标准见 [后端规范](backend/README.md)。
+架构固定为模块化单体，按业务领域分组；Router 处理 HTTP，Service 处理业务与事务，Pydantic Schema 定义契约，SQLAlchemy Model 定义持久化。Repository 按需引入。完整目录、文件职责、依赖方向、事务和验收标准统一执行根目录 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
 **Python + SQLAlchemy 2 ORM + FastAPI + PostgreSQL（PGSQL）+ Redis + Kafka。**
 
