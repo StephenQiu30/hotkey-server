@@ -29,11 +29,13 @@ src/
 
 ## API
 
-FastAPI OpenAPI 快照位于 `../docs/openapi/openapi.json`。生成客户端：
+启动后端后，直接读取其自动生成的 `/openapi.json` 生成客户端：
 
 ```bash
 pnpm openapi:generate
 ```
+
+默认地址为 `http://127.0.0.1:8867/openapi.json`；其他环境使用 `HOTKEY_OPENAPI_URL=https://api.example.com/openapi.json pnpm openapi:generate`。该变量需传入命令环境，生成器不自动加载 Next.js 的 `.env.local`。
 
 生成结果直接写入 `src/api/`，统一调用 `src/request.ts`。请求封装负责凭据、超时、响应数据提取以及错误标准化。
 

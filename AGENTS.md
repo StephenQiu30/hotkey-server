@@ -22,7 +22,7 @@
 - Web 依赖统一由 pnpm 管理，提交 pnpm-lock.yaml 并在 package.json 声明 packageManager；不混用 npm/yarn 锁文件。
 - Web 设计固定为组件优先的无边框系统：路由组合页面组件、按功能领域分类的复用组件与 ui 组件，默认信息表面不用装饰性边框；输入、焦点、错误与浮层保留必要轮廓。布局只使用 Tailwind 命名尺度和 `sm/md/lg/xl/2xl` 响应式层级，禁止原始像素值和任意布局尺寸。前端不建立独立 `scripts/` 目录，使用 ESLint、TypeScript、Prettier、生产构建和代码审查维护这些约束。
 - 每个前端切片必须在 Design 阶段列出组件名称、所属 feature、复用范围、目标路径、数据来源和状态覆盖。页面专属组件不得提前放入公共目录；只有至少两个页面存在稳定复用时才迁移到 `components/<feature>/`。
-- 唯一 HTTP 契约由 FastAPI 路由与 Pydantic 模型生成，运行时位于 `/openapi.json`，可复现快照为 `docs/openapi/openapi.json`；前端端点函数与类型全部由 `@umijs/openapi` 生成，禁止手写端点请求。
+- 唯一 HTTP 契约由 FastAPI 路由装饰器、类型注解和 Pydantic 模型自动生成，通过 `/openapi.json` 提供；前端端点函数与类型全部由 `@umijs/openapi` 读取该地址生成。禁止手写契约 JSON/YAML、端点请求及生成类型。
 - `docs/` 保存 Research、PRD、Design、Plan、Acceptance、Operations。历史实现从 Git 查询，不在工作树中归档。目标能力不得描述为已完成。
 - 修改前阅读相关设计和测试。行为变化先验证失败，再实现；修复需针对实际故障验证。
 - API 路由负责协议、认证和验证；业务服务负责事务；SQLAlchemy 模型负责持久化。禁止路由直接执行 SQL 或发布消息。
@@ -111,6 +111,9 @@
 - 增强交互文档默认使用 `scalar-fastapi`，入口 `/scalar`，与 Swagger UI 共用 `/openapi.json`；不额外开启 ReDoc。
 - Knife4j 只有在明确要求该产品时作为替代 UI 接入，不能安装 Spring Boot starter 到 Python 后端。接入前验证实际 OpenAPI 版本、nullable、联合类型、认证与调试兼容性；不得只修改 Schema 版本号冒充兼容。
 - 不手写第二份 Swagger JSON，不另用注解体系生成契约；文档 UI 和 Umi OpenAPI 客户端读取同一份契约。
+- 接口变更只修改路由装饰器、参数类型、`Field`/`Query`/`Path` 声明和 Pydantic 模型。后端重载或重启后，FastAPI 自动更新 `/openapi.json`，Swagger UI 和增强文档刷新后展示新契约；不逐接口维护文档页面。
+- Umi OpenAPI 的 `schemaPath` 直接指向后端 `/openapi.json`，通过命令环境变量 `HOTKEY_OPENAPI_URL` 覆盖。生成客户端需要执行 `pnpm openapi:generate`，不宣称后端变更会自动热更新 TypeScript 文件。
+- 后端底座 CI 必须启动同一提交的应用，自动执行客户端生成和类型检查，并检查生成差异；契约不可读取或生成失败时构建失败。需要归档的 JSON 仅由程序导出为 CI 产物，不作为手工维护的源文件。
 - `api/docs.py` 负责文档 UI 注册，由 `main.py` 装配；文档页面使用 `include_in_schema=False`，不得进入生成客户端。
 - 端点必须填写中文 summary、必要 description、tag、operation_id、参数约束、成功和错误模型、适用示例及认证方式。
 - Swagger UI 与增强文档的静态资源固定版本；生产文档在受控入口开放或关闭，调试功能沿用真实 API 权限。
@@ -218,7 +221,7 @@ frontend/src/
 └── proxy.ts                      # 同源代理与 CSP
 ```
 
-- HTTP 契约链固定为 FastAPI/Pydantic → `docs/openapi/openapi.json` → Umi OpenAPI → `frontend/src/api/` → `src/request.ts`。后端输入、输出 Schema 分离；响应不得暴露敏感字段。
+- HTTP 契约链固定为路由装饰器/类型注解/Pydantic → 运行时 `/openapi.json` → Umi OpenAPI → `frontend/src/api/` → `src/request.ts`。后端输入、输出 Schema 分离；响应不得暴露敏感字段。
 - 每个端点显式声明稳定的 `operation_id`、tag、成功状态、响应模型和适用错误响应。客户端生成物与对应契约变更同批交付。
 - 页面专属组件不得被所属路由树外部导入；需要跨页面复用时迁移至对应 `components/<feature>/`。不创建 `src/features`、`common`、`patterns`、`shared` 或前端 `scripts` 目录。
 

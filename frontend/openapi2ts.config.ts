@@ -1,5 +1,6 @@
 export default {
-  schemaPath: "../docs/openapi/openapi.json",
+  schemaPath:
+    process.env.HOTKEY_OPENAPI_URL ?? "http://127.0.0.1:8867/openapi.json",
   serversPath: "./src",
   projectName: "api",
   requestLibPath: "@/request",

@@ -80,7 +80,7 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 4. Redis 的数据丢失不能导致任务或证据丢失。缓存设有效期与失效规则；限流故障时采用明确的保守策略。执行权、不可超额预算与撤权不能只依赖 Redis 锁或缓存。
 5. `worker/` 维护 Kafka 客户端和消费者生命周期，`jobs/` 维护任务状态机；拟定入口 `python -m worker`。在 031/042 设计中明确 topic、partition key、consumer group、重试、死信、延迟/周期调度和再均衡处理，不能把 Kafka 当作已有任务调度器。
 6. API、Worker 各自创建数据库连接池和消息客户端，Session 不跨线程/任务共享。同步数据库调用不直接放入异步路由。
-7. 唯一 HTTP 契约为 FastAPI/Pydantic，快照固定在 `docs/openapi/openapi.json`。Web 使用 Umi OpenAPI 生成客户端，Flutter 使用同一契约。
+7. FastAPI 从路由装饰器、类型注解和 Pydantic 模型自动生成 `/openapi.json`。Swagger UI、Scalar 和 Umi OpenAPI 共用该地址，不维护独立契约文件；Flutter 使用同一契约。客户端由生成命令更新，CI 负责自动生成与差异检查。
 
 ## 4. 产品约束与未定事项
 
