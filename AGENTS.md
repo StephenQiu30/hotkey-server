@@ -10,7 +10,7 @@
 - 技术选择已有用户决定的直接沿用；影响本片的部署、费用、平台范围或新框架等未决项，先给出选项和影响询问用户，未答复不执行依赖该决定的工作。普通实现细节按已定规范处理，不重复确认已确定的技术栈。
 - 用户已明确：复用现有MinIO作对象存储；不付费采购内容，采用免费或自建服务；X等主流信息平台优先发现，评论研究覆盖B站/微博/小红书/抖音。AI推理费用范围单独确认，不将内容预算解释成付费AI授权。
 - 新后端模块、前端功能目录必须登记职责并纳入全源码/依赖检查；门禁重新实现并验证前，不得声称已覆盖新模块。
-- 按业务切片创建目录，不提前创建空模块。来源适配器放sources/adapters，MinIO适配器放evidence/adapters，模型SDK适配器放ai/adapters；业务状态仍由业务模块持有。前端页面使用 frontend/src/app，业务功能使用 frontend/src/features，生成客户端固定在src/api，Axios封装固定在src/request.ts，不创建shared层。
+- 按业务切片创建目录，不提前创建空模块。来源适配器放sources/adapters，MinIO适配器放evidence/adapters，模型SDK适配器放ai/adapters；业务状态仍由业务模块持有。前端页面使用 `frontend/src/app`，页面专属组件放对应路由的 `components/`，跨页面复用组件按明确功能领域放 `frontend/src/components/<feature>/`，shadcn 基础组件放 `components/ui/`。不创建 `features`、`common`、`patterns` 或 `shared` 层；生成客户端固定在 `src/api`，Axios 封装固定在 `src/request.ts`。
 
 - `backend/` 是唯一后端：Python 3.12、FastAPI、Pydantic、SQLAlchemy 2、Alembic、PostgreSQL、Redis、Kafka。禁止恢复 Go 后端、独立旧 Agent 或兼容旧接口。
 - `frontend/` 是唯一 Web 前端，采用 pnpm、Next.js App Router、React、TypeScript、Tailwind CSS、shadcn/ui、Radix UI、Axios、ESLint 和 Prettier。工作台入口由 `frontend/src/app/` 管理；公开产品页与 SEO 路由必须以真实可公开内容为基础，登录工作台使用 `noindex`，不可加入 sitemap。
@@ -18,7 +18,8 @@
 - Next 配置位于 `frontend/next.config.ts`，页面 CSP 使用 `frontend/src/proxy.ts` 的逐请求 nonce。浏览器对 `/api/*` 的请求保持同源，Compose 服务环境将 `HOTKEY_API_ORIGIN` 指向 `http://backend:8080`，本机开发默认 `http://127.0.0.1:8867`；容器内 Web 端口固定为 `8080`。生产镜像使用 standalone 输出和非 root 用户，生产文件系统保持只读。
 - 独立客户端仓库固定为同级 `hotkey-app`，使用 Flutter + Dart；Web 只在本仓库 `frontend/` 实现。两个仓库各自维护根 PROJECT.md 与 HANDOVER.md。
 - Web 依赖统一由 pnpm 管理，提交 pnpm-lock.yaml 并在 package.json 声明 packageManager；不混用 npm/yarn 锁文件。
-- Web 设计固定为组件优先的无边框系统：路由组合 feature/pattern/ui 组件，默认信息表面不用装饰性边框；输入、焦点、错误与浮层保留必要轮廓。布局只使用 Tailwind 命名尺度和 `sm/md/lg/xl/2xl` 响应式层级，禁止原始像素值和任意布局尺寸。前端不建立独立 `scripts/` 目录，使用 ESLint、TypeScript、Prettier、生产构建和代码审查维护这些约束。
+- Web 设计固定为组件优先的无边框系统：路由组合页面组件、按功能领域分类的复用组件与 ui 组件，默认信息表面不用装饰性边框；输入、焦点、错误与浮层保留必要轮廓。布局只使用 Tailwind 命名尺度和 `sm/md/lg/xl/2xl` 响应式层级，禁止原始像素值和任意布局尺寸。前端不建立独立 `scripts/` 目录，使用 ESLint、TypeScript、Prettier、生产构建和代码审查维护这些约束。
+- 每个前端切片必须在 Design 阶段列出组件名称、所属 feature、复用范围、目标路径、数据来源和状态覆盖。页面专属组件不得提前放入公共目录；只有至少两个页面存在稳定复用时才迁移到 `components/<feature>/`。
 - 唯一 HTTP 契约由 FastAPI 路由与 Pydantic 模型生成，运行时位于 `/openapi.json`，可复现快照为 `docs/openapi/openapi.json`；前端端点函数与类型全部由 `@umijs/openapi` 生成，禁止手写端点请求。
 - `docs/` 保存 Research、PRD、Design、Plan、Acceptance、Operations。历史实现从 Git 查询，不在工作树中归档。目标能力不得描述为已完成。
 - 修改前阅读相关设计和测试。行为变化先验证失败，再实现；修复需针对实际故障验证。
@@ -53,7 +54,7 @@
 - 路由禁止导入 SQLAlchemy、业务 models、services 实现、执行器或消息组件；只能通过 `api/dependencies.py` 注入服务。禁止经 request.app.state 在路由中绕过业务服务读写数据库或发布任务。服务、模型、Schema 不导入 FastAPI/Starlette/HTTP 路由；Schema 不导入 ORM 或数据库资源。
 - 每个HTTP操作必须有唯一人工`operation_id`、tag、成功状态和Pydantic响应模型；错误响应按操作显式声明，不在应用级虚报所有状态码。输入继承严格Input并给集合、字符串、页大小和正文设置上限。游标不得泄漏内部数据，应有明确的校验和分页边界。
 - Python 文件、目录、函数使用 snake_case，类使用 PascalCase，常量使用 UPPER_SNAKE_CASE；同类职责文件统一使用 models.py / schemas.py / services.py。绝对导入；`__init__.py` 仅标识包或说明包，不放业务代码和重导出别名。迁移 revision 文件属于已冻结历史，禁止为命名美观改写或重编号。
-- 测试放 `backend/tests/unit/`、`backend/tests/integration/`、`backend/tests/architecture/`，公共 fixture 放 tests/conftest.py；独立容器验证脚本为 `backend/scripts/verify_*.py`，不得伪装成 pytest 测试。组件使用 PascalCase.tsx；生成客户端固定在 `frontend/src/api/`，Axios 传输封装固定在 `frontend/src/request.ts`，不创建 shared 层，英文 README 为 README.en.md。
+- 测试放 `backend/tests/unit/`、`backend/tests/integration/`、`backend/tests/architecture/`，公共 fixture 放 tests/conftest.py；独立容器验证脚本为 `backend/scripts/verify_*.py`，不得伪装成 pytest 测试。组件文件使用 kebab-case.tsx，导出组件使用 PascalCase；生成客户端固定在 `frontend/src/api/`，Axios 传输封装固定在 `frontend/src/request.ts`，不创建 features/patterns/shared 层，英文 README 为 README.en.md。
 - 后端结构与依赖方向由 architecture 测试强制检查；前端 Next 层登记与依赖方向遵循本文件及 `frontend/DESIGN.md`，并通过 ESLint、TypeScript、生产构建和代码审查验证。Ruff 检查命名/绝对导入，mypy 严格检查后端应用与工具；锁文件、应用迁移、HTTP 和消息契约必须在目录重构中保持可验证。增加架构例外需同步 Design，禁止添加宽泛忽略绕过标准检查。
 - 不因“异步更先进”将同步psycopg调用放进`async def`路由。只有整条调用链非阻塞且有独立并发/连接池验证时才引入AsyncSession，并保证每个并发task独立Session。
 

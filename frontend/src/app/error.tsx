@@ -2,7 +2,7 @@
 
 import { RotateCcwIcon } from "lucide-react";
 
-import { PageState } from "@/components/patterns/page-state";
+import { PageState } from "@/components/system/page-state";
 import { Button } from "@/components/ui/button";
 
 type ErrorBoundaryProps = {

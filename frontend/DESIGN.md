@@ -26,9 +26,14 @@
 - 基础组件由 shadcn CLI 添加并保存在 `src/components/ui/`；底层固定为 Radix。
 - 使用组件提供的 variant/size，图标来自 Lucide。按钮内图标设置 `data-icon="inline-start|inline-end"`。
 - Card 使用 `CardHeader`、`CardTitle`、`CardDescription`、`CardContent`、`CardFooter` 等完整组合。
-- 跨功能页面模式保存在 `src/components/patterns/`；路由只组合 feature 与 pattern，不复制完整页面状态。
-- 每个业务切片在 `src/features/<feature>/` 实现正常、空、加载、部分、错误和无权限状态；禁止在页面中复制后端权限或业务规则。
+- 不建立 `src/features/`。需要被多个页面复用的业务组件按领域放在 `src/components/<feature>/`，例如监控组件进入 `src/components/monitoring/`，事件组件进入 `src/components/events/`。
+- shadcn 基础组件只进入 `src/components/ui/`；其他复用组件必须按明确的功能领域归类，例如全局页面状态进入 `src/components/system/`。不得使用 `common`、`patterns`、`shared` 等职责不明确的目录。
+- 只服务单个页面或单个路由树的组件放在对应路由目录的 `components/` 中。根页面使用 `src/app/components/`；嵌套路由使用 `src/app/<route>/components/`，并且不得从所属路由树外部导入。
+- `page.tsx` 只负责页面入口、数据边界和组件组合。页面专属组件不提前提升为公共组件；确认至少两个页面存在稳定复用后，才迁移到对应的 `src/components/<feature>/`。
+- 每个业务页面必须覆盖正常、空、加载、部分、错误和无权限状态；禁止在页面组件中复制后端权限或业务规则。
 - Umi OpenAPI 根据 Swagger/OpenAPI 快照把端点与类型直接生成到 `src/api/`，不增加 `generated/` 中间层；浏览器请求只调用这些生成文件，传输错误由 `src/request.ts` 统一承接。
+
+组件目录必须在切片 Design 阶段确定。设计文档逐项记录组件名称、所属 feature、复用范围、目标路径、数据来源和状态覆盖；未明确这些信息前不创建组件目录。评审顺序固定为：先判断是否为 shadcn 基础组件，再判断是否已被多个页面复用并确定其功能领域，其余组件保留在页面自己的 `components/` 中。
 
 ## 4. 响应与可访问性
 
@@ -41,7 +46,7 @@
 ## 5. 可用性与维护性
 
 - App Router 提供 loading、error、global-error 与 not-found 边界，局部失败不得产生空白页。
-- 统一 PageState 组件承接错误、空态、无权限和恢复操作；Skeleton 承接加载状态。
+- `src/components/system/PageState` 承接错误、空态、无权限和恢复操作；Skeleton 承接加载状态。
 - `/health` 只证明 Web 进程可响应，后端依赖状态由后端 readiness 负责。
 - 前端不维护独立检查脚本；目录边界和设计约束通过本文件、组件封装、ESLint、TypeScript、Prettier、生产构建与代码审查共同保持。
 - 生产镜像保持 standalone、非 root、只读文件系统，并通过容器健康检查暴露运行状态。

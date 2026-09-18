@@ -20,10 +20,10 @@ pnpm dev
 frontend/
 ├── Dockerfile               # Node 24、standalone、非 root 生产镜像
 ├── src/
-│   ├── app/                 # App Router 路由、布局、Metadata
+│   ├── app/                 # App Router；各页面专属组件放本路由 components/
 │   ├── api/                 # @umijs/openapi 直接生成，禁止手改
 │   ├── components/ui/       # shadcn CLI 管理的基础组件
-│   ├── features/<feature>/  # 业务切片；组件、模型与状态就近组织
+│   ├── components/<feature>/# 被多个页面复用的业务组件
 │   ├── lib/                 # 无业务语义的纯工具
 │   ├── proxy.ts             # CSP nonce 与同源 API 代理
 │   └── request.ts           # 唯一 Axios 传输封装
@@ -33,9 +33,9 @@ frontend/
 └── openapi2ts.config.ts     # FastAPI OpenAPI 客户端生成配置
 ```
 
-不建立 `shared/`、手写 API 端点或第二套 HTTP 客户端。`app` 只负责路由组合，业务代码进入 `features`；功能间不直接互相导入。前端不维护单独的 `scripts/` 目录，工程检查统一使用框架和工具链的标准命令。
+不建立 `features/`、`common/`、`patterns/`、`shared/`，不手写 API 端点或第二套 HTTP 客户端。页面专属组件放在对应 `app/<route>/components/`；至少被两个页面稳定复用的组件才按明确功能领域进入 `components/<feature>/`。前端不维护单独的 `scripts/` 目录，工程检查统一使用框架和工具链的标准命令。
 
-设计采用组件优先的无边框体系：页面优先组合 `features`、`components/patterns` 和 `components/ui`，默认信息表面不使用装饰性边框。布局只使用 Tailwind 命名尺度以及 `sm`、`md`、`lg`、`xl`、`2xl` 响应式层级；不写原始像素值或任意布局尺寸。
+设计采用组件优先的无边框体系：页面组合自己的 `components/`、可复用的 `components/<feature>/` 和 `components/ui/`，默认信息表面不使用装饰性边框。布局只使用 Tailwind 命名尺度以及 `sm`、`md`、`lg`、`xl`、`2xl` 响应式层级；不写原始像素值或任意布局尺寸。新增页面必须先在 Design 中列出组件归属、复用范围、目标路径、数据来源和状态覆盖，再开始实现。
 
 ## OpenAPI 客户端
 

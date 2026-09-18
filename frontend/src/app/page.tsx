@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 
-import { FoundationHome } from "@/features/foundation/components/foundation-home";
+import { FoundationHome } from "@/app/components/foundation-home";
 
 export default async function Home() {
   await connection();

@@ -16,10 +16,11 @@
 - Web 归本仓库 `frontend/`；同级 `hotkey-web` 本地重命名为 `hotkey-app`，固定 Flutter，前端归属冲突已关闭。
 - 使用官方 `create-next-app` 建立 Next.js 16.3.5 / React 19.2.8 / pnpm 12.3.4 工程，并用官方 shadcn CLI 的 Radix Nova 预设建立基础组件。
 - 按根 `DESIGN.md` 映射 Geist、颜色、间距与 Hero 渐变；固定 HotKey 无边框规则，默认 Card 通过表面和留白分层，输入、焦点、错误态与浮层保留必要轮廓。
-- 建立 `src/app`、`src/features`、`src/components/ui`、`src/api`、`src/request.ts` 的目录边界；Umi OpenAPI 生成物直接进入 `src/api/`。
+- 建立 `src/app`、`src/components/<feature>`、`src/components/ui`、`src/api`、`src/request.ts` 的目录边界；不建立 `src/features` 或含糊的公共层，Umi OpenAPI 生成物直接进入 `src/api/`。
 - 建立 Axios 传输层、`@umijs/openapi` 配置、Next.js 16 `proxy.ts` 同源 API 转发与逐请求 CSP nonce，以及 Node.js 24.19.0 standalone 非 root 生产镜像。
 - 建立可响应的基础页面、Metadata/manifest 和唯一图标母版；页面明确区分工程基础与尚未交付的产品能力。
 - 将设计固定为组件优先的无边框系统，把基础页拆为独立 Header、Hero、能力概览、设计原则与状态组件；统一使用 `sm/md/lg/xl/2xl` 和 Tailwind 命名尺度。
+- 首页专属组件归入 `src/app/components/`，跨页面状态组件按 system 功能领域归入 `src/components/system/`；后续可复用组件按明确 feature 进入 `src/components/<feature>/`，并在切片 Design 阶段先记录归属、复用范围、目标路径、数据来源和状态覆盖。
 - 前端不建立独立 `scripts/` 目录；设计和目录约束由规范、组件封装及 ESLint、TypeScript、Prettier、生产构建共同维护。shadcn 基础组件中的固定布局值已归一为命名尺度。
 - 增加 loading、error、global-error、not-found、PageState 与 `/health`，降低路由失败产生空白页的风险；Docker 镜像增加进程健康检查。
 
