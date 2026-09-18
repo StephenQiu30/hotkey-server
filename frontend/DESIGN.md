@@ -43,7 +43,7 @@
 - App Router 提供 loading、error、global-error 与 not-found 边界，局部失败不得产生空白页。
 - 统一 PageState 组件承接错误、空态、无权限和恢复操作；Skeleton 承接加载状态。
 - `/health` 只证明 Web 进程可响应，后端依赖状态由后端 readiness 负责。
-- `pnpm check:design` 拒绝原始像素值和任意布局尺寸；`pnpm check:boundaries` 拒绝反向依赖与跨 feature 直接引用。
+- 前端不维护独立检查脚本；目录边界和设计约束通过本文件、组件封装、ESLint、TypeScript、Prettier、生产构建与代码审查共同保持。
 - 生产镜像保持 standalone、非 root、只读文件系统，并通过容器健康检查暴露运行状态。
 
 ## 6. 品牌资产

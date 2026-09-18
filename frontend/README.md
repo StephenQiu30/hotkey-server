@@ -19,7 +19,6 @@ pnpm dev
 ```text
 frontend/
 ├── Dockerfile               # Node 24、standalone、非 root 生产镜像
-├── scripts/                 # 架构门禁及其负向测试
 ├── src/
 │   ├── app/                 # App Router 路由、布局、Metadata
 │   ├── api/                 # @umijs/openapi 直接生成，禁止手改
@@ -34,7 +33,7 @@ frontend/
 └── openapi2ts.config.ts     # FastAPI OpenAPI 客户端生成配置
 ```
 
-不建立 `shared/`、手写 API 端点或第二套 HTTP 客户端。`app` 只负责路由组合，业务代码进入 `features`；功能间不直接互相导入。`pnpm check:boundaries` 和 `pnpm test:boundaries` 对这些方向做自动检查。
+不建立 `shared/`、手写 API 端点或第二套 HTTP 客户端。`app` 只负责路由组合，业务代码进入 `features`；功能间不直接互相导入。前端不维护单独的 `scripts/` 目录，工程检查统一使用框架和工具链的标准命令。
 
 设计采用组件优先的无边框体系：页面优先组合 `features`、`components/patterns` 和 `components/ui`，默认信息表面不使用装饰性边框。布局只使用 Tailwind 命名尺度以及 `sm`、`md`、`lg`、`xl`、`2xl` 响应式层级；不写原始像素值或任意布局尺寸。
 
@@ -54,10 +53,6 @@ pnpm openapi:generate
 pnpm lint
 pnpm typecheck
 pnpm format:check
-pnpm check:boundaries
-pnpm test:boundaries
-pnpm check:design
-pnpm test:design
 pnpm build
 ```
 

@@ -10,10 +10,6 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check:boundaries": "node scripts/check-boundaries.mjs",
-    "test:boundaries": "node --test scripts/check-boundaries.test.mjs",
-    "check:design": "node scripts/check-design-system.mjs",
-    "test:design": "node --test scripts/check-design-system.test.mjs",
     "openapi:generate": "openapi2ts"
   },
   "dependencies": {

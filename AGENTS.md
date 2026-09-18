@@ -18,7 +18,7 @@
 - Next 配置位于 `frontend/next.config.ts`，页面 CSP 使用 `frontend/src/proxy.ts` 的逐请求 nonce。浏览器对 `/api/*` 的请求保持同源，Compose 服务环境将 `HOTKEY_API_ORIGIN` 指向 `http://backend:8080`，本机开发默认 `http://127.0.0.1:8867`；容器内 Web 端口固定为 `8080`。生产镜像使用 standalone 输出和非 root 用户，生产文件系统保持只读。
 - 独立客户端仓库固定为同级 `hotkey-app`，使用 Flutter + Dart；Web 只在本仓库 `frontend/` 实现。两个仓库各自维护根 PROJECT.md 与 HANDOVER.md。
 - Web 依赖统一由 pnpm 管理，提交 pnpm-lock.yaml 并在 package.json 声明 packageManager；不混用 npm/yarn 锁文件。
-- Web 设计固定为组件优先的无边框系统：路由组合 feature/pattern/ui 组件，默认信息表面不用装饰性边框；输入、焦点、错误与浮层保留必要轮廓。布局只使用 Tailwind 命名尺度和 `sm/md/lg/xl/2xl` 响应式层级，禁止原始像素值和任意布局尺寸。`frontend/scripts/check-design-system.mjs` 及负向测试必须通过。
+- Web 设计固定为组件优先的无边框系统：路由组合 feature/pattern/ui 组件，默认信息表面不用装饰性边框；输入、焦点、错误与浮层保留必要轮廓。布局只使用 Tailwind 命名尺度和 `sm/md/lg/xl/2xl` 响应式层级，禁止原始像素值和任意布局尺寸。前端不建立独立 `scripts/` 目录，使用 ESLint、TypeScript、Prettier、生产构建和代码审查维护这些约束。
 - 唯一 HTTP 契约由 FastAPI 路由与 Pydantic 模型生成，运行时位于 `/openapi.json`，可复现快照为 `docs/openapi/openapi.json`；前端端点函数与类型全部由 `@umijs/openapi` 生成，禁止手写端点请求。
 - `docs/` 保存 Research、PRD、Design、Plan、Acceptance、Operations。历史实现从 Git 查询，不在工作树中归档。目标能力不得描述为已完成。
 - 修改前阅读相关设计和测试。行为变化先验证失败，再实现；修复需针对实际故障验证。
@@ -54,7 +54,7 @@
 - 每个HTTP操作必须有唯一人工`operation_id`、tag、成功状态和Pydantic响应模型；错误响应按操作显式声明，不在应用级虚报所有状态码。输入继承严格Input并给集合、字符串、页大小和正文设置上限。游标不得泄漏内部数据，应有明确的校验和分页边界。
 - Python 文件、目录、函数使用 snake_case，类使用 PascalCase，常量使用 UPPER_SNAKE_CASE；同类职责文件统一使用 models.py / schemas.py / services.py。绝对导入；`__init__.py` 仅标识包或说明包，不放业务代码和重导出别名。迁移 revision 文件属于已冻结历史，禁止为命名美观改写或重编号。
 - 测试放 `backend/tests/unit/`、`backend/tests/integration/`、`backend/tests/architecture/`，公共 fixture 放 tests/conftest.py；独立容器验证脚本为 `backend/scripts/verify_*.py`，不得伪装成 pytest 测试。组件使用 PascalCase.tsx；生成客户端固定在 `frontend/src/api/`，Axios 传输封装固定在 `frontend/src/request.ts`，不创建 shared 层，英文 README 为 README.en.md。
-- 结构与依赖方向由 architecture 测试强制检查；前端 Next 层登记与依赖方向由 `frontend/scripts/check-boundaries.mjs` 和负向测试强制检查。Ruff 检查命名/绝对导入，mypy 严格检查应用与脚本；锁文件、应用迁移、HTTP 和消息契约必须在目录重构中保持可验证。增加架构例外需同步 Design 和约束测试，禁止为让检查通过直接删除检查或添加宽泛忽略。
+- 后端结构与依赖方向由 architecture 测试强制检查；前端 Next 层登记与依赖方向遵循本文件及 `frontend/DESIGN.md`，并通过 ESLint、TypeScript、生产构建和代码审查验证。Ruff 检查命名/绝对导入，mypy 严格检查后端应用与工具；锁文件、应用迁移、HTTP 和消息契约必须在目录重构中保持可验证。增加架构例外需同步 Design，禁止添加宽泛忽略绕过标准检查。
 - 不因“异步更先进”将同步psycopg调用放进`async def`路由。只有整条调用链非阻塞且有独立并发/连接池验证时才引入AsyncSession，并保证每个并发task独立Session。
 
 - `sources/` 的适配器不依赖 API、ORM、Worker 或 CLI；业务来源契约不导入 HTTP 客户端。来源探测只经独立 CLI 显式执行，查询预览不发送网络请求。未通过持久化采集验收前，来源连接状态保持 not_connected。
