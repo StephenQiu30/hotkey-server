@@ -1,5 +1,0 @@
-blank_issues_enabled: true
-contact_links:
-  - name: 私密安全报告
-    url: https://github.com/StephenQiu30/hotkey-backend/security/advisories/new
-    about: 请勿公开披露漏洞细节，请通过 Security Advisory 私密报告。
