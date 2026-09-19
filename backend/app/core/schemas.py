@@ -15,7 +15,14 @@ class HealthView(OutputModel):
     status: Literal["ok", "ready"]
 
 
+class ValidationErrorItem(OutputModel):
+    location: list[str | int]
+    message: str
+    type: str
+
+
 class ErrorView(OutputModel):
     code: str
     message: str
     request_id: str
+    details: list[ValidationErrorItem] | None = None

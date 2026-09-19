@@ -2,7 +2,7 @@
 
 本文件适用于整个仓库。后端固定 Python、SQLAlchemy 2、FastAPI、PostgreSQL、Redis、Kafka；前端固定 pnpm、Next.js、shadcn/ui、Radix UI、Tailwind CSS、Axios、ESLint、Prettier。
 
-本文件是架构、目录和实现规则的唯一执行规范。PROJECT 固定技术选型，模块 README 记录使用方式，HANDOVER 记录实现状态；这些文件不得定义冲突的架构规则。变更架构或目录时必须先更新本文件和对应 Design，再修改代码。
+`PROJECT.md` 是项目技术、架构、目录、API 契约和数据库事实源；本文件负责实现执行门禁、工具命令和验证要求。发生冲突时以 PROJECT.md 的架构决策为准。模块 README 记录使用方式，HANDOVER 记录实现状态；这些文件不得定义冲突的架构规则。变更架构或目录时必须先更新 PROJECT.md、对应 Design 和本文件，再修改代码。
 
 实现前明确 Design、需求、Plan 和验收标准；完成真实验证后建立 Acceptance。正式文档使用 `docs/TEMPLATE.md`，编号登记在 `docs/README.md`。
 
@@ -33,7 +33,7 @@
 - `schema.sql` 只用于全新空库，必须通过 `psql -X --set ON_ERROR_STOP=on --single-transaction` 原子执行。当前不支持存量库自动就地演进；需要保留数据时先验证备份，再新建数据库、应用完整 Schema 并导入校验后的数据。禁止对旧系统库直接执行。
 - 业务状态与 Outbox 同事务提交。Outbox 发布到 Kafka，消费者在业务事务提交后提交连续完成位置的 offset，允许重投并通过消息 ID、epoch、fencing、租约和唯一约束保证幂等。Kafka 事务不等于与 PostgreSQL 的跨系统原子提交。Redis 只承担缓存、限流及可重建临时状态，不保存唯一业务事实；关键执行权以 PostgreSQL 为准。不再采用 RabbitMQ/Celery，不以 Redis 另建任务队列。
 - 唯一运行编排为根 Compose。生产差异使用两个 `-f` 文件叠加，无第二套服务栈。不得删除用户持久卷。
-- 认证信息不入日志或 Git；配置使用 `HOTKEY_` 前缀。公开错误只含稳定代码和请求 ID。
+- 认证信息不入日志或 Git；配置使用 `HOTKEY_` 前缀。公开错误只含稳定错误码、面向用户的消息和请求 ID；输入校验可附带脱敏字段详情，不回显敏感请求体。
 - HTTP完成日志只记录request_id、方法、路由模板、状态码和耗时；禁止记录原始URL/query、请求/响应正文、Cookie、Token或连接字符串。未处理异常记录类型与堆栈，但不回显给客户端。
 - 锁定依赖；运行 Ruff、mypy、pytest、OpenAPI 漂移检查及前端类型检查/构建。数据库和消息行为必须用真实 PostgreSQL/Redis/Kafka 验证，UI 必须用浏览器验证。
 - 只采集公开或获授权数据；平台连接器必须明确能力、分页、限流和失败状态。禁止把模拟数据、空结果或诊断任务当成采集成功。
@@ -54,9 +54,9 @@
 - 后端切片在 Design 阶段明确领域归属、变更路径、路由与 DTO、服务入口、事务所有者、跨领域依赖及消息恢复行为；业务和目录规范确定后再创建模块。
 - 最外层业务用例提交或回滚事务；依赖注入只管理 Session 创建与释放。跨领域原子写共用 Session，内层函数不自行提交。HTTP 和 Worker 各自装配服务，业务服务不依赖 HTTP 上下文。
 - 后端工程及 Compose HTTP 服务均为 `backend`，作为普通应用运行，不构建独立安装包；禁止恢复 `server/` 别名。部署入口为 `main:create_app`。
-- 应用代码统一放在 `backend/src/`；禁止在 src 下增加 hotkey 或 app 包装层；`main.py` 只做应用工厂和 lifespan 装配；`api/router.py` 汇总路由，`api/routers/*.py` 按资源组织，依赖和 HTTP 横切逻辑分别在 dependencies.py、middleware.py、exception_handlers.py。
-- `identity/`、`monitors/`、`jobs/` 拥有各自 models.py、schemas.py、services.py。models 定义 SQLAlchemy 持久结构，schemas 定义 Pydantic 契约，services 拥有事务和业务行为。禁止用通用 Workspace/BaseService 聚合无关领域；不为每个简单查询增加无意义仓储层。
-- `core/` 只放配置、通用错误、输入输出基类和时间函数，不反向依赖业务模块。`db/` 拥有 DeclarativeBase、连接池及元数据注册；`audit/` 承载跨领域审计。`jobs/execution.py` 维护执行状态机，`worker/messaging.py` 对接 Kafka；`worker/app.py` 装配消费者生命周期，`cli/commands.py` 实现管理命令，`cli/__main__.py` 为命令入口。运行目录为 backend/src，拟定 Worker 入口为 `python -m worker`（由 `worker/__main__.py` 承接）；不得沿用 Celery 启动命令。
+- 应用代码统一放在 `backend/app/`；禁止在 app 下增加 hotkey 或 app 包装层；`main.py` 只做应用工厂和 lifespan 装配；`api/router.py` 汇总路由，`api/routers/*.py` 按资源组织，依赖和 HTTP 横切逻辑分别在 dependencies.py、middleware.py、exception_handlers.py。
+- 已登记的 `identity/`、`monitors/`、`jobs/` 领域在对应切片落地时拥有各自 models.py、schemas.py、services.py。models 定义 SQLAlchemy 持久结构，schemas 定义 Pydantic 契约，services 拥有事务和业务行为。禁止预先创建空领域包；也禁止用通用 Workspace/BaseService 聚合无关领域或为每个简单查询增加无意义仓储层。
+- `core/` 只放配置、通用错误、输入输出基类和时间函数，不反向依赖业务模块。`db/` 拥有 DeclarativeBase、连接池及元数据注册；`audit/` 承载跨领域审计。`jobs/execution.py` 维护执行状态机，`worker/messaging.py` 对接 Kafka；`worker/app.py` 装配消费者生命周期，`cli/commands.py` 实现管理命令，`cli/__main__.py` 为命令入口。运行目录为 backend/app，拟定 Worker 入口为 `python -m worker`（由 `worker/__main__.py` 承接）；不得沿用 Celery 启动命令。
 - 路由禁止导入 SQLAlchemy、业务 models、services 实现、执行器或消息组件；只能通过 `api/dependencies.py` 注入服务。禁止经 request.app.state 在路由中绕过业务服务读写数据库或发布任务。服务、模型、Schema 不导入 FastAPI/Starlette/HTTP 路由；Schema 不导入 ORM 或数据库资源。
 - 每个HTTP操作必须有唯一人工`operation_id`、tag、成功状态和Pydantic响应模型；错误响应按操作显式声明，不在应用级虚报所有状态码。输入继承严格Input并给集合、字符串、页大小和正文设置上限。游标不得泄漏内部数据，应有明确的校验和分页边界。
 - Python 文件、目录、函数使用 snake_case，类使用 PascalCase，常量使用 UPPER_SNAKE_CASE；同类职责文件统一使用 models.py / schemas.py / services.py。绝对导入；`__init__.py` 仅标识包或说明包，不放业务代码和重导出别名。
@@ -77,9 +77,9 @@
 | 缓存与事件 | Redis 负责可重建状态；Kafka 负责持久任务事件 |
 | 对象存储 | MinIO，适配器归 `evidence/adapters/` |
 | 工具 | Ruff、mypy、pytest、HTTPX；依赖精确版本随锁文件提交 |
-| API 入口 | 在 `backend/src/` 执行 `uvicorn main:create_app --factory` |
-| Worker 入口 | 在 `backend/src/` 执行 `python -m worker` |
-| CLI 入口 | 在 `backend/src/` 执行 `python -m cli` |
+| API 入口 | 在 `backend/app/` 执行 `uvicorn main:create_app --factory` |
+| Worker 入口 | 在 `backend/app/` 执行 `python -m worker` |
+| CLI 入口 | 在 `backend/app/` 执行 `python -m cli` |
 
 后端依赖统一使用 uv、`pyproject.toml` 和 `uv.lock`，作为普通应用管理，不构建安装包。CI 和镜像使用 `uv sync --locked`；精确版本在底座初始化时解析、验证并提交，不手工编辑锁文件。
 
@@ -131,7 +131,7 @@ backend/
 ├── Dockerfile
 ├── database/
 │   └── schema.sql                 # 唯一 PostgreSQL DDL 事实源
-├── src/
+├── app/
 │   ├── main.py                    # 唯一 create_app 与 lifespan 装配
 │   ├── api/
 │   │   ├── router.py              # 注册所有 HTTP 路由

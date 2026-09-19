@@ -31,12 +31,12 @@ package = false
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers"
-pythonpath = ["src"]
+pythonpath = ["app"]
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests"]
+src = ["app", "tests"]
 target-version = "py312"
 
 [tool.ruff.lint]
@@ -44,7 +44,7 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["src"]
+files = ["app"]
 plugins = ["pydantic.mypy"]
 strict = true
 warn_unreachable = true

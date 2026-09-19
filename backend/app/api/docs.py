@@ -4,7 +4,13 @@ from starlette.responses import HTMLResponse
 
 
 def register_documentation(app: FastAPI) -> None:
-    @app.get("/scalar", include_in_schema=False)
+    @app.get(
+        "/scalar",
+        include_in_schema=False,
+        operation_id="getScalarDocumentation",
+        status_code=200,
+        response_class=HTMLResponse,
+    )
     async def scalar_documentation() -> HTMLResponse:
         return get_scalar_api_reference(
             openapi_url=app.openapi_url or "/openapi.json",

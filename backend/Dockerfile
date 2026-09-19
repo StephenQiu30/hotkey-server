@@ -13,13 +13,13 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY database ./database
-COPY src ./src
+COPY app ./app
 
 RUN useradd --create-home --uid 10001 hotkey \
     && chown -R hotkey:hotkey /srv/backend
 
 USER hotkey
-WORKDIR /srv/backend/src
+WORKDIR /srv/backend/app
 EXPOSE 8080
 
 CMD ["uv", "run", "--frozen", "uvicorn", "main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]

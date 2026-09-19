@@ -1,6 +1,6 @@
 # HotKey Server 项目与技术选型
 
-更新日期：2026-09-18。本文固定仓库边界、技术栈和运行约束。
+更新日期：2026-09-19。本文固定仓库边界、技术栈、后端目录、API 契约和运行约束。
 
 ## 1. 定位与仓库边界
 
@@ -22,7 +22,7 @@ HotKey/
     └── AGENTS.md
 ```
 
-`frontend/` 已建立可构建的 Web 工程、设计令牌、同源 API 代理和 OpenAPI 生成配置。`backend/` 已建立 FastAPI 应用、运行入口、依赖锁、唯一数据库 SQL 事实源和测试边界；根 Compose 尚未建立。
+`frontend/` 和 `backend/` 的目录与职责由本文固定。目录规划、测试目标和生成文件清单不代表业务能力已经实现；每个业务切片仍须经过 Design、实现和 Acceptance。
 
 ## 2. 固定技术栈
 
@@ -46,14 +46,14 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 
 ### Python 后端与基础设施
 
-架构固定为模块化单体，按业务领域分组；Router 处理 HTTP，Service 处理业务与事务，Pydantic Schema 定义契约，SQLAlchemy Model 定义持久化。Repository 按需引入。完整目录、文件职责、依赖方向、事务和验收标准统一执行根目录 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
+架构固定为模块化单体，按业务领域分组；Router 处理 HTTP，Service 处理业务与事务，Pydantic Schema 定义契约，SQLAlchemy Model 定义持久化。Repository 按需引入。完整目录、文件职责、依赖方向和事务边界由本文固定；AGENTS.md 负责把这些决策转成实现门禁和验证命令。
 
 **Python + SQLAlchemy 2 ORM + FastAPI + PostgreSQL（PGSQL）+ Redis + Kafka。**
 
 | 技术 | 职责 |
 |---|---|
-| Python 3.12 | 沿用已定语言基线；业务代码位于 `backend/src/` |
-| FastAPI + Pydantic | API、验证、错误契约及唯一 OpenAPI 源 |
+| Python 3.12 | 语言基线；应用源码直接位于 `backend/app/`，不增加 `app/app`、`app/hotkey` 或 `<package_name>` 包装层 |
+| FastAPI + Pydantic | API、验证、错误契约及唯一 OpenAPI 源；不预先创建未定义的 API 版本目录 |
 | Uvicorn + pydantic-settings | ASGI 运行与类型化配置 |
 | psycopg 3 | PostgreSQL 驱动，默认使用同步 SQLAlchemy Session |
 | SQLAlchemy 2 | 运行时 ORM 映射与事务；不创建或修改数据库结构 |
@@ -71,6 +71,88 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 | Swagger UI | `/docs` 交互文档，读取唯一 `/openapi.json` |
 | scalar-fastapi | `/scalar` 增强交互文档，与 Swagger UI 共用契约 |
 
+### 后端目录、职责与唯一事实源
+
+后端采用按业务领域分组的模块化单体。以下是实现目标结构，Python 包目录中的 `__init__.py` 在图中省略；没有明确使用方的领域文件不得提前创建。
+
+```text
+backend/
+├── pyproject.toml                 # 依赖、Python 版本、检查和测试配置
+├── uv.lock                        # uv 生成的唯一依赖锁文件
+├── Dockerfile
+├── database/
+│   └── schema.sql                 # 唯一 PostgreSQL DDL 事实源
+├── app/
+│   ├── main.py                    # 唯一 create_app 与 lifespan 装配
+│   ├── api/
+│   │   ├── router.py              # 唯一 HTTP 路由汇总点
+│   │   ├── dependencies.py        # Session、身份和 Service 的类型化注入
+│   │   ├── docs.py                # Swagger/Scalar 文档注册
+│   │   ├── middleware.py          # request ID、访问日志等 HTTP 横切逻辑
+│   │   ├── exception_handlers.py  # 全局异常到 HTTP 错误响应的映射
+│   │   └── routers/<resource>.py  # 资源接口，只处理 HTTP 协议
+│   ├── core/
+│   │   ├── config.py              # pydantic-settings 配置
+│   │   ├── logging.py             # structlog 与标准 logging 配置
+│   │   ├── errors.py              # 不依赖 FastAPI 的应用异常
+│   │   └── schemas.py             # 公共输入、输出和 ErrorView
+│   ├── db/
+│   │   ├── base.py                # 唯一 DeclarativeBase
+│   │   ├── session.py             # Engine 与 Session 工厂
+│   │   └── metadata.py            # 模型注册，不负责建表
+│   ├── <domain>/                  # 按业务领域命名，不建立全局 models/utils
+│   │   ├── models.py              # SQLAlchemy 持久化映射
+│   │   ├── schemas.py             # 领域输入、输出和服务 DTO
+│   │   ├── services.py            # 业务规则、权限和事务边界
+│   │   ├── repositories.py        # 仅复杂或复用查询需要时增加
+│   │   └── adapters/              # 仅外部 SDK 或服务差异需要时增加
+│   ├── worker/
+│   │   ├── __main__.py            # python -m worker 入口
+│   │   ├── app.py                 # Worker 生命周期和服务装配
+│   │   └── messaging.py           # Kafka 收发与位点提交
+│   └── cli/
+│       ├── __main__.py            # python -m cli 入口
+│       └── commands.py            # 管理命令
+└── tests/
+    ├── conftest.py
+    ├── unit/
+    ├── integration/
+    └── architecture/
+```
+
+图中的 `<domain>` 和 `<resource>` 只是目录职责的表示法，不是要创建的字面目录；每个实际名称必须在对应 Design 中明确登记。
+
+目录规则如下：
+
+- `main.py` 只创建 FastAPI 应用、注册 lifespan、路由、中间件和异常处理器；不放业务规则。
+- `api/routers/` 只处理 HTTP 参数、认证依赖、状态码和响应模型；不得导入 SQLAlchemy、业务 Service 实现、Worker 或消息客户端。
+- 领域 Service 负责业务用例和事务；跨领域原子写入使用同一 Session，内层函数不得自行提交。
+- Schema 不依赖 ORM、Session 或 FastAPI；Model 只负责持久化映射；Adapter 只封装外部系统差异。
+- `worker/` 和 `cli/` 调用领域 Service，不复制 HTTP 层或业务规则。
+- 不创建未定义的 API 版本目录、`app/app/`、`app/hotkey/` 或其他没有明确职责的包装目录。
+
+### API 契约与版本策略
+
+FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 API 契约事实源。运行时 `/openapi.json` 是由这套代码生成的唯一契约视图，Swagger UI、Scalar、Web 客户端、移动端客户端和契约测试都读取它。禁止手工维护第二份 OpenAPI/Swagger JSON 或 YAML。
+
+当前 API 使用无版本路径，例如 `/api/monitors`、`/api/jobs`、`/api/health` 和 `/api/ready`，不创建版本目录或版本前缀。OpenAPI 的 `openapi` 字段、`info.version` 和 URL 路径版本属于三个不同概念，不能互相替代。只有出现两个需要同时兼容的不兼容公共契约时，才可以先更新本文和 API 设计，再建立明确的版本策略。
+
+每个 HTTP 操作必须声明唯一人工 `operation_id`、tag、成功状态、Pydantic 响应模型和实际可达的错误响应。生成的 OpenAPI、客户端代码和文档页面是派生物，不能反向成为第二个事实源。
+
+### 全局异常与响应处理
+
+全局异常处理由 `api/exception_handlers.py` 统一注册，`main.py` 只负责调用注册函数。处理范围固定为：
+
+1. `core.errors.ApplicationError` 及其子类：映射为稳定错误码和明确 HTTP 状态。
+2. FastAPI/Starlette HTTP 异常：保留必要状态和响应头，转换为统一错误模型。
+3. `RequestValidationError`：返回字段级输入错误，不泄露内部文件路径或原始敏感请求体。
+4. 数据库和外部服务异常：先在 Service/Adapter 边界转换为应用异常；不得把驱动异常直接返回客户端。
+5. 未处理的 `Exception`：服务端记录异常类型和堆栈，客户端只返回稳定的 `internal_error` 与 `request_id`。
+
+公共错误模型 `ErrorView` 位于 `core/schemas.py`，至少包含稳定 `code`、面向用户的 `message` 和 `request_id`。错误处理器不得把异常字符串、SQL、Token、Cookie、连接字符串或完整请求体写入响应。成功响应使用端点级 `response_model`；不使用中间件自动包装所有成功响应，以免破坏文件、流式和特殊状态响应。
+
+本规范参考 [FastAPI 多文件应用指南](https://fastapi.tiangolo.com/tutorial/bigger-applications/)、[FastAPI 错误处理指南](https://fastapi.tiangolo.com/tutorial/handling-errors/)、[FastAPI Lifespan 指南](https://fastapi.tiangolo.com/advanced/events/)、[FastAPI 官方全栈模板](https://github.com/fastapi/full-stack-fastapi-template) 和 [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)。这些资料用于确认框架机制和通用协议；目录、事实源和版本策略以本文为准。
+
 身份切片采用 `pwdlib[argon2]` 处理密码；选定 JWT 时使用 PyJWT。依赖按真实使用方引入。Web 固定 Node.js 24.19.0、Next.js 16.3.5、React 19.2.8 与 pnpm 12.3.4；后端依赖版本在初始化时写入 `uv.lock`。
 
 ## 3. 数据与任务执行边界
@@ -81,7 +163,7 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 4. Redis 的数据丢失不能导致任务或证据丢失。缓存设有效期与失效规则；限流故障时采用明确的保守策略。执行权、不可超额预算与撤权不能只依赖 Redis 锁或缓存。
 5. `worker/` 维护 Kafka 客户端和消费者生命周期，`jobs/` 维护任务状态机；拟定入口 `python -m worker`。在 031/042 设计中明确 topic、partition key、consumer group、重试、死信、延迟/周期调度和再均衡处理，不能把 Kafka 当作已有任务调度器。
 6. API、Worker 各自创建数据库连接池和消息客户端，Session 不跨线程/任务共享。同步数据库调用不直接放入异步路由。
-7. FastAPI 从路由装饰器、类型注解和 Pydantic 模型自动生成 `/openapi.json`。Swagger UI、Scalar 和 Umi OpenAPI 共用该地址，不维护独立契约文件；Flutter 使用同一契约。客户端由生成命令更新，CI 负责自动生成与差异检查。
+7. FastAPI 从路由装饰器、类型注解和 Pydantic 模型自动生成 `/openapi.json`。它是唯一 API 契约视图；Swagger UI、Scalar、Umi OpenAPI 和 Flutter 客户端共用该地址，不维护独立契约文件。客户端由生成命令更新，CI 负责自动生成与差异检查。
 8. 数据库结构只由 `backend/database/schema.sql` 定义，SQLAlchemy Model 必须与其同批更新。当前不支持存量库自动就地升级；保留数据时采用备份、全新建库、完整建表和校验后导入流程。
 
 ## 4. 产品约束与未定事项
@@ -99,4 +181,4 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 
 ## 6. 维护
 
-技术、目录或运行约束变化时同步更新本文、AGENTS、HANDOVER 和对应 Design。产品进度只在完成实际验收后更新 BACKLOG。
+PROJECT.md 是项目技术、架构、目录、API 契约和数据库事实源。AGENTS.md 只补充实现执行门禁、工具命令和验证要求，不得定义与本文冲突的架构；两者共同约束实现。技术、目录或运行约束变化时同步更新本文、AGENTS、HANDOVER 和对应 Design。产品进度只在完成实际验收后更新 BACKLOG。
