@@ -30,7 +30,8 @@ def owner_client() -> Iterator[TestClient]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE evidence_cleanup_targets, evidence_deletions, "
+                "TRUNCATE provenance_manifest_inputs, provenance_manifests, "
+                "evidence_cleanup_targets, evidence_deletions, "
                 "evidence_resources, evidence_retention_policies, source_access_policies, "
                 "resource_budget_reservations, resource_budget_windows, "
                 "resource_budget_policies, resource_usage_attempts, "
@@ -46,7 +47,8 @@ def owner_client() -> Iterator[TestClient]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE evidence_cleanup_targets, evidence_deletions, "
+                    "TRUNCATE provenance_manifest_inputs, provenance_manifests, "
+                    "evidence_cleanup_targets, evidence_deletions, "
                     "evidence_resources, evidence_retention_policies, source_access_policies, "
                     "resource_budget_reservations, resource_budget_windows, "
                     "resource_budget_policies, resource_usage_attempts, "

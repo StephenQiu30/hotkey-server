@@ -3,6 +3,8 @@ from evidence.models import (
     CleanupTarget,
     DeletionDirective,
     EvidenceResource,
+    ProvenanceManifest,
+    ProvenanceManifestItem,
     RetentionPolicy,
     SourceAccessPolicy,
 )
@@ -35,6 +37,8 @@ __all__ = [
     "JobStageAttempt",
     "OutboxMessage",
     "ProcessedMessage",
+    "ProvenanceManifest",
+    "ProvenanceManifestItem",
     "ResourceBudgetPolicy",
     "ResourceBudgetReservation",
     "ResourceBudgetWindow",

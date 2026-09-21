@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from typing import TypeGuard, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import case, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -16,6 +18,8 @@ from evidence.models import (
     CleanupTarget,
     DeletionDirective,
     EvidenceResource,
+    ProvenanceManifest,
+    ProvenanceManifestItem,
     RetentionPolicy,
     SourceAccessPolicy,
 )
@@ -35,11 +39,17 @@ from evidence.schemas import (
     DeletionStatus,
     DeletionView,
     EvidenceResourceView,
+    ProvenanceInputRole,
+    ProvenanceManifestInput,
+    ProvenanceManifestItemView,
+    ProvenanceManifestView,
+    ProvenanceResourceRef,
     RetentionPolicyInput,
     RetentionPolicyView,
     SourceAccessPolicyInput,
     SourceAccessPolicyView,
 )
+from jobs.models import Job
 from sources.contracts import SourceCapability
 
 type Clock = Callable[[], datetime]
@@ -67,6 +77,14 @@ class StaleCleanupLeaseError(RuntimeError):
 
 class CleanupHandlerUnavailableError(RuntimeError):
     """No concrete online-store cleanup handler is registered for the target."""
+
+
+class ProvenanceConflictError(RuntimeError):
+    """A job result identity was reused with a different frozen manifest."""
+
+
+class ProvenanceUnavailableError(RuntimeError):
+    """The manifest or one of its current inputs is unavailable."""
 
 
 ONLINE_CLEANUP_SLA = timedelta(hours=24)
@@ -727,6 +745,218 @@ class LifecycleService:
     def _validate_resource_type(resource_type: str) -> None:
         if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", resource_type) is None:
             raise ValueError("resource_type must be a stable lowercase identifier")
+
+
+class ProvenanceService:
+    def __init__(self, session: Session, *, clock: Clock | None = None) -> None:
+        self._session = session
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def create(
+        self,
+        *,
+        owner_id: UUID,
+        command: ProvenanceManifestInput,
+    ) -> ProvenanceManifestView:
+        normalized = self._normalized_inputs(command)
+        now = self._clock()
+        self._session.rollback()
+        with self._session.begin():
+            job = self._session.scalar(
+                select(Job)
+                .where(Job.owner_id == owner_id, Job.id == command.job_id)
+                .with_for_update()
+            )
+            if job is None:
+                raise ProvenanceUnavailableError("job is unavailable")
+            self._require_readable_resources(owner_id, normalized, now)
+            fingerprint = self._fingerprint(job.operation_id, command, normalized)
+            existing = self._session.scalar(
+                select(ProvenanceManifest).where(
+                    ProvenanceManifest.owner_id == owner_id,
+                    ProvenanceManifest.job_id == command.job_id,
+                    ProvenanceManifest.result_kind == command.result_kind,
+                )
+            )
+            if existing is not None:
+                if existing.manifest_fingerprint != fingerprint:
+                    raise ProvenanceConflictError(
+                        "job result already has a different provenance manifest"
+                    )
+                return self._view(existing)
+            manifest = ProvenanceManifest(
+                id=uuid4(),
+                owner_id=owner_id,
+                job_id=command.job_id,
+                operation_id=job.operation_id,
+                result_kind=command.result_kind,
+                method_key=command.method_key,
+                method_version=command.method_version,
+                method_parameters=dict(command.method_parameters),
+                manifest_fingerprint=fingerprint,
+                created_at=now,
+            )
+            self._session.add(manifest)
+            self._session.flush()
+            for role, resource, ordinal in normalized:
+                self._session.add(
+                    ProvenanceManifestItem(
+                        id=uuid4(),
+                        owner_id=owner_id,
+                        manifest_id=manifest.id,
+                        role=role.value,
+                        resource_record_id=resource.resource_record_id,
+                        snapshot_ref=resource.snapshot_ref,
+                        ordinal=ordinal,
+                    )
+                )
+            self._session.flush()
+            view = self._view(manifest)
+        return view
+
+    def get(self, *, owner_id: UUID, manifest_id: UUID) -> ProvenanceManifestView:
+        manifest = self._session.scalar(
+            select(ProvenanceManifest).where(
+                ProvenanceManifest.owner_id == owner_id,
+                ProvenanceManifest.id == manifest_id,
+            )
+        )
+        if manifest is None:
+            self._session.rollback()
+            raise ProvenanceUnavailableError("provenance manifest is unavailable")
+        items = self._items(manifest.id)
+        try:
+            self._require_readable_resources(owner_id, items, self._clock())
+            return self._view(manifest, items=items)
+        finally:
+            self._session.rollback()
+
+    @staticmethod
+    def _normalized_inputs(
+        command: ProvenanceManifestInput,
+    ) -> list[tuple[ProvenanceInputRole, ProvenanceResourceRef, int]]:
+        normalized: list[tuple[ProvenanceInputRole, ProvenanceResourceRef, int]] = []
+        for role, resources in (
+            (ProvenanceInputRole.SUBJECT, command.subjects),
+            (ProvenanceInputRole.REFERENCE, command.references),
+        ):
+            ordered = sorted(
+                resources,
+                key=lambda item: (str(item.resource_record_id), item.snapshot_ref),
+            )
+            normalized.extend((role, resource, index) for index, resource in enumerate(ordered))
+        return normalized
+
+    def _require_readable_resources(
+        self,
+        owner_id: UUID,
+        items: Sequence[
+            tuple[ProvenanceInputRole, ProvenanceResourceRef, int] | ProvenanceManifestItem
+        ],
+        now: datetime,
+    ) -> None:
+        resource_ids = {
+            item.resource_record_id
+            if isinstance(item, ProvenanceManifestItem)
+            else item[1].resource_record_id
+            for item in items
+        }
+        resources = self._session.scalars(
+            select(EvidenceResource).where(
+                EvidenceResource.owner_id == owner_id,
+                EvidenceResource.id.in_(resource_ids),
+            )
+        ).all()
+        deletion_ids = set(
+            self._session.scalars(
+                select(DeletionDirective.resource_record_id).where(
+                    DeletionDirective.owner_id == owner_id,
+                    DeletionDirective.resource_record_id.in_(resource_ids),
+                )
+            ).all()
+        )
+        if (
+            len(resources) != len(resource_ids)
+            or deletion_ids
+            or any(resource.expires_at <= now for resource in resources)
+        ):
+            raise ProvenanceUnavailableError("a provenance input is unavailable")
+
+    @staticmethod
+    def _fingerprint(
+        operation_id: UUID,
+        command: ProvenanceManifestInput,
+        normalized: list[tuple[ProvenanceInputRole, ProvenanceResourceRef, int]],
+    ) -> bytes:
+        payload = {
+            "schema_version": 1,
+            "job_id": str(command.job_id),
+            "operation_id": str(operation_id),
+            "result_kind": command.result_kind,
+            "method": {
+                "key": command.method_key,
+                "version": command.method_version,
+                "parameters": command.method_parameters,
+            },
+            "inputs": [
+                {
+                    "role": role.value,
+                    "resource_record_id": str(resource.resource_record_id),
+                    "snapshot_ref": resource.snapshot_ref,
+                    "ordinal": ordinal,
+                }
+                for role, resource, ordinal in normalized
+            ],
+        }
+        canonical = json.dumps(
+            payload,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        return hashlib.sha256(canonical.encode()).digest()
+
+    def _items(self, manifest_id: UUID) -> list[ProvenanceManifestItem]:
+        return list(
+            self._session.scalars(
+                select(ProvenanceManifestItem)
+                .where(ProvenanceManifestItem.manifest_id == manifest_id)
+                .order_by(
+                    case((ProvenanceManifestItem.role == "subject", 0), else_=1),
+                    ProvenanceManifestItem.ordinal,
+                )
+            ).all()
+        )
+
+    def _view(
+        self,
+        manifest: ProvenanceManifest,
+        *,
+        items: list[ProvenanceManifestItem] | None = None,
+    ) -> ProvenanceManifestView:
+        stored_items = items if items is not None else self._items(manifest.id)
+        return ProvenanceManifestView(
+            id=manifest.id,
+            owner_id=manifest.owner_id,
+            job_id=manifest.job_id,
+            operation_id=manifest.operation_id,
+            result_kind=manifest.result_kind,
+            method_key=manifest.method_key,
+            method_version=manifest.method_version,
+            method_parameters=dict(manifest.method_parameters),
+            manifest_fingerprint=manifest.manifest_fingerprint.hex(),
+            inputs=tuple(
+                ProvenanceManifestItemView(
+                    role=ProvenanceInputRole(item.role),
+                    resource_record_id=item.resource_record_id,
+                    snapshot_ref=item.snapshot_ref,
+                    ordinal=item.ordinal,
+                )
+                for item in stored_items
+            ),
+            created_at=manifest.created_at,
+        )
 
 
 CleanupHandler = Callable[[str], None]

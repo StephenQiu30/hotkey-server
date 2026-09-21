@@ -479,6 +479,56 @@ CREATE INDEX job_stage_attempts_owner_started_idx
 CREATE INDEX job_stage_attempts_job_stage_idx
     ON job_stage_attempts (job_id, stage, attempt_sequence);
 
+CREATE TABLE provenance_manifests (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    job_id UUID NOT NULL,
+    operation_id UUID NOT NULL,
+    result_kind VARCHAR(64) NOT NULL CHECK (
+        result_kind ~ '^[a-z][a-z0-9_.:-]{0,63}$'
+    ),
+    method_key VARCHAR(128) NOT NULL CHECK (
+        method_key ~ '^[a-z][a-z0-9_.:-]{0,127}$'
+    ),
+    method_version VARCHAR(128) NOT NULL CHECK (
+        method_version ~ '^[a-z0-9][a-z0-9_.:-]{0,127}$'
+    ),
+    method_parameters JSONB NOT NULL CHECK (jsonb_typeof(method_parameters) = 'object'),
+    manifest_fingerprint BYTEA NOT NULL CHECK (octet_length(manifest_fingerprint) = 32),
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT provenance_manifests_owner_id_id_key UNIQUE (owner_id, id),
+    CONSTRAINT provenance_manifests_owner_job_result_key
+        UNIQUE (owner_id, job_id, result_kind),
+    CONSTRAINT provenance_manifests_owner_job_fkey
+        FOREIGN KEY (owner_id, job_id)
+        REFERENCES jobs (owner_id, id) ON DELETE CASCADE
+);
+
+CREATE TABLE provenance_manifest_inputs (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    manifest_id UUID NOT NULL,
+    role VARCHAR(16) NOT NULL CHECK (role IN ('subject', 'reference')),
+    resource_record_id UUID NOT NULL,
+    snapshot_ref VARCHAR(128) NOT NULL CHECK (
+        snapshot_ref ~ '^[a-z0-9][a-z0-9_.:-]{0,127}$'
+    ),
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    CONSTRAINT provenance_manifest_inputs_role_ordinal_key
+        UNIQUE (manifest_id, role, ordinal),
+    CONSTRAINT provenance_manifest_inputs_resource_snapshot_key
+        UNIQUE (manifest_id, role, resource_record_id, snapshot_ref),
+    CONSTRAINT provenance_manifest_inputs_owner_manifest_fkey
+        FOREIGN KEY (owner_id, manifest_id)
+        REFERENCES provenance_manifests (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT provenance_manifest_inputs_owner_resource_fkey
+        FOREIGN KEY (owner_id, resource_record_id)
+        REFERENCES evidence_resources (owner_id, id)
+);
+
+CREATE INDEX provenance_manifest_inputs_manifest_idx
+    ON provenance_manifest_inputs (manifest_id, role, ordinal);
+
 CREATE TABLE outbox_messages (
     id UUID PRIMARY KEY,
     aggregate_id UUID NOT NULL REFERENCES jobs (id) ON DELETE CASCADE,

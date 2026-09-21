@@ -11,9 +11,20 @@ from sources.contracts import SourceCapability
 
 type AdmittedScalar = str | int | float | bool | None
 type AdmittedValue = AdmittedScalar | list[AdmittedScalar]
+type ProvenanceParameter = str | int | bool | None
 
 _FIELD_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _MAX_FIELDS = 64
+_PROVENANCE_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_.:-]{0,63}$")
+_PROVENANCE_SENSITIVE_MARKERS = (
+    "authorization",
+    "cookie",
+    "password",
+    "prompt",
+    "query",
+    "secret",
+    "token",
+)
 _SECRET_FIELD_NAMES = frozenset(
     {
         "authorization",
@@ -288,3 +299,101 @@ class CleanupBatchResult(BaseModel):
 
     succeeded: int = 0
     failed: int = 0
+
+
+class ProvenanceInputRole(StrEnum):
+    SUBJECT = "subject"
+    REFERENCE = "reference"
+
+
+class ProvenanceResourceRef(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    resource_record_id: UUID
+    snapshot_ref: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9_.:-]{0,127}$",
+    )
+
+
+class ProvenanceManifestInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    job_id: UUID
+    result_kind: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z][a-z0-9_.:-]{0,63}$",
+    )
+    method_key: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z][a-z0-9_.:-]{0,127}$",
+    )
+    method_version: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9_.:-]{0,127}$",
+    )
+    method_parameters: dict[str, ProvenanceParameter] = Field(default_factory=dict)
+    subjects: tuple[ProvenanceResourceRef, ...] = Field(min_length=1, max_length=32)
+    references: tuple[ProvenanceResourceRef, ...] = Field(min_length=1, max_length=256)
+
+    @field_validator("method_parameters")
+    @classmethod
+    def validate_parameters(
+        cls, value: dict[str, ProvenanceParameter]
+    ) -> dict[str, ProvenanceParameter]:
+        if len(value) > 32:
+            raise ValueError("method_parameters cannot contain more than 32 items")
+        for key in value:
+            if _PROVENANCE_KEY_PATTERN.fullmatch(key) is None:
+                raise ValueError("method parameter keys must be stable lowercase identifiers")
+            if key in _SECRET_FIELD_NAMES or any(
+                marker in key for marker in _PROVENANCE_SENSITIVE_MARKERS
+            ):
+                raise ValueError("secret method parameters cannot be persisted")
+        for parameter in value.values():
+            if isinstance(parameter, str) and (
+                len(parameter) > 256
+                or parameter != parameter.strip()
+                or any(ord(character) < 32 for character in parameter)
+            ):
+                raise ValueError("string method parameters must be short stable values")
+        return value
+
+    @model_validator(mode="after")
+    def validate_inputs(self) -> ProvenanceManifestInput:
+        pairs = [
+            (item.resource_record_id, item.snapshot_ref)
+            for item in (*self.subjects, *self.references)
+        ]
+        if len(pairs) != len(set(pairs)):
+            raise ValueError("provenance resources and snapshots must be unique")
+        return self
+
+
+class ProvenanceManifestItemView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    role: ProvenanceInputRole
+    resource_record_id: UUID
+    snapshot_ref: str
+    ordinal: int = Field(ge=0)
+
+
+class ProvenanceManifestView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    owner_id: UUID
+    job_id: UUID
+    operation_id: UUID
+    result_kind: str
+    method_key: str
+    method_version: str
+    method_parameters: dict[str, ProvenanceParameter]
+    manifest_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    inputs: tuple[ProvenanceManifestItemView, ...]
+    created_at: datetime

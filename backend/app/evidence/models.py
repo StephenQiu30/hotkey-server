@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     String,
     UniqueConstraint,
     text,
@@ -329,3 +330,98 @@ class CleanupTarget(Base):
     completed_at: Mapped[datetime | None]
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
+
+
+class ProvenanceManifest(Base):
+    __tablename__ = "provenance_manifests"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "job_id"],
+            ["jobs.owner_id", "jobs.id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("owner_id", "id", name="provenance_manifests_owner_id_id_key"),
+        UniqueConstraint(
+            "owner_id",
+            "job_id",
+            "result_kind",
+            name="provenance_manifests_owner_job_result_key",
+        ),
+        CheckConstraint(
+            "result_kind ~ '^[a-z][a-z0-9_.:-]{0,63}$'",
+            name="provenance_manifests_result_kind_check",
+        ),
+        CheckConstraint(
+            "method_key ~ '^[a-z][a-z0-9_.:-]{0,127}$'",
+            name="provenance_manifests_method_key_check",
+        ),
+        CheckConstraint(
+            "method_version ~ '^[a-z0-9][a-z0-9_.:-]{0,127}$'",
+            name="provenance_manifests_method_version_check",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(method_parameters) = 'object'",
+            name="provenance_manifests_parameters_check",
+        ),
+        CheckConstraint(
+            "octet_length(manifest_fingerprint) = 32",
+            name="provenance_manifests_fingerprint_check",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id", ondelete="CASCADE"))
+    job_id: Mapped[UUID]
+    operation_id: Mapped[UUID]
+    result_kind: Mapped[str] = mapped_column(String(64))
+    method_key: Mapped[str] = mapped_column(String(128))
+    method_version: Mapped[str] = mapped_column(String(128))
+    method_parameters: Mapped[dict[str, str | int | bool | None]] = mapped_column(JSONB)
+    manifest_fingerprint: Mapped[bytes] = mapped_column(LargeBinary(32))
+    created_at: Mapped[datetime]
+
+
+class ProvenanceManifestItem(Base):
+    __tablename__ = "provenance_manifest_inputs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "manifest_id"],
+            ["provenance_manifests.owner_id", "provenance_manifests.id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "resource_record_id"],
+            ["evidence_resources.owner_id", "evidence_resources.id"],
+        ),
+        UniqueConstraint(
+            "manifest_id",
+            "role",
+            "ordinal",
+            name="provenance_manifest_inputs_role_ordinal_key",
+        ),
+        UniqueConstraint(
+            "manifest_id",
+            "role",
+            "resource_record_id",
+            "snapshot_ref",
+            name="provenance_manifest_inputs_resource_snapshot_key",
+        ),
+        CheckConstraint(
+            "role IN ('subject', 'reference')",
+            name="provenance_manifest_inputs_role_check",
+        ),
+        CheckConstraint(
+            "snapshot_ref ~ '^[a-z0-9][a-z0-9_.:-]{0,127}$'",
+            name="provenance_manifest_inputs_snapshot_check",
+        ),
+        CheckConstraint("ordinal >= 0", name="provenance_manifest_inputs_ordinal_check"),
+        Index("provenance_manifest_inputs_manifest_idx", "manifest_id", "role", "ordinal"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID]
+    manifest_id: Mapped[UUID]
+    role: Mapped[str] = mapped_column(String(16))
+    resource_record_id: Mapped[UUID]
+    snapshot_ref: Mapped[str] = mapped_column(String(128))
+    ordinal: Mapped[int] = mapped_column(Integer)
