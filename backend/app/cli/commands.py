@@ -1,9 +1,13 @@
+from pathlib import Path
 from typing import Annotated
 
 import typer
 from minio import Minio
 from redis import Redis
 
+from backups.adapters.minio import MinioObjectInventory, ObjectInventoryError
+from backups.adapters.postgres import BackupToolError, PostgresDumpAdapter
+from backups.services import BackupError, BackupService
 from core.config import get_settings
 from core.errors import ApplicationError
 from db.session import create_db_engine, create_session_factory
@@ -16,8 +20,10 @@ from identity.services import IdentityService
 app = typer.Typer(no_args_is_help=True)
 identity_app = typer.Typer(no_args_is_help=True)
 lifecycle_app = typer.Typer(no_args_is_help=True)
+backup_app = typer.Typer(no_args_is_help=True)
 app.add_typer(identity_app, name="identity")
 app.add_typer(lifecycle_app, name="lifecycle")
+app.add_typer(backup_app, name="backup")
 
 
 @app.callback()
@@ -29,6 +35,51 @@ def main() -> None:
 def version() -> None:
     """Print the backend version."""
     typer.echo(get_settings().app_version)
+
+
+@backup_app.command("create-candidate")
+def create_backup_candidate(
+    destination: Annotated[
+        Path,
+        typer.Option(
+            "--destination",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            writable=True,
+            resolve_path=True,
+            help="Existing directory that will receive one protected candidate bundle.",
+        ),
+    ],
+) -> None:
+    """Create a database archive and evidence-object inventory candidate."""
+    settings = get_settings()
+    engine = create_db_engine(settings)
+    minio = Minio(
+        settings.minio_endpoint,
+        access_key=settings.minio_access_key,
+        secret_key=settings.minio_secret_key,
+        secure=settings.minio_secure,
+    )
+    try:
+        result = BackupService(
+            engine=engine,
+            archive_writer=PostgresDumpAdapter(settings.database_url.get_secret_value()),
+            object_inspector=MinioObjectInventory(minio, settings.minio_bucket),
+            evidence_bucket=settings.minio_bucket,
+            schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
+        ).create_candidate(destination)
+    except (BackupError, BackupToolError, ObjectInventoryError) as error:
+        typer.echo(f"Backup candidate failed: {error}", err=True)
+        raise typer.Exit(code=1) from error
+    finally:
+        engine.dispose()
+    missing = sum(item.state.value == "missing" for item in result.manifest.evidence_objects)
+    typer.echo(
+        f"Backup candidate created: {result.manifest.backup_id}; "
+        f"path: {result.directory}; missing evidence objects: {missing}; "
+        "restore verified: false"
+    )
 
 
 @identity_app.command("reset-password")

@@ -38,6 +38,7 @@ from evidence.schemas import (
     DeletionReason,
     DeletionStatus,
     DeletionView,
+    EvidenceBackupObjectRef,
     EvidenceResourceView,
     ProvenanceInputRole,
     ProvenanceManifestInput,
@@ -745,6 +746,43 @@ class LifecycleService:
     def _validate_resource_type(resource_type: str) -> None:
         if re.fullmatch(r"[a-z][a-z0-9_]{0,63}", resource_type) is None:
             raise ValueError("resource_type must be a stable lowercase identifier")
+
+
+class EvidenceBackupInventoryService:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def list_minio_objects(self) -> tuple[EvidenceBackupObjectRef, ...]:
+        rows = self._session.execute(
+            select(EvidenceResource, DeletionDirective.status)
+            .outerjoin(
+                DeletionDirective,
+                (DeletionDirective.owner_id == EvidenceResource.owner_id)
+                & (DeletionDirective.resource_record_id == EvidenceResource.id),
+            )
+            .order_by(EvidenceResource.id)
+        ).all()
+        references: list[EvidenceBackupObjectRef] = []
+        for resource, deletion_status in rows:
+            status = DeletionStatus(deletion_status) if deletion_status is not None else None
+            for target in resource.cleanup_targets:
+                spec = CleanupTargetSpec.model_validate(target)
+                if spec.kind is not CleanupTargetKind.MINIO_OBJECT:
+                    continue
+                references.append(
+                    EvidenceBackupObjectRef(
+                        resource_record_id=resource.id,
+                        object_name=spec.reference,
+                        expires_at=resource.expires_at,
+                        deletion_status=status,
+                    )
+                )
+        return tuple(
+            sorted(
+                references,
+                key=lambda item: (str(item.resource_record_id), item.object_name),
+            )
+        )
 
 
 class ProvenanceService:

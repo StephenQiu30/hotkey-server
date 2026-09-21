@@ -1,6 +1,6 @@
 # HotKey 文档索引
 
-当前为需求/设计复核与工程底座补齐阶段。已有部分工程实现，业务闭环尚未验收；43 项逐项 PRD 仍为草案。2026-09-21 已建立 proposed 总体 Design，完成 046 公共技术前置、027 S00、031/036/037 的 S00—S02 及 028/029/034/035/038/039 的 S00/S01 技术切片；首批来源和产品范围仍待评审。
+当前为需求/设计复核与工程底座补齐阶段。已有部分工程实现，业务闭环尚未验收；43 项逐项 PRD 仍为草案。2026-09-21 已建立 proposed 总体 Design，完成 046 公共技术前置、027 S00、031/036/037 的 S00—S02 及 028/029/032/034/035/038/039 的 S00/S01 技术切片；首批来源和产品范围仍待评审。
 
 总体实施顺序与进度见 [BACKLOG](../BACKLOG.md)，具体任务和阶段 checklist 见 [执行计划索引](plans/README.md)。
 
@@ -23,7 +23,7 @@
 
 ### 逐项需求交付台账
 
-003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 草案与执行计划；027/031/034/035/036/037/038/039/042 为 in_progress 且已有 accepted Design，其余为 planned；尚未建立对应 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
+003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 草案与执行计划；027/028/029/031/032/034/035/036/037/038/039/042 为 in_progress 且已有 accepted Design，其余为 planned；尚未建立对应 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
 
 | 编号 | PRD 主题 | 来源需求 | 优先级 | PRD 状态 | Plan |
 |---|---|---|---|---|---|
@@ -56,7 +56,7 @@
 | 029 | [时效与数据新鲜度](prd/029-时效与数据新鲜度.md) · [Design](design/029-时效与数据新鲜度设计.md) accepted | NFR-001-003 | P0 | draft | [计划](plans/029-时效与数据新鲜度计划.md) · in_progress（S00/S01 完成，0/6 AC） |
 | 030 | [交互与检索性能](prd/030-交互与检索性能.md) | NFR-001-004 | P0 | draft | [计划](plans/030-交互与检索性能计划.md) · planned |
 | 031 | [可靠执行与幂等](prd/031-可靠执行与幂等.md) · [Design](design/031-可靠执行与幂等设计.md) accepted | NFR-001-005 | P0 | draft | [计划](plans/031-可靠执行与幂等计划.md) · in_progress（S00—S02 完成，0/6 AC） |
-| 032 | [备份与恢复](prd/032-备份与恢复.md) | NFR-001-006 | P0 | draft | [计划](plans/032-备份与恢复计划.md) · planned |
+| 032 | [备份与恢复](prd/032-备份与恢复.md) · [Design](design/032-备份与恢复设计.md) accepted | NFR-001-006 | P0 | draft | [计划](plans/032-备份与恢复计划.md) · in_progress（S00/S01 完成，0/6 AC） |
 | 033 | [故障隔离与降级](prd/033-故障隔离与降级.md) | NFR-001-007 | P0 | draft | [计划](plans/033-故障隔离与降级计划.md) · planned |
 | 034 | [凭据与应用安全](prd/034-凭据与应用安全.md) · [Design](design/034-凭据与应用安全设计.md) accepted | NFR-001-008 | P0 | draft | [计划](plans/034-凭据与应用安全计划.md) · in_progress（S00/S01 完成，0/6 AC） |
 | 035 | [权限与数据隔离](prd/035-权限与数据隔离.md) · [Design](design/035-权限与数据隔离设计.md) accepted | NFR-001-009 | P0 | draft | [计划](plans/035-权限与数据隔离计划.md) · in_progress（S00/S01 完成，0/6 AC） |

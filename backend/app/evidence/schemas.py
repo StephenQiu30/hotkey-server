@@ -263,6 +263,22 @@ class EvidenceResourceView(BaseModel):
     created_at: datetime
 
 
+class EvidenceBackupObjectRef(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    resource_record_id: UUID
+    object_name: str = Field(min_length=1, max_length=1024)
+    expires_at: datetime
+    deletion_status: DeletionStatus | None
+
+    @field_validator("expires_at")
+    @classmethod
+    def validate_expires_at(cls, value: datetime) -> datetime:
+        if value.utcoffset() is None:
+            raise ValueError("expires_at must be timezone-aware")
+        return value
+
+
 class DeletionView(BaseModel):
     model_config = ConfigDict(frozen=True)
 
