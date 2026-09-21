@@ -50,7 +50,8 @@ def job_context() -> Iterator[JobTestContext]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE processed_messages, job_attempts, outbox_messages, jobs, "
+                "TRUNCATE source_access_policies, processed_messages, job_attempts, "
+                "outbox_messages, jobs, "
                 "identity_sessions, identity_users"
             )
         )
@@ -68,7 +69,8 @@ def job_context() -> Iterator[JobTestContext]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE processed_messages, job_attempts, outbox_messages, jobs, "
+                    "TRUNCATE source_access_policies, processed_messages, job_attempts, "
+                    "outbox_messages, jobs, "
                     "identity_sessions, identity_users"
                 )
             )

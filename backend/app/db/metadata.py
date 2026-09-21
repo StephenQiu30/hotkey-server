@@ -1,4 +1,5 @@
 from db.base import Base
+from evidence.models import SourceAccessPolicy
 from identity.models import IdentitySession, IdentityUser
 from jobs.models import Job, JobAttempt, OutboxMessage, ProcessedMessage
 
@@ -13,5 +14,6 @@ __all__ = [
     "JobAttempt",
     "OutboxMessage",
     "ProcessedMessage",
+    "SourceAccessPolicy",
     "metadata",
 ]

@@ -32,7 +32,8 @@
 - 身份 HTTP 契约为 `/api/identity/initialize`、`/api/identity/sessions` 与 `/api/identity/session`；Web 请求层自动为写请求补 CSRF，请求凭据和 Cookie 不进入生成客户端参数。
 - `GET /api/identity/workspace` 从有效会话派生当前 owner，不接受客户端归属标识；`require_resource_owner` 为后续业务资源提供默认拒绝规则。Web 已有 `/login` 与受保护 `/events` 空工作台，尚未接入事件业务资源。
 - `app/jobs/` 已实现内部持久受理与恢复：任务与 `job.accepted.v1` outbox 同事务写入，owner/kind/operation ID 唯一，等价重试返回原任务，异范围重用拒绝；outbox 收到 Kafka 回执后才标记，消费者在数据库事务后手动提交 offset，inbox、lease epoch、attempt 和连续 checkpoint 防止重投与旧执行者覆盖，调度追赶默认最多 3 个窗口。尚无 HTTP、具体业务处理器、有限重试/死信或 72 小时度量。
-- 本机默认 PostgreSQL 库包含旧系统历史表，而当前 Python ORM 尚无业务模型。不得对该旧库执行 `database/schema.sql`；需要保留数据时先备份，再用新库完整建表并校验导入。
+- `app/evidence/` 已实现内部来源访问政策：owner/source/capability 唯一，记录访问依据、条款引用、组件版本/许可、处理目的和字段用途；保存时原子递增政策版本，入库前实时拒绝 pending/blocked/disabled/expired/跨 owner 政策并只投影白名单字段。尚无 HTTP、来源适配器、保留/删除/备份清理或真实平台授权证据。
+- 本机既有 PostgreSQL 数据库包含旧系统历史表，不符合当前完整 schema。不得对这些旧库执行 `database/schema.sql`；需要保留数据时先备份，再用新库完整建表并校验导入。
 
 ## 运行基线
 
@@ -54,9 +55,11 @@
 
 **[031 计划](docs/plans/031-可靠执行与幂等计划.md) S00—S02 已完成，Plan 保持 in_progress。** 原子受理、outbox 重发、消费组中断/再均衡、手动 offset、inbox、租约 fencing、checkpoint 恢复、有限调度追赶和 Redis 不可用已通过本机既有 PostgreSQL 18.4 与 Kafka；后端 51 tests 与静态门禁通过。当前没有具体业务消息处理器，Worker 按文档入口安全空闲退出；S03/S04、72 小时运行及 031 产品 AC 仍为 0/6，未建立 Acceptance。
 
+**[036 计划](docs/plans/036-数据访问与生命周期计划.md) S00/S01 已完成，Plan 保持 in_progress。** 来源访问依据、组件许可、字段用途、政策版本与实时准入门禁已通过本机既有 PostgreSQL 18.4；专用 6 tests、后端全量 57 tests 及静态门禁通过。受控样本不代表任何真实平台已授权；S02/S03 的保留、删除、在线/备份清理，S04 及 036 产品 AC 仍为 0/6，未建立 Acceptance。
+
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 按 BACKLOG 继续推进 036 S00/S01，冻结首批数据访问、删除屏障与生命周期基础语义；031 S03 留在 M5 长时可靠性阶段继续。
+1. 按 BACKLOG 继续推进 036 S02，冻结保留参数、即时删除屏障与在线清理语义；031 S03 留在 M5 长时可靠性阶段继续。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
@@ -69,4 +72,4 @@
 
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 
-本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 034、035 的 S00/S01 与 031 的 S00—S02，在隔离数据库及浏览器验证初始化、会话、CSRF、owner 授权、登录/注销、受保护工作台，以及任务原子受理、消息重投、再均衡、租约/检查点恢复和有限调度追赶。当前后端 51 tests、前端 13 tests 及适用静态/构建门禁通过。未执行业务消息处理、来源探测、上述计划后续切片、完整 B0 或产品 Acceptance。
+本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 034、035、036 的 S00/S01 与 031 的 S00—S02，在隔离数据库及浏览器验证初始化、会话、CSRF、owner 授权、登录/注销、受保护工作台、来源政策准入与字段最小化，以及任务原子受理、消息重投、再均衡、租约/检查点恢复和有限调度追赶。当前后端 57 tests、前端 13 tests 及适用静态/构建门禁通过。未执行业务消息处理、真实来源探测、036 S02—S04、其他上述计划后续切片、完整 B0 或产品 Acceptance。

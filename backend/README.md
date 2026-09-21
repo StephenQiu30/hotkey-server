@@ -58,4 +58,4 @@ docker compose run --rm cli identity reset-password
 
 ## 状态
 
-当前底座包含应用工厂、数据库会话、唯一 `schema.sql`、结构化日志、健康检查、Swagger UI、Scalar、Kafka Worker、管理 CLI、身份会话领域、内部任务受理与恢复服务及架构测试。Worker 已具备 outbox 发布、手动 offset、inbox、租约和检查点装配；没有已登记业务 kind 处理器时安全退出。其余业务领域只在对应切片完成 Design 登记后创建，不保留空的未来领域包。
+当前底座包含应用工厂、数据库会话、唯一 `schema.sql`、结构化日志、健康检查、Swagger UI、Scalar、Kafka Worker、管理 CLI、身份会话领域、内部任务受理与恢复服务、来源访问政策与字段最小化门禁及架构测试。Worker 已具备 outbox 发布、手动 offset、inbox、租约和检查点装配；没有已登记业务 kind 处理器时安全退出。来源政策当前只有内部 Service/DTO，没有 HTTP、来源适配器、保留或删除任务。其余业务领域只在对应切片完成 Design 登记后创建，不保留空的未来领域包。

@@ -32,7 +32,8 @@ def identity_client() -> Iterator[TestClient]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE processed_messages, job_attempts, outbox_messages, jobs, "
+                "TRUNCATE source_access_policies, processed_messages, job_attempts, "
+                "outbox_messages, jobs, "
                 "identity_sessions, identity_users"
             )
         )
@@ -43,7 +44,8 @@ def identity_client() -> Iterator[TestClient]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE processed_messages, job_attempts, outbox_messages, jobs, "
+                    "TRUNCATE source_access_policies, processed_messages, job_attempts, "
+                    "outbox_messages, jobs, "
                     "identity_sessions, identity_users"
                 )
             )

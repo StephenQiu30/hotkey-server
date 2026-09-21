@@ -40,6 +40,57 @@ CREATE INDEX identity_sessions_active_expiry_idx
     ON identity_sessions (expires_at)
     WHERE revoked_at IS NULL;
 
+CREATE TABLE source_access_policies (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    source_key VARCHAR(64) NOT NULL CHECK (source_key ~ '^[a-z][a-z0-9_-]{0,63}$'),
+    capability VARCHAR(32) NOT NULL CHECK (
+        capability IN ('search', 'author_posts', 'comments', 'replies')
+    ),
+    status VARCHAR(16) NOT NULL CHECK (status IN ('pending', 'approved', 'blocked')),
+    enabled BOOLEAN NOT NULL DEFAULT false,
+    access_basis VARCHAR(32) CHECK (
+        access_basis IS NULL
+        OR access_basis IN (
+            'official_api',
+            'authorized_feed',
+            'written_permission',
+            'manual_import'
+        )
+    ),
+    terms_reference VARCHAR(512),
+    processing_purpose VARCHAR(256) NOT NULL,
+    component_name VARCHAR(128),
+    component_version VARCHAR(64),
+    component_license VARCHAR(128),
+    field_purposes JSONB NOT NULL DEFAULT '{}'::jsonb
+        CHECK (jsonb_typeof(field_purposes) = 'object'),
+    reviewed_at TIMESTAMPTZ,
+    review_expires_at TIMESTAMPTZ,
+    policy_version INTEGER NOT NULL DEFAULT 1 CHECK (policy_version >= 1),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT source_access_policies_owner_source_capability_key
+        UNIQUE (owner_id, source_key, capability),
+    CHECK (NOT enabled OR status = 'approved'),
+    CHECK (
+        status <> 'approved'
+        OR (
+            access_basis IS NOT NULL
+            AND terms_reference IS NOT NULL
+            AND component_name IS NOT NULL
+            AND component_version IS NOT NULL
+            AND component_license IS NOT NULL
+            AND reviewed_at IS NOT NULL
+            AND field_purposes <> '{}'::jsonb
+        )
+    ),
+    CHECK (
+        review_expires_at IS NULL
+        OR (reviewed_at IS NOT NULL AND review_expires_at > reviewed_at)
+    )
+);
+
 CREATE TABLE jobs (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
