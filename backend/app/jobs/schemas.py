@@ -36,6 +36,17 @@ class JobControlStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class JobFailureCategory(StrEnum):
+    TRANSIENT = "transient"
+    RATE_LIMITED = "rate_limited"
+    AUTHENTICATION_REQUIRED = "authentication_required"
+    PERMISSION_DENIED = "permission_denied"
+    INVALID_RESPONSE = "invalid_response"
+    PARSE_ERROR = "parse_error"
+    INVALID_INPUT = "invalid_input"
+    CONFIGURATION_UNAVAILABLE = "configuration_unavailable"
+
+
 class CollectionJobKind(StrEnum):
     MONITOR_COLLECT = "monitor.collect"
 
@@ -556,6 +567,16 @@ class JobCancellationView(BaseModel):
     timed_out: bool
 
 
+class JobFailureView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    error_code: str
+    category: JobFailureCategory
+    occurred_at: datetime
+    next_action: str
+    manual_retry_allowed: bool
+
+
 class JobStatusView(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -566,6 +587,9 @@ class JobStatusView(BaseModel):
     status: JobControlStatus
     progress: JobProgressView
     cancellation: JobCancellationView | None
+    failure: JobFailureView | None
+    retry_count: int = Field(ge=0)
+    next_run_at: datetime | None
     scheduled_for_at: datetime | None
     started_at: datetime | None
     completed_at: datetime | None
@@ -616,3 +640,47 @@ class JobAcceptedMessage(BaseModel):
         if (self.source_key is None) != (self.source_capability is None):
             raise ValueError("source_key and source_capability must be provided together")
         return self
+
+
+class JobRetryScheduledMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1]
+    message_id: UUID
+    event_type: Literal["job.retry_scheduled.v1"]
+    job_id: UUID
+    owner_id: UUID
+    operation_id: UUID
+    kind: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_.-]{0,63}$")
+    configuration_ref: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9_.:-]{0,127}$",
+    )
+    configuration_version: int = Field(ge=1)
+    source_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z][a-z0-9_-]{0,63}$",
+    )
+    source_capability: SourceCapability | None = None
+    dispatch_sequence: int = Field(ge=2)
+    retry_count: int = Field(ge=1)
+    retry_at: datetime
+    last_error_code: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z][a-z0-9_.:-]{0,127}$",
+    )
+
+    @model_validator(mode="after")
+    def validate_retry(self) -> JobRetryScheduledMessage:
+        if (self.source_key is None) != (self.source_capability is None):
+            raise ValueError("source_key and source_capability must be provided together")
+        if self.retry_at.tzinfo is None:
+            raise ValueError("retry_at must be timezone-aware")
+        return self
+
+
+type JobMessage = JobAcceptedMessage | JobRetryScheduledMessage

@@ -1,6 +1,6 @@
 # HotKey Server 交接
 
-更新日期：2026-09-21。
+更新日期：2026-09-22。
 
 ## 当前结构
 
@@ -71,11 +71,11 @@
 
 **[032 计划](docs/plans/032-备份与恢复计划.md) S00/S01 已完成，Plan 保持 in_progress。** 维护 CLI 已增加 `backup create-candidate`，复用 PostgreSQL 18.4 官方 `pg_dump`/`pg_restore` 与现有 MinIO SDK：数据库归档、19 表计数和证据引用基于同一导出快照，清单记录 schema/归档 SHA-256、对象 present/missing/deleted 三态及 `0700/0600` 权限；临时 passfile 不把密码放入 argv、环境或候选包。复用现有 `.env` 和已启动服务，专用 5 tests、后端全量 114 tests、12 个架构测试及静态门禁通过，未新增 DDL、依赖、Compose、脚本、HTTP/UI。MinIO 内容仍未复制，输出明确 `candidate`、`inventory_only`、`restore_verified=false`；S02—S04、独立介质、真实恢复、删除重放、B0 与 032 产品 AC 仍为 0/6，未建立 Acceptance。
 
-**[009 计划](docs/plans/009-采集任务控制计划.md) S00—S02 已完成，Plan 保持 in_progress。** 任务详情返回阶段、已发请求、已保存数量、取消意图/截止和取消超时；`POST /api/jobs/{job_id}/cancel` 支持 owner/CSRF、queued 立即取消、running 协作式收尾和终态冲突。Worker 的 `begin_request` 在 job 行锁内登记请求并阻止取消后的新请求，在途响应仍可保存检查点，完成时 job/attempt 转 cancelled；queued 取消的 Outbox 消息只登记 processed，不进入业务处理器。`/jobs/[jobId]` 使用生成客户端展示持久事实。授权替换现有 API/Web 后，当前提交继续复用 `backend/.env`、`frontend/.env.local` 与既有 PostgreSQL/Redis/Kafka/MinIO；ready/health、运行时 OpenAPI、真实登录、queued 刷新、取消为 cancelled、桌面与 390×844、不可用及未登录边界均通过，QA 数据已清理。专用 12 tests、后端全量 126 tests、前端 15 tests、静态检查、OpenAPI 生成和生产构建通过，CHK-009-G4-002 已勾选。S03 已完成分类失败、有限来源策略、持久延期、Outbox 到期重投与消息防重的研究/设计冻结，下一步进入 Red；S04、真实处理器/来源与 009 产品 0/6 AC 仍待执行，未建立 Acceptance。
+**[009 计划](docs/plans/009-采集任务控制计划.md) S00—S03 已完成，Plan 保持 in_progress。** S03 已实现结构化失败、来源有限策略、PostgreSQL attempt/job/Inbox/Outbox 同事务延期、`dispatch_sequence`/`available_at`、严格联合消息、到期发布及 `POST /api/jobs/{job_id}/retry`。受控验证得到 delayed/delayed/failed、权限错误零自动重投、同一消息三次重放只转换一次、Outbox 到期只发布一次，手动重试重复点击幂等。详情页展示失败分类、稳定代码、下一动作/时间和重试入口；真实点击后同一 job 转 queued，次数 1→2，桌面/390×844 与未登录边界通过。继续复用现有 env 及 PostgreSQL/Redis/Kafka/MinIO，未新增依赖、服务、脚本或 `.sh`；QA 数据已清理。后端 132 tests、前端 15 tests、静态检查、OpenAPI 生成与生产构建通过，G3/G4 已勾选。真实处理器/来源、S04 与产品 0/6 AC 仍待执行，未建立 Acceptance。
 
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 按 B03 顺序进入 009 S03 Red，实现分类失败、有限重试、到期 Outbox 与重投防重；031 S03 留在 M5 长时可靠性阶段继续。
+1. 按 B03 顺序进入 003 S01；009 S04 等待真实处理器和来源样本后逐项执行，031 S03 留在 M5 长时可靠性阶段继续。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
@@ -88,4 +88,4 @@
 
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 
-本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 009/028/029/032/034/035/038/039 S00/S01、027 S00 与 031/036/037 S00—S02，并实现及浏览器验证 009 S02 的持久进度、协作式取消和任务详情页；009 S03 的分类失败与持久重投已完成研究/设计冻结。在真实 PostgreSQL、既有 Redis/MinIO/Kafka 及适用浏览器中验证身份/授权、任务持久受理/读取与可靠性、生命周期、全尝试计量、分层预算预留、纯来源契约、任务关联/统计口径、不可变溯源清单、分阶段时间链与候选备份。当前后端 126 tests、前端 15 tests 及静态/生产构建门禁通过。未执行真实业务消息处理、任务重试、真实来源探测、SDK 内部计量、真实评分/模型记录、独立对象备份/真实恢复、最后成功/延期/缺口/陈旧传播、009 S03 Red/实现及 S04、036/037 S03/S04、028/029/032/038/039 S02—S04、完整 B0 或产品 Acceptance。
+本轮已交付 009 S00—S03，包括持久受理/读取、进度/取消、分类失败、有限持久重试、到期 Outbox、消息防重、手动重试和任务详情页；同时保留既有 027/028/029/031/032/034—039 先行技术切片。验证复用当前 PostgreSQL/Redis/Kafka/MinIO 与 env，后端 132 tests、前端 15 tests、OpenAPI 生成、生产构建及桌面/390×844 真实浏览器通过。尚未执行真实业务处理器/来源、SDK 内部计量、真实评分/模型记录、独立对象备份/真实恢复、最后成功/缺口/陈旧传播、009 S04 及其他后续切片、完整 B0 或产品 Acceptance。

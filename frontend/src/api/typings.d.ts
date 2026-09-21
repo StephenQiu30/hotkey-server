@@ -96,6 +96,28 @@ declare namespace HotKeyAPI {
     | "failed"
     | "cancelled";
 
+  type JobFailureCategory =
+    | "transient"
+    | "rate_limited"
+    | "authentication_required"
+    | "permission_denied"
+    | "invalid_response"
+    | "parse_error"
+    | "invalid_input"
+    | "configuration_unavailable";
+
+  type JobFailureView = {
+    /** Error Code */
+    error_code: string;
+    category: JobFailureCategory;
+    /** Occurred At */
+    occurred_at: string;
+    /** Next Action */
+    next_action: string;
+    /** Manual Retry Allowed */
+    manual_retry_allowed: boolean;
+  };
+
   type JobObservationContext = {
     /** Configuration Ref */
     configuration_ref: string;
@@ -131,6 +153,11 @@ declare namespace HotKeyAPI {
     status: JobControlStatus;
     progress: JobProgressView;
     cancellation: JobCancellationView | null;
+    failure: JobFailureView | null;
+    /** Retry Count */
+    retry_count: number;
+    /** Next Run At */
+    next_run_at: string | null;
     /** Scheduled For At */
     scheduled_for_at: string | null;
     /** Started At */
@@ -139,6 +166,10 @@ declare namespace HotKeyAPI {
     completed_at: string | null;
     /** Created At */
     created_at: string;
+  };
+
+  type retryCollectionJobParams = {
+    job_id: string;
   };
 
   type SourceCapability = "search" | "author_posts" | "comments" | "replies";

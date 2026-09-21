@@ -413,6 +413,12 @@ CREATE TABLE jobs (
     completed_at TIMESTAMPTZ,
     defer_reason VARCHAR(128),
     next_run_at TIMESTAMPTZ,
+    retry_count BIGINT NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+    last_error_code VARCHAR(128),
+    last_error_category VARCHAR(32),
+    last_error_at TIMESTAMPTZ,
+    next_action VARCHAR(512),
+    manual_retry_allowed BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
     CONSTRAINT jobs_owner_kind_operation_key UNIQUE (owner_id, kind, operation_id),
@@ -464,6 +470,29 @@ CREATE TABLE jobs (
         )
     ),
     CHECK (next_run_at IS NULL OR next_run_at >= created_at)
+    ,CHECK (
+        (
+            last_error_code IS NULL
+            AND last_error_category IS NULL
+            AND last_error_at IS NULL
+            AND next_action IS NULL
+        )
+        OR (
+            last_error_code ~ '^[a-z][a-z0-9_.:-]{0,127}$'
+            AND last_error_category IN (
+                'transient',
+                'rate_limited',
+                'authentication_required',
+                'permission_denied',
+                'invalid_response',
+                'parse_error',
+                'invalid_input',
+                'configuration_unavailable'
+            )
+            AND last_error_at IS NOT NULL
+            AND next_action IS NOT NULL
+        )
+    )
 );
 
 CREATE INDEX jobs_runnable_idx ON jobs (status, lease_expires_at);
@@ -561,15 +590,17 @@ CREATE TABLE outbox_messages (
     topic VARCHAR(128) NOT NULL,
     message_key UUID NOT NULL,
     event_type VARCHAR(64) NOT NULL,
+    dispatch_sequence BIGINT NOT NULL CHECK (dispatch_sequence >= 1),
     payload JSONB NOT NULL CHECK (jsonb_typeof(payload) = 'object'),
+    available_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     published_at TIMESTAMPTZ,
-    CONSTRAINT outbox_messages_event_aggregate_key UNIQUE (event_type, aggregate_id),
+    CONSTRAINT outbox_messages_aggregate_dispatch_key UNIQUE (aggregate_id, dispatch_sequence),
     CHECK (published_at IS NULL OR published_at >= created_at)
 );
 
 CREATE INDEX outbox_messages_unpublished_idx
-    ON outbox_messages (created_at)
+    ON outbox_messages (available_at)
     WHERE published_at IS NULL;
 
 CREATE TABLE job_attempts (
@@ -587,7 +618,10 @@ CREATE TABLE job_attempts (
         OR (finished_at IS NOT NULL AND outcome IS NOT NULL)
     ),
     CHECK (finished_at IS NULL OR finished_at >= started_at),
-    CHECK (outcome IS NULL OR outcome IN ('expired', 'succeeded', 'cancelled'))
+    CHECK (
+        outcome IS NULL
+        OR outcome IN ('expired', 'succeeded', 'cancelled', 'delayed', 'failed')
+    )
 );
 
 CREATE TABLE processed_messages (

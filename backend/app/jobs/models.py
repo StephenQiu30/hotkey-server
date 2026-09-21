@@ -431,6 +431,17 @@ class Job(Base):
             "next_run_at IS NULL OR next_run_at >= created_at",
             name="jobs_next_run_at_check",
         ),
+        CheckConstraint("retry_count >= 0", name="jobs_retry_count_check"),
+        CheckConstraint(
+            "(last_error_code IS NULL AND last_error_category IS NULL AND "
+            "last_error_at IS NULL AND next_action IS NULL) OR "
+            "(last_error_code ~ '^[a-z][a-z0-9_.:-]{0,127}$' AND "
+            "last_error_category IN ('transient', 'rate_limited', "
+            "'authentication_required', 'permission_denied', 'invalid_response', "
+            "'parse_error', 'invalid_input', 'configuration_unavailable') AND "
+            "last_error_at IS NOT NULL AND next_action IS NOT NULL)",
+            name="jobs_failure_context_check",
+        ),
         CheckConstraint("updated_at >= created_at", name="jobs_updated_at_check"),
         Index("jobs_runnable_idx", "status", "lease_expires_at"),
     )
@@ -465,6 +476,12 @@ class Job(Base):
     completed_at: Mapped[datetime | None]
     defer_reason: Mapped[str | None] = mapped_column(String(128))
     next_run_at: Mapped[datetime | None]
+    retry_count: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    last_error_code: Mapped[str | None] = mapped_column(String(128))
+    last_error_category: Mapped[str | None] = mapped_column(String(32))
+    last_error_at: Mapped[datetime | None]
+    next_action: Mapped[str | None] = mapped_column(String(512))
+    manual_retry_allowed: Mapped[bool] = mapped_column(server_default=text("false"))
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
 
@@ -524,10 +541,11 @@ class OutboxMessage(Base):
     __tablename__ = "outbox_messages"
     __table_args__ = (
         UniqueConstraint(
-            "event_type",
             "aggregate_id",
-            name="outbox_messages_event_aggregate_key",
+            "dispatch_sequence",
+            name="outbox_messages_aggregate_dispatch_key",
         ),
+        CheckConstraint("dispatch_sequence >= 1", name="outbox_messages_dispatch_check"),
         CheckConstraint(
             "jsonb_typeof(payload) = 'object'",
             name="outbox_messages_payload_object_check",
@@ -538,7 +556,7 @@ class OutboxMessage(Base):
         ),
         Index(
             "outbox_messages_unpublished_idx",
-            "created_at",
+            "available_at",
             postgresql_where=text("published_at IS NULL"),
         ),
     )
@@ -548,7 +566,9 @@ class OutboxMessage(Base):
     topic: Mapped[str] = mapped_column(String(128))
     message_key: Mapped[UUID]
     event_type: Mapped[str] = mapped_column(String(64))
+    dispatch_sequence: Mapped[int] = mapped_column(BigInteger)
     payload: Mapped[dict[str, JsonValue]] = mapped_column(JSONB)
+    available_at: Mapped[datetime]
     created_at: Mapped[datetime]
     published_at: Mapped[datetime | None]
 
@@ -572,7 +592,8 @@ class JobAttempt(Base):
             name="job_attempts_finished_at_check",
         ),
         CheckConstraint(
-            "outcome IS NULL OR outcome IN ('expired', 'succeeded', 'cancelled')",
+            "outcome IS NULL OR outcome IN "
+            "('expired', 'succeeded', 'cancelled', 'delayed', 'failed')",
             name="job_attempts_outcome_check",
         ),
     )

@@ -98,3 +98,31 @@ def cancel_collection_job(
     job = service.request_cancel(owner_id=identity.view.user.id, job_id=job_id)
     response.headers["cache-control"] = "no-store"
     return job
+
+
+@router.post(
+    "/{job_id}/retry",
+    operation_id="retryCollectionJob",
+    response_model=JobStatusView,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="重试采集任务",
+    description="恢复同一任务及其检查点; 重复点击已排队任务不会重复派发。",
+    responses={
+        401: {"model": ErrorView, "description": "会话无效或已过期"},
+        403: {"model": ErrorView, "description": "请求安全校验失败"},
+        404: {"model": ErrorView, "description": "任务不存在或不可访问"},
+        409: {"model": ErrorView, "description": "任务当前状态不可重试"},
+        422: {"model": ErrorView, "description": "请求参数校验失败"},
+        500: {"model": ErrorView, "description": "服务内部异常"},
+    },
+)
+def retry_collection_job(
+    job_id: UUID,
+    response: Response,
+    service: JobServiceDependency,
+    identity: CsrfProtectedIdentityDependency,
+) -> JobStatusView:
+    job = service.request_retry(owner_id=identity.view.user.id, job_id=job_id)
+    response.headers["location"] = f"/api/jobs/{job.id}"
+    response.headers["cache-control"] = "no-store"
+    return job

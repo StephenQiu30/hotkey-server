@@ -19,10 +19,11 @@ from jobs.execution import (
     CheckpointValue,
     Clock,
     ExecutionLease,
+    JobExecutionFailure,
     JobExecutionService,
     JobProgress,
 )
-from jobs.schemas import JobAcceptedMessage
+from jobs.schemas import JobMessage
 from jobs.services import JOB_ACCEPTED_TOPIC, OutboxService
 from worker.messaging import (
     MessageHandler,
@@ -37,7 +38,7 @@ JobHandler = Callable[["JobExecutionContext"], None]
 
 @dataclass(slots=True)
 class JobExecutionContext:
-    message: JobAcceptedMessage
+    message: JobMessage
     lease: ExecutionLease
     _sessions: sessionmaker[Session]
     _lease_seconds: int
@@ -126,7 +127,20 @@ def create_job_message_handler(
                 _lease_seconds=lease_seconds,
                 _clock=clock,
             )
-            handler(context)
+            try:
+                handler(context)
+            except JobExecutionFailure as failure:
+                with sessions() as session:
+                    JobExecutionService(
+                        session,
+                        lease_seconds=lease_seconds,
+                        clock=clock,
+                    ).record_failure(
+                        context.lease,
+                        message=reference,
+                        failure=failure,
+                    )
+                return
             with sessions() as session:
                 JobExecutionService(
                     session,

@@ -23,13 +23,14 @@ from structlog.contextvars import get_contextvars
 from core.config import Settings
 from core.errors import ApplicationError
 from jobs.execution import (
+    JobExecutionFailure,
     JobExecutionService,
     JobProgress,
     MessageReference,
     StaleExecutionLeaseError,
     plan_catchup_windows,
 )
-from jobs.schemas import JobAcceptanceInput, JobObservationContext, JobStage
+from jobs.schemas import JobAcceptanceInput, JobFailureCategory, JobObservationContext, JobStage
 from jobs.services import JobService, OutboxService
 from sources.contracts import SourceCapability
 from worker.app import JobExecutionContext, create_job_message_handler
@@ -134,6 +135,75 @@ def _wait_for_assignment(consumer: Consumer, timeout_seconds: float = 10) -> Non
     raise AssertionError("Kafka consumer did not receive a partition assignment")
 
 
+class StoredOutboxMessage:
+    def __init__(
+        self,
+        *,
+        job_id: UUID,
+        message_id: UUID,
+        event_type: str,
+        payload: dict[str, object],
+        offset: int,
+    ) -> None:
+        self._job_id = job_id
+        self._message_id = message_id
+        self._event_type = event_type
+        self._payload = payload
+        self._offset = offset
+
+    def topic(self) -> str:
+        return "hotkey.jobs.accepted.v2"
+
+    def value(self) -> bytes:
+        return json.dumps(
+            {
+                **self._payload,
+                "schema_version": 2 if self._event_type == "job.accepted.v2" else 1,
+                "message_id": str(self._message_id),
+                "event_type": self._event_type,
+            }
+        ).encode()
+
+    def key(self) -> bytes:
+        return str(self._job_id).encode()
+
+    def partition(self) -> int:
+        return 0
+
+    def offset(self) -> int:
+        return self._offset
+
+    def headers(self) -> list[tuple[str, bytes]]:
+        return [("hotkey-message-id", str(self._message_id).encode())]
+
+
+def _stored_message(
+    context: JobTestContext,
+    *,
+    job_id: UUID,
+    dispatch_sequence: int,
+    offset: int,
+) -> Message:
+    with context.engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT id, event_type, payload FROM outbox_messages "
+                "WHERE aggregate_id = :job_id AND dispatch_sequence = :dispatch_sequence"
+            ),
+            {"job_id": job_id, "dispatch_sequence": dispatch_sequence},
+        ).one()
+    return cast(
+        Message,
+        StoredOutboxMessage(
+            job_id=job_id,
+            message_id=row.id,
+            event_type=row.event_type,
+            payload=row.payload,
+            offset=offset,
+        ),
+    )
+
+
 def test_lost_response_retry_returns_the_original_job_and_one_outbox(
     job_context: JobTestContext,
 ) -> None:
@@ -159,6 +229,202 @@ def test_lost_response_retry_returns_the_original_job_and_one_outbox(
         "source_key": "x",
         "source_capability": "search",
     }
+
+
+def test_transient_failure_retries_twice_then_fails_without_replay_duplicates(
+    job_context: JobTestContext,
+) -> None:
+    with job_context.sessions() as session:
+        job = JobService(session).accept(owner_id=job_context.owner_id, command=_command())
+    clock = [job.created_at + timedelta(seconds=1)]
+    calls: list[int] = []
+
+    def fail_after_request(context: JobExecutionContext) -> None:
+        assert context.begin_request() is True
+        calls.append(context.lease.epoch)
+        raise JobExecutionFailure(
+            error_code="source_timeout",
+            category=JobFailureCategory.TRANSIENT,
+            occurred_at=clock[0],
+            next_action="等待来源策略安排的下一次尝试",
+            manual_retry_allowed=True,
+            retry_at=clock[0] + timedelta(seconds=1),
+            max_attempts=3,
+        )
+
+    handler = create_job_message_handler(
+        job_context.sessions,
+        {"monitor.collect": fail_after_request},
+        worker_id="worker-transient",
+        lease_seconds=60,
+        clock=lambda: clock[0],
+    )
+
+    first = _stored_message(job_context, job_id=job.id, dispatch_sequence=1, offset=0)
+    handler(first)
+    handler(first)
+    handler(first)
+    with job_context.engine.connect() as connection:
+        after_replay = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM job_attempts WHERE job_id = :job_id), "
+                "(SELECT count(*) FROM processed_messages WHERE job_id = :job_id), "
+                "(SELECT count(*) FROM outbox_messages WHERE aggregate_id = :job_id)"
+            ),
+            {"job_id": job.id},
+        ).one()
+    assert tuple(after_replay) == (1, 1, 2)
+
+    clock[0] += timedelta(seconds=1)
+    handler(_stored_message(job_context, job_id=job.id, dispatch_sequence=2, offset=1))
+    clock[0] += timedelta(seconds=1)
+    handler(_stored_message(job_context, job_id=job.id, dispatch_sequence=3, offset=2))
+
+    with job_context.sessions() as session:
+        status = JobService(session, clock=lambda: clock[0]).get_status(
+            owner_id=job_context.owner_id,
+            job_id=job.id,
+        )
+    with job_context.engine.connect() as connection:
+        outcomes = (
+            connection.execute(
+                text(
+                    "SELECT outcome FROM job_attempts WHERE job_id = :job_id ORDER BY lease_epoch"
+                ),
+                {"job_id": job.id},
+            )
+            .scalars()
+            .all()
+        )
+        counts = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM processed_messages WHERE job_id = :job_id), "
+                "(SELECT count(*) FROM outbox_messages WHERE aggregate_id = :job_id)"
+            ),
+            {"job_id": job.id},
+        ).one()
+
+    assert calls == [1, 2, 3]
+    assert outcomes == ["delayed", "delayed", "failed"]
+    assert tuple(counts) == (3, 3)
+    assert status.status == "failed"
+    assert status.retry_count == 2
+    assert status.progress.requests_sent == 3
+    assert status.next_run_at is None
+    assert status.failure is not None
+    assert status.failure.error_code == "source_timeout"
+    assert status.failure.category == "transient"
+
+
+def test_permission_failure_is_terminal_and_never_switches_context(
+    job_context: JobTestContext,
+) -> None:
+    with job_context.sessions() as session:
+        job = JobService(session).accept(owner_id=job_context.owner_id, command=_command())
+    clock = [job.created_at + timedelta(seconds=1)]
+    seen_sources: list[tuple[str | None, str | None]] = []
+
+    def deny(context: JobExecutionContext) -> None:
+        seen_sources.append(
+            (
+                context.message.source_key,
+                context.message.source_capability,
+            )
+        )
+        raise JobExecutionFailure(
+            error_code="source_permission_denied",
+            category=JobFailureCategory.PERMISSION_DENIED,
+            occurred_at=clock[0],
+            next_action="检查当前连接的访问权限",
+            manual_retry_allowed=True,
+        )
+
+    handler = create_job_message_handler(
+        job_context.sessions,
+        {"monitor.collect": deny},
+        worker_id="worker-permission",
+        lease_seconds=60,
+        clock=lambda: clock[0],
+    )
+    message = _stored_message(job_context, job_id=job.id, dispatch_sequence=1, offset=0)
+    handler(message)
+    handler(message)
+    handler(message)
+
+    with job_context.engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT j.status, j.last_error_category, j.retry_count, "
+                "(SELECT count(*) FROM job_attempts WHERE job_id = j.id), "
+                "(SELECT count(*) FROM processed_messages WHERE job_id = j.id), "
+                "(SELECT count(*) FROM outbox_messages WHERE aggregate_id = j.id) "
+                "FROM jobs j WHERE j.id = :job_id"
+            ),
+            {"job_id": job.id},
+        ).one()
+    assert seen_sources == [("x", SourceCapability.SEARCH)]
+    assert tuple(row) == ("failed", "permission_denied", 0, 1, 1, 1)
+
+
+def test_retry_outbox_is_published_only_when_due_and_only_once(
+    job_context: JobTestContext,
+) -> None:
+    with job_context.sessions() as session:
+        job = JobService(session).accept(owner_id=job_context.owner_id, command=_command())
+    clock = [job.created_at + timedelta(seconds=1)]
+    published: list[tuple[str, int]] = []
+    with job_context.sessions() as session:
+        assert (
+            OutboxService(session).publish_pending(
+                lambda envelope: published.append((envelope.event_type, envelope.schema_version)),
+                published_at=clock[0],
+            )
+            == 1
+        )
+
+    def delay(_context: JobExecutionContext) -> None:
+        raise JobExecutionFailure(
+            error_code="source_rate_limited",
+            category=JobFailureCategory.RATE_LIMITED,
+            occurred_at=clock[0],
+            next_action="等待来源给出的恢复时间",
+            retry_at=clock[0] + timedelta(seconds=10),
+            max_attempts=2,
+        )
+
+    create_job_message_handler(
+        job_context.sessions,
+        {"monitor.collect": delay},
+        worker_id="worker-rate-limit",
+        lease_seconds=60,
+        clock=lambda: clock[0],
+    )(_stored_message(job_context, job_id=job.id, dispatch_sequence=1, offset=0))
+
+    with job_context.sessions() as session:
+        assert (
+            OutboxService(session).publish_pending(
+                lambda envelope: published.append((envelope.event_type, envelope.schema_version)),
+                published_at=clock[0] + timedelta(seconds=9),
+            )
+            == 0
+        )
+    with job_context.sessions() as session:
+        assert (
+            OutboxService(session).publish_pending(
+                lambda envelope: published.append((envelope.event_type, envelope.schema_version)),
+                published_at=clock[0] + timedelta(seconds=10),
+            )
+            == 1
+        )
+    with job_context.sessions() as session:
+        assert (
+            OutboxService(session).publish_pending(
+                lambda envelope: published.append((envelope.event_type, envelope.schema_version)),
+                published_at=clock[0] + timedelta(seconds=11),
+            )
+            == 0
+        )
+    assert published == [("job.accepted.v2", 2), ("job.retry_scheduled.v1", 1)]
 
 
 def test_reused_operation_id_with_different_scope_is_rejected(

@@ -7,10 +7,11 @@ from uuid import UUID
 
 import structlog
 from confluent_kafka import Consumer, KafkaError, Message, Producer
+from pydantic import TypeAdapter
 
 from core.config import Settings
 from jobs.execution import MessageReference
-from jobs.schemas import JobAcceptedMessage
+from jobs.schemas import JobMessage
 from jobs.services import OutboxEnvelope
 
 MessageHandler = Callable[[Message], None]
@@ -74,7 +75,7 @@ def publish_outbox(
         raise MessagePublishError("Kafka did not acknowledge the outbox message")
 
 
-def decode_job_message(message: Message) -> tuple[JobAcceptedMessage, MessageReference]:
+def decode_job_message(message: Message) -> tuple[JobMessage, MessageReference]:
     topic = message.topic()
     value = message.value()
     key = message.key()
@@ -82,7 +83,7 @@ def decode_job_message(message: Message) -> tuple[JobAcceptedMessage, MessageRef
     offset = message.offset()
     if topic is None or value is None or key is None or partition is None or offset is None:
         raise ValueError("job message is missing topic, key, payload, or position")
-    body = JobAcceptedMessage.model_validate_json(value)
+    body: JobMessage = TypeAdapter(JobMessage).validate_json(value)
     try:
         key_id = UUID(key.decode())
     except (UnicodeDecodeError, ValueError) as error:

@@ -115,6 +115,9 @@ def test_submitted_job_is_persisted_and_readable_after_refresh(
             "updated_at": None,
         },
         "cancellation": None,
+        "failure": None,
+        "retry_count": 0,
+        "next_run_at": None,
         "scheduled_for_at": None,
         "started_at": None,
         "completed_at": None,
@@ -307,6 +310,108 @@ def test_cancel_route_enforces_session_csrf_and_owner_boundary(
     assert missing_job.json()["code"] == "resource_not_found"
 
 
+def test_retry_rejects_non_failed_job_without_duplicate_dispatch(
+    collection_job_client: TestClient,
+) -> None:
+    _initialize(collection_job_client)
+    accepted = collection_job_client.post(
+        "/api/jobs",
+        headers=_csrf_headers(collection_job_client),
+        json=_payload(),
+    )
+    assert accepted.status_code == 202
+
+    retried = collection_job_client.post(
+        f"/api/jobs/{accepted.json()['job_id']}/retry",
+        headers=_csrf_headers(collection_job_client),
+    )
+
+    assert retried.status_code == 409
+    assert retried.json()["code"] == "job_not_retryable"
+    factory = collection_job_client.app.state.session_factory
+    with factory() as session:
+        assert session.execute(text("SELECT count(*) FROM jobs")).scalar_one() == 1
+        assert session.execute(text("SELECT count(*) FROM outbox_messages")).scalar_one() == 1
+
+
+def test_manual_retry_reuses_failed_job_and_is_idempotent(
+    collection_job_client: TestClient,
+) -> None:
+    _initialize(collection_job_client)
+    accepted = collection_job_client.post(
+        "/api/jobs",
+        headers=_csrf_headers(collection_job_client),
+        json=_payload(),
+    )
+    job_id = accepted.json()["job_id"]
+    factory = collection_job_client.app.state.session_factory
+    with factory.begin() as session:
+        session.execute(
+            text(
+                "UPDATE jobs SET status = 'failed', completed_at = now(), retry_count = 0, "
+                "last_error_code = 'connection_expired', "
+                "last_error_category = 'authentication_required', last_error_at = now(), "
+                "next_action = '修复连接后重试', manual_retry_allowed = true, "
+                "updated_at = now() WHERE id = :job_id"
+            ),
+            {"job_id": job_id},
+        )
+
+    first = collection_job_client.post(
+        f"/api/jobs/{job_id}/retry",
+        headers=_csrf_headers(collection_job_client),
+    )
+    repeated = collection_job_client.post(
+        f"/api/jobs/{job_id}/retry",
+        headers=_csrf_headers(collection_job_client),
+    )
+
+    assert first.status_code == repeated.status_code == 202
+    assert first.headers["location"] == f"/api/jobs/{job_id}"
+    assert first.headers["cache-control"] == "no-store"
+    assert first.json()["id"] == repeated.json()["id"] == job_id
+    assert first.json()["status"] == repeated.json()["status"] == "queued"
+    assert first.json()["retry_count"] == repeated.json()["retry_count"] == 1
+    assert first.json()["failure"] == {
+        "error_code": "connection_expired",
+        "category": "authentication_required",
+        "occurred_at": first.json()["failure"]["occurred_at"],
+        "next_action": "修复连接后重试",
+        "manual_retry_allowed": True,
+    }
+    with factory() as session:
+        rows = session.execute(
+            text(
+                "SELECT dispatch_sequence, event_type FROM outbox_messages "
+                "ORDER BY dispatch_sequence"
+            )
+        ).all()
+    assert rows == [(1, "job.accepted.v2"), (2, "job.retry_scheduled.v1")]
+
+
+def test_retry_route_enforces_session_csrf_and_missing_resource_boundary(
+    collection_job_client: TestClient,
+) -> None:
+    missing_session = collection_job_client.post(
+        f"/api/jobs/{uuid4()}/retry",
+        headers={"X-HotKey-CSRF": "1"},
+    )
+    assert missing_session.status_code == 401
+    assert missing_session.json()["code"] == "invalid_session"
+
+    _initialize(collection_job_client)
+    missing_csrf = collection_job_client.post(f"/api/jobs/{uuid4()}/retry")
+    assert missing_csrf.status_code == 403
+    assert missing_csrf.json()["code"] == "csrf_invalid"
+
+    missing_job = collection_job_client.post(
+        f"/api/jobs/{uuid4()}/retry",
+        headers=_csrf_headers(collection_job_client),
+    )
+    assert missing_job.status_code == 404
+    assert missing_job.json()["code"] == "resource_not_found"
+
+
 def test_public_submission_rejects_unregistered_job_kinds(
     collection_job_client: TestClient,
 ) -> None:
@@ -335,6 +440,7 @@ def test_job_openapi_contract_is_generated_from_runtime_routes(
     create_operation = schema["paths"]["/api/jobs"]["post"]
     get_operation = schema["paths"]["/api/jobs/{job_id}"]["get"]
     cancel_operation = schema["paths"]["/api/jobs/{job_id}/cancel"]["post"]
+    retry_operation = schema["paths"]["/api/jobs/{job_id}/retry"]["post"]
 
     assert create_operation["operationId"] == "createCollectionJob"
     assert "200" not in create_operation["responses"]
@@ -352,6 +458,12 @@ def test_job_openapi_contract_is_generated_from_runtime_routes(
         "$ref": "#/components/schemas/JobStatusView"
     }
     assert cancel_operation["security"] == [{"SessionCookie": []}]
+    assert retry_operation["operationId"] == "retryCollectionJob"
+    assert "200" not in retry_operation["responses"]
+    assert retry_operation["responses"]["202"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/JobStatusView"
+    }
+    assert retry_operation["security"] == [{"SessionCookie": []}]
     for status_code in ("401", "403", "409", "422", "500"):
         assert create_operation["responses"][status_code]["content"]["application/json"][
             "schema"

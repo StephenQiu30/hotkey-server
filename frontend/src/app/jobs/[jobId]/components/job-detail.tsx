@@ -10,7 +10,11 @@ import {
   RotateCcwIcon,
 } from "lucide-react";
 
-import { cancelCollectionJob, getCollectionJob } from "@/api/caijirenwu";
+import {
+  cancelCollectionJob,
+  getCollectionJob,
+  retryCollectionJob,
+} from "@/api/caijirenwu";
 import { PageState } from "@/components/system/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,6 +50,17 @@ const STAGE_LABELS: Record<HotKeyAPI.JobStage, string> = {
   parse: "解析响应",
   save: "保存结果",
   analysis: "分析内容",
+};
+
+const FAILURE_LABELS: Record<HotKeyAPI.JobFailureCategory, string> = {
+  transient: "来源暂时不可用",
+  rate_limited: "来源限流",
+  authentication_required: "需要重新连接",
+  permission_denied: "访问被拒绝",
+  invalid_response: "来源响应无效",
+  parse_error: "内容解析失败",
+  invalid_input: "任务输入无效",
+  configuration_unavailable: "配置不可用",
 };
 
 function isInvalidSession(error: unknown): boolean {
@@ -89,6 +104,7 @@ export function JobDetail({ jobId }: JobDetailProps) {
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [actionError, setActionError] = useState<ActionError | null>(null);
 
   useEffect(() => {
@@ -164,6 +180,30 @@ export function JobDetail({ jobId }: JobDetailProps) {
       }
     } finally {
       setIsCancelling(false);
+    }
+  }
+
+  async function retry() {
+    if (isRetrying) {
+      return;
+    }
+    setIsRetrying(true);
+    setActionError(null);
+    try {
+      const job = await retryCollectionJob({ job_id: jobId });
+      setState({ status: "ready", job });
+    } catch (error) {
+      if (isInvalidSession(error)) {
+        router.replace("/login");
+      } else {
+        setActionError(
+          error instanceof ApiRequestError
+            ? { message: error.message, requestId: error.requestId }
+            : { message: "重试提交失败，请检查任务状态后再试。" },
+        );
+      }
+    } finally {
+      setIsRetrying(false);
     }
   }
 
@@ -286,6 +326,15 @@ export function JobDetail({ jobId }: JobDetailProps) {
                 <BanIcon data-icon="inline-start" />
                 等待在途请求
               </Button>
+            ) : job.status === "failed" && job.failure?.manual_retry_allowed ? (
+              <Button
+                type="button"
+                onClick={() => void retry()}
+                disabled={isRetrying}
+              >
+                <RotateCcwIcon data-icon="inline-start" />
+                {isRetrying ? "正在提交" : "重试任务"}
+              </Button>
             ) : null}
           </div>
         </div>
@@ -307,6 +356,26 @@ export function JobDetail({ jobId }: JobDetailProps) {
               {job.cancellation.deadline_at
                 ? ` 截止时间：${formatTime(job.cancellation.deadline_at)}。`
                 : " 当前任务无需等待在途请求。"}
+            </p>
+          </section>
+        ) : null}
+
+        {job.failure ? (
+          <section
+            className="bg-destructive/10 mt-8 rounded-2xl p-5"
+            aria-live="polite"
+          >
+            <h2 className="font-medium">
+              {FAILURE_LABELS[job.failure.category]}
+            </h2>
+            <p className="text-muted-foreground mt-2 text-sm leading-6">
+              {job.failure.next_action} 错误代码：{job.failure.error_code}。
+            </p>
+            <p className="text-muted-foreground mt-1 text-sm leading-6">
+              发生时间：{formatTime(job.failure.occurred_at)}。
+              {job.next_run_at
+                ? ` 下次尝试：${formatTime(job.next_run_at)}。`
+                : " 当前没有自动重试计划。"}
             </p>
           </section>
         ) : null}
@@ -374,6 +443,8 @@ export function JobDetail({ jobId }: JobDetailProps) {
               label="计划时间"
               value={formatTime(job.scheduled_for_at)}
             />
+            <DetailItem label="下次尝试" value={formatTime(job.next_run_at)} />
+            <DetailItem label="重试次数" value={String(job.retry_count)} />
           </dl>
         </section>
       </main>

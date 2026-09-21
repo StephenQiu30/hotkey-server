@@ -44,3 +44,17 @@ export async function cancelCollectionJob(
     ...(options || {}),
   });
 }
+
+/** 重试采集任务 恢复同一任务及其检查点; 重复点击已排队任务不会重复派发。 POST /api/jobs/${param0}/retry */
+export async function retryCollectionJob(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.retryCollectionJobParams,
+  options?: import("@/request").RequestOptions,
+) {
+  const { job_id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.JobStatusView>(`/api/jobs/${param0}/retry`, {
+    method: "POST",
+    params: { ...queryParams },
+    ...(options || {}),
+  });
+}

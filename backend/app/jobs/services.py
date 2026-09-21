@@ -43,6 +43,8 @@ from jobs.schemas import (
     JobAcceptanceInput,
     JobCancellationView,
     JobControlStatus,
+    JobFailureCategory,
+    JobFailureView,
     JobObservationContext,
     JobProgressView,
     JobStage,
@@ -67,6 +69,11 @@ from sources.contracts import SourceCapability
 
 JOB_ACCEPTED_EVENT_TYPE = "job.accepted.v2"
 JOB_ACCEPTED_TOPIC = "hotkey.jobs.accepted.v2"
+JOB_RETRY_EVENT_TYPE = "job.retry_scheduled.v1"
+JOB_EVENT_SCHEMA_VERSIONS = {
+    JOB_ACCEPTED_EVENT_TYPE: 2,
+    JOB_RETRY_EVENT_TYPE: 1,
+}
 
 type PublishOutbox = Callable[["OutboxEnvelope"], None]
 type OutboxValue = str | int | bool | None
@@ -110,12 +117,13 @@ class OutboxEnvelope:
     topic: str
     message_key: UUID
     event_type: str
+    schema_version: int
     payload: dict[str, OutboxValue]
 
     def message_body(self) -> dict[str, OutboxValue]:
         return {
             **self.payload,
-            "schema_version": 2,
+            "schema_version": self.schema_version,
             "message_id": str(self.message_id),
             "event_type": self.event_type,
         }
@@ -1148,6 +1156,7 @@ class JobService:
                         topic=JOB_ACCEPTED_TOPIC,
                         message_key=job_id,
                         event_type=JOB_ACCEPTED_EVENT_TYPE,
+                        dispatch_sequence=1,
                         payload={
                             "job_id": str(job_id),
                             "owner_id": str(owner_id),
@@ -1162,6 +1171,7 @@ class JobService:
                                 else None
                             ),
                         },
+                        available_at=now,
                         created_at=now,
                         published_at=None,
                     )
@@ -1260,6 +1270,62 @@ class JobService:
             view = self._status_view(model, now=now)
         return view
 
+    def request_retry(self, *, owner_id: UUID, job_id: UUID) -> JobStatusView:
+        now = self._clock()
+        if now.tzinfo is None:
+            raise ValueError("clock must return a timezone-aware datetime")
+        self._session.rollback()
+        with self._session.begin():
+            model = self._session.scalar(
+                select(Job).where(Job.owner_id == owner_id, Job.id == job_id).with_for_update()
+            )
+            if model is None:
+                raise ApplicationError("resource_not_found")
+
+            if (
+                model.status == JobStatus.QUEUED.value
+                and model.defer_reason == "manual_retry"
+                and model.last_error_at is not None
+            ):
+                return self._status_view(model, now=now)
+            if model.status != JobStatus.FAILED.value or not model.manual_retry_allowed:
+                raise ApplicationError("job_not_retryable")
+
+            retry_count = model.retry_count + 1
+            dispatch_sequence = (
+                self._session.scalar(
+                    select(func.max(OutboxMessage.dispatch_sequence)).where(
+                        OutboxMessage.aggregate_id == model.id
+                    )
+                )
+                or 0
+            ) + 1
+            model.status = JobStatus.QUEUED.value
+            model.completed_at = None
+            model.defer_reason = "manual_retry"
+            model.next_run_at = now
+            model.retry_count = retry_count
+            model.updated_at = now
+            self._session.add(
+                OutboxMessage(
+                    id=uuid4(),
+                    aggregate_id=model.id,
+                    topic=JOB_ACCEPTED_TOPIC,
+                    message_key=model.id,
+                    event_type=JOB_RETRY_EVENT_TYPE,
+                    dispatch_sequence=dispatch_sequence,
+                    payload=self._retry_payload(
+                        model,
+                        retry_at=now,
+                        dispatch_sequence=dispatch_sequence,
+                    ),
+                    available_at=now,
+                    created_at=now,
+                    published_at=None,
+                )
+            )
+            return self._status_view(model, now=now)
+
     def accept_schedule_window(
         self,
         *,
@@ -1329,6 +1395,21 @@ class JobService:
                 deadline_at=_as_utc(deadline),
                 timed_out=timed_out,
             )
+        failure = None
+        if model.last_error_code is not None:
+            if (
+                model.last_error_category is None
+                or model.last_error_at is None
+                or model.next_action is None
+            ):
+                raise RuntimeError("job failure context is incomplete")
+            failure = JobFailureView(
+                error_code=model.last_error_code,
+                category=JobFailureCategory(model.last_error_category),
+                occurred_at=model.last_error_at.astimezone(UTC),
+                next_action=model.next_action,
+                manual_retry_allowed=model.manual_retry_allowed,
+            )
         return JobStatusView(
             id=model.id,
             operation_id=model.operation_id,
@@ -1342,11 +1423,38 @@ class JobService:
                 updated_at=_as_utc(model.progress_updated_at),
             ),
             cancellation=cancellation,
+            failure=failure,
+            retry_count=model.retry_count,
+            next_run_at=_as_utc(model.next_run_at),
             scheduled_for_at=_as_utc(model.scheduled_for_at),
             started_at=_as_utc(model.started_at),
             completed_at=_as_utc(model.completed_at),
             created_at=model.created_at.astimezone(UTC),
         )
+
+    @staticmethod
+    def _retry_payload(
+        model: Job,
+        *,
+        retry_at: datetime,
+        dispatch_sequence: int,
+    ) -> dict[str, OutboxValue]:
+        if model.last_error_code is None:
+            raise RuntimeError("retryable job is missing its last error code")
+        return {
+            "job_id": str(model.id),
+            "owner_id": str(model.owner_id),
+            "operation_id": str(model.operation_id),
+            "kind": model.kind,
+            "configuration_ref": model.configuration_ref,
+            "configuration_version": model.configuration_version,
+            "source_key": model.source_key,
+            "source_capability": model.source_capability,
+            "dispatch_sequence": dispatch_sequence,
+            "retry_count": model.retry_count,
+            "retry_at": retry_at.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+            "last_error_code": model.last_error_code,
+        }
 
 
 class OutboxService:
@@ -1363,24 +1471,34 @@ class OutboxService:
         if not 1 <= batch_size <= 100:
             raise ValueError("batch_size must be between 1 and 100")
         now = published_at or datetime.now(UTC)
+        if now.tzinfo is None:
+            raise ValueError("published_at must be timezone-aware")
         self._session.rollback()
         with self._session.begin():
             messages = list(
                 self._session.scalars(
                     select(OutboxMessage)
-                    .where(OutboxMessage.published_at.is_(None))
-                    .order_by(OutboxMessage.created_at, OutboxMessage.id)
+                    .where(
+                        OutboxMessage.published_at.is_(None),
+                        OutboxMessage.available_at <= now,
+                    )
+                    .order_by(OutboxMessage.available_at, OutboxMessage.id)
                     .limit(batch_size)
                     .with_for_update(skip_locked=True)
                 )
             )
             for model in messages:
+                try:
+                    schema_version = JOB_EVENT_SCHEMA_VERSIONS[model.event_type]
+                except KeyError as error:
+                    raise RuntimeError(f"unsupported job event type: {model.event_type}") from error
                 publish(
                     OutboxEnvelope(
                         message_id=model.id,
                         topic=model.topic,
                         message_key=model.message_key,
                         event_type=model.event_type,
+                        schema_version=schema_version,
                         payload=dict(model.payload),
                     )
                 )

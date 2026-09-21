@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4, uuid5
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from jobs.models import Job, JobAttempt, ProcessedMessage
-from jobs.schemas import JobStage, JobStatus
+from jobs.models import Job, JobAttempt, OutboxMessage, ProcessedMessage
+from jobs.schemas import JobFailureCategory, JobStage, JobStatus
 
 type CheckpointValue = str | int | bool | None
 type Clock = Callable[[], datetime]
@@ -36,6 +36,40 @@ class StaleExecutionLeaseError(JobExecutionError):
 
 class CheckpointConflictError(JobExecutionError):
     """A checkpoint attempted to skip or rewrite durable progress."""
+
+
+@dataclass(frozen=True, slots=True)
+class JobExecutionFailure(Exception):  # noqa: N818 - frozen domain contract name
+    error_code: str
+    category: JobFailureCategory
+    occurred_at: datetime
+    next_action: str
+    manual_retry_allowed: bool = False
+    retry_at: datetime | None = None
+    max_attempts: int | None = None
+
+    def __post_init__(self) -> None:
+        Exception.__init__(self, self.error_code)
+        if _STABLE_KEY_PATTERN.fullmatch(self.error_code) is None:
+            raise ValueError("error_code must be a stable lowercase identifier")
+        if self.occurred_at.tzinfo is None:
+            raise ValueError("occurred_at must be timezone-aware")
+        if not self.next_action or len(self.next_action) > 512:
+            raise ValueError("next_action must contain between 1 and 512 characters")
+        automatic = self.category in {
+            JobFailureCategory.TRANSIENT,
+            JobFailureCategory.RATE_LIMITED,
+        }
+        complete_policy = self.retry_at is not None and self.max_attempts is not None
+        if complete_policy:
+            if self.retry_at is None or self.retry_at.tzinfo is None:
+                raise ValueError("retry_at must be timezone-aware")
+            if self.max_attempts is None or not 2 <= self.max_attempts <= 100:
+                raise ValueError("max_attempts must be between 2 and 100")
+        if not automatic and complete_policy:
+            raise ValueError("permanent failures cannot carry an automatic retry policy")
+        if (self.retry_at is None) != (self.max_attempts is None):
+            raise ValueError("automatic retry requires retry_at and max_attempts together")
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,12 +237,16 @@ class JobExecutionService:
                 )
             elif model.status != JobStatus.QUEUED.value:
                 raise JobLeaseUnavailableError("terminal jobs cannot be acquired")
+            elif model.next_run_at is not None and model.next_run_at > now:
+                raise JobLeaseUnavailableError("job is not due for execution")
 
             model.status = JobStatus.RUNNING.value
             model.lease_owner = worker_id
             model.lease_epoch += 1
             model.lease_expires_at = expires_at
             model.started_at = model.started_at or now
+            model.defer_reason = None
+            model.next_run_at = None
             model.updated_at = now
             self._session.add(
                 JobAttempt(
@@ -351,6 +389,12 @@ class JobExecutionService:
             model.lease_owner = None
             model.lease_expires_at = None
             model.completed_at = now
+            if not cancelled:
+                model.last_error_code = None
+                model.last_error_category = None
+                model.last_error_at = None
+                model.next_action = None
+                model.manual_retry_allowed = False
             model.updated_at = now
             self._session.execute(
                 update(JobAttempt)
@@ -374,6 +418,103 @@ class JobExecutionService:
                     processed_at=now,
                 )
             )
+
+    def record_failure(
+        self,
+        lease: ExecutionLease,
+        *,
+        message: MessageReference,
+        failure: JobExecutionFailure,
+    ) -> None:
+        now = self._clock()
+        self._session.rollback()
+        with self._session.begin():
+            model = self._lock_job(lease.job_id)
+            self._require_current_lease(model, lease, now)
+            next_retry_count = model.retry_count + 1
+            automatic = failure.category in {
+                JobFailureCategory.TRANSIENT,
+                JobFailureCategory.RATE_LIMITED,
+            }
+            should_retry = (
+                automatic
+                and failure.retry_at is not None
+                and failure.max_attempts is not None
+                and failure.retry_at > now
+                and next_retry_count < failure.max_attempts
+            )
+
+            model.lease_owner = None
+            model.lease_expires_at = None
+            model.last_error_code = failure.error_code
+            model.last_error_category = failure.category.value
+            model.last_error_at = failure.occurred_at
+            model.next_action = failure.next_action
+            model.manual_retry_allowed = failure.manual_retry_allowed
+            model.updated_at = now
+            if should_retry:
+                model.retry_count = next_retry_count
+            model.status = JobStatus.QUEUED.value if should_retry else JobStatus.FAILED.value
+            model.completed_at = None if should_retry else now
+            model.defer_reason = failure.category.value if should_retry else None
+            model.next_run_at = failure.retry_at if should_retry else None
+            self._session.execute(
+                update(JobAttempt)
+                .where(
+                    JobAttempt.job_id == model.id,
+                    JobAttempt.lease_epoch == model.lease_epoch,
+                    JobAttempt.finished_at.is_(None),
+                )
+                .values(finished_at=now, outcome="delayed" if should_retry else "failed")
+            )
+            self._session.add(
+                ProcessedMessage(
+                    id=message.message_id,
+                    job_id=model.id,
+                    topic=message.topic,
+                    partition=message.partition,
+                    message_offset=message.offset,
+                    processed_at=now,
+                )
+            )
+            if should_retry:
+                if failure.retry_at is None:
+                    raise RuntimeError("scheduled retry is missing retry_at")
+                dispatch_sequence = (
+                    self._session.scalar(
+                        select(func.max(OutboxMessage.dispatch_sequence)).where(
+                            OutboxMessage.aggregate_id == model.id
+                        )
+                    )
+                    or 0
+                ) + 1
+                self._session.add(
+                    OutboxMessage(
+                        id=uuid4(),
+                        aggregate_id=model.id,
+                        topic="hotkey.jobs.accepted.v2",
+                        message_key=model.id,
+                        event_type="job.retry_scheduled.v1",
+                        dispatch_sequence=dispatch_sequence,
+                        payload={
+                            "job_id": str(model.id),
+                            "owner_id": str(model.owner_id),
+                            "operation_id": str(model.operation_id),
+                            "kind": model.kind,
+                            "configuration_ref": model.configuration_ref,
+                            "configuration_version": model.configuration_version,
+                            "source_key": model.source_key,
+                            "source_capability": model.source_capability,
+                            "dispatch_sequence": dispatch_sequence,
+                            "retry_count": next_retry_count,
+                            "retry_at": _utc_text(failure.retry_at),
+                            "last_error_code": failure.error_code,
+                        },
+                        available_at=failure.retry_at,
+                        created_at=now,
+                        published_at=None,
+                    )
+                )
 
     def is_processed(self, message_id: UUID) -> bool:
         processed = self._session.get(ProcessedMessage, message_id) is not None
