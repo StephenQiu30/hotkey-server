@@ -57,10 +57,28 @@ CREATE TABLE jobs (
             'cancelled'
         )
     ),
+    lease_owner VARCHAR(128),
+    lease_epoch BIGINT NOT NULL DEFAULT 0 CHECK (lease_epoch >= 0),
+    lease_expires_at TIMESTAMPTZ,
+    checkpoint_sequence BIGINT NOT NULL DEFAULT 0 CHECK (checkpoint_sequence >= 0),
+    checkpoint JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(checkpoint) = 'object'),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
-    CONSTRAINT jobs_owner_kind_operation_key UNIQUE (owner_id, kind, operation_id)
+    CONSTRAINT jobs_owner_kind_operation_key UNIQUE (owner_id, kind, operation_id),
+    CHECK (
+        (lease_owner IS NULL AND lease_expires_at IS NULL)
+        OR (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)
+    ),
+    CHECK (status = 'running' OR (lease_owner IS NULL AND lease_expires_at IS NULL)),
+    CHECK (
+        completed_at IS NULL
+        OR status IN ('succeeded', 'partially_succeeded', 'failed', 'cancelled')
+    )
 );
+
+CREATE INDEX jobs_runnable_idx ON jobs (status, lease_expires_at);
 
 CREATE TABLE outbox_messages (
     id UUID PRIMARY KEY,
@@ -73,6 +91,39 @@ CREATE TABLE outbox_messages (
     published_at TIMESTAMPTZ,
     CONSTRAINT outbox_messages_event_aggregate_key UNIQUE (event_type, aggregate_id),
     CHECK (published_at IS NULL OR published_at >= created_at)
+);
+
+CREATE INDEX outbox_messages_unpublished_idx
+    ON outbox_messages (created_at)
+    WHERE published_at IS NULL;
+
+CREATE TABLE job_attempts (
+    id UUID PRIMARY KEY,
+    job_id UUID NOT NULL REFERENCES jobs (id) ON DELETE CASCADE,
+    lease_epoch BIGINT NOT NULL CHECK (lease_epoch >= 1),
+    worker_id VARCHAR(128) NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    lease_expires_at TIMESTAMPTZ NOT NULL CHECK (lease_expires_at > started_at),
+    finished_at TIMESTAMPTZ,
+    outcome VARCHAR(32),
+    CONSTRAINT job_attempts_job_epoch_key UNIQUE (job_id, lease_epoch),
+    CHECK (
+        (finished_at IS NULL AND outcome IS NULL)
+        OR (finished_at IS NOT NULL AND outcome IS NOT NULL)
+    ),
+    CHECK (finished_at IS NULL OR finished_at >= started_at),
+    CHECK (outcome IS NULL OR outcome IN ('expired', 'succeeded'))
+);
+
+CREATE TABLE processed_messages (
+    id UUID PRIMARY KEY,
+    job_id UUID NOT NULL REFERENCES jobs (id) ON DELETE CASCADE,
+    topic VARCHAR(128) NOT NULL,
+    partition INTEGER NOT NULL CHECK (partition >= 0),
+    message_offset BIGINT NOT NULL CHECK (message_offset >= 0),
+    processed_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT processed_messages_topic_partition_offset_key
+        UNIQUE (topic, partition, message_offset)
 );
 
 COMMIT;

@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://127.0.0.1:6379/0"
     kafka_bootstrap_servers: str = "127.0.0.1:9092"
     kafka_group_id: str = "hotkey-worker"
+    kafka_delivery_timeout_seconds: int = Field(default=10, ge=1, le=60)
+    kafka_max_poll_interval_seconds: int = Field(default=120, ge=30, le=900)
+
+    job_lease_seconds: int = Field(default=60, ge=5, le=300)
+    job_max_catchup_windows: int = Field(default=3, ge=1, le=100)
 
     minio_endpoint: str = "127.0.0.1:9000"
     minio_secure: bool = False

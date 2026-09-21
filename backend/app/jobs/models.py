@@ -3,7 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, LargeBinary, String, UniqueConstraint, text
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,7 +45,31 @@ class Job(Base):
             name="jobs_request_fingerprint_length_check",
         ),
         CheckConstraint("jsonb_typeof(scope) = 'object'", name="jobs_scope_object_check"),
+        CheckConstraint(
+            "jsonb_typeof(checkpoint) = 'object'",
+            name="jobs_checkpoint_object_check",
+        ),
+        CheckConstraint("lease_epoch >= 0", name="jobs_lease_epoch_check"),
+        CheckConstraint(
+            "checkpoint_sequence >= 0",
+            name="jobs_checkpoint_sequence_check",
+        ),
+        CheckConstraint(
+            "(lease_owner IS NULL AND lease_expires_at IS NULL) OR "
+            "(lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)",
+            name="jobs_lease_pair_check",
+        ),
+        CheckConstraint(
+            "status = 'running' OR (lease_owner IS NULL AND lease_expires_at IS NULL)",
+            name="jobs_non_running_lease_check",
+        ),
+        CheckConstraint(
+            "completed_at IS NULL OR status IN "
+            "('succeeded', 'partially_succeeded', 'failed', 'cancelled')",
+            name="jobs_completed_status_check",
+        ),
         CheckConstraint("updated_at >= created_at", name="jobs_updated_at_check"),
+        Index("jobs_runnable_idx", "status", "lease_expires_at"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
@@ -45,6 +79,16 @@ class Job(Base):
     scope: Mapped[dict[str, JsonValue]] = mapped_column(JSONB)
     request_fingerprint: Mapped[bytes] = mapped_column(LargeBinary(32))
     status: Mapped[str] = mapped_column(String(32), server_default=text("'queued'"))
+    lease_owner: Mapped[str | None] = mapped_column(String(128))
+    lease_epoch: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    lease_expires_at: Mapped[datetime | None]
+    checkpoint_sequence: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    checkpoint: Mapped[dict[str, JsonValue]] = mapped_column(
+        JSONB,
+        server_default=text("'{}'::jsonb"),
+    )
+    started_at: Mapped[datetime | None]
+    completed_at: Mapped[datetime | None]
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
 
@@ -65,6 +109,11 @@ class OutboxMessage(Base):
             "published_at IS NULL OR published_at >= created_at",
             name="outbox_messages_published_at_check",
         ),
+        Index(
+            "outbox_messages_unpublished_idx",
+            "created_at",
+            postgresql_where=text("published_at IS NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
@@ -75,3 +124,61 @@ class OutboxMessage(Base):
     payload: Mapped[dict[str, str]] = mapped_column(JSONB)
     created_at: Mapped[datetime]
     published_at: Mapped[datetime | None]
+
+
+class JobAttempt(Base):
+    __tablename__ = "job_attempts"
+    __table_args__ = (
+        UniqueConstraint("job_id", "lease_epoch", name="job_attempts_job_epoch_key"),
+        CheckConstraint("lease_epoch >= 1", name="job_attempts_lease_epoch_check"),
+        CheckConstraint(
+            "lease_expires_at > started_at",
+            name="job_attempts_lease_expiry_check",
+        ),
+        CheckConstraint(
+            "(finished_at IS NULL AND outcome IS NULL) OR "
+            "(finished_at IS NOT NULL AND outcome IS NOT NULL)",
+            name="job_attempts_outcome_pair_check",
+        ),
+        CheckConstraint(
+            "finished_at IS NULL OR finished_at >= started_at",
+            name="job_attempts_finished_at_check",
+        ),
+        CheckConstraint(
+            "outcome IS NULL OR outcome IN ('expired', 'succeeded')",
+            name="job_attempts_outcome_check",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"))
+    lease_epoch: Mapped[int] = mapped_column(BigInteger)
+    worker_id: Mapped[str] = mapped_column(String(128))
+    started_at: Mapped[datetime]
+    lease_expires_at: Mapped[datetime]
+    finished_at: Mapped[datetime | None]
+    outcome: Mapped[str | None] = mapped_column(String(32))
+
+
+class ProcessedMessage(Base):
+    __tablename__ = "processed_messages"
+    __table_args__ = (
+        UniqueConstraint(
+            "topic",
+            "partition",
+            "message_offset",
+            name="processed_messages_topic_partition_offset_key",
+        ),
+        CheckConstraint("partition >= 0", name="processed_messages_partition_check"),
+        CheckConstraint(
+            "message_offset >= 0",
+            name="processed_messages_offset_check",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"))
+    topic: Mapped[str] = mapped_column(String(128))
+    partition: Mapped[int] = mapped_column(Integer)
+    message_offset: Mapped[int] = mapped_column(BigInteger)
+    processed_at: Mapped[datetime]

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -10,11 +12,31 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from core.errors import ApplicationError
+from jobs.execution import ScheduleWindow, scheduled_operation_id
 from jobs.models import Job, OutboxMessage
 from jobs.schemas import JobAcceptanceInput, JobStatus, JobView
 
 JOB_ACCEPTED_EVENT_TYPE = "job.accepted.v1"
 JOB_ACCEPTED_TOPIC = "hotkey.jobs.accepted.v1"
+
+type PublishOutbox = Callable[["OutboxEnvelope"], None]
+
+
+@dataclass(frozen=True, slots=True)
+class OutboxEnvelope:
+    message_id: UUID
+    topic: str
+    message_key: UUID
+    event_type: str
+    payload: dict[str, str]
+
+    def message_body(self) -> dict[str, str | int]:
+        return {
+            **self.payload,
+            "schema_version": 1,
+            "message_id": str(self.message_id),
+            "event_type": self.event_type,
+        }
 
 
 def fingerprint_request(command: JobAcceptanceInput) -> bytes:
@@ -98,6 +120,38 @@ class JobService:
 
         return view
 
+    def accept_schedule_window(
+        self,
+        *,
+        owner_id: UUID,
+        kind: str,
+        schedule_key: str,
+        window: ScheduleWindow,
+        scope: Mapping[str, str | int | bool | None],
+    ) -> JobView:
+        reserved = {"schedule_key", "window_start", "window_end"}
+        if reserved.intersection(scope):
+            raise ValueError("scope cannot replace reserved schedule fields")
+        scheduled_scope = {
+            **scope,
+            "schedule_key": schedule_key,
+            "window_start": window.start.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+            "window_end": window.end.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+        }
+        return self.accept(
+            owner_id=owner_id,
+            command=JobAcceptanceInput(
+                operation_id=scheduled_operation_id(
+                    owner_id,
+                    kind,
+                    schedule_key,
+                    window,
+                ),
+                kind=kind,
+                scope=scheduled_scope,
+            ),
+        )
+
     @staticmethod
     def _view(model: Job) -> JobView:
         return JobView(
@@ -108,3 +162,42 @@ class JobService:
             status=JobStatus(model.status),
             created_at=model.created_at,
         )
+
+
+class OutboxService:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def publish_pending(
+        self,
+        publish: PublishOutbox,
+        *,
+        batch_size: int = 25,
+        published_at: datetime | None = None,
+    ) -> int:
+        if not 1 <= batch_size <= 100:
+            raise ValueError("batch_size must be between 1 and 100")
+        now = published_at or datetime.now(UTC)
+        self._session.rollback()
+        with self._session.begin():
+            messages = list(
+                self._session.scalars(
+                    select(OutboxMessage)
+                    .where(OutboxMessage.published_at.is_(None))
+                    .order_by(OutboxMessage.created_at, OutboxMessage.id)
+                    .limit(batch_size)
+                    .with_for_update(skip_locked=True)
+                )
+            )
+            for model in messages:
+                publish(
+                    OutboxEnvelope(
+                        message_id=model.id,
+                        topic=model.topic,
+                        message_key=model.message_key,
+                        event_type=model.event_type,
+                        payload=dict(model.payload),
+                    )
+                )
+                model.published_at = now
+        return len(messages)

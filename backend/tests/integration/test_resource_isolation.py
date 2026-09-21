@@ -29,7 +29,10 @@ def owner_client() -> Iterator[TestClient]:
     engine = create_engine(database_url)
     with engine.begin() as connection:
         connection.execute(
-            text("TRUNCATE outbox_messages, jobs, identity_sessions, identity_users")
+            text(
+                "TRUNCATE processed_messages, job_attempts, outbox_messages, jobs, "
+                "identity_sessions, identity_users"
+            )
         )
     try:
         with TestClient(create_app(settings)) as client:
@@ -37,7 +40,10 @@ def owner_client() -> Iterator[TestClient]:
     finally:
         with engine.begin() as connection:
             connection.execute(
-                text("TRUNCATE outbox_messages, jobs, identity_sessions, identity_users")
+                text(
+                    "TRUNCATE processed_messages, job_attempts, outbox_messages, jobs, "
+                    "identity_sessions, identity_users"
+                )
             )
         engine.dispose()
 

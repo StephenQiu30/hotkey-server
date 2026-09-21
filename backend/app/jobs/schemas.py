@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -51,3 +52,15 @@ class JobView(BaseModel):
     kind: str
     status: JobStatus
     created_at: datetime
+
+
+class JobAcceptedMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1]
+    message_id: UUID
+    event_type: Literal["job.accepted.v1"]
+    job_id: UUID
+    owner_id: UUID
+    operation_id: UUID
+    kind: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_.-]{0,63}$")

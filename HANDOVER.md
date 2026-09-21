@@ -26,12 +26,12 @@
 - `app/core/` 管理 `HOTKEY_` 配置、结构化日志、公共错误和 Pydantic 基类；`app/db/` 管理唯一 DeclarativeBase、Engine、Session 和运行时模型元数据。
 - `database/schema.sql` 是唯一数据库结构事实源，仅用于全新空库。项目没有 Alembic、revision 目录或应用启动建表逻辑。
 - 业务领域目录不提前创建空包；`identity`、`monitors`、`jobs`、`sources`、`evidence`、`ai`、`audit` 的主责遵循 `PROJECT.md`，候选领域细分见 `docs/plans/001-热点事件监控平台总计划.md`，具体切片落地时再创建实际文件。
-- `python -m worker` 是 Kafka Worker 入口。尚无业务消息处理器时安全退出，不订阅或提交任何消息；处理器只能在对应任务设计完成后注册。
+- `python -m worker` 是 Kafka Worker 入口。已有 outbox 发布、手动 offset、inbox、租约/检查点恢复的运行装配；尚无具体业务消息处理器时安全退出，不订阅或提交任何消息。处理器只能在对应任务设计完成后注册。
 - `python -m cli` 是 Typer 管理入口。`tests/unit`、`tests/integration`、`tests/architecture` 分别承载规则、HTTP 契约和依赖边界验证。
 - `app/identity/` 已实现单 owner 初始化、Argon2 密码散列、服务端不透明会话、CSRF、注销和维护恢复；`python -m cli identity reset-password` 从隐藏交互输入读取新密码并撤销全部旧会话。
 - 身份 HTTP 契约为 `/api/identity/initialize`、`/api/identity/sessions` 与 `/api/identity/session`；Web 请求层自动为写请求补 CSRF，请求凭据和 Cookie 不进入生成客户端参数。
 - `GET /api/identity/workspace` 从有效会话派生当前 owner，不接受客户端归属标识；`require_resource_owner` 为后续业务资源提供默认拒绝规则。Web 已有 `/login` 与受保护 `/events` 空工作台，尚未接入事件业务资源。
-- `app/jobs/` 已实现内部持久受理：任务与 `job.accepted.v1` outbox 同事务写入，owner/kind/operation ID 唯一，等价重试返回原任务，异范围重用拒绝。尚无 HTTP、发布器、消费者、租约、检查点或重试状态机。
+- `app/jobs/` 已实现内部持久受理与恢复：任务与 `job.accepted.v1` outbox 同事务写入，owner/kind/operation ID 唯一，等价重试返回原任务，异范围重用拒绝；outbox 收到 Kafka 回执后才标记，消费者在数据库事务后手动提交 offset，inbox、lease epoch、attempt 和连续 checkpoint 防止重投与旧执行者覆盖，调度追赶默认最多 3 个窗口。尚无 HTTP、具体业务处理器、有限重试/死信或 72 小时度量。
 - 本机默认 PostgreSQL 库包含旧系统历史表，而当前 Python ORM 尚无业务模型。不得对该旧库执行 `database/schema.sql`；需要保留数据时先备份，再用新库完整建表并校验导入。
 
 ## 运行基线
@@ -52,11 +52,11 @@
 
 **[035 计划](docs/plans/035-权限与数据隔离计划.md) S00/S01 已完成，Plan 保持 in_progress。** owner/外部主体规则、受保护工作区 API、生成客户端、登录/注销与事件空状态已通过真实 PostgreSQL、桌面和 390×844 浏览器验证；浏览器验证发现并修复动态 CSP nonce 与静态页面冲突。作品、事件、任务、导出、缓存、撤权与共享尚未接入，035 产品 AC 仍为 0/6，未建立 Acceptance。
 
-**[031 计划](docs/plans/031-可靠执行与幂等计划.md) S00/S01 已完成，Plan 保持 in_progress。** `jobs` 与 outbox 的原子提交、operation ID 防重、冲突、事务故障和双会话并发已通过本机既有 PostgreSQL 18.4；后端 44 tests 与静态门禁通过。Redis/Kafka/MinIO 仅验证可达；S02 的发布/消费、offset、执行权和恢复尚未实现，031 产品 AC 仍为 0/6，未建立 Acceptance。
+**[031 计划](docs/plans/031-可靠执行与幂等计划.md) S00—S02 已完成，Plan 保持 in_progress。** 原子受理、outbox 重发、消费组中断/再均衡、手动 offset、inbox、租约 fencing、checkpoint 恢复、有限调度追赶和 Redis 不可用已通过本机既有 PostgreSQL 18.4 与 Kafka；后端 51 tests 与静态门禁通过。当前没有具体业务消息处理器，Worker 按文档入口安全空闲退出；S03/S04、72 小时运行及 031 产品 AC 仍为 0/6，未建立 Acceptance。
 
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 按 BACKLOG 继续推进 031 S02，冻结 Kafka 发布/消费、数据库 inbox/offset、租约 fencing、检查点及受限调度恢复语义。
+1. 按 BACKLOG 继续推进 036 S00/S01，冻结首批数据访问、删除屏障与生命周期基础语义；031 S03 留在 M5 长时可靠性阶段继续。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
@@ -69,4 +69,4 @@
 
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 
-本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 034、035 与 031 的 S00/S01，在隔离数据库及浏览器验证初始化、会话、CSRF、owner 授权、登录/注销、受保护工作台，以及任务/outbox 原子受理。当前后端 44 tests、前端 13 tests 及适用静态/构建门禁通过。未执行业务消息发布/消费、来源探测、上述计划后续切片、完整 B0 或产品 Acceptance。
+本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 034、035 的 S00/S01 与 031 的 S00—S02，在隔离数据库及浏览器验证初始化、会话、CSRF、owner 授权、登录/注销、受保护工作台，以及任务原子受理、消息重投、再均衡、租约/检查点恢复和有限调度追赶。当前后端 51 tests、前端 13 tests 及适用静态/构建门禁通过。未执行业务消息处理、来源探测、上述计划后续切片、完整 B0 或产品 Acceptance。
