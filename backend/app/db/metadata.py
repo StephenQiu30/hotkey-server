@@ -1,5 +1,11 @@
 from db.base import Base
-from evidence.models import SourceAccessPolicy
+from evidence.models import (
+    CleanupTarget,
+    DeletionDirective,
+    EvidenceResource,
+    RetentionPolicy,
+    SourceAccessPolicy,
+)
 from identity.models import IdentitySession, IdentityUser
 from jobs.models import Job, JobAttempt, OutboxMessage, ProcessedMessage
 
@@ -8,12 +14,16 @@ from jobs.models import Job, JobAttempt, OutboxMessage, ProcessedMessage
 metadata = Base.metadata
 
 __all__ = [
+    "CleanupTarget",
+    "DeletionDirective",
+    "EvidenceResource",
     "IdentitySession",
     "IdentityUser",
     "Job",
     "JobAttempt",
     "OutboxMessage",
     "ProcessedMessage",
+    "RetentionPolicy",
     "SourceAccessPolicy",
     "metadata",
 ]

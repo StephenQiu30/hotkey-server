@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -8,10 +9,14 @@ from pydantic import ValidationError
 from evidence.schemas import (
     AccessBasis,
     AccessPolicyStatus,
+    CleanupTargetKind,
+    CleanupTargetSpec,
+    DataClass,
+    RetentionPolicyInput,
     SourceAccessPolicyInput,
     SourceCapability,
 )
-from evidence.services import minimize_payload
+from evidence.services import effective_retention_days, minimize_payload, retry_delay
 
 
 def _approved_input(**changes: object) -> SourceAccessPolicyInput:
@@ -82,3 +87,58 @@ def test_minimize_payload_keeps_only_declared_top_level_fields() -> None:
             field_purposes={"author_profile": "核对公开作者标识"},
             payload={"author_profile": {"id": "author-1"}},
         )
+
+
+def test_effective_retention_uses_the_stricter_limit() -> None:
+    source_policy_id = uuid4()
+
+    assert (
+        effective_retention_days(
+            RetentionPolicyInput(
+                source_policy_id=source_policy_id,
+                data_class=DataClass.STRUCTURED,
+                requested_days=30,
+                source_max_days=7,
+            )
+        )
+        == 7
+    )
+    assert (
+        effective_retention_days(
+            RetentionPolicyInput(
+                source_policy_id=source_policy_id,
+                data_class=DataClass.RAW,
+                requested_days=0,
+                source_max_days=None,
+            )
+        )
+        == 0
+    )
+
+
+def test_cleanup_targets_reject_unsafe_references() -> None:
+    CleanupTargetSpec(
+        kind=CleanupTargetKind.REDIS_CACHE,
+        reference=f"hotkey:test:{uuid4()}",
+    )
+    CleanupTargetSpec(
+        kind=CleanupTargetKind.MINIO_OBJECT,
+        reference=f"tests/lifecycle/{uuid4()}.json",
+    )
+
+    with pytest.raises(ValidationError):
+        CleanupTargetSpec(kind=CleanupTargetKind.REDIS_CACHE, reference="other:key")
+    with pytest.raises(ValidationError):
+        CleanupTargetSpec(kind=CleanupTargetKind.MINIO_OBJECT, reference="../secret")
+    with pytest.raises(ValidationError):
+        CleanupTargetSpec(kind=CleanupTargetKind.MINIO_OBJECT, reference="bad\nname")
+
+
+def test_cleanup_retry_delay_is_bounded() -> None:
+    assert [retry_delay(attempt).total_seconds() for attempt in range(1, 6)] == [
+        60,
+        120,
+        240,
+        480,
+        960,
+    ]

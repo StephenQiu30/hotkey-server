@@ -1,0 +1,1 @@
+"""Online evidence cleanup adapters."""

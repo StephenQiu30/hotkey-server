@@ -72,6 +72,7 @@ CREATE TABLE source_access_policies (
     updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
     CONSTRAINT source_access_policies_owner_source_capability_key
         UNIQUE (owner_id, source_key, capability),
+    CONSTRAINT source_access_policies_owner_id_id_key UNIQUE (owner_id, id),
     CHECK (NOT enabled OR status = 'approved'),
     CHECK (
         status <> 'approved'
@@ -90,6 +91,124 @@ CREATE TABLE source_access_policies (
         OR (reviewed_at IS NOT NULL AND review_expires_at > reviewed_at)
     )
 );
+
+CREATE TABLE evidence_retention_policies (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    source_policy_id UUID NOT NULL,
+    source_policy_version INTEGER NOT NULL CHECK (source_policy_version >= 1),
+    data_class VARCHAR(16) NOT NULL CHECK (data_class IN ('structured', 'raw', 'media')),
+    requested_days INTEGER NOT NULL CHECK (requested_days BETWEEN 0 AND 3650),
+    source_max_days INTEGER CHECK (source_max_days BETWEEN 0 AND 3650),
+    effective_days INTEGER NOT NULL,
+    policy_version INTEGER NOT NULL DEFAULT 1 CHECK (policy_version >= 1),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT evidence_retention_policies_owner_source_class_key
+        UNIQUE (owner_id, source_policy_id, data_class),
+    CONSTRAINT evidence_retention_policies_owner_id_id_key UNIQUE (owner_id, id),
+    CONSTRAINT evidence_retention_policies_owner_source_policy_fkey
+        FOREIGN KEY (owner_id, source_policy_id)
+        REFERENCES source_access_policies (owner_id, id)
+        ON DELETE CASCADE,
+    CHECK (
+        effective_days = CASE
+            WHEN source_max_days IS NULL THEN requested_days
+            ELSE LEAST(requested_days, source_max_days)
+        END
+    )
+);
+
+CREATE TABLE evidence_resources (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    resource_type VARCHAR(64) NOT NULL CHECK (
+        resource_type ~ '^[a-z][a-z0-9_]{0,63}$'
+    ),
+    resource_id UUID NOT NULL,
+    source_policy_id UUID NOT NULL,
+    source_policy_version INTEGER NOT NULL CHECK (source_policy_version >= 1),
+    retention_policy_id UUID NOT NULL,
+    retention_policy_version INTEGER NOT NULL CHECK (retention_policy_version >= 1),
+    data_class VARCHAR(16) NOT NULL CHECK (data_class IN ('structured', 'raw', 'media')),
+    collected_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL CHECK (expires_at >= collected_at),
+    cleanup_targets JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (
+        jsonb_typeof(cleanup_targets) = 'array'
+    ),
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT evidence_resources_owner_type_resource_key
+        UNIQUE (owner_id, resource_type, resource_id),
+    CONSTRAINT evidence_resources_owner_id_id_key UNIQUE (owner_id, id),
+    CONSTRAINT evidence_resources_owner_source_policy_fkey
+        FOREIGN KEY (owner_id, source_policy_id)
+        REFERENCES source_access_policies (owner_id, id)
+        ON DELETE RESTRICT,
+    CONSTRAINT evidence_resources_owner_retention_policy_fkey
+        FOREIGN KEY (owner_id, retention_policy_id)
+        REFERENCES evidence_retention_policies (owner_id, id)
+        ON DELETE RESTRICT
+);
+
+CREATE INDEX evidence_resources_expiry_idx ON evidence_resources (expires_at);
+
+CREATE TABLE evidence_deletions (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    operation_id UUID NOT NULL,
+    resource_record_id UUID NOT NULL,
+    reason VARCHAR(32) NOT NULL CHECK (
+        reason IN (
+            'user_request',
+            'retention_expired',
+            'authorization_revoked',
+            'source_deleted'
+        )
+    ),
+    status VARCHAR(16) NOT NULL CHECK (status IN ('pending', 'completed', 'failed')),
+    requested_at TIMESTAMPTZ NOT NULL,
+    cleanup_due_at TIMESTAMPTZ NOT NULL CHECK (cleanup_due_at >= requested_at),
+    completed_at TIMESTAMPTZ,
+    CONSTRAINT evidence_deletions_owner_operation_key UNIQUE (owner_id, operation_id),
+    CONSTRAINT evidence_deletions_owner_resource_key UNIQUE (owner_id, resource_record_id),
+    CONSTRAINT evidence_deletions_owner_resource_fkey
+        FOREIGN KEY (owner_id, resource_record_id)
+        REFERENCES evidence_resources (owner_id, id)
+        ON DELETE CASCADE,
+    CHECK ((status = 'completed') = (completed_at IS NOT NULL))
+);
+
+CREATE INDEX evidence_deletions_status_due_idx
+    ON evidence_deletions (status, cleanup_due_at);
+
+CREATE TABLE evidence_cleanup_targets (
+    id UUID PRIMARY KEY,
+    deletion_id UUID NOT NULL REFERENCES evidence_deletions (id) ON DELETE CASCADE,
+    target_kind VARCHAR(32) NOT NULL CHECK (
+        target_kind IN ('redis_cache', 'minio_object')
+    ),
+    target_reference VARCHAR(1024) NOT NULL,
+    status VARCHAR(16) NOT NULL CHECK (
+        status IN ('pending', 'processing', 'failed', 'succeeded')
+    ),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 6),
+    next_attempt_at TIMESTAMPTZ,
+    lease_token UUID,
+    lease_expires_at TIMESTAMPTZ,
+    last_error_code VARCHAR(128),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT evidence_cleanup_targets_deletion_kind_reference_key
+        UNIQUE (deletion_id, target_kind, target_reference),
+    CHECK (
+        (status = 'processing') = (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)
+    ),
+    CHECK ((status = 'succeeded') = (completed_at IS NOT NULL))
+);
+
+CREATE INDEX evidence_cleanup_targets_claim_idx
+    ON evidence_cleanup_targets (status, next_attempt_at);
 
 CREATE TABLE jobs (
     id UUID PRIMARY KEY,

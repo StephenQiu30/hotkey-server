@@ -49,6 +49,37 @@ class AccessBasis(StrEnum):
     MANUAL_IMPORT = "manual_import"
 
 
+class DataClass(StrEnum):
+    STRUCTURED = "structured"
+    RAW = "raw"
+    MEDIA = "media"
+
+
+class CleanupTargetKind(StrEnum):
+    REDIS_CACHE = "redis_cache"
+    MINIO_OBJECT = "minio_object"
+
+
+class DeletionReason(StrEnum):
+    USER_REQUEST = "user_request"
+    RETENTION_EXPIRED = "retention_expired"
+    AUTHORIZATION_REVOKED = "authorization_revoked"
+    SOURCE_DELETED = "source_deleted"
+
+
+class DeletionStatus(StrEnum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class CleanupStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    FAILED = "failed"
+    SUCCEEDED = "succeeded"
+
+
 class SourceAccessPolicyInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -143,6 +174,55 @@ class SourceAccessPolicyView(BaseModel):
     updated_at: datetime
 
 
+class RetentionPolicyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_policy_id: UUID
+    data_class: DataClass
+    requested_days: int = Field(ge=0, le=3650)
+    source_max_days: int | None = Field(default=None, ge=0, le=3650)
+
+
+class RetentionPolicyView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    owner_id: UUID
+    source_policy_id: UUID
+    source_policy_version: int
+    data_class: DataClass
+    requested_days: int
+    source_max_days: int | None
+    effective_days: int
+    policy_version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CleanupTargetSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: CleanupTargetKind
+    reference: str = Field(min_length=1, max_length=1024)
+
+    @model_validator(mode="after")
+    def validate_reference(self) -> CleanupTargetSpec:
+        reference = self.reference
+        if reference != reference.strip() or any(
+            ord(character) < 32 or ord(character) == 127 for character in reference
+        ):
+            raise ValueError("cleanup target reference contains unsafe whitespace")
+        if self.kind is CleanupTargetKind.REDIS_CACHE and not reference.startswith("hotkey:"):
+            raise ValueError("Redis cleanup targets must use the hotkey namespace")
+        if self.kind is CleanupTargetKind.MINIO_OBJECT:
+            parts = reference.split("/")
+            if reference.startswith("/") or any(part in {"", ".", ".."} for part in parts):
+                raise ValueError("MinIO cleanup target must be a normalized object name")
+            if len(reference.encode()) > 1024:
+                raise ValueError("MinIO object name cannot exceed 1024 bytes")
+        return self
+
+
 class AdmittedSourcePayload(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -151,4 +231,65 @@ class AdmittedSourcePayload(BaseModel):
     owner_id: UUID
     source_key: str
     capability: SourceCapability
+    retention_policy_id: UUID
+    retention_policy_version: int
+    data_class: DataClass
+    collected_at: datetime
+    expires_at: datetime
     fields: dict[str, AdmittedValue]
+
+
+class EvidenceResourceView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    owner_id: UUID
+    resource_type: str
+    resource_id: UUID
+    source_policy_id: UUID
+    source_policy_version: int
+    retention_policy_id: UUID
+    retention_policy_version: int
+    data_class: DataClass
+    collected_at: datetime
+    expires_at: datetime
+    cleanup_targets: tuple[CleanupTargetSpec, ...]
+    created_at: datetime
+
+
+class DeletionView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    owner_id: UUID
+    operation_id: UUID
+    resource_record_id: UUID
+    resource_type: str
+    resource_id: UUID
+    reason: DeletionReason
+    status: DeletionStatus
+    requested_at: datetime
+    cleanup_due_at: datetime
+    completed_at: datetime | None
+    target_count: int
+    completed_targets: int
+    failed_targets: int
+
+
+class CleanupLease(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    target_id: UUID
+    deletion_id: UUID
+    kind: CleanupTargetKind
+    reference: str
+    lease_token: UUID
+    attempt_count: int
+    lease_expires_at: datetime
+
+
+class CleanupBatchResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    succeeded: int = 0
+    failed: int = 0
