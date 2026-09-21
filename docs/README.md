@@ -23,7 +23,7 @@
 
 ### 逐项需求交付台账
 
-003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 草案与执行计划；042 为 in_progress，其余为 planned；尚未建立各自的 Research、Design 或 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
+003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 草案与执行计划；042 为 in_progress 且已有 accepted Design，其余为 planned；尚未建立对应 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
 
 | 编号 | PRD 主题 | 来源需求 | 优先级 | PRD 状态 | Plan |
 |---|---|---|---|---|---|
@@ -66,7 +66,7 @@
 | 039 | [可观测与可运维](prd/039-可观测与可运维.md) | NFR-001-013 | P0 | draft | [计划](plans/039-可观测与可运维计划.md) · planned |
 | 040 | [可用性与可访问性](prd/040-可用性与可访问性.md) | NFR-001-014 | P0 | draft | [计划](plans/040-可用性与可访问性计划.md) · planned |
 | 041 | [分析有效性与不确定性](prd/041-分析有效性与不确定性.md) | NFR-001-015 | P0 | draft | [计划](plans/041-分析有效性与不确定性计划.md) · planned |
-| 042 | [容量与部署可重复性](prd/042-容量与部署可重复性.md) | NFR-001-016 | P0 | draft | [计划](plans/042-容量与部署可重复性计划.md) · in_progress |
+| 042 | [容量与部署可重复性](prd/042-容量与部署可重复性.md) · [Design](design/042-容量与部署可重复性设计.md) accepted | NFR-001-016 | P0 | draft | [计划](plans/042-容量与部署可重复性计划.md) · in_progress |
 | 043 | [模型服务接入与模型配置](prd/043-模型服务接入与模型配置.md) | FR-001-025 | P1 | draft | [计划](plans/043-模型服务接入与模型配置计划.md) · planned |
 | 044 | [模型平台信息采集与变更监控](prd/044-模型平台信息采集与变更监控.md) | FR-001-026 | P1 | draft | [计划](plans/044-模型平台信息采集与变更监控计划.md) · planned |
 | 045 | [模型联网检索与线索采集](prd/045-模型联网检索与线索采集.md) | FR-001-027 | P1 | draft | [计划](plans/045-模型联网检索与线索采集计划.md) · planned |

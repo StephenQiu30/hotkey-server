@@ -22,4 +22,4 @@ USER hotkey
 WORKDIR /srv/backend/app
 EXPOSE 8080
 
-CMD ["uv", "run", "--frozen", "uvicorn", "main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["/srv/backend/.venv/bin/uvicorn", "main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]

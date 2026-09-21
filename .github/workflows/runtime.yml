@@ -1,0 +1,93 @@
+name: runtime
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "compose.yaml"
+      - ".env.example"
+      - ".github/workflows/runtime.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "compose.yaml"
+      - ".env.example"
+      - ".github/workflows/runtime.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compose-runtime:
+    runs-on: ubuntu-latest
+    env:
+      HOTKEY_API_PORT: "8867"
+      HOTKEY_POSTGRES_PASSWORD: runtime_ci_only
+      HOTKEY_WEB_PORT: "3000"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.3.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and build the unique Compose stack
+        run: |
+          docker compose --project-name hotkey-ci config --quiet
+          docker compose --project-name hotkey-ci build backend frontend
+
+      - name: Start the isolated runtime
+        run: docker compose --project-name hotkey-ci up --detach --wait postgres redis kafka backend frontend
+
+      - name: Verify dependencies, proxy, and idle Worker
+        run: |
+          test "$(docker compose --project-name hotkey-ci exec -T postgres psql -X --set ON_ERROR_STOP=on --username hotkey --dbname hotkey --tuples-only --no-align --command 'SELECT current_database()')" = "hotkey"
+          test "$(docker compose --project-name hotkey-ci exec -T redis redis-cli ping)" = "PONG"
+          docker compose --project-name hotkey-ci exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list
+          curl --fail --silent http://127.0.0.1:8867/api/health
+          curl --fail --silent http://127.0.0.1:8867/api/ready
+          curl --fail --silent http://127.0.0.1:3000/health
+          curl --fail --silent http://127.0.0.1:3000/api/health
+          docker compose --project-name hotkey-ci run --rm worker | grep no_message_handlers_registered
+          docker compose --project-name hotkey-ci run --rm cli | grep Usage
+          test "$(docker compose --project-name hotkey-ci exec -T backend id -u)" = "10001"
+          test "$(docker compose --project-name hotkey-ci exec -T frontend id -u)" = "1001"
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' $(docker compose --project-name hotkey-ci ps --quiet backend))" = "true"
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' $(docker compose --project-name hotkey-ci ps --quiet frontend))" = "true"
+
+      - name: Record one bounded resource snapshot
+        run: docker stats --no-stream $(docker compose --project-name hotkey-ci ps --quiet)
+
+      - name: Verify the generated client against the deployed API
+        env:
+          HOTKEY_OPENAPI_URL: http://127.0.0.1:8867/openapi.json
+        run: pnpm --dir frontend openapi:check
+
+      - name: Print service logs after failure
+        if: failure()
+        run: docker compose --project-name hotkey-ci logs --no-color
+
+      - name: Remove the isolated runtime
+        if: always()
+        run: docker compose --project-name hotkey-ci down --volumes --remove-orphans

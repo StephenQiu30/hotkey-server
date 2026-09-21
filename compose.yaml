@@ -1,0 +1,183 @@
+name: hotkey
+
+x-backend-environment: &backend-environment
+  HOTKEY_DATABASE_URL: postgresql+psycopg://hotkey:${HOTKEY_POSTGRES_PASSWORD:?set HOTKEY_POSTGRES_PASSWORD in the environment or root .env}@postgres:5432/hotkey
+  HOTKEY_REDIS_URL: redis://redis:6379/0
+  HOTKEY_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+x-backend-service: &backend-service
+  build:
+    context: ./backend
+  image: ${HOTKEY_BACKEND_IMAGE:-hotkey-backend:local}
+  environment: *backend-environment
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp
+
+services:
+  postgres:
+    image: postgres:17.11-alpine3.23
+    environment:
+      POSTGRES_DB: hotkey
+      POSTGRES_PASSWORD: ${HOTKEY_POSTGRES_PASSWORD:?set HOTKEY_POSTGRES_PASSWORD in the environment or root .env}
+      POSTGRES_USER: hotkey
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - type: bind
+        source: ./backend/database/schema.sql
+        target: /docker-entrypoint-initdb.d/001-schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hotkey -d hotkey"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1536M
+
+  redis:
+    image: redis:7.2.16-alpine3.21
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+
+  kafka:
+    image: apache/kafka:4.1.2
+    environment:
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_NODE_ID: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list >/dev/null",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1536M
+
+  backend:
+    <<: *backend-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:${HOTKEY_API_PORT:-8867}:8080
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/ready', timeout=2).read()",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 1G
+
+  frontend:
+    build:
+      context: ./frontend
+    image: ${HOTKEY_FRONTEND_IMAGE:-hotkey-frontend:local}
+    environment:
+      HOTKEY_API_ORIGIN: http://backend:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true
+    read_only: true
+    tmpfs:
+      - /app/.next/cache
+      - /tmp
+    ports:
+      - 127.0.0.1:${HOTKEY_WEB_PORT:-3000}:8080
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 768M
+
+  worker:
+    <<: *backend-service
+    command: ["/srv/backend/.venv/bin/python", "-m", "worker"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles: ["worker"]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+  cli:
+    <<: *backend-service
+    command: ["/srv/backend/.venv/bin/python", "-m", "cli", "--help"]
+    profiles: ["cli"]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+
+volumes:
+  kafka-data:
+  postgres-data:
+  redis-data:

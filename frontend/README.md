@@ -10,7 +10,7 @@ pnpm install
 pnpm dev
 ```
 
-浏览器请求统一使用同源 `/api/*`，`src/proxy.ts` 根据 `HOTKEY_API_ORIGIN` 转发。
+浏览器请求统一使用同源 `/api/*`，`src/app/api/[[...path]]/route.ts` 根据服务端 `HOTKEY_API_ORIGIN` 转发；`src/proxy.ts` 只负责 CSP nonce。
 
 ## 目录
 
@@ -21,7 +21,7 @@ src/
 ├── components/ui/        # shadcn 基础组件
 ├── components/<feature>/ # 跨页面复用组件
 ├── lib/                  # 纯工具
-├── proxy.ts              # CSP 与同源 API 代理
+├── proxy.ts              # CSP nonce
 └── request.ts            # Axios 请求封装
 ```
 
@@ -49,3 +49,5 @@ pnpm build
 ```
 
 生产镜像监听 `8080`，使用 standalone 输出、非 root 用户和只读文件系统。
+
+仓库根 `compose.yaml` 是唯一完整运行入口；Web 默认绑定 `127.0.0.1:3000`，并在容器网络中代理至 API。端口可通过根 `.env` 调整。

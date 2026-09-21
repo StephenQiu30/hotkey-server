@@ -44,7 +44,7 @@ HotKey/
 
 ### 1.3 当前实现边界（2026-09-21 核对）
 
-本轮从 server HEAD `37064d2a` 开始执行。已有后端应用工厂、健康/文档路由、Worker/CLI 入口、依赖锁及基础 CI；046 已补齐统一异常/响应契约、请求标识与脱敏、Web 传输分类、可控同源代理失败、运行时 OpenAPI 客户端生成和契约漂移 CI。Web 仍只有介绍页与基础状态边界，`schema.sql` 没有业务表，Worker 未登记业务处理器。根 Compose、真实 PostgreSQL/Redis/Kafka 集成、业务页面、真实来源和产品 Acceptance 仍待交付。
+本轮从 server HEAD `37064d2a` 开始执行。已有后端应用工厂、健康/文档路由、Worker/CLI 入口、依赖锁、唯一根 Compose 及基础 CI；046 已补齐统一异常/响应契约、请求标识与脱敏、Web 传输分类、可控同源代理失败、运行时 OpenAPI 客户端生成和契约漂移 CI；042 S00/S01 已补真实 PostgreSQL/Redis/Kafka、空库初始化、资源上限和部署态运行门禁。Web 仍只有介绍页与基础状态边界，`schema.sql` 没有业务表，Worker 未登记业务处理器；业务页面、真实来源、完整容量/恢复和产品 Acceptance 仍待交付。
 
 046 的本地测试、生产构建、真实 Next/FastAPI 代理和桌面/窄屏浏览器验证记录在对应 Acceptance；它不证明数据库、消息、来源、部署或产品闭环。后续应扩展现有底座，不以旧的“空工程”描述重建第二套实现。
 

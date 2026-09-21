@@ -4,7 +4,7 @@
 
 ## 当前结构
 
-- `backend/`：Python 3.12、FastAPI、SQLAlchemy 2、PostgreSQL、Redis、Kafka；底座可运行，依赖由 uv 锁定，数据库 DDL 由单一 SQL 文件管理。
+- `backend/`：Python 3.12、FastAPI、SQLAlchemy 2、PostgreSQL、Redis、Kafka；底座可运行，依赖由 uv 锁定，数据库 DDL 由单一事务化 SQL 文件管理。
 - `frontend/`：Next.js App Router、shadcn/ui、Radix UI、Tailwind CSS、Axios；工程可构建。
 - `hotkey-app/`：独立 Flutter 客户端仓库。
 
@@ -17,7 +17,7 @@
 - `src/proxy.ts` 只处理页面 CSP nonce；`src/app/api/[[...path]]/route.ts` 负责同源 `/api/*` 转发及可控 502/504 错误契约。
 - 页面采用组件优先的无边框设计，只使用 Tailwind 命名尺度及 `sm/md/lg/xl/2xl`。
 - App Router 已配置 loading、error、global-error、not-found 和 `/health`。
-- Dockerfile 定义 standalone、非 root 用户和健康检查；生产只读文件系统仍需根 Compose 落地并实际验证。
+- Dockerfile 定义 standalone、非 root 用户和健康检查；根 Compose 已用只读文件系统及 tmpfs 实际验证。
 
 ## 后端基础
 
@@ -30,15 +30,24 @@
 - `python -m cli` 是 Typer 管理入口。`tests/unit`、`tests/integration`、`tests/architecture` 分别承载规则、HTTP 契约和依赖边界验证。
 - 本机默认 PostgreSQL 库包含旧系统历史表，而当前 Python ORM 尚无业务模型。不得对该旧库执行 `database/schema.sql`；需要保留数据时先备份，再用新库完整建表并校验导入。
 
+## 运行基线
+
+- 根 `compose.yaml` 是唯一编排，固定 PostgreSQL 17.11、Redis 7.2.16、Kafka 4.1.2；API/Web 仅绑定本机端口，内部依赖不发布宿主端口。
+- `schema.sql` 自带事务边界，通过 PostgreSQL 官方初始化目录仅作用于全新空卷；没有初始化 `.sh`、迁移框架或第二份 DDL。
+- `.github/workflows/runtime.yml` 构建镜像并验证真实依赖、API/Web/同源代理、空 Worker、资源快照及部署态 OpenAPI 漂移。
+- 验证不增加 `scripts/` 工具文件；复用 Compose、依赖官方 CLI、curl、docker stats 与现有 pnpm 命令。
+
 ## 待完成
 
-**[046 前置计划](docs/plans/046-全局异常与响应契约前置计划.md) 已完成并通过 Acceptance。** 未知异常请求标识、5xx/校验信息泄漏、OpenAPI 错误模型、Web 错误读取、同源代理失败及生成客户端漂移门禁均已修复和验证。后续接口继续复用该契约；下一执行点是 B00 总体/先行 Design 与来源条件登记，随后进入 B01/042 S01。
+**[046 前置计划](docs/plans/046-全局异常与响应契约前置计划.md) 已完成并通过 Acceptance。** 未知异常请求标识、5xx/校验信息泄漏、OpenAPI 错误模型、Web 错误读取、同源代理失败及生成客户端漂移门禁均已修复和验证。后续接口继续复用该契约；B00 的外部来源条件继续登记，但不阻塞 B02 内部领域切片。
+
+**[042 计划](docs/plans/042-容量与部署可重复性计划.md) S00/S01 已完成，B01 底座前置已关闭。** 本地隔离 Compose 验证五个长期服务 healthy，API/Web/代理/空 Worker 和部署态客户端生成通过；该结果不代表完整 B0、两干净环境、恢复或 042 的 0/6 产品 AC 已通过。
 
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 建立根 Compose，并把现有 OpenAPI 客户端生成与差异检查扩展到真实依赖环境。
+1. 按 BACKLOG B02 顺序完成身份/权限与可靠任务的同编号 Design 和先行切片。
 2. 明确旧 PostgreSQL 数据的保留、重建和校验导入策略，再同步实现首个业务领域 Model 与 `database/schema.sql` DDL。
-3. 接入隔离的 PostgreSQL、Redis、Kafka 完成真实集成验证。
+3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
 
 ## 检查
@@ -47,6 +56,6 @@
 
 ## 本轮产品文档复核
 
-2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046。BACKLOG 已补完整交付内容、跨计划批次、平台扩面与 App 队列；001/042 为 in_progress，只表示规划及底座工作已开始。046 技术前置 8/8 AC 已通过，但所有产品 AC 仍未通过，根 Compose、真实集成、业务流程和验收仍待完成。
+2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 
-本轮已执行应用测试、构建、OpenAPI 生成/漂移探针、真实同源代理和桌面/窄屏浏览器验证；未执行来源探测、数据库变更、真实消息集成或部署。证据与边界见 046 Acceptance，不继承过去运行结论作为当前实测。
+本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；后端 26 tests 与前端 10 tests 及全量静态/构建门禁通过。未执行业务消息、来源探测、完整 B0、恢复或产品 Acceptance。
