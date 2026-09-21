@@ -117,6 +117,8 @@ plan: docs/plans/NNN-主题计划.md
 
 ## Plan（含 SPEC 与 CHECKLIST）
 
+所有新建或调整的实施 Plan 均登记 `architecture_prerequisite: "046 S03"`，链接 [统一契约 Design](design/046-全局异常与响应契约设计.md) 与 [前置 Plan](plans/046-全局异常与响应契约前置计划.md)。只有046自身不依赖自己；研究/设计准备不受代码实施门禁阻塞。公共技术前置不新增产品 FR/NFR 分母，领域成功/错误/分页/任务响应必须复用统一契约。该规则随模板传播到后续计划，不能只依赖 BACKLOG 的临时备注。
+
 ```yaml
 ---
 layer: Plan

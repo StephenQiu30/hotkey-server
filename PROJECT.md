@@ -165,13 +165,19 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 
 ### 全局异常与响应处理
 
+统一决策见 [046 全局异常与响应契约设计](docs/design/046-全局异常与响应契约设计.md)。HTTP 状态、稳定错误码、任务状态、页面状态分别建模；应用异常不携带 HTTP 状态，API 边界负责映射。成功响应统一为资源 DTO、`PageView[T]`、`JobAcceptedView` 三类，失败统一 `ErrorView`；不引入全接口 Result 外壳或成功 body 改写中间件。分页固定 `items/next_cursor`；异步受理必须先持久提交；204/304 无 body，文件与流按实际媒体协议处理。
+
+`ErrorView` 的 code/message/request_id 必需，校验错误的 details 只含安全 location/message/type。公共消息来自登记表，自定义 HTTP 5xx detail 和 validator 原始消息不能直接公开。请求 UUID 保存到 scope/state，正常及异常响应头、错误 body 和日志一致，不能回退为 unknown；日志异常链也需脱敏。公开错误码、HTTP 映射、必要响应头、客户端本地传输错误分类按 046 统一登记并验证。
+
+运行响应、OpenAPI 与生成客户端必须一致；有请求校验的路由显式声明 ErrorView 422。Web 统一读取 details 并支持请求 ID 的响应头/body 回退；网络、超时、取消、非 JSON 与业务错误区分。可控代理失败、Worker 和流发送后的失败有各自处理边界，不假定 FastAPI handler 能覆盖整个系统。新增接口持续通过同一契约检查。
+
 全局异常处理由 `api/exception_handlers.py` 统一注册，`main.py` 只负责调用注册函数。处理范围固定为：
 
 1. `core.errors.ApplicationError` 及其子类：映射为稳定错误码和明确 HTTP 状态。
 2. FastAPI/Starlette HTTP 异常：保留必要状态和响应头，转换为统一错误模型。
 3. `RequestValidationError`：返回字段级输入错误，不泄露内部文件路径或原始敏感请求体。
 4. 数据库和外部服务异常：先在 Service/Adapter 边界转换为应用异常；不得把驱动异常直接返回客户端。
-5. 未处理的 `Exception`：服务端记录异常类型和堆栈，客户端只返回稳定的 `internal_error` 与 `request_id`。
+5. 未处理的 `Exception`：服务端记录异常类型和脱敏后的堆栈位置，客户端只返回稳定的 `internal_error` 与 `request_id`。
 
 公共错误模型 `ErrorView` 位于 `core/schemas.py`，至少包含稳定 `code`、面向用户的 `message` 和 `request_id`。错误处理器不得把异常字符串、SQL、Token、Cookie、连接字符串或完整请求体写入响应。成功响应使用端点级 `response_model`；不使用中间件自动包装所有成功响应，以免破坏文件、流式和特殊状态响应。
 
@@ -199,7 +205,7 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 
 ## 5. 实施与验证
 
-按总体 Design → 需求/Plan → 失败验证 → 实现 → 回归/Acceptance 推进。先依据 [001 总计划](docs/plans/001-热点事件监控平台总计划.md) 完成总体设计，再通过 [042](docs/plans/042-容量与部署可重复性计划.md) 建立底座；[031](docs/plans/031-可靠执行与幂等计划.md) 承接 Kafka 消费和恢复语义。
+按总体 Design → 需求/Plan → 失败验证 → 实现 → 回归/Acceptance 推进。研究、范围和设计可先开展；**所有其他计划进入实现前，必须先完成 [046 前置计划](docs/plans/046-全局异常与响应契约前置计划.md) S03 的统一契约修复与验收**，包括已有部分实现的 042。046 以现有骨架为基础，不反向依赖 042 或业务领域。之后依据 [001 总计划](docs/plans/001-热点事件监控平台总计划.md) 的总体设计，通过 [042](docs/plans/042-容量与部署可重复性计划.md) 扩展底座与真实依赖；[031](docs/plans/031-可靠执行与幂等计划.md) 承接 Kafka 消费和恢复语义。046 不替代总体/领域设计，不把文档完成当作运行验收。
 
 交付前执行后端 Ruff、mypy、pytest、OpenAPI 漂移与客户端生成检查，以及前端 ESLint、Prettier、类型检查、生产构建和浏览器验证。集成测试使用隔离的 PostgreSQL、Redis、Kafka，并验证重复事件、提交后中断、消费者再均衡、Redis 失效和任务恢复。
 

@@ -32,6 +32,8 @@
 
 ## 待完成
 
+**首先完成 [046 前置计划](docs/plans/046-全局异常与响应契约前置计划.md)，再继续以下实施。** 2026-09-21 已建立统一设计和所有计划的开工门禁；代码修复尚未执行。已核对的缺口包括未知异常 request_id=unknown、自定义 HTTP 5xx detail 外泄、自动 OpenAPI 422 与 ErrorView 不符、Web 读取 detail/details 不一致。046 S03 未通过，不能把现有基础测试通过视作已满足共同前置。
+
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
 1. 建立根 Compose，并在 CI 接入 OpenAPI 客户端自动生成与差异检查。
