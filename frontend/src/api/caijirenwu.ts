@@ -30,3 +30,17 @@ export async function getCollectionJob(
     ...(options || {}),
   });
 }
+
+/** 取消采集任务 排队任务立即取消; 运行任务持久化取消意图并等待在途响应收尾。 POST /api/jobs/${param0}/cancel */
+export async function cancelCollectionJob(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.cancelCollectionJobParams,
+  options?: import("@/request").RequestOptions,
+) {
+  const { job_id: param0, ...queryParams } = params;
+  return request<HotKeyAPI.JobStatusView>(`/api/jobs/${param0}/cancel`, {
+    method: "POST",
+    params: { ...queryParams },
+    ...(options || {}),
+  });
+}

@@ -1,4 +1,8 @@
 declare namespace HotKeyAPI {
+  type cancelCollectionJobParams = {
+    job_id: string;
+  };
+
   type CollectionJobInput = {
     /** Operation Id */
     operation_id: string;
@@ -74,6 +78,24 @@ declare namespace HotKeyAPI {
     status: JobAcceptanceStatus;
   };
 
+  type JobCancellationView = {
+    /** Requested At */
+    requested_at: string;
+    /** Deadline At */
+    deadline_at: string | null;
+    /** Timed Out */
+    timed_out: boolean;
+  };
+
+  type JobControlStatus =
+    | "queued"
+    | "running"
+    | "cancelling"
+    | "succeeded"
+    | "partially_succeeded"
+    | "failed"
+    | "cancelled";
+
   type JobObservationContext = {
     /** Configuration Ref */
     configuration_ref: string;
@@ -84,15 +106,19 @@ declare namespace HotKeyAPI {
     source_capability?: SourceCapability | null;
   };
 
+  type JobProgressView = {
+    stage: JobStage | null;
+    /** Requests Sent */
+    requests_sent: number;
+    /** Items Saved */
+    items_saved: number;
+    /** Updated At */
+    updated_at: string | null;
+  };
+
   type JobScopeValue = Record<string, any>;
 
-  type JobStatus =
-    | "queued"
-    | "running"
-    | "succeeded"
-    | "partially_succeeded"
-    | "failed"
-    | "cancelled";
+  type JobStage = "request" | "parse" | "save" | "analysis";
 
   type JobStatusView = {
     /** Id */
@@ -102,7 +128,9 @@ declare namespace HotKeyAPI {
     /** Kind */
     kind: string;
     observation: JobObservationContext;
-    status: JobStatus;
+    status: JobControlStatus;
+    progress: JobProgressView;
+    cancellation: JobCancellationView | null;
     /** Scheduled For At */
     scheduled_for_at: string | null;
     /** Started At */

@@ -11,7 +11,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from jobs.models import Job, JobAttempt, ProcessedMessage
-from jobs.schemas import JobStatus
+from jobs.schemas import JobStage, JobStatus
 
 type CheckpointValue = str | int | bool | None
 type Clock = Callable[[], datetime]
@@ -58,6 +58,16 @@ class ExecutionLease:
     expires_at: datetime
     checkpoint_sequence: int
     checkpoint: dict[str, CheckpointValue]
+
+
+@dataclass(frozen=True, slots=True)
+class JobProgress:
+    stage: JobStage
+    items_saved: int
+
+    def __post_init__(self) -> None:
+        if self.items_saved < 0:
+            raise ValueError("saved item count cannot be negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +231,7 @@ class JobExecutionService:
         *,
         sequence: int,
         checkpoint: Mapping[str, CheckpointValue],
+        progress: JobProgress | None = None,
     ) -> ExecutionLease:
         stored_checkpoint = _validate_checkpoint(checkpoint)
         now = self._clock()
@@ -232,12 +243,25 @@ class JobExecutionService:
             if sequence == model.checkpoint_sequence:
                 if model.checkpoint != stored_checkpoint:
                     raise CheckpointConflictError("checkpoint sequence already has other data")
+                if progress is not None and (
+                    model.progress_stage != progress.stage.value
+                    or model.items_saved != progress.items_saved
+                ):
+                    raise CheckpointConflictError("checkpoint sequence already has other progress")
             elif sequence == model.checkpoint_sequence + 1:
+                if progress is not None and progress.items_saved < model.items_saved:
+                    raise CheckpointConflictError("saved item count cannot decrease")
                 model.checkpoint_sequence = sequence
                 model.checkpoint = stored_checkpoint
+                if progress is not None:
+                    model.progress_stage = progress.stage.value
+                    model.items_saved = progress.items_saved
+                    model.progress_updated_at = now
             else:
                 raise CheckpointConflictError("checkpoint sequence must advance by one")
 
+            if model.cancel_deadline_at is not None:
+                expires_at = min(expires_at, model.cancel_deadline_at)
             model.lease_expires_at = expires_at
             model.updated_at = now
             self._session.execute(
@@ -252,13 +276,78 @@ class JobExecutionService:
             renewed = self._lease(model)
         return renewed
 
+    def begin_request(self, lease: ExecutionLease) -> tuple[ExecutionLease, bool]:
+        now = self._clock()
+        expires_at = now + self._lease_duration
+        self._session.rollback()
+        with self._session.begin():
+            model = self._lock_job(lease.job_id)
+            self._require_current_lease(model, lease, now)
+            if model.cancel_requested_at is not None:
+                return self._lease(model), False
+
+            model.requests_sent += 1
+            model.progress_stage = JobStage.REQUEST.value
+            model.progress_updated_at = now
+            model.lease_expires_at = expires_at
+            model.updated_at = now
+            self._session.execute(
+                update(JobAttempt)
+                .where(
+                    JobAttempt.job_id == model.id,
+                    JobAttempt.lease_epoch == model.lease_epoch,
+                    JobAttempt.finished_at.is_(None),
+                )
+                .values(lease_expires_at=expires_at)
+            )
+            renewed = self._lease(model)
+        return renewed, True
+
+    def cancellation_requested(self, lease: ExecutionLease) -> bool:
+        now = self._clock()
+        self._session.rollback()
+        with self._session.begin():
+            model = self._lock_job(lease.job_id)
+            self._require_current_lease(model, lease, now)
+            return model.cancel_requested_at is not None
+
+    def acknowledge_cancelled(
+        self,
+        *,
+        job_id: UUID,
+        message: MessageReference,
+    ) -> bool:
+        now = self._clock()
+        self._session.rollback()
+        with self._session.begin():
+            model = self._lock_job(job_id)
+            if model.status != JobStatus.CANCELLED.value:
+                return False
+            processed = self._session.get(ProcessedMessage, message.message_id)
+            if processed is not None:
+                if processed.job_id != model.id:
+                    raise RuntimeError("processed message belongs to another job")
+                return True
+            self._session.add(
+                ProcessedMessage(
+                    id=message.message_id,
+                    job_id=model.id,
+                    topic=message.topic,
+                    partition=message.partition,
+                    message_offset=message.offset,
+                    processed_at=now,
+                )
+            )
+        return True
+
     def complete(self, lease: ExecutionLease, *, message: MessageReference) -> None:
         now = self._clock()
         self._session.rollback()
         with self._session.begin():
             model = self._lock_job(lease.job_id)
             self._require_current_lease(model, lease, now)
-            model.status = JobStatus.SUCCEEDED.value
+            cancelled = model.cancel_requested_at is not None
+            model.status = JobStatus.CANCELLED.value if cancelled else JobStatus.SUCCEEDED.value
             model.lease_owner = None
             model.lease_expires_at = None
             model.completed_at = now
@@ -270,7 +359,10 @@ class JobExecutionService:
                     JobAttempt.lease_epoch == model.lease_epoch,
                     JobAttempt.finished_at.is_(None),
                 )
-                .values(finished_at=now, outcome="succeeded")
+                .values(
+                    finished_at=now,
+                    outcome="cancelled" if cancelled else "succeeded",
+                )
             )
             self._session.add(
                 ProcessedMessage(

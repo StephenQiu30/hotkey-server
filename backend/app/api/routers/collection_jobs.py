@@ -71,3 +71,30 @@ def get_collection_job(
     job = service.get_status(owner_id=identity.view.user.id, job_id=job_id)
     response.headers["cache-control"] = "no-store"
     return job
+
+
+@router.post(
+    "/{job_id}/cancel",
+    operation_id="cancelCollectionJob",
+    response_model=JobStatusView,
+    status_code=status.HTTP_200_OK,
+    summary="取消采集任务",
+    description="排队任务立即取消; 运行任务持久化取消意图并等待在途响应收尾。",
+    responses={
+        401: {"model": ErrorView, "description": "会话无效或已过期"},
+        403: {"model": ErrorView, "description": "请求安全校验失败"},
+        404: {"model": ErrorView, "description": "任务不存在或不可访问"},
+        409: {"model": ErrorView, "description": "任务当前状态不可取消"},
+        422: {"model": ErrorView, "description": "请求参数校验失败"},
+        500: {"model": ErrorView, "description": "服务内部异常"},
+    },
+)
+def cancel_collection_job(
+    job_id: UUID,
+    response: Response,
+    service: JobServiceDependency,
+    identity: CsrfProtectedIdentityDependency,
+) -> JobStatusView:
+    job = service.request_cancel(owner_id=identity.view.user.id, job_id=job_id)
+    response.headers["cache-control"] = "no-store"
+    return job

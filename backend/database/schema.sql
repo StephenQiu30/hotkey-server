@@ -402,6 +402,12 @@ CREATE TABLE jobs (
     lease_expires_at TIMESTAMPTZ,
     checkpoint_sequence BIGINT NOT NULL DEFAULT 0 CHECK (checkpoint_sequence >= 0),
     checkpoint JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(checkpoint) = 'object'),
+    progress_stage VARCHAR(32),
+    requests_sent BIGINT NOT NULL DEFAULT 0 CHECK (requests_sent >= 0),
+    items_saved BIGINT NOT NULL DEFAULT 0 CHECK (items_saved >= 0),
+    progress_updated_at TIMESTAMPTZ,
+    cancel_requested_at TIMESTAMPTZ,
+    cancel_deadline_at TIMESTAMPTZ,
     scheduled_for_at TIMESTAMPTZ,
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
@@ -425,6 +431,25 @@ CREATE TABLE jobs (
         OR (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)
     ),
     CHECK (status = 'running' OR (lease_owner IS NULL AND lease_expires_at IS NULL)),
+    CHECK (progress_stage IS NULL OR progress_stage IN ('request', 'parse', 'save', 'analysis')),
+    CHECK (
+        (
+            progress_stage IS NULL
+            AND progress_updated_at IS NULL
+            AND requests_sent = 0
+            AND items_saved = 0
+        )
+        OR (progress_stage IS NOT NULL AND progress_updated_at IS NOT NULL)
+    ),
+    CHECK (progress_updated_at IS NULL OR progress_updated_at >= created_at),
+    CHECK (
+        (cancel_requested_at IS NULL AND cancel_deadline_at IS NULL)
+        OR (
+            cancel_requested_at IS NOT NULL
+            AND status IN ('running', 'cancelled')
+            AND (cancel_deadline_at IS NULL OR cancel_deadline_at >= cancel_requested_at)
+        )
+    ),
     CHECK (
         completed_at IS NULL
         OR status IN ('succeeded', 'partially_succeeded', 'failed', 'cancelled')
@@ -562,7 +587,7 @@ CREATE TABLE job_attempts (
         OR (finished_at IS NOT NULL AND outcome IS NOT NULL)
     ),
     CHECK (finished_at IS NULL OR finished_at >= started_at),
-    CHECK (outcome IS NULL OR outcome IN ('expired', 'succeeded'))
+    CHECK (outcome IS NULL OR outcome IN ('expired', 'succeeded', 'cancelled'))
 );
 
 CREATE TABLE processed_messages (

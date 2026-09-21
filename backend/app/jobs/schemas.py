@@ -26,6 +26,16 @@ class JobStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class JobControlStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    CANCELLING = "cancelling"
+    SUCCEEDED = "succeeded"
+    PARTIALLY_SUCCEEDED = "partially_succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class CollectionJobKind(StrEnum):
     MONITOR_COLLECT = "monitor.collect"
 
@@ -529,10 +539,44 @@ class CollectionJobInput(JobAcceptanceInput):
         return JobAcceptanceInput.model_validate(self.model_dump())
 
 
+class JobProgressView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    stage: JobStage | None
+    requests_sent: int = Field(ge=0)
+    items_saved: int = Field(ge=0)
+    updated_at: datetime | None
+
+
+class JobCancellationView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    requested_at: datetime
+    deadline_at: datetime | None
+    timed_out: bool
+
+
 class JobStatusView(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID
+    operation_id: UUID
+    kind: str
+    observation: JobObservationContext
+    status: JobControlStatus
+    progress: JobProgressView
+    cancellation: JobCancellationView | None
+    scheduled_for_at: datetime | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+
+
+class JobView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    owner_id: UUID
     operation_id: UUID
     kind: str
     observation: JobObservationContext
@@ -541,10 +585,6 @@ class JobStatusView(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
-
-
-class JobView(JobStatusView):
-    owner_id: UUID
 
 
 class JobAcceptedMessage(BaseModel):

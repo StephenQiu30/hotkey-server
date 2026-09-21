@@ -15,7 +15,13 @@ from structlog.contextvars import bound_contextvars
 from core.config import get_settings
 from core.logging import configure_logging
 from db.session import create_db_engine, create_session_factory
-from jobs.execution import CheckpointValue, Clock, ExecutionLease, JobExecutionService
+from jobs.execution import (
+    CheckpointValue,
+    Clock,
+    ExecutionLease,
+    JobExecutionService,
+    JobProgress,
+)
 from jobs.schemas import JobAcceptedMessage
 from jobs.services import JOB_ACCEPTED_TOPIC, OutboxService
 from worker.messaging import (
@@ -41,6 +47,8 @@ class JobExecutionContext:
         self,
         sequence: int,
         checkpoint: Mapping[str, CheckpointValue],
+        *,
+        progress: JobProgress | None = None,
     ) -> None:
         with self._sessions() as session:
             self.lease = JobExecutionService(
@@ -51,7 +59,25 @@ class JobExecutionContext:
                 self.lease,
                 sequence=sequence,
                 checkpoint=checkpoint,
+                progress=progress,
             )
+
+    def cancellation_requested(self) -> bool:
+        with self._sessions() as session:
+            return JobExecutionService(
+                session,
+                lease_seconds=self._lease_seconds,
+                clock=self._clock,
+            ).cancellation_requested(self.lease)
+
+    def begin_request(self) -> bool:
+        with self._sessions() as session:
+            self.lease, allowed = JobExecutionService(
+                session,
+                lease_seconds=self._lease_seconds,
+                clock=self._clock,
+            ).begin_request(self.lease)
+        return allowed
 
 
 def create_job_message_handler(
@@ -75,10 +101,6 @@ def create_job_message_handler(
             log_context["source_capability"] = body.source_capability.value
 
         with bound_contextvars(**log_context):
-            handler = handlers.get(body.kind)
-            if handler is None:
-                raise RuntimeError(f"job handler is not registered for kind: {body.kind}")
-
             with sessions() as session:
                 execution = JobExecutionService(
                     session,
@@ -87,6 +109,14 @@ def create_job_message_handler(
                 )
                 if execution.is_processed(body.message_id):
                     return
+                if execution.acknowledge_cancelled(
+                    job_id=body.job_id,
+                    message=reference,
+                ):
+                    return
+                handler = handlers.get(body.kind)
+                if handler is None:
+                    raise RuntimeError(f"job handler is not registered for kind: {body.kind}")
                 lease = execution.acquire(job_id=body.job_id, worker_id=worker_id)
 
             context = JobExecutionContext(

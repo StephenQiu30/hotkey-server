@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import json
 import os
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from threading import Barrier
+from threading import Barrier, Event
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -22,11 +24,12 @@ from core.config import Settings
 from core.errors import ApplicationError
 from jobs.execution import (
     JobExecutionService,
+    JobProgress,
     MessageReference,
     StaleExecutionLeaseError,
     plan_catchup_windows,
 )
-from jobs.schemas import JobAcceptanceInput, JobObservationContext
+from jobs.schemas import JobAcceptanceInput, JobObservationContext, JobStage
 from jobs.services import JobService, OutboxService
 from sources.contracts import SourceCapability
 from worker.app import JobExecutionContext, create_job_message_handler
@@ -293,6 +296,234 @@ def test_expired_lease_recovers_checkpoint_and_fences_old_worker(
 
     assert tuple(job_row) == ("succeeded", 2, {"page": 2}, None)
     assert attempts == [(1, "expired"), (2, "succeeded")]
+
+
+def test_cancelled_inflight_response_is_saved_without_starting_next_request(
+    job_context: JobTestContext,
+) -> None:
+    with job_context.sessions() as session:
+        job = JobService(session).accept(
+            owner_id=job_context.owner_id,
+            command=_command(),
+        )
+    with job_context.engine.connect() as connection:
+        outbox = connection.execute(
+            text("SELECT id, payload FROM outbox_messages WHERE aggregate_id = :job_id"),
+            {"job_id": job.id},
+        ).one()
+
+    class FakeMessage:
+        def topic(self) -> str:
+            return "hotkey.jobs.accepted.v2"
+
+        def value(self) -> bytes:
+            return json.dumps(
+                {
+                    **outbox.payload,
+                    "schema_version": 2,
+                    "message_id": str(outbox.id),
+                    "event_type": "job.accepted.v2",
+                }
+            ).encode()
+
+        def key(self) -> bytes:
+            return str(job.id).encode()
+
+        def partition(self) -> int:
+            return 0
+
+        def offset(self) -> int:
+            return 0
+
+        def headers(self) -> list[tuple[str, bytes]]:
+            return [("hotkey-message-id", str(outbox.id).encode())]
+
+    first_request_started = Event()
+    cancel_persisted = Event()
+    requests: list[str] = []
+    renewed_deadlines: list[datetime] = []
+
+    def collect(context: JobExecutionContext) -> None:
+        assert context.begin_request() is True
+        requests.append("request-1")
+        first_request_started.set()
+        assert cancel_persisted.wait(timeout=5)
+        context.save_checkpoint(
+            1,
+            {"cursor": "after-1"},
+            progress=JobProgress(
+                stage=JobStage.SAVE,
+                items_saved=3,
+            ),
+        )
+        renewed_deadlines.append(context.lease.expires_at)
+        if context.begin_request():
+            requests.append("request-2")
+
+    message_handler = create_job_message_handler(
+        job_context.sessions,
+        {"monitor.collect": collect},
+        worker_id="worker-cancel-test",
+        lease_seconds=60,
+    )
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        completed = executor.submit(message_handler, cast(Message, FakeMessage()))
+        assert first_request_started.wait(timeout=5)
+        with job_context.sessions() as session:
+            cancelling = JobService(session).request_cancel(
+                owner_id=job_context.owner_id,
+                job_id=job.id,
+            )
+        assert cancelling.status == "cancelling"
+        assert cancelling.progress.requests_sent == 1
+        assert cancelling.cancellation is not None
+        assert cancelling.cancellation.deadline_at is not None
+        cancel_persisted.set()
+        completed.result(timeout=5)
+
+    with job_context.sessions() as session:
+        finished = JobService(session).get_status(
+            owner_id=job_context.owner_id,
+            job_id=job.id,
+        )
+    with job_context.engine.connect() as connection:
+        stored = connection.execute(
+            text(
+                "SELECT status, checkpoint_sequence, checkpoint, requests_sent, items_saved, "
+                "progress_stage, cancel_deadline_at, lease_owner, "
+                "(SELECT outcome FROM job_attempts WHERE job_id = jobs.id), "
+                "(SELECT count(*) FROM processed_messages WHERE job_id = jobs.id) "
+                "FROM jobs WHERE id = :job_id"
+            ),
+            {"job_id": job.id},
+        ).one()
+
+    assert requests == ["request-1"]
+    assert renewed_deadlines == [cancelling.cancellation.deadline_at]
+    assert finished.status == "cancelled"
+    assert finished.progress.requests_sent == 1
+    assert finished.progress.items_saved == 3
+    assert tuple(stored) == (
+        "cancelled",
+        1,
+        {"cursor": "after-1"},
+        1,
+        3,
+        "save",
+        cancelling.cancellation.deadline_at,
+        None,
+        "cancelled",
+        1,
+    )
+
+
+def test_cancellation_timeout_remains_visible_for_review(
+    job_context: JobTestContext,
+) -> None:
+    with job_context.sessions() as session:
+        job = JobService(session).accept(
+            owner_id=job_context.owner_id,
+            command=_command(),
+        )
+    clock = [job.created_at + timedelta(seconds=1)]
+    with job_context.sessions() as session:
+        JobExecutionService(
+            session,
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        ).acquire(job_id=job.id, worker_id="worker-timeout")
+
+    clock[0] += timedelta(seconds=10)
+    with job_context.sessions() as session:
+        cancelling = JobService(session, clock=lambda: clock[0]).request_cancel(
+            owner_id=job_context.owner_id,
+            job_id=job.id,
+        )
+    assert cancelling.cancellation is not None
+    assert cancelling.cancellation.timed_out is False
+
+    clock[0] += timedelta(seconds=51)
+    with job_context.sessions() as session:
+        timed_out = JobService(session, clock=lambda: clock[0]).get_status(
+            owner_id=job_context.owner_id,
+            job_id=job.id,
+        )
+    assert timed_out.status == "cancelling"
+    assert timed_out.cancellation is not None
+    assert timed_out.cancellation.timed_out is True
+
+
+def test_queued_cancellation_acknowledges_outbox_without_running_handler(
+    job_context: JobTestContext,
+) -> None:
+    with job_context.sessions() as session:
+        job = JobService(session).accept(
+            owner_id=job_context.owner_id,
+            command=_command(),
+        )
+    with job_context.sessions() as session:
+        cancelled = JobService(session).request_cancel(
+            owner_id=job_context.owner_id,
+            job_id=job.id,
+        )
+    assert cancelled.status == "cancelled"
+
+    with job_context.engine.connect() as connection:
+        outbox = connection.execute(
+            text("SELECT id, payload FROM outbox_messages WHERE aggregate_id = :job_id"),
+            {"job_id": job.id},
+        ).one()
+
+    class FakeMessage:
+        def topic(self) -> str:
+            return "hotkey.jobs.accepted.v2"
+
+        def value(self) -> bytes:
+            return json.dumps(
+                {
+                    **outbox.payload,
+                    "schema_version": 2,
+                    "message_id": str(outbox.id),
+                    "event_type": "job.accepted.v2",
+                }
+            ).encode()
+
+        def key(self) -> bytes:
+            return str(job.id).encode()
+
+        def partition(self) -> int:
+            return 0
+
+        def offset(self) -> int:
+            return 7
+
+        def headers(self) -> list[tuple[str, bytes]]:
+            return [("hotkey-message-id", str(outbox.id).encode())]
+
+    handler_calls: list[UUID] = []
+    message_handler = create_job_message_handler(
+        job_context.sessions,
+        {"monitor.collect": lambda context: handler_calls.append(context.message.job_id)},
+        worker_id="worker-queued-cancel",
+        lease_seconds=60,
+    )
+
+    message_handler(cast(Message, FakeMessage()))
+    message_handler(cast(Message, FakeMessage()))
+
+    with job_context.engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT j.status, "
+                "(SELECT count(*) FROM job_attempts WHERE job_id = j.id), "
+                "(SELECT count(*) FROM processed_messages WHERE job_id = j.id) "
+                "FROM jobs j WHERE j.id = :job_id"
+            ),
+            {"job_id": job.id},
+        ).one()
+    assert handler_calls == []
+    assert tuple(row) == ("cancelled", 0, 1)
 
 
 def test_concurrent_schedule_window_acceptance_creates_one_job(

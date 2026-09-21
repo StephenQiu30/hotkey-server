@@ -386,6 +386,28 @@ class Job(Base):
             name="jobs_checkpoint_sequence_check",
         ),
         CheckConstraint(
+            "progress_stage IS NULL OR progress_stage IN ('request', 'parse', 'save', 'analysis')",
+            name="jobs_progress_stage_check",
+        ),
+        CheckConstraint("requests_sent >= 0", name="jobs_requests_sent_check"),
+        CheckConstraint("items_saved >= 0", name="jobs_items_saved_check"),
+        CheckConstraint(
+            "(progress_stage IS NULL AND progress_updated_at IS NULL AND "
+            "requests_sent = 0 AND items_saved = 0) OR "
+            "(progress_stage IS NOT NULL AND progress_updated_at IS NOT NULL)",
+            name="jobs_progress_pair_check",
+        ),
+        CheckConstraint(
+            "progress_updated_at IS NULL OR progress_updated_at >= created_at",
+            name="jobs_progress_updated_at_check",
+        ),
+        CheckConstraint(
+            "(cancel_requested_at IS NULL AND cancel_deadline_at IS NULL) OR "
+            "(cancel_requested_at IS NOT NULL AND status IN ('running', 'cancelled') AND "
+            "(cancel_deadline_at IS NULL OR cancel_deadline_at >= cancel_requested_at))",
+            name="jobs_cancel_request_check",
+        ),
+        CheckConstraint(
             "(lease_owner IS NULL AND lease_expires_at IS NULL) OR "
             "(lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)",
             name="jobs_lease_pair_check",
@@ -432,6 +454,12 @@ class Job(Base):
         JSONB,
         server_default=text("'{}'::jsonb"),
     )
+    progress_stage: Mapped[str | None] = mapped_column(String(32))
+    requests_sent: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    items_saved: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    progress_updated_at: Mapped[datetime | None]
+    cancel_requested_at: Mapped[datetime | None]
+    cancel_deadline_at: Mapped[datetime | None]
     scheduled_for_at: Mapped[datetime | None]
     started_at: Mapped[datetime | None]
     completed_at: Mapped[datetime | None]
@@ -544,7 +572,7 @@ class JobAttempt(Base):
             name="job_attempts_finished_at_check",
         ),
         CheckConstraint(
-            "outcome IS NULL OR outcome IN ('expired', 'succeeded')",
+            "outcome IS NULL OR outcome IN ('expired', 'succeeded', 'cancelled')",
             name="job_attempts_outcome_check",
         ),
     )

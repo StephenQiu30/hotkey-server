@@ -108,6 +108,13 @@ def test_submitted_job_is_persisted_and_readable_after_refresh(
         "kind": "monitor.collect",
         "observation": payload["observation"],
         "status": "queued",
+        "progress": {
+            "stage": None,
+            "requests_sent": 0,
+            "items_saved": 0,
+            "updated_at": None,
+        },
+        "cancellation": None,
         "scheduled_for_at": None,
         "started_at": None,
         "completed_at": None,
@@ -115,6 +122,87 @@ def test_submitted_job_is_persisted_and_readable_after_refresh(
     }
     assert "owner_id" not in refreshed.json()
     assert "scope" not in refreshed.json()
+
+
+def test_running_job_cancel_request_is_persisted_for_inflight_boundary(
+    collection_job_client: TestClient,
+) -> None:
+    _initialize(collection_job_client)
+    accepted = collection_job_client.post(
+        "/api/jobs",
+        headers=_csrf_headers(collection_job_client),
+        json=_payload(),
+    )
+    job_id = accepted.json()["job_id"]
+    factory = collection_job_client.app.state.session_factory
+    with factory.begin() as session:
+        session.execute(
+            text(
+                "UPDATE jobs SET status = 'running', lease_owner = 'worker-red', "
+                "lease_epoch = 1, lease_expires_at = now() + interval '1 minute', "
+                "started_at = now(), updated_at = now() WHERE id = :job_id"
+            ),
+            {"job_id": job_id},
+        )
+
+    cancelled = collection_job_client.post(
+        f"/api/jobs/{job_id}/cancel",
+        headers=_csrf_headers(collection_job_client),
+    )
+
+    assert cancelled.status_code == 200, cancelled.json()
+    assert cancelled.headers["cache-control"] == "no-store"
+    assert cancelled.json()["status"] == "cancelling"
+    assert cancelled.json()["cancellation"] == {
+        "requested_at": cancelled.json()["cancellation"]["requested_at"],
+        "deadline_at": cancelled.json()["cancellation"]["deadline_at"],
+        "timed_out": False,
+    }
+
+
+def test_queued_job_cancel_is_immediate_idempotent_and_terminal_conflicts(
+    collection_job_client: TestClient,
+) -> None:
+    _initialize(collection_job_client)
+    accepted = collection_job_client.post(
+        "/api/jobs",
+        headers=_csrf_headers(collection_job_client),
+        json=_payload(),
+    )
+    location = accepted.headers["location"]
+    cancel_location = f"{location}/cancel"
+
+    first = collection_job_client.post(
+        cancel_location,
+        headers=_csrf_headers(collection_job_client),
+    )
+    repeated = collection_job_client.post(
+        cancel_location,
+        headers=_csrf_headers(collection_job_client),
+    )
+
+    assert first.status_code == repeated.status_code == 200
+    assert first.json()["status"] == "cancelled"
+    assert first.json()["completed_at"] is not None
+    assert first.json()["cancellation"]["deadline_at"] is None
+    assert repeated.json()["cancellation"] == first.json()["cancellation"]
+
+    factory = collection_job_client.app.state.session_factory
+    with factory.begin() as session:
+        session.execute(
+            text(
+                "UPDATE jobs SET status = 'succeeded', completed_at = now(), "
+                "cancel_requested_at = NULL, cancel_deadline_at = NULL, "
+                "updated_at = now() WHERE id = :job_id"
+            ),
+            {"job_id": accepted.json()["job_id"]},
+        )
+    conflict = collection_job_client.post(
+        cancel_location,
+        headers=_csrf_headers(collection_job_client),
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["code"] == "job_not_cancellable"
 
 
 def test_repeated_submission_returns_one_persisted_job_and_outbox(
@@ -196,6 +284,29 @@ def test_job_routes_enforce_session_csrf_and_missing_resource_boundaries(
     assert forged_session.json()["code"] == "invalid_session"
 
 
+def test_cancel_route_enforces_session_csrf_and_owner_boundary(
+    collection_job_client: TestClient,
+) -> None:
+    missing_session = collection_job_client.post(
+        f"/api/jobs/{uuid4()}/cancel",
+        headers={"X-HotKey-CSRF": "1"},
+    )
+    assert missing_session.status_code == 401
+    assert missing_session.json()["code"] == "invalid_session"
+
+    _initialize(collection_job_client)
+    missing_csrf = collection_job_client.post(f"/api/jobs/{uuid4()}/cancel")
+    assert missing_csrf.status_code == 403
+    assert missing_csrf.json()["code"] == "csrf_invalid"
+
+    missing_job = collection_job_client.post(
+        f"/api/jobs/{uuid4()}/cancel",
+        headers=_csrf_headers(collection_job_client),
+    )
+    assert missing_job.status_code == 404
+    assert missing_job.json()["code"] == "resource_not_found"
+
+
 def test_public_submission_rejects_unregistered_job_kinds(
     collection_job_client: TestClient,
 ) -> None:
@@ -223,6 +334,7 @@ def test_job_openapi_contract_is_generated_from_runtime_routes(
     schema = collection_job_client.get("/openapi.json").json()
     create_operation = schema["paths"]["/api/jobs"]["post"]
     get_operation = schema["paths"]["/api/jobs/{job_id}"]["get"]
+    cancel_operation = schema["paths"]["/api/jobs/{job_id}/cancel"]["post"]
 
     assert create_operation["operationId"] == "createCollectionJob"
     assert "200" not in create_operation["responses"]
@@ -235,6 +347,11 @@ def test_job_openapi_contract_is_generated_from_runtime_routes(
     }
     assert create_operation["security"] == [{"SessionCookie": []}]
     assert get_operation["security"] == [{"SessionCookie": []}]
+    assert cancel_operation["operationId"] == "cancelCollectionJob"
+    assert cancel_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/JobStatusView"
+    }
+    assert cancel_operation["security"] == [{"SessionCookie": []}]
     for status_code in ("401", "403", "409", "422", "500"):
         assert create_operation["responses"][status_code]["content"]["application/json"][
             "schema"

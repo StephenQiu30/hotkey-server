@@ -55,7 +55,7 @@ uv run --env-file .env python -m cli backup create-candidate \
 
 命令不创建服务、不修改数据库，也不把凭据写入参数或候选包。当前 S01 只核对 MinIO 引用而不复制对象，输出固定为 `restore_verified=false`；完成独立介质保存和隔离恢复演练前不能称为已验证备份。
 
-业务接口统一使用 `/api` 命名空间，例如存活检查 `/api/health`、就绪检查 `/api/ready`。采集任务使用 `POST /api/jobs` 持久受理，并按响应 `Location` 读取 `GET /api/jobs/{job_id}`；当前只交付 queued 受理/读取，不代表已有真实采集处理器。接口文档入口为 Swagger UI `/docs`、Scalar `/scalar`，共用 `/openapi.json`。
+业务接口统一使用 `/api` 命名空间，例如存活检查 `/api/health`、就绪检查 `/api/ready`。采集任务使用 `POST /api/jobs` 持久受理，按响应 `Location` 读取 `GET /api/jobs/{job_id}`，并以 `POST /api/jobs/{job_id}/cancel` 登记取消；详情返回持久阶段、已发请求、已保存数量及取消截止。当前没有真实采集处理器，不得把受控 Worker 验证当作来源接入。接口文档入口为 Swagger UI `/docs`、Scalar `/scalar`，共用 `/openapi.json`。
 
 ## 首个使用者与恢复
 

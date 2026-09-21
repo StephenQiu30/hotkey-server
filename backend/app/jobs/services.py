@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -41,7 +41,10 @@ from jobs.schemas import (
     FreshnessTimelineInput,
     FreshnessTimelineView,
     JobAcceptanceInput,
+    JobCancellationView,
+    JobControlStatus,
     JobObservationContext,
+    JobProgressView,
     JobStage,
     JobStageOutcome,
     JobStatus,
@@ -138,6 +141,10 @@ def _duration_us(start: datetime | None, end: datetime | None) -> int | None:
         return None
     duration = end - start
     return (duration.days * 86_400 + duration.seconds) * 1_000_000 + duration.microseconds
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    return value.astimezone(UTC) if value is not None else None
 
 
 def measure_freshness_timeline(command: FreshnessTimelineInput) -> FreshnessTimelineView:
@@ -1188,6 +1195,9 @@ class JobService:
         return view
 
     def get_status(self, *, owner_id: UUID, job_id: UUID) -> JobStatusView:
+        now = self._clock()
+        if now.tzinfo is None:
+            raise ValueError("clock must return a timezone-aware datetime")
         model = self._session.scalar(
             select(Job).where(
                 Job.owner_id == owner_id,
@@ -1198,9 +1208,57 @@ class JobService:
             self._session.rollback()
             raise ApplicationError("resource_not_found")
         try:
-            return self._status_view(model)
+            return self._status_view(model, now=now)
         finally:
             self._session.rollback()
+
+    def request_cancel(self, *, owner_id: UUID, job_id: UUID) -> JobStatusView:
+        now = self._clock()
+        if now.tzinfo is None:
+            raise ValueError("clock must return a timezone-aware datetime")
+        self._session.rollback()
+        with self._session.begin():
+            model = self._session.scalar(
+                select(Job).where(Job.owner_id == owner_id, Job.id == job_id).with_for_update()
+            )
+            if model is None:
+                raise ApplicationError("resource_not_found")
+
+            if model.status == JobStatus.QUEUED.value:
+                model.status = JobStatus.CANCELLED.value
+                model.cancel_requested_at = now
+                model.completed_at = now
+                model.defer_reason = None
+                model.next_run_at = None
+                model.updated_at = now
+            elif model.status == JobStatus.RUNNING.value:
+                if model.cancel_requested_at is None:
+                    if model.lease_expires_at is None:
+                        raise RuntimeError("running job is missing its execution lease")
+                    model.cancel_requested_at = now
+                    if model.lease_expires_at <= now:
+                        model.status = JobStatus.CANCELLED.value
+                        model.cancel_deadline_at = now
+                        model.lease_owner = None
+                        model.lease_expires_at = None
+                        model.completed_at = now
+                        self._session.execute(
+                            update(JobAttempt)
+                            .where(
+                                JobAttempt.job_id == model.id,
+                                JobAttempt.lease_epoch == model.lease_epoch,
+                                JobAttempt.finished_at.is_(None),
+                            )
+                            .values(finished_at=now, outcome="cancelled")
+                        )
+                    else:
+                        model.cancel_deadline_at = model.lease_expires_at
+                    model.updated_at = now
+            elif model.status != JobStatus.CANCELLED.value:
+                raise ApplicationError("job_not_cancellable")
+
+            view = self._status_view(model, now=now)
+        return view
 
     def accept_schedule_window(
         self,
@@ -1253,17 +1311,41 @@ class JobService:
         )
 
     @staticmethod
-    def _status_view(model: Job) -> JobStatusView:
+    def _status_view(model: Job, *, now: datetime) -> JobStatusView:
+        public_status = (
+            JobControlStatus.CANCELLING
+            if model.status == JobStatus.RUNNING.value and model.cancel_requested_at is not None
+            else JobControlStatus(model.status)
+        )
+        cancellation = None
+        if model.cancel_requested_at is not None:
+            deadline = model.cancel_deadline_at
+            timed_out = deadline is not None and (
+                (model.completed_at is None and now >= deadline)
+                or (model.completed_at is not None and model.completed_at >= deadline)
+            )
+            cancellation = JobCancellationView(
+                requested_at=model.cancel_requested_at.astimezone(UTC),
+                deadline_at=_as_utc(deadline),
+                timed_out=timed_out,
+            )
         return JobStatusView(
             id=model.id,
             operation_id=model.operation_id,
             kind=model.kind,
             observation=JobObservationService._observation(model),
-            status=JobStatus(model.status),
-            scheduled_for_at=model.scheduled_for_at,
-            started_at=model.started_at,
-            completed_at=model.completed_at,
-            created_at=model.created_at,
+            status=public_status,
+            progress=JobProgressView(
+                stage=JobStage(model.progress_stage) if model.progress_stage is not None else None,
+                requests_sent=model.requests_sent,
+                items_saved=model.items_saved,
+                updated_at=_as_utc(model.progress_updated_at),
+            ),
+            cancellation=cancellation,
+            scheduled_for_at=_as_utc(model.scheduled_for_at),
+            started_at=_as_utc(model.started_at),
+            completed_at=_as_utc(model.completed_at),
+            created_at=model.created_at.astimezone(UTC),
         )
 
 
