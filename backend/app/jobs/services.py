@@ -38,6 +38,8 @@ from jobs.schemas import (
     ComponentPolicyInput,
     ComponentPolicyView,
     CostClass,
+    FreshnessTimelineInput,
+    FreshnessTimelineView,
     JobAcceptanceInput,
     JobObservationContext,
     JobStage,
@@ -49,6 +51,7 @@ from jobs.schemas import (
     OperationalTaskRecord,
     OperationalTaskStatus,
     OperationAttemptCount,
+    SourceTimeStatus,
     StageAttemptInput,
     StageAttemptView,
     UsageAttemptInput,
@@ -127,6 +130,43 @@ def fingerprint_request(command: JobAcceptanceInput) -> bytes:
         sort_keys=True,
     )
     return hashlib.sha256(canonical.encode()).digest()
+
+
+def _duration_us(start: datetime | None, end: datetime | None) -> int | None:
+    if start is None or end is None:
+        return None
+    duration = end - start
+    return (duration.days * 86_400 + duration.seconds) * 1_000_000 + duration.microseconds
+
+
+def measure_freshness_timeline(command: FreshnessTimelineInput) -> FreshnessTimelineView:
+    published_at = command.source_published_at
+    observed_at = command.source_observed_at
+    if published_at is None:
+        source_status = SourceTimeStatus.UNKNOWN
+    elif published_at.utcoffset() is None:
+        source_status = SourceTimeStatus.MISSING_TIMEZONE
+    elif observed_at is not None and published_at > observed_at:
+        source_status = SourceTimeStatus.FUTURE_SKEW
+    else:
+        source_status = SourceTimeStatus.VALID
+
+    publication_delay = None
+    if source_status is SourceTimeStatus.VALID:
+        publication_delay = _duration_us(published_at, observed_at)
+
+    return FreshnessTimelineView(
+        **command.model_dump(),
+        source_time_status=source_status,
+        schedule_wait_us=_duration_us(command.scheduled_for_at, command.started_at),
+        queue_wait_us=_duration_us(command.accepted_at, command.started_at),
+        internal_prepare_us=_duration_us(command.started_at, command.request_started_at),
+        source_wait_us=_duration_us(command.request_started_at, observed_at),
+        processing_us=_duration_us(observed_at, command.persisted_at),
+        visibility_us=_duration_us(command.persisted_at, command.queryable_at),
+        end_to_end_us=_duration_us(command.scheduled_for_at, command.queryable_at),
+        publication_to_observation_us=publication_delay,
+    )
 
 
 class ResourceBudgetService:
@@ -981,6 +1021,7 @@ class JobObservationService:
                     kind=job.kind,
                     observation=self._observation(job),
                     status=status,
+                    scheduled_for_at=job.scheduled_for_at,
                     created_at=job.created_at,
                     started_at=job.started_at,
                     completed_at=job.completed_at,
@@ -1083,6 +1124,7 @@ class JobService:
                     scope=command.scope,
                     request_fingerprint=fingerprint,
                     status=JobStatus.QUEUED.value,
+                    scheduled_for_at=command.scheduled_for_at,
                     created_at=now,
                     updated_at=now,
                 )
@@ -1123,6 +1165,7 @@ class JobService:
                     kind=command.kind,
                     observation=command.observation,
                     status=JobStatus.QUEUED,
+                    scheduled_for_at=command.scheduled_for_at,
                     started_at=None,
                     completed_at=None,
                     created_at=now,
@@ -1173,6 +1216,7 @@ class JobService:
                 ),
                 kind=kind,
                 observation=observation,
+                scheduled_for_at=window.end,
                 scope=scheduled_scope,
             ),
         )
@@ -1186,6 +1230,7 @@ class JobService:
             kind=model.kind,
             observation=JobObservationService._observation(model),
             status=JobStatus(model.status),
+            scheduled_for_at=model.scheduled_for_at,
             started_at=model.started_at,
             completed_at=model.completed_at,
             created_at=model.created_at,

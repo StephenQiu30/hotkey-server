@@ -402,6 +402,7 @@ CREATE TABLE jobs (
     lease_expires_at TIMESTAMPTZ,
     checkpoint_sequence BIGINT NOT NULL DEFAULT 0 CHECK (checkpoint_sequence >= 0),
     checkpoint JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(checkpoint) = 'object'),
+    scheduled_for_at TIMESTAMPTZ,
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     defer_reason VARCHAR(128),

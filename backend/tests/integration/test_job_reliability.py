@@ -142,6 +142,7 @@ def test_lost_response_retry_returns_the_original_job_and_one_outbox(
 
     assert repeated == first
     assert first.status == "queued"
+    assert first.scheduled_for_at is None
     assert _counts(job_context) == (1, 1)
     with job_context.engine.connect() as connection:
         payload = connection.execute(text("SELECT payload FROM outbox_messages")).scalar_one()
@@ -333,6 +334,11 @@ def test_concurrent_schedule_window_acceptance_creates_one_job(
 
     assert first.result() == second.result()
     assert _counts(job_context) == (1, 1)
+    with job_context.engine.connect() as connection:
+        scheduled_for_at = connection.execute(
+            text("SELECT scheduled_for_at FROM jobs")
+        ).scalar_one()
+    assert scheduled_for_at == window.end
 
 
 def test_real_kafka_redelivery_rebalance_and_redis_loss_recover_once(

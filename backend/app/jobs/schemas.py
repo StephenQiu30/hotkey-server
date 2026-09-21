@@ -52,6 +52,20 @@ class JobStageOutcome(StrEnum):
     CANCELLED = "cancelled"
 
 
+class SourceTimePrecision(StrEnum):
+    SECOND = "second"
+    MINUTE = "minute"
+    DAY = "day"
+    UNKNOWN = "unknown"
+
+
+class SourceTimeStatus(StrEnum):
+    VALID = "valid"
+    UNKNOWN = "unknown"
+    MISSING_TIMEZONE = "missing_timezone"
+    FUTURE_SKEW = "future_skew"
+
+
 class CostClass(StrEnum):
     LOCAL = "local"
     ZERO_PRICE = "zero_price"
@@ -336,6 +350,7 @@ class OperationalTaskRecord(BaseModel):
     kind: str
     observation: JobObservationContext
     status: OperationalTaskStatus
+    scheduled_for_at: datetime | None
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
@@ -385,13 +400,105 @@ class OperationalSnapshot(BaseModel):
     summary: OperationalSummary
 
 
+class FreshnessTimelineInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    scheduled_for_at: datetime | None = None
+    accepted_at: datetime
+    started_at: datetime | None = None
+    request_started_at: datetime | None = None
+    source_published_at: datetime | None = None
+    source_time_precision: SourceTimePrecision = SourceTimePrecision.UNKNOWN
+    source_observed_at: datetime | None = None
+    persisted_at: datetime | None = None
+    queryable_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_time_chain(self) -> FreshnessTimelineInput:
+        internal_times = (
+            self.scheduled_for_at,
+            self.accepted_at,
+            self.started_at,
+            self.request_started_at,
+            self.source_observed_at,
+            self.persisted_at,
+            self.queryable_at,
+        )
+        if any(value is not None and value.utcoffset() is None for value in internal_times):
+            raise ValueError("internal freshness timestamps must be timezone-aware")
+        if self.started_at is not None:
+            if self.started_at < self.accepted_at:
+                raise ValueError("started_at cannot precede accepted_at")
+            if self.scheduled_for_at is not None and self.started_at < self.scheduled_for_at:
+                raise ValueError("started_at cannot precede scheduled_for_at")
+        self._require_ordered(
+            self.started_at,
+            self.request_started_at,
+            "request_started_at",
+        )
+        self._require_ordered(
+            self.request_started_at,
+            self.source_observed_at,
+            "source_observed_at",
+        )
+        self._require_ordered(
+            self.source_observed_at,
+            self.persisted_at,
+            "persisted_at",
+        )
+        self._require_ordered(
+            self.persisted_at,
+            self.queryable_at,
+            "queryable_at",
+        )
+        if (
+            self.source_published_at is None
+            and self.source_time_precision is not SourceTimePrecision.UNKNOWN
+        ):
+            raise ValueError("source precision requires a published timestamp")
+        return self
+
+    @staticmethod
+    def _require_ordered(
+        previous: datetime | None,
+        current: datetime | None,
+        field_name: str,
+    ) -> None:
+        if current is None:
+            return
+        if previous is None:
+            raise ValueError(f"{field_name} requires its previous stage")
+        if current < previous:
+            raise ValueError(f"{field_name} cannot precede its previous stage")
+
+
+class FreshnessTimelineView(FreshnessTimelineInput):
+    source_time_status: SourceTimeStatus
+    schedule_wait_us: int | None = Field(default=None, ge=0)
+    queue_wait_us: int | None = Field(default=None, ge=0)
+    internal_prepare_us: int | None = Field(default=None, ge=0)
+    source_wait_us: int | None = Field(default=None, ge=0)
+    processing_us: int | None = Field(default=None, ge=0)
+    visibility_us: int | None = Field(default=None, ge=0)
+    end_to_end_us: int | None = Field(default=None, ge=0)
+    publication_to_observation_us: int | None = Field(default=None, ge=0)
+
+
 class JobAcceptanceInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     operation_id: UUID
     kind: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_.-]{0,63}$")
     observation: JobObservationContext
+    scheduled_for_at: datetime | None = None
     scope: dict[str, JobScopeValue]
+
+    @field_validator("scheduled_for_at")
+    @classmethod
+    def validate_scheduled_for_at(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("scheduled_for_at must be timezone-aware")
+        return value
 
     @field_validator("scope")
     @classmethod
@@ -415,6 +522,7 @@ class JobView(BaseModel):
     kind: str
     observation: JobObservationContext
     status: JobStatus
+    scheduled_for_at: datetime | None
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime

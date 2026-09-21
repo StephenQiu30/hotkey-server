@@ -432,6 +432,7 @@ class Job(Base):
         JSONB,
         server_default=text("'{}'::jsonb"),
     )
+    scheduled_for_at: Mapped[datetime | None]
     started_at: Mapped[datetime | None]
     completed_at: Mapped[datetime | None]
     defer_reason: Mapped[str | None] = mapped_column(String(128))
