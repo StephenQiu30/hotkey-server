@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     database_max_overflow: int = Field(default=10, ge=0, le=100)
     database_pool_timeout_seconds: float = Field(default=10, gt=0, le=60)
 
+    bootstrap_token: SecretStr | None = Field(default=None, min_length=32)
+    session_ttl_seconds: int = Field(default=43_200, ge=900, le=86_400)
+
     redis_url: str = "redis://127.0.0.1:6379/0"
     kafka_bootstrap_servers: str = "127.0.0.1:9092"
     kafka_group_id: str = "hotkey-worker"
@@ -33,6 +36,11 @@ class Settings(BaseSettings):
     minio_access_key: str = ""
     minio_secret_key: str = ""
     minio_bucket: str = "hotkey-evidence"
+
+    @field_validator("bootstrap_token", mode="before")
+    @classmethod
+    def empty_bootstrap_token_is_unconfigured(cls, value: object) -> object:
+        return None if value == "" else value
 
 
 @lru_cache

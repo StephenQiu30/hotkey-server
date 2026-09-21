@@ -35,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
         lifespan=lifespan,
     )
+    app.state.settings = resolved_settings
     register_middleware(app)
     register_exception_handlers(app)
     register_documentation(app)

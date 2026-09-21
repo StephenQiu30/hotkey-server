@@ -22,6 +22,22 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.11-alpine3.23
+        env:
+          POSTGRES_DB: hotkey_test
+          POSTGRES_PASSWORD: identity_test_only
+          POSTGRES_USER: hotkey_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hotkey_test -d hotkey_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      HOTKEY_TEST_DATABASE_URL: postgresql+psycopg://hotkey_test:identity_test_only@127.0.0.1:5432/hotkey_test
     defaults:
       run:
         working-directory: backend
@@ -40,6 +56,9 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --locked
+
+      - name: Initialize the isolated PostgreSQL schema
+        run: docker exec -i ${{ job.services.postgres.id }} psql -X --set ON_ERROR_STOP=on --username hotkey_test --dbname hotkey_test < database/schema.sql
 
       - name: Lint (ruff check)
         run: uv run ruff check .

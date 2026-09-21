@@ -15,6 +15,26 @@ declare namespace HotKeyAPI {
     status: "ok" | "ready";
   };
 
+  type IdentityCredentialsInput = {
+    /** Username */
+    username: string;
+    /** Password */
+    password: string;
+  };
+
+  type IdentitySessionView = {
+    user: IdentityUserView;
+    /** Expires At */
+    expires_at: string;
+  };
+
+  type IdentityUserView = {
+    /** Id */
+    id: string;
+    /** Username */
+    username: string;
+  };
+
   type ValidationErrorItem = {
     /** Location */
     location: (string | number)[];

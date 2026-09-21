@@ -99,6 +99,9 @@ services:
 
   backend:
     <<: *backend-service
+    environment:
+      <<: *backend-environment
+      HOTKEY_BOOTSTRAP_TOKEN: ${HOTKEY_BOOTSTRAP_TOKEN:-}
     depends_on:
       kafka:
         condition: service_healthy
@@ -169,7 +172,8 @@ services:
 
   cli:
     <<: *backend-service
-    command: ["/srv/backend/.venv/bin/python", "-m", "cli", "--help"]
+    entrypoint: ["/srv/backend/.venv/bin/python", "-m", "cli"]
+    command: ["--help"]
     profiles: ["cli"]
     deploy:
       resources:

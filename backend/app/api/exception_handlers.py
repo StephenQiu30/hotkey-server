@@ -43,7 +43,18 @@ HTTP_ERRORS: Mapping[int, PublicError] = {
     504: PublicError(504, "upstream_timeout", "上游服务响应超时"),
 }
 APPLICATION_ERRORS: Mapping[str, PublicError] = {
+    "bootstrap_forbidden": PublicError(403, "bootstrap_forbidden", "初始化授权无效"),
+    "csrf_invalid": PublicError(403, "csrf_invalid", "请求安全校验失败"),
     "database_unavailable": PublicError(503, "database_unavailable", "数据库暂不可用"),
+    "identity_already_initialized": PublicError(
+        409,
+        "identity_already_initialized",
+        "使用者已完成初始化",
+    ),
+    "identity_not_initialized": PublicError(404, "identity_not_initialized", "使用者尚未初始化"),
+    "invalid_credentials": PublicError(401, "invalid_credentials", "用户名或密码错误"),
+    "invalid_password": PublicError(422, "invalid_password", "密码不符合安全要求"),
+    "invalid_session": PublicError(401, "invalid_session", "会话无效或已过期"),
 }
 
 _ALLOWED_HEADERS: Mapping[int, frozenset[str]] = {
@@ -179,8 +190,18 @@ def _validate_application_error_map() -> None:
         raise RuntimeError(f"application error map mismatch: missing={missing}, extra={extra}")
     for code, category in ERROR_CATEGORIES.items():
         response = APPLICATION_ERRORS[code]
-        if category is ErrorCategory.DEPENDENCY_UNAVAILABLE and response.status_code != 503:
-            raise RuntimeError(f"dependency error must map to 503: {code}")
+        expected_status = {
+            ErrorCategory.AUTHENTICATION: 401,
+            ErrorCategory.AUTHORIZATION: 403,
+            ErrorCategory.CONFLICT: 409,
+            ErrorCategory.DEPENDENCY_UNAVAILABLE: 503,
+            ErrorCategory.INVALID_INPUT: 422,
+            ErrorCategory.NOT_FOUND: 404,
+        }[category]
+        if response.status_code != expected_status:
+            raise RuntimeError(
+                f"application error has invalid status: code={code}, expected={expected_status}"
+            )
 
 
 def register_exception_handlers(app: FastAPI) -> None:

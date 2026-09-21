@@ -42,6 +42,20 @@ Compose 仅在全新 PostgreSQL 数据卷中通过官方初始化目录运行 `s
 
 业务接口统一使用 `/api` 命名空间，例如存活检查 `/api/health`、就绪检查 `/api/ready`；接口文档入口为 Swagger UI `/docs`、Scalar `/scalar`，共用 `/openapi.json`。
 
+## 首个使用者与恢复
+
+首次初始化前，在未跟踪的根 `.env` 中设置唯一且不少于 32 字符的 `HOTKEY_BOOTSTRAP_TOKEN`。受控客户端调用 `POST /api/identity/initialize` 时同时发送该值、`X-HotKey-CSRF: 1` 以及 owner 用户名和不少于 12 字符的密码。初始化完成后从运行环境移除 bootstrap 值并重新创建 API 容器；系统没有默认用户或默认密码。
+
+登录、当前会话和注销分别使用 `POST /api/identity/sessions`、`GET /api/identity/session`、`DELETE /api/identity/session`。浏览器只使用服务端设置的会话 Cookie；非安全方法由 Web 请求层附加 CSRF 请求头，不把 Cookie 值传给业务函数。
+
+密码遗失时由具备部署维护权限的操作者执行交互式恢复；新密码不会放入命令参数，恢复成功会撤销全部旧会话：
+
+```bash
+docker compose run --rm cli identity reset-password
+```
+
+当前只支持全新空库初始化，不得为给旧库补身份表而直接执行 `schema.sql`。
+
 ## 状态
 
-当前底座包含应用工厂、数据库会话、唯一 `schema.sql`、结构化日志、健康检查、Swagger UI、Scalar、Kafka Worker、管理 CLI 和架构测试。业务领域只在对应切片完成 Design 登记后创建，当前不保留空的未来领域包。
+当前底座包含应用工厂、数据库会话、唯一 `schema.sql`、结构化日志、健康检查、Swagger UI、Scalar、Kafka Worker、管理 CLI、身份会话领域和架构测试。其余业务领域只在对应切片完成 Design 登记后创建，不保留空的未来领域包。

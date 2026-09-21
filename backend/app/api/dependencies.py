@@ -3,12 +3,14 @@ from __future__ import annotations
 from collections.abc import Generator
 from typing import Annotated, cast
 
-from fastapi import Depends, Request
+from fastapi import Cookie, Depends, Header, Request, Security
+from fastapi.security import APIKeyCookie
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.errors import DependencyUnavailableError
+from identity.services import AuthenticatedIdentity, IdentityService
 
 
 def get_session(request: Request) -> Generator[Session, None, None]:
@@ -33,3 +35,52 @@ def require_database(session: SessionDependency) -> None:
 
 
 DatabaseReadyDependency = Annotated[None, Depends(require_database)]
+
+
+def get_identity_service(request: Request, session: SessionDependency) -> IdentityService:
+    return IdentityService(session, request.app.state.settings)
+
+
+IdentityServiceDependency = Annotated[IdentityService, Depends(get_identity_service)]
+
+_SESSION_COOKIE = APIKeyCookie(
+    name="hotkey_session",
+    scheme_name="SessionCookie",
+    auto_error=False,
+)
+
+
+def require_identity_session(
+    service: IdentityServiceDependency,
+    session_token: Annotated[str | None, Security(_SESSION_COOKIE)],
+) -> AuthenticatedIdentity:
+    return service.authenticate(session_token)
+
+
+AuthenticatedIdentityDependency = Annotated[
+    AuthenticatedIdentity,
+    Depends(require_identity_session),
+]
+
+
+def require_identity_csrf(
+    service: IdentityServiceDependency,
+    identity: AuthenticatedIdentityDependency,
+    csrf_cookie: Annotated[
+        str | None,
+        Cookie(alias="hotkey_csrf", include_in_schema=False),
+    ] = None,
+    csrf_header: Annotated[str | None, Header(alias="X-HotKey-CSRF")] = None,
+) -> AuthenticatedIdentity:
+    service.validate_csrf(
+        identity,
+        csrf_cookie=csrf_cookie,
+        csrf_header=csrf_header,
+    )
+    return identity
+
+
+CsrfProtectedIdentityDependency = Annotated[
+    AuthenticatedIdentity,
+    Depends(require_identity_csrf),
+]

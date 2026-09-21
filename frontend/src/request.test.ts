@@ -4,12 +4,16 @@ import {
   type AxiosAdapter,
   type AxiosResponse,
 } from "axios";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import request, { ApiRequestError } from "./request";
 
 const BODY_REQUEST_ID = "1d585580-ef30-449a-8716-56c0a015763a";
 const HEADER_REQUEST_ID = "dc7deafc-1f20-4921-87e2-20c221d9c79b";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function responseAdapter(
   status: number,
@@ -60,6 +64,42 @@ async function captureError(adapter: AxiosAdapter): Promise<ApiRequestError> {
 }
 
 describe("request transport", () => {
+  it("adds the session CSRF token only to protected mutations", async () => {
+    vi.stubGlobal("document", { cookie: "hotkey_csrf=session-csrf-token" });
+    let protectedHeader: unknown;
+    let publicHeader: unknown;
+
+    await request<void>("/api/identity/session", {
+      adapter: async (config) => {
+        protectedHeader = config.headers.get("X-HotKey-CSRF");
+        return {
+          config,
+          data: "",
+          headers: new AxiosHeaders(),
+          status: 204,
+          statusText: "204",
+        };
+      },
+      method: "DELETE",
+    });
+    await request<void>("/api/identity/sessions", {
+      adapter: async (config) => {
+        publicHeader = config.headers.get("X-HotKey-CSRF");
+        return {
+          config,
+          data: {},
+          headers: new AxiosHeaders(),
+          status: 200,
+          statusText: "200",
+        };
+      },
+      method: "POST",
+    });
+
+    expect(protectedHeader).toBe("session-csrf-token");
+    expect(publicHeader).toBe("1");
+  });
+
   it("reads details and falls back to the body request id", async () => {
     const details = [
       {

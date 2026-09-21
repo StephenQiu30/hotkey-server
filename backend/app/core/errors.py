@@ -8,12 +8,24 @@ type ErrorContextValue = str | int | float | bool | None
 
 
 class ErrorCategory(StrEnum):
+    AUTHENTICATION = "authentication"
+    AUTHORIZATION = "authorization"
+    CONFLICT = "conflict"
     DEPENDENCY_UNAVAILABLE = "dependency_unavailable"
+    INVALID_INPUT = "invalid_input"
+    NOT_FOUND = "not_found"
 
 
 ERROR_CATEGORIES: Mapping[str, ErrorCategory] = MappingProxyType(
     {
+        "bootstrap_forbidden": ErrorCategory.AUTHORIZATION,
+        "csrf_invalid": ErrorCategory.AUTHORIZATION,
         "database_unavailable": ErrorCategory.DEPENDENCY_UNAVAILABLE,
+        "identity_already_initialized": ErrorCategory.CONFLICT,
+        "identity_not_initialized": ErrorCategory.NOT_FOUND,
+        "invalid_credentials": ErrorCategory.AUTHENTICATION,
+        "invalid_password": ErrorCategory.INVALID_INPUT,
+        "invalid_session": ErrorCategory.AUTHENTICATION,
     }
 )
 

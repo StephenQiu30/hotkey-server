@@ -24,6 +24,24 @@ type ApiRequestErrorOptions = {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const PUBLIC_MUTATION_PATHS = new Set([
+  "/api/identity/initialize",
+  "/api/identity/sessions",
+]);
+
+function readCookie(name: string): string | undefined {
+  if (typeof document === "undefined") {
+    return undefined;
+  }
+  const prefix = `${encodeURIComponent(name)}=`;
+  const value = document.cookie
+    .split("; ")
+    .find((item) => item.startsWith(prefix))
+    ?.slice(prefix.length);
+  return value === undefined ? undefined : decodeURIComponent(value);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -144,6 +162,17 @@ const client = axios.create({
   headers: {
     Accept: "application/json",
   },
+});
+
+client.interceptors.request.use((config) => {
+  const method = (config.method ?? "GET").toUpperCase();
+  if (!SAFE_METHODS.has(method)) {
+    const csrfToken = PUBLIC_MUTATION_PATHS.has(config.url ?? "")
+      ? "1"
+      : (readCookie("hotkey_csrf") ?? "1");
+    config.headers.set("X-HotKey-CSRF", csrfToken);
+  }
+  return config;
 });
 
 client.interceptors.response.use(

@@ -64,7 +64,7 @@
 - 路由禁止导入 SQLAlchemy、业务 models、services 实现、执行器或消息组件；只能通过 `api/dependencies.py` 注入服务。禁止经 request.app.state 在路由中绕过业务服务读写数据库或发布任务。服务、模型、Schema 不导入 FastAPI/Starlette/HTTP 路由；Schema 不导入 ORM 或数据库资源。
 - 每个HTTP操作必须有唯一人工`operation_id`、tag、成功状态和Pydantic响应模型；错误响应按操作显式声明，不在应用级虚报所有状态码。输入继承严格Input并给集合、字符串、页大小和正文设置上限。游标不得泄漏内部数据，应有明确的校验和分页边界。
 - Python 文件、目录、函数使用 snake_case，类使用 PascalCase，常量使用 UPPER_SNAKE_CASE；同类职责文件统一使用 models.py / schemas.py / services.py。绝对导入；`__init__.py` 仅标识包或说明包，不放业务代码和重导出别名。
-- 测试放 `backend/tests/unit/`、`backend/tests/integration/`、`backend/tests/architecture/`，公共 fixture 放 tests/conftest.py；独立容器验证脚本为 `backend/scripts/verify_*.py`，不得伪装成 pytest 测试。组件文件使用 kebab-case.tsx，导出组件使用 PascalCase；生成客户端固定在 `frontend/src/api/`，Axios 传输封装固定在 `frontend/src/request.ts`，不创建 features/patterns/shared 层，英文 README 为 README.en.md。
+- 测试放 `backend/tests/unit/`、`backend/tests/integration/`、`backend/tests/architecture/`，公共 fixture 放 tests/conftest.py；不新增项目 `scripts/` 目录或一次性 `.sh` 文件，容器与部署验证复用 pytest、领域 CLI、Compose、依赖官方 CLI 和 CI 工作流。组件文件使用 kebab-case.tsx，导出组件使用 PascalCase；生成客户端固定在 `frontend/src/api/`，Axios 传输封装固定在 `frontend/src/request.ts`，不创建 features/patterns/shared 层，英文 README 为 README.en.md。
 - 后端结构与依赖方向由 architecture 测试强制检查；前端 Next 层登记与依赖方向遵循本文件及 `frontend/DESIGN.md`，并通过 ESLint、TypeScript、生产构建和代码审查验证。Ruff 检查命名/绝对导入，mypy 严格检查后端应用与工具；锁文件、`schema.sql`、ORM 映射、HTTP 和消息契约必须在目录重构中保持可验证。增加架构例外需同步 Design，禁止添加宽泛忽略绕过标准检查。
 - 不因“异步更先进”将同步psycopg调用放进`async def`路由。只有整条调用链非阻塞且有独立并发/连接池验证时才引入AsyncSession，并保证每个并发task独立Session。
 

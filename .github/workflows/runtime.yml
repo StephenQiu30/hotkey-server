@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HOTKEY_API_PORT: "8867"
+      HOTKEY_BOOTSTRAP_TOKEN: runtime-ci-bootstrap-token-is-not-a-default
       HOTKEY_POSTGRES_PASSWORD: runtime_ci_only
       HOTKEY_WEB_PORT: "3000"
       NEXT_TELEMETRY_DISABLED: "1"
@@ -65,6 +66,7 @@ jobs:
           test "$(docker compose --project-name hotkey-ci exec -T postgres psql -X --set ON_ERROR_STOP=on --username hotkey --dbname hotkey --tuples-only --no-align --command 'SELECT current_database()')" = "hotkey"
           test "$(docker compose --project-name hotkey-ci exec -T redis redis-cli ping)" = "PONG"
           docker compose --project-name hotkey-ci exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list
+          test "$(docker compose --project-name hotkey-ci exec -T postgres psql -X --username hotkey --dbname hotkey --tuples-only --no-align --command "SELECT to_regclass('public.identity_users') IS NOT NULL AND to_regclass('public.identity_sessions') IS NOT NULL")" = "t"
           curl --fail --silent http://127.0.0.1:8867/api/health
           curl --fail --silent http://127.0.0.1:8867/api/ready
           curl --fail --silent http://127.0.0.1:3000/health
@@ -75,6 +77,20 @@ jobs:
           test "$(docker compose --project-name hotkey-ci exec -T frontend id -u)" = "1001"
           test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' $(docker compose --project-name hotkey-ci ps --quiet backend))" = "true"
           test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' $(docker compose --project-name hotkey-ci ps --quiet frontend))" = "true"
+
+      - name: Verify the deployed identity session boundary
+        run: |
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --request POST http://127.0.0.1:3000/api/identity/initialize --header 'Content-Type: application/json' --header 'X-HotKey-CSRF: 1' --header 'X-HotKey-Bootstrap-Token: wrong' --data-binary '{"username":"owner","password":"runtime verification password"}')" = "403"
+          curl --fail --silent --cookie-jar /tmp/hotkey-ci-cookies --request POST http://127.0.0.1:3000/api/identity/initialize --header 'Content-Type: application/json' --header 'X-HotKey-CSRF: 1' --header 'X-HotKey-Bootstrap-Token: runtime-ci-bootstrap-token-is-not-a-default' --data-binary '{"username":"owner","password":"runtime verification password"}' | grep '"username":"owner"'
+          curl --fail --silent --cookie /tmp/hotkey-ci-cookies http://127.0.0.1:3000/api/identity/session | grep '"username":"owner"'
+          session_token="$(awk '$6 == "hotkey_session" {print $7}' /tmp/hotkey-ci-cookies)"
+          csrf_token="$(awk '$6 == "hotkey_csrf" {print $7}' /tmp/hotkey-ci-cookies)"
+          test -n "$session_token"
+          test -n "$csrf_token"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --request DELETE --cookie /tmp/hotkey-ci-cookies http://127.0.0.1:3000/api/identity/session)" = "403"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --request DELETE --cookie /tmp/hotkey-ci-cookies --header "X-HotKey-CSRF: $csrf_token" http://127.0.0.1:3000/api/identity/session)" = "204"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --cookie "hotkey_session=$session_token" http://127.0.0.1:3000/api/identity/session)" = "401"
+          if docker compose --project-name hotkey-ci logs --no-color backend frontend | grep --quiet --fixed-strings --regexp='runtime verification password' --regexp='runtime-ci-bootstrap-token-is-not-a-default' --regexp="$session_token" --regexp="$csrf_token"; then exit 1; fi
 
       - name: Record one bounded resource snapshot
         run: docker stats --no-stream $(docker compose --project-name hotkey-ci ps --quiet)

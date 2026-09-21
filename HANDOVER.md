@@ -28,6 +28,8 @@
 - 业务领域目录不提前创建空包；`identity`、`monitors`、`jobs`、`sources`、`evidence`、`ai`、`audit` 的主责遵循 `PROJECT.md`，候选领域细分见 `docs/plans/001-热点事件监控平台总计划.md`，具体切片落地时再创建实际文件。
 - `python -m worker` 是 Kafka Worker 入口。尚无业务消息处理器时安全退出，不订阅或提交任何消息；处理器只能在对应任务设计完成后注册。
 - `python -m cli` 是 Typer 管理入口。`tests/unit`、`tests/integration`、`tests/architecture` 分别承载规则、HTTP 契约和依赖边界验证。
+- `app/identity/` 已实现单 owner 初始化、Argon2 密码散列、服务端不透明会话、CSRF、注销和维护恢复；`python -m cli identity reset-password` 从隐藏交互输入读取新密码并撤销全部旧会话。
+- 身份 HTTP 契约为 `/api/identity/initialize`、`/api/identity/sessions` 与 `/api/identity/session`；Web 请求层自动为写请求补 CSRF，请求凭据和 Cookie 不进入生成客户端参数。
 - 本机默认 PostgreSQL 库包含旧系统历史表，而当前 Python ORM 尚无业务模型。不得对该旧库执行 `database/schema.sql`；需要保留数据时先备份，再用新库完整建表并校验导入。
 
 ## 运行基线
@@ -43,9 +45,11 @@
 
 **[042 计划](docs/plans/042-容量与部署可重复性计划.md) S00/S01 已完成，B01 底座前置已关闭。** 本地隔离 Compose 验证五个长期服务 healthy，API/Web/代理/空 Worker 和部署态客户端生成通过；该结果不代表完整 B0、两干净环境、恢复或 042 的 0/6 产品 AC 已通过。
 
+**[034 计划](docs/plans/034-凭据与应用安全计划.md) S00/S01 已完成，Plan 保持 in_progress。** 全新隔离 PostgreSQL/Compose 已验证受控初始化、登录/注销、CSRF、旧会话失效、维护恢复和日志不泄密；后端 34 tests、前端 11 tests 及全量门禁通过。尚无受保护业务资料、连接秘密、正文、导出或网络目标，034 产品 AC 仍为 0/6，未建立 Acceptance。
+
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 按 BACKLOG B02 顺序完成身份/权限与可靠任务的同编号 Design 和先行切片。
+1. 按 BACKLOG B02 顺序完成 035 S00/S01 所有者授权与受保护工作台，再推进可靠任务的同编号 Design 和先行切片。
 2. 明确旧 PostgreSQL 数据的保留、重建和校验导入策略，再同步实现首个业务领域 Model 与 `database/schema.sql` DDL。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
@@ -58,4 +62,4 @@
 
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 
-本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；后端 26 tests 与前端 10 tests 及全量静态/构建门禁通过。未执行业务消息、来源探测、完整 B0、恢复或产品 Acceptance。
+本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 034 S00/S01，在全新隔离卷验证初始化、会话、CSRF、注销和维护恢复。当前后端 34 tests、前端 11 tests 及全量静态/构建门禁通过。未执行业务消息、来源探测、034 S02—S04、完整 B0 或产品 Acceptance。
