@@ -35,6 +35,10 @@ declare namespace HotKeyAPI {
     username: string;
   };
 
+  type IdentityWorkspaceView = {
+    owner: IdentityUserView;
+  };
+
   type ValidationErrorItem = {
     /** Location */
     location: (string | number)[];

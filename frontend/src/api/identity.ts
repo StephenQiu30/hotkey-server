@@ -51,3 +51,13 @@ export async function createIdentitySession(
     ...(options || {}),
   });
 }
+
+/** 读取当前私有工作区 工作区 owner 只从有效会话派生。接口不接受客户端提供归属标识。 GET /api/identity/workspace */
+export async function getIdentityWorkspace(
+  options?: import("@/request").RequestOptions,
+) {
+  return request<HotKeyAPI.IdentityWorkspaceView>("/api/identity/workspace", {
+    method: "GET",
+    ...(options || {}),
+  });
+}

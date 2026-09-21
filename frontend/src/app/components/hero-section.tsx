@@ -24,8 +24,8 @@ export function HeroSection() {
         </p>
         <div className="mt-9">
           <Button asChild size="lg">
-            <Link href="#capabilities">
-              查看核心能力
+            <Link href="/login">
+              进入工作台
               <ArrowRightIcon data-icon="inline-end" />
             </Link>
           </Button>

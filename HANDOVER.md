@@ -14,7 +14,7 @@
 
 - `src/request.ts` 是唯一 Axios 请求封装，统一处理凭据、超时、响应数据和错误；业务 HTTP、网络、超时、取消及协议错误保持可判别。
 - Umi OpenAPI 读取后端自动生成的 `/openapi.json`，生成文件直接写入 `src/api/`；命令环境变量 `HOTKEY_OPENAPI_URL` 可覆盖默认地址。
-- `src/proxy.ts` 只处理页面 CSP nonce；`src/app/api/[[...path]]/route.ts` 负责同源 `/api/*` 转发及可控 502/504 错误契约。
+- `src/proxy.ts` 处理页面 CSP nonce，并对缺少会话 Cookie 的 `/events` 做乐观登录跳转；`src/app/api/[[...path]]/route.ts` 负责同源 `/api/*` 转发及可控 502/504 错误契约，API 仍是认证和授权边界。
 - 页面采用组件优先的无边框设计，只使用 Tailwind 命名尺度及 `sm/md/lg/xl/2xl`。
 - App Router 已配置 loading、error、global-error、not-found 和 `/health`。
 - Dockerfile 定义 standalone、非 root 用户和健康检查；根 Compose 已用只读文件系统及 tmpfs 实际验证。
@@ -30,11 +30,13 @@
 - `python -m cli` 是 Typer 管理入口。`tests/unit`、`tests/integration`、`tests/architecture` 分别承载规则、HTTP 契约和依赖边界验证。
 - `app/identity/` 已实现单 owner 初始化、Argon2 密码散列、服务端不透明会话、CSRF、注销和维护恢复；`python -m cli identity reset-password` 从隐藏交互输入读取新密码并撤销全部旧会话。
 - 身份 HTTP 契约为 `/api/identity/initialize`、`/api/identity/sessions` 与 `/api/identity/session`；Web 请求层自动为写请求补 CSRF，请求凭据和 Cookie 不进入生成客户端参数。
+- `GET /api/identity/workspace` 从有效会话派生当前 owner，不接受客户端归属标识；`require_resource_owner` 为后续业务资源提供默认拒绝规则。Web 已有 `/login` 与受保护 `/events` 空工作台，尚未接入事件业务资源。
 - 本机默认 PostgreSQL 库包含旧系统历史表，而当前 Python ORM 尚无业务模型。不得对该旧库执行 `database/schema.sql`；需要保留数据时先备份，再用新库完整建表并校验导入。
 
 ## 运行基线
 
 - 根 `compose.yaml` 是唯一编排，固定 PostgreSQL 17.11、Redis 7.2.16、Kafka 4.1.2；API/Web 仅绑定本机端口，内部依赖不发布宿主端口。
+- 当前工作站的未跟踪 `backend/.env` 与 `frontend/.env.local` 直接复用已启动的 Homebrew PostgreSQL 18.4、Redis、Kafka 和 MinIO，不再启动第二套 Compose 依赖。当前代码使用同一 PostgreSQL 服务内的新空库 `hotkey_dev`；旧 `hotkey`、`hotkey-server` 与 `hotkey_test` 数据库未改动。部署镜像仍以本文固定的 PostgreSQL 17.11 为基线，本机 18.4 验证不能替代部署态版本验证。
 - `schema.sql` 自带事务边界，通过 PostgreSQL 官方初始化目录仅作用于全新空卷；没有初始化 `.sh`、迁移框架或第二份 DDL。
 - `.github/workflows/runtime.yml` 构建镜像并验证真实依赖、API/Web/同源代理、空 Worker、资源快照及部署态 OpenAPI 漂移。
 - 验证不增加 `scripts/` 工具文件；复用 Compose、依赖官方 CLI、curl、docker stats 与现有 pnpm 命令。
@@ -47,9 +49,11 @@
 
 **[034 计划](docs/plans/034-凭据与应用安全计划.md) S00/S01 已完成，Plan 保持 in_progress。** 全新隔离 PostgreSQL/Compose 已验证受控初始化、登录/注销、CSRF、旧会话失效、维护恢复和日志不泄密；后端 34 tests、前端 11 tests 及全量门禁通过。尚无受保护业务资料、连接秘密、正文、导出或网络目标，034 产品 AC 仍为 0/6，未建立 Acceptance。
 
+**[035 计划](docs/plans/035-权限与数据隔离计划.md) S00/S01 已完成，Plan 保持 in_progress。** owner/外部主体规则、受保护工作区 API、生成客户端、登录/注销与事件空状态已通过真实 PostgreSQL、桌面和 390×844 浏览器验证；浏览器验证发现并修复动态 CSP nonce 与静态页面冲突。作品、事件、任务、导出、缓存、撤权与共享尚未接入，035 产品 AC 仍为 0/6，未建立 Acceptance。
+
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 按 BACKLOG B02 顺序完成 035 S00/S01 所有者授权与受保护工作台，再推进可靠任务的同编号 Design 和先行切片。
+1. 按 BACKLOG B02 顺序推进 031 S00/S01 可靠执行与幂等的同编号 Design 和先行切片。
 2. 明确旧 PostgreSQL 数据的保留、重建和校验导入策略，再同步实现首个业务领域 Model 与 `database/schema.sql` DDL。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
@@ -62,4 +66,4 @@
 
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 
-本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 034 S00/S01，在全新隔离卷验证初始化、会话、CSRF、注销和维护恢复。当前后端 34 tests、前端 11 tests 及全量静态/构建门禁通过。未执行业务消息、来源探测、034 S02—S04、完整 B0 或产品 Acceptance。
+本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 034 与 035 的 S00/S01，在隔离数据库及浏览器验证初始化、会话、CSRF、owner 授权、登录/注销和受保护工作台。当前后端 38 tests、前端 13 tests 及全量静态/构建门禁通过。未执行业务消息、来源探测、034/035 S02—S04、完整 B0 或产品 Acceptance。

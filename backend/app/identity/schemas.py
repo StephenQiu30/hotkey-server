@@ -30,3 +30,7 @@ class IdentityUserView(BaseModel):
 class IdentitySessionView(BaseModel):
     user: IdentityUserView
     expires_at: datetime
+
+
+class IdentityWorkspaceView(BaseModel):
+    owner: IdentityUserView

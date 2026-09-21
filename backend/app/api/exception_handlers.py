@@ -55,6 +55,7 @@ APPLICATION_ERRORS: Mapping[str, PublicError] = {
     "invalid_credentials": PublicError(401, "invalid_credentials", "用户名或密码错误"),
     "invalid_password": PublicError(422, "invalid_password", "密码不符合安全要求"),
     "invalid_session": PublicError(401, "invalid_session", "会话无效或已过期"),
+    "resource_not_found": PublicError(404, "resource_not_found", "请求资源不存在"),
 }
 
 _ALLOWED_HEADERS: Mapping[int, frozenset[str]] = {

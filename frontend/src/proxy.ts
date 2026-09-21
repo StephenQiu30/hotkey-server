@@ -19,9 +19,30 @@ function createContentSecurityPolicy(nonce: string): string {
   ].join("; ");
 }
 
+function setSecurityHeaders(
+  response: NextResponse,
+  contentSecurityPolicy: string,
+): NextResponse {
+  response.headers.set("Content-Security-Policy", contentSecurityPolicy);
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  return response;
+}
+
 export function proxy(request: NextRequest): NextResponse {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const contentSecurityPolicy = createContentSecurityPolicy(nonce);
+  const isProtectedWorkbench =
+    request.nextUrl.pathname === "/events" ||
+    request.nextUrl.pathname.startsWith("/events/");
+
+  if (isProtectedWorkbench && !request.cookies.has("hotkey_session")) {
+    return setSecurityHeaders(
+      NextResponse.redirect(new URL("/login", request.url)),
+      contentSecurityPolicy,
+    );
+  }
+
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", contentSecurityPolicy);
@@ -31,11 +52,7 @@ export function proxy(request: NextRequest): NextResponse {
       headers: requestHeaders,
     },
   });
-  response.headers.set("Content-Security-Policy", contentSecurityPolicy);
-  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  response.headers.set("X-Content-Type-Options", "nosniff");
-
-  return response;
+  return setSecurityHeaders(response, contentSecurityPolicy);
 }
 
 export const config = {

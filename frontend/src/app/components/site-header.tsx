@@ -18,8 +18,8 @@ export function SiteHeader() {
       </Link>
 
       <Button asChild size="navigation">
-        <Link href="#capabilities">
-          核心能力
+        <Link href="/login">
+          登录
           <ArrowRightIcon data-icon="inline-end" />
         </Link>
       </Button>

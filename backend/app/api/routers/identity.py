@@ -13,7 +13,11 @@ from api.dependencies import (
 )
 from core.errors import ApplicationError
 from core.schemas import ErrorView
-from identity.schemas import IdentityCredentialsInput, IdentitySessionView
+from identity.schemas import (
+    IdentityCredentialsInput,
+    IdentitySessionView,
+    IdentityWorkspaceView,
+)
 
 router = APIRouter(prefix="/identity", tags=["identity"])
 
@@ -147,6 +151,29 @@ def create_identity_session(
 )
 def get_identity_session(identity: AuthenticatedIdentityDependency) -> IdentitySessionView:
     return identity.view
+
+
+@router.get(
+    "/workspace",
+    operation_id="getIdentityWorkspace",
+    response_model=IdentityWorkspaceView,
+    status_code=status.HTTP_200_OK,
+    summary="读取当前私有工作区",
+    description="工作区 owner 只从有效会话派生。接口不接受客户端提供归属标识。",
+    responses={
+        401: {"model": ErrorView},
+        404: {"model": ErrorView},
+        422: {"model": ErrorView},
+        500: {"model": ErrorView},
+    },
+)
+def get_identity_workspace(
+    response: Response,
+    service: IdentityServiceDependency,
+    identity: AuthenticatedIdentityDependency,
+) -> IdentityWorkspaceView:
+    response.headers["cache-control"] = "no-store"
+    return service.get_workspace(identity)
 
 
 @router.delete(

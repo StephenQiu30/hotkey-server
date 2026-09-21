@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 from core.config import Settings
 from core.errors import ApplicationError
 from identity.models import IdentitySession, IdentityUser
-from identity.schemas import IdentitySessionView, IdentityUserView
+from identity.schemas import IdentitySessionView, IdentityUserView, IdentityWorkspaceView
 
 _PASSWORD_HASH = PasswordHash.recommended()
 _DUMMY_PASSWORD_HASH = _PASSWORD_HASH.hash("dummy password used only to equalize failed login")
@@ -47,6 +47,11 @@ def _now() -> datetime:
 def _ensure_password_policy(password: str) -> None:
     if not _MIN_PASSWORD_LENGTH <= len(password) <= _MAX_PASSWORD_LENGTH:
         raise ApplicationError("invalid_password")
+
+
+def require_resource_owner(actor_id: UUID, owner_id: UUID) -> None:
+    if actor_id != owner_id:
+        raise ApplicationError("resource_not_found")
 
 
 class IdentityService:
@@ -151,6 +156,11 @@ class IdentityService:
             or not secrets.compare_digest(_digest(csrf_header), identity.csrf_digest)
         ):
             raise ApplicationError("csrf_invalid")
+
+    def get_workspace(self, identity: AuthenticatedIdentity) -> IdentityWorkspaceView:
+        owner = identity.view.user
+        require_resource_owner(identity.view.user.id, owner.id)
+        return IdentityWorkspaceView(owner=owner)
 
     def logout(self, session_id: UUID) -> None:
         now = _now()
