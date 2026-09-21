@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 type JobScopeValue = str | int | bool | None
 
 _SCOPE_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_.:-]{0,63}$")
+_STABLE_REFERENCE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,127}$")
 _MAX_SCOPE_ITEMS = 32
 
 
@@ -42,6 +43,125 @@ class UsageOutcome(StrEnum):
     FAILED = "failed"
     FILTERED = "filtered"
     EMPTY = "empty"
+
+
+class BudgetMetric(StrEnum):
+    NETWORK_REQUEST = "network_request"
+    ANALYSIS_ATTEMPT = "analysis_attempt"
+    CONCURRENCY_SLOT = "concurrency_slot"
+
+
+class BudgetScopeKind(StrEnum):
+    GLOBAL = "global"
+    SOURCE = "source"
+    CONNECTION = "connection"
+    JOB = "job"
+
+
+class BudgetDecisionStatus(StrEnum):
+    RESERVED = "reserved"
+    DELAYED = "delayed"
+
+
+class BudgetResumeCondition(StrEnum):
+    NEXT_WINDOW = "next_window"
+    CAPACITY_RELEASE = "capacity_release"
+
+
+class BudgetReservationStatus(StrEnum):
+    RESERVED = "reserved"
+    SETTLED = "settled"
+
+
+class BudgetContext(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_ref: str | None = Field(default=None, max_length=128)
+    connection_ref: str | None = Field(default=None, max_length=128)
+    job_ref: str | None = Field(default=None, max_length=128)
+
+    @field_validator("source_ref", "connection_ref", "job_ref")
+    @classmethod
+    def validate_reference(cls, value: str | None) -> str | None:
+        if value is not None and _STABLE_REFERENCE_PATTERN.fullmatch(value) is None:
+            raise ValueError("budget references must be stable lowercase identifiers")
+        return value
+
+
+class BudgetPolicyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    budget_key: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z][a-z0-9_.:-]{0,127}$",
+    )
+    metric: BudgetMetric
+    scope_kind: BudgetScopeKind
+    scope_reference: str | None = Field(default=None, max_length=128)
+    limit_units: int = Field(gt=0)
+    window_seconds: int = Field(gt=0)
+    window_anchor_at: datetime
+    enabled: bool
+
+    @model_validator(mode="after")
+    def validate_scope_and_window(self) -> BudgetPolicyInput:
+        if self.scope_kind is BudgetScopeKind.GLOBAL:
+            if self.scope_reference is not None:
+                raise ValueError("global scope cannot have scope_reference")
+        elif (
+            self.scope_reference is None
+            or _STABLE_REFERENCE_PATTERN.fullmatch(self.scope_reference) is None
+        ):
+            raise ValueError("non-global scope_reference must be a stable lowercase identifier")
+        if self.window_anchor_at.tzinfo is None:
+            raise ValueError("window_anchor_at must be timezone-aware")
+        return self
+
+
+class BudgetPolicyView(BudgetPolicyInput):
+    id: UUID
+    owner_id: UUID
+    policy_version: int = Field(ge=1)
+    created_at: datetime
+    updated_at: datetime
+
+
+class BudgetReservationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    reservation_id: UUID
+    operation_id: UUID
+    metric: BudgetMetric
+    requested_units: int = Field(gt=0)
+    context: BudgetContext
+
+
+class BudgetReservationDecision(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: BudgetDecisionStatus
+    reservation_id: UUID
+    operation_id: UUID
+    metric: BudgetMetric
+    requested_units: int = Field(gt=0)
+    remaining_units: int = Field(ge=0)
+    limiting_budget_keys: tuple[str, ...]
+    resume_condition: BudgetResumeCondition | None
+    retry_at: datetime | None
+
+
+class BudgetSettlementView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    reservation_id: UUID
+    operation_id: UUID
+    metric: BudgetMetric
+    requested_units: int = Field(gt=0)
+    actual_units: int = Field(ge=0)
+    released_units: int = Field(ge=0)
+    policy_count: int = Field(gt=0)
+    settled_at: datetime
 
 
 class ComponentPolicyInput(BaseModel):

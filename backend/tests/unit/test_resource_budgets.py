@@ -7,7 +7,15 @@ import pytest
 from pydantic import ValidationError
 
 from jobs.execution import resource_attempt_id
-from jobs.schemas import ComponentPolicyInput, CostClass, UsageKind
+from jobs.schemas import (
+    BudgetContext,
+    BudgetMetric,
+    BudgetPolicyInput,
+    BudgetScopeKind,
+    ComponentPolicyInput,
+    CostClass,
+    UsageKind,
+)
 
 
 def test_resource_attempt_id_is_stable_for_replay_and_distinct_for_retry() -> None:
@@ -69,3 +77,49 @@ def test_component_policy_accepts_explicit_zero_price_component() -> None:
 
     assert policy.cost_class is CostClass.ZERO_PRICE
     assert UsageKind.NETWORK_REQUEST == "network_request"
+
+
+def test_global_budget_policy_has_no_scope_reference() -> None:
+    policy = BudgetPolicyInput(
+        budget_key="global.requests",
+        metric=BudgetMetric.NETWORK_REQUEST,
+        scope_kind=BudgetScopeKind.GLOBAL,
+        scope_reference=None,
+        limit_units=10,
+        window_seconds=60,
+        window_anchor_at=datetime.now(UTC),
+        enabled=True,
+    )
+
+    assert policy.scope_reference is None
+
+    with pytest.raises(ValidationError, match="global scope"):
+        BudgetPolicyInput(
+            budget_key="global.requests",
+            metric=BudgetMetric.NETWORK_REQUEST,
+            scope_kind=BudgetScopeKind.GLOBAL,
+            scope_reference="source-a",
+            limit_units=10,
+            window_seconds=60,
+            window_anchor_at=datetime.now(UTC),
+            enabled=True,
+        )
+
+
+def test_scoped_budget_policy_requires_stable_reference() -> None:
+    with pytest.raises(ValidationError, match="scope_reference"):
+        BudgetPolicyInput(
+            budget_key="source.requests",
+            metric=BudgetMetric.NETWORK_REQUEST,
+            scope_kind=BudgetScopeKind.SOURCE,
+            scope_reference=None,
+            limit_units=10,
+            window_seconds=60,
+            window_anchor_at=datetime.now(UTC),
+            enabled=True,
+        )
+
+
+def test_budget_context_rejects_unstable_references() -> None:
+    with pytest.raises(ValidationError, match="stable lowercase"):
+        BudgetContext(source_ref="https://example.test/?token=secret")

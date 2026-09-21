@@ -210,6 +210,119 @@ CREATE TABLE evidence_cleanup_targets (
 CREATE INDEX evidence_cleanup_targets_claim_idx
     ON evidence_cleanup_targets (status, next_attempt_at);
 
+CREATE TABLE resource_budget_policies (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    budget_key VARCHAR(128) NOT NULL CHECK (
+        budget_key ~ '^[a-z][a-z0-9_.:-]{0,127}$'
+    ),
+    metric VARCHAR(32) NOT NULL CHECK (
+        metric IN ('network_request', 'analysis_attempt', 'concurrency_slot')
+    ),
+    scope_kind VARCHAR(32) NOT NULL CHECK (
+        scope_kind IN ('global', 'source', 'connection', 'job')
+    ),
+    scope_reference VARCHAR(128),
+    limit_units BIGINT NOT NULL CHECK (limit_units > 0),
+    window_seconds BIGINT NOT NULL CHECK (window_seconds > 0),
+    window_anchor_at TIMESTAMPTZ NOT NULL,
+    enabled BOOLEAN NOT NULL,
+    policy_version BIGINT NOT NULL DEFAULT 1 CHECK (policy_version >= 1),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT resource_budget_policies_owner_key UNIQUE (owner_id, budget_key),
+    CONSTRAINT resource_budget_policies_owner_id_key UNIQUE (owner_id, id),
+    CHECK (
+        (scope_kind = 'global' AND scope_reference IS NULL)
+        OR (
+            scope_kind <> 'global'
+            AND scope_reference ~ '^[a-z0-9][a-z0-9_.:-]{0,127}$'
+        )
+    )
+);
+
+CREATE TABLE resource_budget_windows (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    budget_policy_id UUID NOT NULL,
+    budget_mode VARCHAR(32) NOT NULL CHECK (
+        budget_mode IN ('cumulative', 'concurrent')
+    ),
+    window_start TIMESTAMPTZ NOT NULL,
+    window_end TIMESTAMPTZ NOT NULL CHECK (window_end > window_start),
+    used_units BIGINT NOT NULL DEFAULT 0 CHECK (used_units >= 0),
+    reserved_units BIGINT NOT NULL DEFAULT 0 CHECK (reserved_units >= 0),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT resource_budget_windows_policy_start_key
+        UNIQUE (owner_id, budget_policy_id, window_start),
+    CONSTRAINT resource_budget_windows_owner_id_key UNIQUE (owner_id, id),
+    CONSTRAINT resource_budget_windows_owner_policy_fkey
+        FOREIGN KEY (owner_id, budget_policy_id)
+        REFERENCES resource_budget_policies (owner_id, id) ON DELETE CASCADE,
+    CHECK (budget_mode = 'cumulative' OR used_units = 0)
+);
+
+CREATE INDEX resource_budget_windows_lookup_idx
+    ON resource_budget_windows (owner_id, budget_policy_id, window_end);
+
+CREATE TABLE resource_budget_reservations (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    reservation_id UUID NOT NULL,
+    operation_id UUID NOT NULL,
+    budget_policy_id UUID NOT NULL,
+    budget_window_id UUID NOT NULL,
+    policy_version BIGINT NOT NULL CHECK (policy_version >= 1),
+    limit_units BIGINT NOT NULL CHECK (limit_units > 0),
+    metric VARCHAR(32) NOT NULL CHECK (
+        metric IN ('network_request', 'analysis_attempt', 'concurrency_slot')
+    ),
+    budget_mode VARCHAR(32) NOT NULL CHECK (
+        budget_mode IN ('cumulative', 'concurrent')
+    ),
+    requested_units BIGINT NOT NULL CHECK (requested_units > 0),
+    actual_units BIGINT,
+    released_units BIGINT,
+    remaining_units_after BIGINT NOT NULL CHECK (remaining_units_after >= 0),
+    context_fingerprint BYTEA NOT NULL CHECK (octet_length(context_fingerprint) = 32),
+    status VARCHAR(32) NOT NULL DEFAULT 'reserved' CHECK (
+        status IN ('reserved', 'settled')
+    ),
+    created_at TIMESTAMPTZ NOT NULL,
+    settled_at TIMESTAMPTZ,
+    CONSTRAINT resource_budget_reservations_owner_reservation_policy_key
+        UNIQUE (owner_id, reservation_id, budget_policy_id),
+    CONSTRAINT resource_budget_reservations_owner_policy_fkey
+        FOREIGN KEY (owner_id, budget_policy_id)
+        REFERENCES resource_budget_policies (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT resource_budget_reservations_owner_window_fkey
+        FOREIGN KEY (owner_id, budget_window_id)
+        REFERENCES resource_budget_windows (owner_id, id) ON DELETE CASCADE,
+    CHECK (
+        (status = 'reserved' AND actual_units IS NULL AND released_units IS NULL
+            AND settled_at IS NULL)
+        OR (status = 'settled' AND actual_units IS NOT NULL
+            AND released_units IS NOT NULL AND settled_at IS NOT NULL)
+    ),
+    CHECK (
+        actual_units IS NULL
+        OR (actual_units >= 0 AND actual_units <= requested_units)
+    ),
+    CHECK (
+        released_units IS NULL
+        OR (released_units >= 0 AND released_units <= requested_units)
+    ),
+    CHECK (
+        status = 'reserved'
+        OR (budget_mode = 'cumulative' AND actual_units + released_units = requested_units)
+        OR (budget_mode = 'concurrent' AND released_units = requested_units)
+    )
+);
+
+CREATE INDEX resource_budget_reservations_lookup_idx
+    ON resource_budget_reservations (owner_id, reservation_id);
+
 CREATE TABLE resource_component_policies (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,

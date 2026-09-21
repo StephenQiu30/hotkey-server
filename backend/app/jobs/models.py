@@ -23,6 +23,216 @@ from db.base import Base
 type JsonValue = str | int | bool | None
 
 
+class ResourceBudgetPolicy(Base):
+    __tablename__ = "resource_budget_policies"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id",
+            "budget_key",
+            name="resource_budget_policies_owner_key",
+        ),
+        UniqueConstraint(
+            "owner_id",
+            "id",
+            name="resource_budget_policies_owner_id_key",
+        ),
+        CheckConstraint(
+            "budget_key ~ '^[a-z][a-z0-9_.:-]{0,127}$'",
+            name="resource_budget_policies_key_check",
+        ),
+        CheckConstraint(
+            "metric IN ('network_request', 'analysis_attempt', 'concurrency_slot')",
+            name="resource_budget_policies_metric_check",
+        ),
+        CheckConstraint(
+            "scope_kind IN ('global', 'source', 'connection', 'job')",
+            name="resource_budget_policies_scope_check",
+        ),
+        CheckConstraint(
+            "(scope_kind = 'global' AND scope_reference IS NULL) OR "
+            "(scope_kind <> 'global' AND "
+            "scope_reference ~ '^[a-z0-9][a-z0-9_.:-]{0,127}$')",
+            name="resource_budget_policies_reference_check",
+        ),
+        CheckConstraint("limit_units > 0", name="resource_budget_policies_limit_check"),
+        CheckConstraint(
+            "window_seconds > 0",
+            name="resource_budget_policies_window_check",
+        ),
+        CheckConstraint(
+            "policy_version >= 1",
+            name="resource_budget_policies_version_check",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at",
+            name="resource_budget_policies_updated_at_check",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id", ondelete="CASCADE"))
+    budget_key: Mapped[str] = mapped_column(String(128))
+    metric: Mapped[str] = mapped_column(String(32))
+    scope_kind: Mapped[str] = mapped_column(String(32))
+    scope_reference: Mapped[str | None] = mapped_column(String(128))
+    limit_units: Mapped[int] = mapped_column(BigInteger)
+    window_seconds: Mapped[int] = mapped_column(BigInteger)
+    window_anchor_at: Mapped[datetime]
+    enabled: Mapped[bool]
+    policy_version: Mapped[int] = mapped_column(BigInteger, server_default=text("1"))
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]
+
+
+class ResourceBudgetWindow(Base):
+    __tablename__ = "resource_budget_windows"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id",
+            "budget_policy_id",
+            "window_start",
+            name="resource_budget_windows_policy_start_key",
+        ),
+        UniqueConstraint(
+            "owner_id",
+            "id",
+            name="resource_budget_windows_owner_id_key",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "budget_policy_id"],
+            ["resource_budget_policies.owner_id", "resource_budget_policies.id"],
+            ondelete="CASCADE",
+            name="resource_budget_windows_owner_policy_fkey",
+        ),
+        CheckConstraint(
+            "budget_mode IN ('cumulative', 'concurrent')",
+            name="resource_budget_windows_mode_check",
+        ),
+        CheckConstraint(
+            "window_end > window_start",
+            name="resource_budget_windows_bounds_check",
+        ),
+        CheckConstraint(
+            "used_units >= 0 AND reserved_units >= 0",
+            name="resource_budget_windows_units_check",
+        ),
+        CheckConstraint(
+            "budget_mode = 'cumulative' OR used_units = 0",
+            name="resource_budget_windows_concurrent_used_check",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at",
+            name="resource_budget_windows_updated_at_check",
+        ),
+        Index(
+            "resource_budget_windows_lookup_idx",
+            "owner_id",
+            "budget_policy_id",
+            "window_end",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID]
+    budget_policy_id: Mapped[UUID]
+    budget_mode: Mapped[str] = mapped_column(String(32))
+    window_start: Mapped[datetime]
+    window_end: Mapped[datetime]
+    used_units: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    reserved_units: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]
+
+
+class ResourceBudgetReservation(Base):
+    __tablename__ = "resource_budget_reservations"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id",
+            "reservation_id",
+            "budget_policy_id",
+            name="resource_budget_reservations_owner_reservation_policy_key",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "budget_policy_id"],
+            ["resource_budget_policies.owner_id", "resource_budget_policies.id"],
+            ondelete="CASCADE",
+            name="resource_budget_reservations_owner_policy_fkey",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "budget_window_id"],
+            ["resource_budget_windows.owner_id", "resource_budget_windows.id"],
+            ondelete="CASCADE",
+            name="resource_budget_reservations_owner_window_fkey",
+        ),
+        CheckConstraint(
+            "metric IN ('network_request', 'analysis_attempt', 'concurrency_slot')",
+            name="resource_budget_reservations_metric_check",
+        ),
+        CheckConstraint(
+            "budget_mode IN ('cumulative', 'concurrent')",
+            name="resource_budget_reservations_mode_check",
+        ),
+        CheckConstraint(
+            "status IN ('reserved', 'settled')",
+            name="resource_budget_reservations_status_check",
+        ),
+        CheckConstraint(
+            "requested_units > 0 AND remaining_units_after >= 0",
+            name="resource_budget_reservations_units_check",
+        ),
+        CheckConstraint(
+            "octet_length(context_fingerprint) = 32",
+            name="resource_budget_reservations_fingerprint_check",
+        ),
+        CheckConstraint(
+            "(status = 'reserved' AND actual_units IS NULL AND released_units IS NULL "
+            "AND settled_at IS NULL) OR "
+            "(status = 'settled' AND actual_units IS NOT NULL "
+            "AND released_units IS NOT NULL AND settled_at IS NOT NULL)",
+            name="resource_budget_reservations_settlement_check",
+        ),
+        CheckConstraint(
+            "actual_units IS NULL OR (actual_units >= 0 AND actual_units <= requested_units)",
+            name="resource_budget_reservations_actual_check",
+        ),
+        CheckConstraint(
+            "released_units IS NULL OR (released_units >= 0 AND released_units <= requested_units)",
+            name="resource_budget_reservations_released_check",
+        ),
+        CheckConstraint(
+            "status = 'reserved' OR "
+            "(budget_mode = 'cumulative' AND actual_units + released_units = requested_units) OR "
+            "(budget_mode = 'concurrent' AND released_units = requested_units)",
+            name="resource_budget_reservations_balance_check",
+        ),
+        Index(
+            "resource_budget_reservations_lookup_idx",
+            "owner_id",
+            "reservation_id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID]
+    reservation_id: Mapped[UUID]
+    operation_id: Mapped[UUID]
+    budget_policy_id: Mapped[UUID]
+    budget_window_id: Mapped[UUID]
+    policy_version: Mapped[int] = mapped_column(BigInteger)
+    limit_units: Mapped[int] = mapped_column(BigInteger)
+    metric: Mapped[str] = mapped_column(String(32))
+    budget_mode: Mapped[str] = mapped_column(String(32))
+    requested_units: Mapped[int] = mapped_column(BigInteger)
+    actual_units: Mapped[int | None] = mapped_column(BigInteger)
+    released_units: Mapped[int | None] = mapped_column(BigInteger)
+    remaining_units_after: Mapped[int] = mapped_column(BigInteger)
+    context_fingerprint: Mapped[bytes] = mapped_column(LargeBinary(32))
+    status: Mapped[str] = mapped_column(String(32), server_default=text("'reserved'"))
+    created_at: Mapped[datetime]
+    settled_at: Mapped[datetime | None]
+
+
 class ResourceComponentPolicy(Base):
     __tablename__ = "resource_component_policies"
     __table_args__ = (

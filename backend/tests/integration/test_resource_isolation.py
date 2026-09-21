@@ -32,7 +32,9 @@ def owner_client() -> Iterator[TestClient]:
             text(
                 "TRUNCATE evidence_cleanup_targets, evidence_deletions, "
                 "evidence_resources, evidence_retention_policies, source_access_policies, "
-                "resource_usage_attempts, resource_component_policies, "
+                "resource_budget_reservations, resource_budget_windows, "
+                "resource_budget_policies, resource_usage_attempts, "
+                "resource_component_policies, "
                 "processed_messages, job_attempts, outbox_messages, jobs, "
                 "identity_sessions, identity_users"
             )
@@ -46,7 +48,9 @@ def owner_client() -> Iterator[TestClient]:
                 text(
                     "TRUNCATE evidence_cleanup_targets, evidence_deletions, "
                     "evidence_resources, evidence_retention_policies, source_access_policies, "
-                    "resource_usage_attempts, resource_component_policies, "
+                    "resource_budget_reservations, resource_budget_windows, "
+                    "resource_budget_policies, resource_usage_attempts, "
+                    "resource_component_policies, "
                     "processed_messages, job_attempts, outbox_messages, jobs, "
                     "identity_sessions, identity_users"
                 )
