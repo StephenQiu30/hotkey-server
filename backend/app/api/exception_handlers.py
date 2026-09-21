@@ -58,7 +58,14 @@ APPLICATION_ERRORS: Mapping[str, PublicError] = {
     "invalid_session": PublicError(401, "invalid_session", "会话无效或已过期"),
     "job_not_cancellable": PublicError(409, "job_not_cancellable", "任务当前状态不可取消"),
     "job_not_retryable": PublicError(409, "job_not_retryable", "任务当前状态不可重试"),
+    "invalid_monitor_rules": PublicError(422, "invalid_monitor_rules", "至少需要一个包含关键词"),
+    "keyword_group_conflict": PublicError(
+        422,
+        "keyword_group_conflict",
+        "同一关键词不能同时出现在冲突分组",
+    ),
     "resource_not_found": PublicError(404, "resource_not_found", "请求资源不存在"),
+    "topic_version_conflict": PublicError(409, "topic_version_conflict", "主题已被其他修改更新"),
 }
 
 _ALLOWED_HEADERS: Mapping[int, frozenset[str]] = {

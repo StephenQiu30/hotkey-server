@@ -21,6 +21,7 @@ from jobs.models import (
     ResourceComponentPolicy,
     ResourceUsageAttempt,
 )
+from monitors.models import MonitorTopic, MonitorTopicVersion
 
 # Import each domain's models here for runtime mapping and clean-database verification.
 # DDL ownership remains exclusively in database/schema.sql.
@@ -35,6 +36,8 @@ __all__ = [
     "Job",
     "JobAttempt",
     "JobStageAttempt",
+    "MonitorTopic",
+    "MonitorTopicVersion",
     "OutboxMessage",
     "ProcessedMessage",
     "ProvenanceManifest",

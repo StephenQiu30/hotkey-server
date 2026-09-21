@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LogOutIcon, RotateCcwIcon } from "lucide-react";
+import { LogOutIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
 
 import { deleteIdentitySession, getIdentityWorkspace } from "@/api/identity";
 import { PageState } from "@/components/system/page-state";
@@ -161,9 +161,17 @@ export function EventsWorkspace() {
         <p className="text-muted-foreground font-mono text-xs tracking-wider uppercase">
           Events
         </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-          事件
-        </h1>
+        <div className="mt-3 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            事件
+          </h1>
+          <Button asChild>
+            <Link href="/monitors/new">
+              <PlusIcon data-icon="inline-start" />
+              新建监控主题
+            </Link>
+          </Button>
+        </div>
         <section className="bg-muted mt-10 rounded-2xl px-6 py-16 text-center sm:px-10 sm:py-24">
           <h2 className="text-xl font-medium">尚无事件</h2>
           <p className="text-muted-foreground mx-auto mt-3 max-w-md text-sm leading-6">

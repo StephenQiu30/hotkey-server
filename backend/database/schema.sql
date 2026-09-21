@@ -40,6 +40,41 @@ CREATE INDEX identity_sessions_active_expiry_idx
     ON identity_sessions (expires_at)
     WHERE revoked_at IS NULL;
 
+CREATE TABLE monitor_topics (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    name VARCHAR(80) NOT NULL CHECK (char_length(name) BETWEEN 1 AND 80),
+    status VARCHAR(16) NOT NULL DEFAULT 'paused'
+        CHECK (status IN ('paused', 'active', 'archived')),
+    readiness_status VARCHAR(32) NOT NULL DEFAULT 'pending_source_selection'
+        CHECK (
+            readiness_status IN (
+                'pending_source_selection',
+                'pending_source_readiness',
+                'ready'
+            )
+        ),
+    current_version INTEGER NOT NULL DEFAULT 1 CHECK (current_version >= 1),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at)
+);
+
+CREATE INDEX monitor_topics_owner_updated_idx ON monitor_topics (owner_id, updated_at);
+
+CREATE TABLE monitor_topic_versions (
+    topic_id UUID NOT NULL REFERENCES monitor_topics (id) ON DELETE CASCADE,
+    version INTEGER NOT NULL CHECK (version >= 1),
+    created_by UUID NOT NULL REFERENCES identity_users (id) ON DELETE RESTRICT,
+    match_any JSONB NOT NULL CHECK (jsonb_typeof(match_any) = 'array'),
+    match_all JSONB NOT NULL CHECK (jsonb_typeof(match_all) = 'array'),
+    exclude JSONB NOT NULL CHECK (jsonb_typeof(exclude) = 'array'),
+    created_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (topic_id, version)
+);
+
+CREATE INDEX monitor_topic_versions_created_by_idx
+    ON monitor_topic_versions (created_by);
+
 CREATE TABLE source_access_policies (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,

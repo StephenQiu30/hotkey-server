@@ -41,6 +41,10 @@ declare namespace HotKeyAPI {
     job_id: string;
   };
 
+  type getMonitorTopicParams = {
+    topic_id: string;
+  };
+
   type HealthView = {
     /** Status */
     status: "ok" | "ready";
@@ -168,11 +172,73 @@ declare namespace HotKeyAPI {
     created_at: string;
   };
 
+  type KeywordInput = string;
+
+  type MonitorRuleSetView = {
+    /** Match Any */
+    match_any: string[];
+    /** Match All */
+    match_all: string[];
+    /** Exclude */
+    exclude: string[];
+  };
+
+  type MonitorTopicCreateInput = {
+    /** Match Any */
+    match_any: KeywordInput[];
+    /** Match All */
+    match_all: KeywordInput[];
+    /** Exclude */
+    exclude: KeywordInput[];
+    /** Name */
+    name: string;
+  };
+
+  type MonitorTopicReadinessStatus =
+    | "pending_source_selection"
+    | "pending_source_readiness"
+    | "ready";
+
+  type MonitorTopicStatus = "paused" | "active" | "archived";
+
+  type MonitorTopicUpdateInput = {
+    /** Match Any */
+    match_any: KeywordInput[];
+    /** Match All */
+    match_all: KeywordInput[];
+    /** Exclude */
+    exclude: KeywordInput[];
+    /** Name */
+    name: string;
+    /** Expected Version */
+    expected_version: number;
+  };
+
+  type MonitorTopicView = {
+    /** Id */
+    id: string;
+    /** Name */
+    name: string;
+    status: MonitorTopicStatus;
+    readiness_status: MonitorTopicReadinessStatus;
+    /** Current Version */
+    current_version: number;
+    rules: MonitorRuleSetView;
+    /** Created At */
+    created_at: string;
+    /** Updated At */
+    updated_at: string;
+  };
+
   type retryCollectionJobParams = {
     job_id: string;
   };
 
   type SourceCapability = "search" | "author_posts" | "comments" | "replies";
+
+  type updateMonitorTopicParams = {
+    topic_id: string;
+  };
 
   type ValidationErrorItem = {
     /** Location */

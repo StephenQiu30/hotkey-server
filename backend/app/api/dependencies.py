@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.errors import DependencyUnavailableError
 from identity.services import AuthenticatedIdentity, IdentityService
 from jobs.services import JobService
+from monitors.services import MonitorTopicService
 
 
 def get_session(request: Request) -> Generator[Session, None, None]:
@@ -50,6 +51,16 @@ def get_job_service(session: SessionDependency) -> JobService:
 
 
 JobServiceDependency = Annotated[JobService, Depends(get_job_service)]
+
+
+def get_monitor_topic_service(session: SessionDependency) -> MonitorTopicService:
+    return MonitorTopicService(session)
+
+
+MonitorTopicServiceDependency = Annotated[
+    MonitorTopicService,
+    Depends(get_monitor_topic_service),
+]
 
 _SESSION_COOKIE = APIKeyCookie(
     name="hotkey_session",

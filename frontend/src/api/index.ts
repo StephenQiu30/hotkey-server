@@ -5,8 +5,10 @@
 import * as xitongzhuangtai from "./xitongzhuangtai";
 import * as identity from "./identity";
 import * as caijirenwu from "./caijirenwu";
+import * as jiankongzhuti from "./jiankongzhuti";
 export default {
   xitongzhuangtai,
   identity,
   caijirenwu,
+  jiankongzhuti,
 };

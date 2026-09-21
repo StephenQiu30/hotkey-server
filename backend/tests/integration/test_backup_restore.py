@@ -55,7 +55,8 @@ def backup_environment() -> Iterator[tuple[str, Minio, str, str]]:
                 "resource_budget_reservations, resource_budget_windows, "
                 "resource_budget_policies, resource_usage_attempts, "
                 "resource_component_policies, job_stage_attempts, processed_messages, "
-                "job_attempts, outbox_messages, jobs, identity_sessions, identity_users"
+                "job_attempts, outbox_messages, jobs, monitor_topic_versions, monitor_topics, "
+                "identity_sessions, identity_users"
             )
         )
         connection.execute(
@@ -134,7 +135,8 @@ def backup_environment() -> Iterator[tuple[str, Minio, str, str]]:
                     "resource_budget_reservations, resource_budget_windows, "
                     "resource_budget_policies, resource_usage_attempts, "
                     "resource_component_policies, job_stage_attempts, processed_messages, "
-                    "job_attempts, outbox_messages, jobs, identity_sessions, identity_users"
+                    "job_attempts, outbox_messages, jobs, monitor_topic_versions, monitor_topics, "
+                    "identity_sessions, identity_users"
                 )
             )
         engine.dispose()
@@ -168,7 +170,7 @@ def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
     assert manifest.evidence_mode is EvidenceBackupMode.INVENTORY_ONLY
     assert manifest.restore_verified is False
     assert manifest.secrets_included is False
-    assert len(manifest.database.tables) == 19
+    assert len(manifest.database.tables) == 21
     assert table_counts["identity_users"] == 1
     assert table_counts["evidence_resources"] == 1
     assert len(manifest.evidence_objects) == 1
