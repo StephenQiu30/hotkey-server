@@ -24,7 +24,7 @@
 - Umi OpenAPI 将端点和类型直接生成到 `src/api/`。
 - 所有生成请求统一使用 `src/request.ts`，页面不得手写端点或创建第二套 HTTP 客户端。
 - App Router 统一提供 loading、error、global-error 和 not-found 边界。
-- `src/components/system/PageState` 处理页面错误、空态、无权限和恢复操作。
+- `src/components/system/page-state.tsx` 中的 `PageState` 处理页面错误、空态、无权限和恢复操作。
 
 ## 可访问性与运行
 

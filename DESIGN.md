@@ -390,6 +390,10 @@ components:
 ---
 
 
+## 使用范围
+
+2026-09-21：本文为 Vercel 风格的视觉研究参考，保留原始观察及示例，不是 HotKey 产品总体设计或组件实施规范。实际执行 [PROJECT](PROJECT.md) 与 [Web 设计规范](frontend/DESIGN.md)；其中无边框、Tailwind 命名尺度和路由组件归属优先。下文原始尺寸、装饰边框、购物/订阅示例不构成 HotKey 的需求或待建模块。
+
 ## Overview
 
 Vercel is a developer-platform brand — the page is a deployment dashboard's marketing surface, written for engineers who already know the syntax. It earns that posture with one of the cleanest stark systems on the web: near-white `{colors.canvas-soft}` body background, ink-near-black `{colors.ink}` text, a 200-step gray scale that gives every divider, border, and disabled state its own deliberate step. The only place the brand introduces colour at marketing scale is the multi-stop mesh gradient (`{colors.gradient-develop-start}` → `{colors.gradient-preview-end}` → `{colors.gradient-ship-start}` → cyan / magenta / amber) that floats in atmospheric backdrops, never miniaturised to a swatch. That gradient is the entire decoration system.

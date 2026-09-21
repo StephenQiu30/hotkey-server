@@ -240,7 +240,7 @@ frontend/src/
 
 ### 实施验收要求
 
-- 后端初始化时配置 Ruff、严格 mypy、pytest 及 `src` 导入路径；建立架构测试约束实际模块和依赖方向。
+- 后端初始化时配置 Ruff、严格 mypy、pytest 及 `app` 导入路径；建立架构测试约束实际模块和依赖方向。
 - 单元测试验证业务规则；集成测试在全新隔离 PostgreSQL 中执行完整 `schema.sql`，验证 ORM 映射、HTTP/OpenAPI、事务、依赖释放及 Redis/Kafka 行为。
 - 每次 DDL 变更必须以失败验证证明旧 `schema.sql` 不满足新结构，再在同一提交更新 SQLAlchemy Model、完整 SQL 和数据库断言。CI 从空库建表并验证，不读取开发机旧库，不接受仅靠 mock 或 SQLite 的结果。
 - 数据库或消息改动必须验证回滚、重复消费和进程重启恢复；不能用 mock 通过代替真实集成验收。
