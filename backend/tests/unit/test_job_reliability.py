@@ -7,8 +7,18 @@ import pytest
 from pydantic import ValidationError
 
 from jobs.execution import plan_catchup_windows, scheduled_operation_id
-from jobs.schemas import JobAcceptanceInput
+from jobs.schemas import JobAcceptanceInput, JobObservationContext
 from jobs.services import fingerprint_request
+from sources.contracts import SourceCapability
+
+
+def _observation() -> JobObservationContext:
+    return JobObservationContext(
+        configuration_ref="monitor-config-1",
+        configuration_version=1,
+        source_key="x",
+        source_capability=SourceCapability.SEARCH,
+    )
 
 
 def test_request_fingerprint_is_stable_for_equivalent_scope() -> None:
@@ -16,16 +26,19 @@ def test_request_fingerprint_is_stable_for_equivalent_scope() -> None:
     first = JobAcceptanceInput(
         operation_id=operation_id,
         kind="monitor.collect",
+        observation=_observation(),
         scope={"source_id": "account-1", "window": 7},
     )
     reordered = JobAcceptanceInput(
         operation_id=operation_id,
         kind="monitor.collect",
+        observation=_observation(),
         scope={"window": 7, "source_id": "account-1"},
     )
     changed = JobAcceptanceInput(
         operation_id=operation_id,
         kind="monitor.collect",
+        observation=_observation(),
         scope={"source_id": "account-1", "window": 8},
     )
 
@@ -38,6 +51,7 @@ def test_acceptance_input_rejects_unbounded_or_unknown_scope() -> None:
         JobAcceptanceInput(
             operation_id=uuid4(),
             kind="monitor.collect",
+            observation=_observation(),
             scope={f"key_{index}": index for index in range(33)},
         )
 
@@ -45,6 +59,7 @@ def test_acceptance_input_rejects_unbounded_or_unknown_scope() -> None:
         JobAcceptanceInput(
             operation_id=uuid4(),
             kind="monitor.collect",
+            observation=_observation(),
             scope={},
             owner_id=uuid4(),
         )

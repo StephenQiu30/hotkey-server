@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from sources.contracts import SourceCapability
+
 type JobScopeValue = str | int | bool | None
 
 _SCOPE_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_.:-]{0,63}$")
@@ -21,6 +23,32 @@ class JobStatus(StrEnum):
     SUCCEEDED = "succeeded"
     PARTIALLY_SUCCEEDED = "partially_succeeded"
     FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class OperationalTaskStatus(StrEnum):
+    QUEUED = "queued"
+    DELAYED = "delayed"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    PARTIALLY_SUCCEEDED = "partially_succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class JobStage(StrEnum):
+    REQUEST = "request"
+    PARSE = "parse"
+    SAVE = "save"
+    ANALYSIS = "analysis"
+
+
+class JobStageOutcome(StrEnum):
+    STARTED = "started"
+    SUCCEEDED = "succeeded"
+    PARTIALLY_SUCCEEDED = "partially_succeeded"
+    FAILED = "failed"
+    DELAYED = "delayed"
     CANCELLED = "cancelled"
 
 
@@ -253,11 +281,116 @@ class UsageSummaryView(BaseModel):
     empty_attempts: int = Field(ge=0)
 
 
+class JobObservationContext(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    configuration_ref: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9_.:-]{0,127}$",
+    )
+    configuration_version: int = Field(ge=1)
+    source_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z][a-z0-9_-]{0,63}$",
+    )
+    source_capability: SourceCapability | None = None
+
+    @model_validator(mode="after")
+    def validate_source_pair(self) -> JobObservationContext:
+        if (self.source_key is None) != (self.source_capability is None):
+            raise ValueError("source_key and source_capability must be provided together")
+        return self
+
+
+class StageAttemptInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    attempt_id: UUID
+    stage: JobStage
+    attempt_sequence: int = Field(ge=1)
+    started_at: datetime
+
+    @field_validator("started_at")
+    @classmethod
+    def validate_started_at(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("started_at must be timezone-aware")
+        return value
+
+
+class StageAttemptView(StageAttemptInput):
+    owner_id: UUID
+    job_id: UUID
+    outcome: JobStageOutcome
+    finished_at: datetime | None
+
+
+class OperationalTaskRecord(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    job_id: UUID
+    operation_id: UUID
+    kind: str
+    observation: JobObservationContext
+    status: OperationalTaskStatus
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    next_run_at: datetime | None
+    execution_attempts: int = Field(ge=0)
+    stage_attempts: int = Field(ge=0)
+
+
+class OperationAttemptCount(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    operation_id: UUID
+    attempts: int = Field(ge=0)
+
+
+class OperationalSummary(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    total_tasks: int = Field(ge=0)
+    task_counts: dict[OperationalTaskStatus, int]
+    execution_attempts: int = Field(ge=0)
+    stage_attempts: int = Field(ge=0)
+    resource_attempts: int = Field(ge=0)
+
+    def count(self, status: OperationalTaskStatus) -> int:
+        return self.task_counts.get(status, 0)
+
+    @model_validator(mode="after")
+    def validate_task_total(self) -> OperationalSummary:
+        if set(self.task_counts) != set(OperationalTaskStatus):
+            raise ValueError("task_counts must include every operational status")
+        if any(value < 0 for value in self.task_counts.values()):
+            raise ValueError("task counts cannot be negative")
+        if sum(self.task_counts.values()) != self.total_tasks:
+            raise ValueError("task counts must reconcile to total_tasks")
+        return self
+
+
+class OperationalSnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    owner_id: UUID
+    window_start: datetime
+    window_end: datetime
+    tasks: tuple[OperationalTaskRecord, ...]
+    operations: tuple[OperationAttemptCount, ...]
+    summary: OperationalSummary
+
+
 class JobAcceptanceInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     operation_id: UUID
     kind: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_.-]{0,63}$")
+    observation: JobObservationContext
     scope: dict[str, JobScopeValue]
 
     @field_validator("scope")
@@ -280,17 +413,39 @@ class JobView(BaseModel):
     owner_id: UUID
     operation_id: UUID
     kind: str
+    observation: JobObservationContext
     status: JobStatus
+    started_at: datetime | None
+    completed_at: datetime | None
     created_at: datetime
 
 
 class JobAcceptedMessage(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[1]
+    schema_version: Literal[2]
     message_id: UUID
-    event_type: Literal["job.accepted.v1"]
+    event_type: Literal["job.accepted.v2"]
     job_id: UUID
     owner_id: UUID
     operation_id: UUID
     kind: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_.-]{0,63}$")
+    configuration_ref: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9_.:-]{0,127}$",
+    )
+    configuration_version: int = Field(ge=1)
+    source_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z][a-z0-9_-]{0,63}$",
+    )
+    source_capability: SourceCapability | None = None
+
+    @model_validator(mode="after")
+    def validate_source_pair(self) -> JobAcceptedMessage:
+        if (self.source_key is None) != (self.source_capability is None):
+            raise ValueError("source_key and source_capability must be provided together")
+        return self

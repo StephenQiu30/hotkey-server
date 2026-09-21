@@ -346,6 +346,7 @@ class Job(Base):
             "operation_id",
             name="jobs_owner_kind_operation_key",
         ),
+        UniqueConstraint("owner_id", "id", name="jobs_owner_id_key"),
         CheckConstraint(
             "kind ~ '^[a-z][a-z0-9_.-]{0,63}$'",
             name="jobs_kind_check",
@@ -354,6 +355,21 @@ class Job(Base):
             "status IN ('queued', 'running', 'succeeded', "
             "'partially_succeeded', 'failed', 'cancelled')",
             name="jobs_status_check",
+        ),
+        CheckConstraint(
+            "configuration_ref ~ '^[a-z0-9][a-z0-9_.:-]{0,127}$'",
+            name="jobs_configuration_ref_check",
+        ),
+        CheckConstraint(
+            "configuration_version >= 1",
+            name="jobs_configuration_version_check",
+        ),
+        CheckConstraint(
+            "(source_key IS NULL AND source_capability IS NULL) OR "
+            "(source_key IS NOT NULL AND source_capability IS NOT NULL AND "
+            "source_key ~ '^[a-z][a-z0-9_-]{0,63}$' AND "
+            "source_capability IN ('search', 'author_posts', 'comments', 'replies'))",
+            name="jobs_source_context_check",
         ),
         CheckConstraint(
             "octet_length(request_fingerprint) = 32",
@@ -383,6 +399,16 @@ class Job(Base):
             "('succeeded', 'partially_succeeded', 'failed', 'cancelled')",
             name="jobs_completed_status_check",
         ),
+        CheckConstraint(
+            "(defer_reason IS NULL AND next_run_at IS NULL) OR "
+            "(status = 'queued' AND defer_reason IS NOT NULL AND next_run_at IS NOT NULL AND "
+            "defer_reason ~ '^[a-z][a-z0-9_.:-]{0,127}$')",
+            name="jobs_defer_pair_check",
+        ),
+        CheckConstraint(
+            "next_run_at IS NULL OR next_run_at >= created_at",
+            name="jobs_next_run_at_check",
+        ),
         CheckConstraint("updated_at >= created_at", name="jobs_updated_at_check"),
         Index("jobs_runnable_idx", "status", "lease_expires_at"),
     )
@@ -391,6 +417,10 @@ class Job(Base):
     owner_id: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id", ondelete="CASCADE"))
     operation_id: Mapped[UUID]
     kind: Mapped[str] = mapped_column(String(64))
+    configuration_ref: Mapped[str] = mapped_column(String(128))
+    configuration_version: Mapped[int] = mapped_column(BigInteger)
+    source_key: Mapped[str | None] = mapped_column(String(64))
+    source_capability: Mapped[str | None] = mapped_column(String(32))
     scope: Mapped[dict[str, JsonValue]] = mapped_column(JSONB)
     request_fingerprint: Mapped[bytes] = mapped_column(LargeBinary(32))
     status: Mapped[str] = mapped_column(String(32), server_default=text("'queued'"))
@@ -404,8 +434,61 @@ class Job(Base):
     )
     started_at: Mapped[datetime | None]
     completed_at: Mapped[datetime | None]
+    defer_reason: Mapped[str | None] = mapped_column(String(128))
+    next_run_at: Mapped[datetime | None]
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
+
+
+class JobStageAttempt(Base):
+    __tablename__ = "job_stage_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "job_id",
+            "stage",
+            "attempt_sequence",
+            name="job_stage_attempts_job_stage_sequence_key",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "job_id"],
+            ["jobs.owner_id", "jobs.id"],
+            ondelete="CASCADE",
+            name="job_stage_attempts_owner_job_fkey",
+        ),
+        CheckConstraint(
+            "stage IN ('request', 'parse', 'save', 'analysis')",
+            name="job_stage_attempts_stage_check",
+        ),
+        CheckConstraint(
+            "attempt_sequence >= 1",
+            name="job_stage_attempts_sequence_check",
+        ),
+        CheckConstraint(
+            "outcome IN ('started', 'succeeded', 'partially_succeeded', "
+            "'failed', 'delayed', 'cancelled')",
+            name="job_stage_attempts_outcome_check",
+        ),
+        CheckConstraint(
+            "(outcome = 'started' AND finished_at IS NULL) OR "
+            "(outcome <> 'started' AND finished_at IS NOT NULL)",
+            name="job_stage_attempts_finished_pair_check",
+        ),
+        CheckConstraint(
+            "finished_at IS NULL OR finished_at >= started_at",
+            name="job_stage_attempts_finished_at_check",
+        ),
+        Index("job_stage_attempts_owner_started_idx", "owner_id", "started_at"),
+        Index("job_stage_attempts_job_stage_idx", "job_id", "stage", "attempt_sequence"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID]
+    job_id: Mapped[UUID]
+    stage: Mapped[str] = mapped_column(String(32))
+    attempt_sequence: Mapped[int] = mapped_column(BigInteger)
+    outcome: Mapped[str] = mapped_column(String(32), server_default=text("'started'"))
+    started_at: Mapped[datetime]
+    finished_at: Mapped[datetime | None]
 
 
 class OutboxMessage(Base):
@@ -436,7 +519,7 @@ class OutboxMessage(Base):
     topic: Mapped[str] = mapped_column(String(128))
     message_key: Mapped[UUID]
     event_type: Mapped[str] = mapped_column(String(64))
-    payload: Mapped[dict[str, str]] = mapped_column(JSONB)
+    payload: Mapped[dict[str, JsonValue]] = mapped_column(JSONB)
     created_at: Mapped[datetime]
     published_at: Mapped[datetime | None]
 

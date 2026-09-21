@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,8 @@ from core.errors import ApplicationError
 from jobs.execution import ScheduleWindow, scheduled_operation_id
 from jobs.models import (
     Job,
+    JobAttempt,
+    JobStageAttempt,
     OutboxMessage,
     ResourceBudgetPolicy,
     ResourceBudgetReservation,
@@ -37,18 +39,30 @@ from jobs.schemas import (
     ComponentPolicyView,
     CostClass,
     JobAcceptanceInput,
+    JobObservationContext,
+    JobStage,
+    JobStageOutcome,
     JobStatus,
     JobView,
+    OperationalSnapshot,
+    OperationalSummary,
+    OperationalTaskRecord,
+    OperationalTaskStatus,
+    OperationAttemptCount,
+    StageAttemptInput,
+    StageAttemptView,
     UsageAttemptInput,
     UsageAttemptView,
     UsageOutcome,
     UsageSummaryView,
 )
+from sources.contracts import SourceCapability
 
-JOB_ACCEPTED_EVENT_TYPE = "job.accepted.v1"
-JOB_ACCEPTED_TOPIC = "hotkey.jobs.accepted.v1"
+JOB_ACCEPTED_EVENT_TYPE = "job.accepted.v2"
+JOB_ACCEPTED_TOPIC = "hotkey.jobs.accepted.v2"
 
 type PublishOutbox = Callable[["OutboxEnvelope"], None]
+type OutboxValue = str | int | bool | None
 
 
 class ResourceBudgetError(RuntimeError):
@@ -75,18 +89,26 @@ class BudgetReservationConflictError(ResourceBudgetError):
     """A reservation identifier or settlement was replayed inconsistently."""
 
 
+class StageAttemptConflictError(RuntimeError):
+    """A stage attempt identifier or sequence was replayed with different facts."""
+
+
+class StageAttemptUnavailableError(RuntimeError):
+    """A task or stage attempt is outside the current owner scope."""
+
+
 @dataclass(frozen=True, slots=True)
 class OutboxEnvelope:
     message_id: UUID
     topic: str
     message_key: UUID
     event_type: str
-    payload: dict[str, str]
+    payload: dict[str, OutboxValue]
 
-    def message_body(self) -> dict[str, str | int]:
+    def message_body(self) -> dict[str, OutboxValue]:
         return {
             **self.payload,
-            "schema_version": 1,
+            "schema_version": 2,
             "message_id": str(self.message_id),
             "event_type": self.event_type,
         }
@@ -94,7 +116,11 @@ class OutboxEnvelope:
 
 def fingerprint_request(command: JobAcceptanceInput) -> bytes:
     canonical = json.dumps(
-        {"kind": command.kind, "scope": command.scope},
+        {
+            "kind": command.kind,
+            "observation": command.observation.model_dump(mode="json"),
+            "scope": command.scope,
+        },
         ensure_ascii=False,
         allow_nan=False,
         separators=(",", ":"),
@@ -791,13 +817,250 @@ class ResourceBudgetService:
         )
 
 
-class JobService:
+class JobObservationService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def start_stage(
+        self,
+        *,
+        owner_id: UUID,
+        job_id: UUID,
+        command: StageAttemptInput,
+    ) -> StageAttemptView:
+        self._session.rollback()
+        with self._session.begin():
+            job = self._session.scalar(
+                select(Job).where(Job.owner_id == owner_id, Job.id == job_id)
+            )
+            if job is None:
+                raise StageAttemptUnavailableError("job is not available")
+            if command.started_at < job.created_at:
+                raise ValueError("stage attempt cannot start before its job")
+
+            inserted_id = self._session.scalar(
+                insert(JobStageAttempt)
+                .values(
+                    id=command.attempt_id,
+                    owner_id=owner_id,
+                    job_id=job_id,
+                    stage=command.stage.value,
+                    attempt_sequence=command.attempt_sequence,
+                    outcome=JobStageOutcome.STARTED.value,
+                    started_at=command.started_at,
+                    finished_at=None,
+                )
+                .on_conflict_do_nothing()
+                .returning(JobStageAttempt.id)
+            )
+            if inserted_id is not None:
+                model = self._session.get(JobStageAttempt, inserted_id)
+            else:
+                model = self._session.get(JobStageAttempt, command.attempt_id)
+                if model is None:
+                    model = self._session.scalar(
+                        select(JobStageAttempt).where(
+                            JobStageAttempt.job_id == job_id,
+                            JobStageAttempt.stage == command.stage.value,
+                            JobStageAttempt.attempt_sequence == command.attempt_sequence,
+                        )
+                    )
+            if model is None or (
+                model.id != command.attempt_id
+                or model.owner_id != owner_id
+                or model.job_id != job_id
+                or model.stage != command.stage.value
+                or model.attempt_sequence != command.attempt_sequence
+                or model.started_at != command.started_at
+            ):
+                raise StageAttemptConflictError("stage attempt was replayed with other facts")
+            view = self._stage_view(model)
+        return view
+
+    def finish_stage(
+        self,
+        *,
+        owner_id: UUID,
+        attempt_id: UUID,
+        outcome: JobStageOutcome,
+        finished_at: datetime,
+    ) -> StageAttemptView:
+        if outcome is JobStageOutcome.STARTED:
+            raise ValueError("finish outcome must be terminal")
+        if finished_at.tzinfo is None:
+            raise ValueError("finished_at must be timezone-aware")
+
+        self._session.rollback()
+        with self._session.begin():
+            model = self._session.scalar(
+                select(JobStageAttempt)
+                .where(
+                    JobStageAttempt.owner_id == owner_id,
+                    JobStageAttempt.id == attempt_id,
+                )
+                .with_for_update()
+            )
+            if model is None:
+                raise StageAttemptUnavailableError("stage attempt is not available")
+            if model.outcome == JobStageOutcome.STARTED.value:
+                if finished_at < model.started_at:
+                    raise ValueError("finished_at cannot precede started_at")
+                model.outcome = outcome.value
+                model.finished_at = finished_at
+            elif model.outcome != outcome.value or model.finished_at != finished_at:
+                raise StageAttemptConflictError("stage attempt already has other terminal facts")
+            view = self._stage_view(model)
+        return view
+
+    def snapshot(
+        self,
+        *,
+        owner_id: UUID,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> OperationalSnapshot:
+        if window_start.tzinfo is None or window_end.tzinfo is None:
+            raise ValueError("observation window must be timezone-aware")
+        if window_end <= window_start:
+            raise ValueError("observation window must be ordered")
+
+        jobs = list(
+            self._session.scalars(
+                select(Job)
+                .where(
+                    Job.owner_id == owner_id,
+                    Job.created_at >= window_start,
+                    Job.created_at < window_end,
+                )
+                .order_by(Job.created_at, Job.id)
+            )
+        )
+        job_ids = [job.id for job in jobs]
+        operation_ids = sorted({job.operation_id for job in jobs}, key=str)
+        execution_counts: dict[UUID, int] = {}
+        stage_counts: dict[UUID, int] = {}
+        resource_counts: dict[UUID, int] = {}
+        if job_ids:
+            execution_counts = {
+                job_id: int(count)
+                for job_id, count in self._session.execute(
+                    select(JobAttempt.job_id, func.count())
+                    .where(JobAttempt.job_id.in_(job_ids))
+                    .group_by(JobAttempt.job_id)
+                )
+            }
+            stage_counts = {
+                job_id: int(count)
+                for job_id, count in self._session.execute(
+                    select(JobStageAttempt.job_id, func.count())
+                    .where(JobStageAttempt.job_id.in_(job_ids))
+                    .group_by(JobStageAttempt.job_id)
+                )
+            }
+        if operation_ids:
+            resource_counts = {
+                operation_id: int(count)
+                for operation_id, count in self._session.execute(
+                    select(ResourceUsageAttempt.operation_id, func.count())
+                    .where(
+                        ResourceUsageAttempt.owner_id == owner_id,
+                        ResourceUsageAttempt.operation_id.in_(operation_ids),
+                    )
+                    .group_by(ResourceUsageAttempt.operation_id)
+                )
+            }
+        task_counts = {status: 0 for status in OperationalTaskStatus}
+        records: list[OperationalTaskRecord] = []
+        for job in jobs:
+            status = self._operational_status(job)
+            task_counts[status] += 1
+            records.append(
+                OperationalTaskRecord(
+                    job_id=job.id,
+                    operation_id=job.operation_id,
+                    kind=job.kind,
+                    observation=self._observation(job),
+                    status=status,
+                    created_at=job.created_at,
+                    started_at=job.started_at,
+                    completed_at=job.completed_at,
+                    next_run_at=job.next_run_at,
+                    execution_attempts=execution_counts.get(job.id, 0),
+                    stage_attempts=stage_counts.get(job.id, 0),
+                )
+            )
+        operations = tuple(
+            OperationAttemptCount(
+                operation_id=operation_id,
+                attempts=resource_counts.get(operation_id, 0),
+            )
+            for operation_id in operation_ids
+        )
+        summary = OperationalSummary(
+            total_tasks=len(records),
+            task_counts=task_counts,
+            execution_attempts=sum(execution_counts.values()),
+            stage_attempts=sum(stage_counts.values()),
+            resource_attempts=sum(resource_counts.values()),
+        )
+        self._session.rollback()
+        return OperationalSnapshot(
+            owner_id=owner_id,
+            window_start=window_start,
+            window_end=window_end,
+            tasks=tuple(records),
+            operations=operations,
+            summary=summary,
+        )
+
+    @staticmethod
+    def _operational_status(model: Job) -> OperationalTaskStatus:
+        if model.status == JobStatus.QUEUED.value and model.next_run_at is not None:
+            return OperationalTaskStatus.DELAYED
+        return OperationalTaskStatus(model.status)
+
+    @staticmethod
+    def _observation(model: Job) -> JobObservationContext:
+        return JobObservationContext(
+            configuration_ref=model.configuration_ref,
+            configuration_version=model.configuration_version,
+            source_key=model.source_key,
+            source_capability=(
+                SourceCapability(model.source_capability)
+                if model.source_capability is not None
+                else None
+            ),
+        )
+
+    @staticmethod
+    def _stage_view(model: JobStageAttempt) -> StageAttemptView:
+        return StageAttemptView(
+            attempt_id=model.id,
+            owner_id=model.owner_id,
+            job_id=model.job_id,
+            stage=JobStage(model.stage),
+            attempt_sequence=model.attempt_sequence,
+            outcome=JobStageOutcome(model.outcome),
+            started_at=model.started_at,
+            finished_at=model.finished_at,
+        )
+
+
+class JobService:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._session = session
+        self._clock = clock or (lambda: datetime.now(UTC))
+
     def accept(self, *, owner_id: UUID, command: JobAcceptanceInput) -> JobView:
         fingerprint = fingerprint_request(command)
-        now = datetime.now(UTC)
+        now = self._clock()
+        if now.tzinfo is None:
+            raise ValueError("clock must return a timezone-aware datetime")
         job_id = uuid4()
         self._session.rollback()
 
@@ -809,6 +1072,14 @@ class JobService:
                     owner_id=owner_id,
                     operation_id=command.operation_id,
                     kind=command.kind,
+                    configuration_ref=command.observation.configuration_ref,
+                    configuration_version=command.observation.configuration_version,
+                    source_key=command.observation.source_key,
+                    source_capability=(
+                        command.observation.source_capability.value
+                        if command.observation.source_capability is not None
+                        else None
+                    ),
                     scope=command.scope,
                     request_fingerprint=fingerprint,
                     status=JobStatus.QUEUED.value,
@@ -832,6 +1103,14 @@ class JobService:
                             "owner_id": str(owner_id),
                             "operation_id": str(command.operation_id),
                             "kind": command.kind,
+                            "configuration_ref": command.observation.configuration_ref,
+                            "configuration_version": command.observation.configuration_version,
+                            "source_key": command.observation.source_key,
+                            "source_capability": (
+                                command.observation.source_capability.value
+                                if command.observation.source_capability is not None
+                                else None
+                            ),
                         },
                         created_at=now,
                         published_at=None,
@@ -842,7 +1121,10 @@ class JobService:
                     owner_id=owner_id,
                     operation_id=command.operation_id,
                     kind=command.kind,
+                    observation=command.observation,
                     status=JobStatus.QUEUED,
+                    started_at=None,
+                    completed_at=None,
                     created_at=now,
                 )
             else:
@@ -868,6 +1150,7 @@ class JobService:
         kind: str,
         schedule_key: str,
         window: ScheduleWindow,
+        observation: JobObservationContext,
         scope: Mapping[str, str | int | bool | None],
     ) -> JobView:
         reserved = {"schedule_key", "window_start", "window_end"}
@@ -889,6 +1172,7 @@ class JobService:
                     window,
                 ),
                 kind=kind,
+                observation=observation,
                 scope=scheduled_scope,
             ),
         )
@@ -900,7 +1184,10 @@ class JobService:
             owner_id=model.owner_id,
             operation_id=model.operation_id,
             kind=model.kind,
+            observation=JobObservationService._observation(model),
             status=JobStatus(model.status),
+            started_at=model.started_at,
+            completed_at=model.completed_at,
             created_at=model.created_at,
         )
 

@@ -10,6 +10,7 @@ from threading import Event
 import structlog
 from confluent_kafka import Message
 from sqlalchemy.orm import Session, sessionmaker
+from structlog.contextvars import bound_contextvars
 
 from core.config import get_settings
 from core.logging import configure_logging
@@ -63,34 +64,45 @@ def create_job_message_handler(
 ) -> MessageHandler:
     def handle(message: Message) -> None:
         body, reference = decode_job_message(message)
-        handler = handlers.get(body.kind)
-        if handler is None:
-            raise RuntimeError(f"job handler is not registered for kind: {body.kind}")
+        log_context: dict[str, str | int] = {
+            "operation_id": str(body.operation_id),
+            "job_id": str(body.job_id),
+            "job_kind": body.kind,
+            "configuration_version": body.configuration_version,
+        }
+        if body.source_key is not None and body.source_capability is not None:
+            log_context["source_key"] = body.source_key
+            log_context["source_capability"] = body.source_capability.value
 
-        with sessions() as session:
-            execution = JobExecutionService(
-                session,
-                lease_seconds=lease_seconds,
-                clock=clock,
+        with bound_contextvars(**log_context):
+            handler = handlers.get(body.kind)
+            if handler is None:
+                raise RuntimeError(f"job handler is not registered for kind: {body.kind}")
+
+            with sessions() as session:
+                execution = JobExecutionService(
+                    session,
+                    lease_seconds=lease_seconds,
+                    clock=clock,
+                )
+                if execution.is_processed(body.message_id):
+                    return
+                lease = execution.acquire(job_id=body.job_id, worker_id=worker_id)
+
+            context = JobExecutionContext(
+                message=body,
+                lease=lease,
+                _sessions=sessions,
+                _lease_seconds=lease_seconds,
+                _clock=clock,
             )
-            if execution.is_processed(body.message_id):
-                return
-            lease = execution.acquire(job_id=body.job_id, worker_id=worker_id)
-
-        context = JobExecutionContext(
-            message=body,
-            lease=lease,
-            _sessions=sessions,
-            _lease_seconds=lease_seconds,
-            _clock=clock,
-        )
-        handler(context)
-        with sessions() as session:
-            JobExecutionService(
-                session,
-                lease_seconds=lease_seconds,
-                clock=clock,
-            ).complete(context.lease, message=reference)
+            handler(context)
+            with sessions() as session:
+                JobExecutionService(
+                    session,
+                    lease_seconds=lease_seconds,
+                    clock=clock,
+                ).complete(context.lease, message=reference)
 
     return handle
 

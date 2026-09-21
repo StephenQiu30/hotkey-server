@@ -70,7 +70,8 @@ def resource_budget_context() -> Iterator[ResourceBudgetContext]:
                 "resource_budget_policies, resource_usage_attempts, "
                 "resource_component_policies, "
                 "evidence_cleanup_targets, evidence_deletions, evidence_resources, "
-                "evidence_retention_policies, source_access_policies, processed_messages, "
+                "evidence_retention_policies, source_access_policies, "
+                "job_stage_attempts, processed_messages, "
                 "job_attempts, outbox_messages, jobs, identity_sessions, identity_users"
             )
         )
@@ -93,7 +94,7 @@ def resource_budget_context() -> Iterator[ResourceBudgetContext]:
                     "resource_component_policies, "
                     "evidence_cleanup_targets, evidence_deletions, evidence_resources, "
                     "evidence_retention_policies, source_access_policies, "
-                    "processed_messages, job_attempts, outbox_messages, jobs, "
+                    "job_stage_attempts, processed_messages, job_attempts, outbox_messages, jobs, "
                     "identity_sessions, identity_users"
                 )
             )

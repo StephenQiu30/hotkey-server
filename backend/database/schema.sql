@@ -380,6 +380,11 @@ CREATE TABLE jobs (
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
     operation_id UUID NOT NULL,
     kind VARCHAR(64) NOT NULL CHECK (kind ~ '^[a-z][a-z0-9_.-]{0,63}$'),
+    configuration_ref VARCHAR(128) NOT NULL
+        CHECK (configuration_ref ~ '^[a-z0-9][a-z0-9_.:-]{0,127}$'),
+    configuration_version BIGINT NOT NULL CHECK (configuration_version >= 1),
+    source_key VARCHAR(64),
+    source_capability VARCHAR(32),
     scope JSONB NOT NULL CHECK (jsonb_typeof(scope) = 'object'),
     request_fingerprint BYTEA NOT NULL CHECK (octet_length(request_fingerprint) = 32),
     status VARCHAR(32) NOT NULL DEFAULT 'queued' CHECK (
@@ -399,9 +404,21 @@ CREATE TABLE jobs (
     checkpoint JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(checkpoint) = 'object'),
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
+    defer_reason VARCHAR(128),
+    next_run_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
     CONSTRAINT jobs_owner_kind_operation_key UNIQUE (owner_id, kind, operation_id),
+    CONSTRAINT jobs_owner_id_key UNIQUE (owner_id, id),
+    CHECK (
+        (source_key IS NULL AND source_capability IS NULL)
+        OR (
+            source_key IS NOT NULL
+            AND source_capability IS NOT NULL
+            AND source_key ~ '^[a-z][a-z0-9_-]{0,63}$'
+            AND source_capability IN ('search', 'author_posts', 'comments', 'replies')
+        )
+    ),
     CHECK (
         (lease_owner IS NULL AND lease_expires_at IS NULL)
         OR (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)
@@ -410,10 +427,57 @@ CREATE TABLE jobs (
     CHECK (
         completed_at IS NULL
         OR status IN ('succeeded', 'partially_succeeded', 'failed', 'cancelled')
-    )
+    ),
+    CHECK (
+        (defer_reason IS NULL AND next_run_at IS NULL)
+        OR (
+            status = 'queued'
+            AND defer_reason IS NOT NULL
+            AND next_run_at IS NOT NULL
+            AND defer_reason ~ '^[a-z][a-z0-9_.:-]{0,127}$'
+        )
+    ),
+    CHECK (next_run_at IS NULL OR next_run_at >= created_at)
 );
 
 CREATE INDEX jobs_runnable_idx ON jobs (status, lease_expires_at);
+
+CREATE TABLE job_stage_attempts (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    job_id UUID NOT NULL,
+    stage VARCHAR(32) NOT NULL CHECK (stage IN ('request', 'parse', 'save', 'analysis')),
+    attempt_sequence BIGINT NOT NULL CHECK (attempt_sequence >= 1),
+    outcome VARCHAR(32) NOT NULL DEFAULT 'started' CHECK (
+        outcome IN (
+            'started',
+            'succeeded',
+            'partially_succeeded',
+            'failed',
+            'delayed',
+            'cancelled'
+        )
+    ),
+    started_at TIMESTAMPTZ NOT NULL,
+    finished_at TIMESTAMPTZ,
+    CONSTRAINT job_stage_attempts_job_stage_sequence_key
+        UNIQUE (job_id, stage, attempt_sequence),
+    CONSTRAINT job_stage_attempts_owner_job_fkey
+        FOREIGN KEY (owner_id, job_id)
+        REFERENCES jobs (owner_id, id)
+        ON DELETE CASCADE,
+    CHECK (
+        (outcome = 'started' AND finished_at IS NULL)
+        OR (outcome <> 'started' AND finished_at IS NOT NULL)
+    ),
+    CHECK (finished_at IS NULL OR finished_at >= started_at)
+);
+
+CREATE INDEX job_stage_attempts_owner_started_idx
+    ON job_stage_attempts (owner_id, started_at);
+
+CREATE INDEX job_stage_attempts_job_stage_idx
+    ON job_stage_attempts (job_id, stage, attempt_sequence);
 
 CREATE TABLE outbox_messages (
     id UUID PRIMARY KEY,

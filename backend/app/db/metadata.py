@@ -10,6 +10,7 @@ from identity.models import IdentitySession, IdentityUser
 from jobs.models import (
     Job,
     JobAttempt,
+    JobStageAttempt,
     OutboxMessage,
     ProcessedMessage,
     ResourceBudgetPolicy,
@@ -31,6 +32,7 @@ __all__ = [
     "IdentityUser",
     "Job",
     "JobAttempt",
+    "JobStageAttempt",
     "OutboxMessage",
     "ProcessedMessage",
     "ResourceBudgetPolicy",

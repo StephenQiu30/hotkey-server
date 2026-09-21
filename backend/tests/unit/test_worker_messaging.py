@@ -10,7 +10,7 @@ from worker.messaging import process_message
 
 class FakeMessage:
     def topic(self) -> str:
-        return "hotkey.jobs.accepted.v1"
+        return "hotkey.jobs.accepted.v2"
 
 
 class FakeConsumer:
@@ -33,7 +33,7 @@ def test_message_failure_does_not_commit_a_later_position() -> None:
         process_message(
             cast(Consumer, consumer),
             cast(Message, message),
-            {"hotkey.jobs.accepted.v1": fail},
+            {"hotkey.jobs.accepted.v2": fail},
         )
 
     assert consumer.commits == 0
@@ -47,7 +47,7 @@ def test_message_success_commits_exactly_that_message() -> None:
     process_message(
         cast(Consumer, consumer),
         cast(Message, message),
-        {"hotkey.jobs.accepted.v1": handled.append},
+        {"hotkey.jobs.accepted.v2": handled.append},
     )
 
     assert handled == [message]

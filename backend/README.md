@@ -64,4 +64,4 @@ docker compose run --rm cli identity reset-password
 
 ## 状态
 
-当前底座包含应用工厂、数据库会话、唯一 `schema.sql`、结构化日志、健康检查、Swagger UI、Scalar、Kafka Worker、管理 CLI、身份会话领域、内部任务受理与恢复服务、免费组件/尝试计量账本与分层预算窗口/预留/结算契约、来源访问政策、字段最小化门禁、纯来源能力/作品/评论/分页契约、保留/删除控制面、Redis/MinIO 在线清理适配器及架构测试。Worker 已具备 outbox 发布、手动 offset、inbox、租约和检查点装配；没有已登记业务 kind 处理器时安全退出。生命周期、计量与来源能力当前只有内部 Service/DTO/Protocol，没有 HTTP、前端、真实来源/SDK 适配器或已批准的业务配额；它不代表真实业务对象已接入或产品验收已通过。其余业务领域只在对应切片完成 Design 登记后创建，不保留空的未来领域包。
+当前底座包含应用工厂、数据库会话、唯一 `schema.sql`、结构化日志、健康检查、Swagger UI、Scalar、Kafka Worker、管理 CLI、身份会话领域、内部任务受理与恢复服务、任务运行上下文/阶段尝试/互斥汇总、免费组件/尝试计量账本与分层预算窗口/预留/结算契约、来源访问政策、字段最小化门禁、纯来源能力/作品/评论/分页契约、保留/删除控制面、Redis/MinIO 在线清理适配器及架构测试。Worker 已具备 `job.accepted.v2` outbox 发布、手动 offset、inbox、租约、检查点和安全关联日志装配；没有已登记业务 kind 处理器时安全退出。生命周期、计量、来源能力与运行观察当前只有内部 Service/DTO/Protocol，没有 HTTP、前端、真实来源/SDK 适配器、错误/陈旧问题或已批准的业务配额；它不代表真实业务对象已接入或产品验收已通过。其余业务领域只在对应切片完成 Design 登记后创建，不保留空的未来领域包。

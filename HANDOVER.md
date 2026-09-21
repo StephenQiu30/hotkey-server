@@ -31,7 +31,7 @@
 - `app/identity/` 已实现单 owner 初始化、Argon2 密码散列、服务端不透明会话、CSRF、注销和维护恢复；`python -m cli identity reset-password` 从隐藏交互输入读取新密码并撤销全部旧会话。
 - 身份 HTTP 契约为 `/api/identity/initialize`、`/api/identity/sessions` 与 `/api/identity/session`；Web 请求层自动为写请求补 CSRF，请求凭据和 Cookie 不进入生成客户端参数。
 - `GET /api/identity/workspace` 从有效会话派生当前 owner，不接受客户端归属标识；`require_resource_owner` 为后续业务资源提供默认拒绝规则。Web 已有 `/login` 与受保护 `/events` 空工作台，尚未接入事件业务资源。
-- `app/jobs/` 已实现内部持久受理与恢复：任务与 `job.accepted.v1` outbox 同事务写入，owner/kind/operation ID 唯一，等价重试返回原任务，异范围重用拒绝；outbox 收到 Kafka 回执后才标记，消费者在数据库事务后手动提交 offset，inbox、lease epoch、attempt 和连续 checkpoint 防止重投与旧执行者覆盖，调度追赶默认最多 3 个窗口。尚无 HTTP、具体业务处理器、有限重试/死信或 72 小时度量。
+- `app/jobs/` 已实现内部持久受理与恢复：任务与 `job.accepted.v2` outbox 同事务写入，owner/kind/operation ID 唯一，绑定非敏感配置版本与来源能力，等价重试返回原任务，异范围重用拒绝；outbox 收到 Kafka 回执后才标记，消费者在数据库事务后手动提交 offset，inbox、lease epoch、attempt 和连续 checkpoint 防止重投与旧执行者覆盖，调度追赶默认最多 3 个窗口。阶段尝试与任务/Worker/资源尝试汇总可按 operation 核对；尚无 HTTP、具体业务处理器、有限重试/死信、错误/陈旧问题或 72 小时度量。
 - `app/evidence/` 已实现内部来源访问与在线生命周期控制：owner/source/capability 唯一政策、原子换版、入库前白名单投影；结构化/原始/媒体保留取用户请求与来源上限的更严值，缩期立即作用于已追踪资源；删除或到期后默认拒绝读取，`python -m cli lifecycle cleanup-once` 以 PostgreSQL lease 和有限重试清理 Redis/MinIO 在线副本。尚无 HTTP、来源/业务内容适配器、备份/回补清理或真实平台授权证据。
 - 本机既有 PostgreSQL 数据库包含旧系统历史表，不符合当前完整 schema。不得对这些旧库执行 `database/schema.sql`；需要保留数据时先备份，再用新库完整建表并校验导入。
 
@@ -61,9 +61,11 @@
 
 **[038 计划](docs/plans/038-可维护与可替换计划.md) S00/S01 已完成，Plan 保持 in_progress。** `sources` 领域已增加四类纯能力请求、统一作品/评论、显式缺失值与父链、不透明分页/水位、页状态/停止原因及结构化适配器端口；新增 5 tests、相关 23 tests、后端全量 92 tests 及静态门禁通过。本切片复用现有 `.env` 与已启动服务，未新增真实适配器、固定版本/许可、样本/探针、HTTP/UI/Worker 或 SDK；S02—S04 及 038 产品 AC 仍为 0/6，未建立 Acceptance。
 
+**[039 计划](docs/plans/039-可观测与可运维计划.md) S00/S01 已完成，Plan 保持 in_progress。** `jobs` 领域已增加配置/来源运行上下文、四类阶段尝试与七类显示状态互斥汇总，Worker 临时绑定安全关联字段，`job.accepted.v2` 跨进程传递相同上下文；新增 5 tests、相关 43 tests、后端全量 97 tests 及静态门禁通过。本切片复用现有 `.env` 与 PostgreSQL 18.4，将 0 行 `hotkey_dev` 按完整 schema 重建为 17 表；未新增服务、依赖、HTTP/UI 或具体业务处理器，不证明错误动作、陈旧问题、维护审计或运维闭环，S02—S04 及 039 产品 AC 仍为 0/6，未建立 Acceptance。
+
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 按 BACKLOG 继续推进 039 S00/S01，先冻结可观测与可运维契约，再执行对应技术切片；031 S03 留在 M5 长时可靠性阶段继续。
+1. 按 BACKLOG 继续推进 028 S00/S01，先冻结可追溯与可复现契约，再执行对应技术切片；031 S03 留在 M5 长时可靠性阶段继续。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
@@ -76,4 +78,4 @@
 
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 
-本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 034/035/038 S00/S01 与 031/036/037 S00—S02，在真实 PostgreSQL、既有 Redis/MinIO/Kafka 及浏览器中验证身份/授权、任务可靠性、生命周期、全尝试计量、分层预算预留与纯来源契约。当前后端 92 tests、前端 13 tests 及适用静态/构建门禁通过。未执行业务消息处理、真实来源探测、SDK 内部计量、036/037 S03/S04、038 S02—S04、完整 B0 或产品 Acceptance。
+本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 034/035/038/039 S00/S01 与 031/036/037 S00—S02，在真实 PostgreSQL、既有 Redis/MinIO/Kafka 及浏览器中验证身份/授权、任务可靠性、生命周期、全尝试计量、分层预算预留、纯来源契约与任务关联/统计口径。当前后端 97 tests、前端 13 tests 及适用静态/构建门禁通过。未执行业务消息处理、真实来源探测、SDK 内部计量、036/037 S03/S04、038/039 S02—S04、完整 B0 或产品 Acceptance。

@@ -16,6 +16,7 @@ from redis import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
+from structlog.contextvars import get_contextvars
 
 from core.config import Settings
 from core.errors import ApplicationError
@@ -25,8 +26,9 @@ from jobs.execution import (
     StaleExecutionLeaseError,
     plan_catchup_windows,
 )
-from jobs.schemas import JobAcceptanceInput
+from jobs.schemas import JobAcceptanceInput, JobObservationContext
 from jobs.services import JobService, OutboxService
+from sources.contracts import SourceCapability
 from worker.app import JobExecutionContext, create_job_message_handler
 from worker.messaging import create_producer, decode_job_message, publish_outbox
 
@@ -55,7 +57,7 @@ def job_context() -> Iterator[JobTestContext]:
                 "resource_budget_reservations, resource_budget_windows, "
                 "resource_budget_policies, resource_usage_attempts, "
                 "resource_component_policies, "
-                "processed_messages, job_attempts, outbox_messages, jobs, "
+                "job_stage_attempts, processed_messages, job_attempts, outbox_messages, jobs, "
                 "identity_sessions, identity_users"
             )
         )
@@ -78,7 +80,7 @@ def job_context() -> Iterator[JobTestContext]:
                     "resource_budget_reservations, resource_budget_windows, "
                     "resource_budget_policies, resource_usage_attempts, "
                     "resource_component_policies, "
-                    "processed_messages, job_attempts, outbox_messages, jobs, "
+                    "job_stage_attempts, processed_messages, job_attempts, outbox_messages, jobs, "
                     "identity_sessions, identity_users"
                 )
             )
@@ -89,6 +91,12 @@ def _command(*, operation_id: UUID | None = None, window: int = 7) -> JobAccepta
     return JobAcceptanceInput(
         operation_id=operation_id or uuid4(),
         kind="monitor.collect",
+        observation=JobObservationContext(
+            configuration_ref="monitor-config-1",
+            configuration_version=window,
+            source_key="x",
+            source_capability=SourceCapability.SEARCH,
+        ),
         scope={"source_id": "account-1", "window": window},
     )
 
@@ -140,6 +148,10 @@ def test_lost_response_retry_returns_the_original_job_and_one_outbox(
         "kind": command.kind,
         "operation_id": str(command.operation_id),
         "owner_id": str(job_context.owner_id),
+        "configuration_ref": "monitor-config-1",
+        "configuration_version": 7,
+        "source_key": "x",
+        "source_capability": "search",
     }
 
 
@@ -302,6 +314,12 @@ def test_concurrent_schedule_window_acceptance_creates_one_job(
                     kind="monitor.collect",
                     schedule_key="topic-1",
                     window=window,
+                    observation=JobObservationContext(
+                        configuration_ref="monitor-config-1",
+                        configuration_version=1,
+                        source_key="x",
+                        source_capability=SourceCapability.SEARCH,
+                    ),
                     scope={"source_id": "account-1"},
                 )
                 .id
@@ -378,6 +396,14 @@ def test_real_kafka_redelivery_rebalance_and_redis_loss_recover_once(
         interrupted_leases = []
 
         def interrupt(context: JobExecutionContext) -> None:
+            assert get_contextvars() == {
+                "configuration_version": 7,
+                "job_id": str(job.id),
+                "job_kind": "monitor.collect",
+                "operation_id": str(job.operation_id),
+                "source_capability": "search",
+                "source_key": "x",
+            }
             context.save_checkpoint(1, {"page": 1})
             interrupted_leases.append(context.lease)
             raise RuntimeError("injected worker interruption")
@@ -391,6 +417,7 @@ def test_real_kafka_redelivery_rebalance_and_redis_loss_recover_once(
         )
         with pytest.raises(RuntimeError, match="worker interruption"):
             interrupted_handler(first_message)
+        assert get_contextvars() == {}
         old = interrupted_leases[0]
 
         first_consumer.close()
@@ -422,6 +449,14 @@ def test_real_kafka_redelivery_rebalance_and_redis_loss_recover_once(
         recovered_calls = []
 
         def recover(context: JobExecutionContext) -> None:
+            assert get_contextvars() == {
+                "configuration_version": 7,
+                "job_id": str(job.id),
+                "job_kind": "monitor.collect",
+                "operation_id": str(job.operation_id),
+                "source_capability": "search",
+                "source_key": "x",
+            }
             recovered_calls.append(context.lease.epoch)
             assert context.lease.checkpoint == {"page": 1}
             with (
@@ -443,6 +478,7 @@ def test_real_kafka_redelivery_rebalance_and_redis_loss_recover_once(
             clock=lambda: clock[0],
         )
         recovered_handler(replayed_message)
+        assert get_contextvars() == {}
         assert recovered_calls == [old.epoch + 1]
         second_consumer.commit(message=replayed_message, asynchronous=False)
 
