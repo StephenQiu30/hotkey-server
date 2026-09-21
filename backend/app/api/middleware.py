@@ -19,6 +19,8 @@ class RequestContextMiddleware:
             return
 
         request_id = str(uuid4())
+        state = scope.setdefault("state", {})
+        state["request_id"] = request_id
         status_code = 500
         started_at = perf_counter()
         clear_contextvars()
@@ -41,7 +43,10 @@ class RequestContextMiddleware:
             await self.app(scope, receive, send_with_context)
         finally:
             route = scope.get("route")
-            route_template = getattr(route, "path", "unmatched")
+            route_path = getattr(route, "path", None)
+            route_template = (
+                f"{scope.get('root_path', '')}{route_path}" if route_path else "unmatched"
+            )
             structlog.get_logger("http").info(
                 "request_completed",
                 method=scope.get("method", "UNKNOWN"),

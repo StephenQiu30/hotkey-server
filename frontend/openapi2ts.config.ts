@@ -6,7 +6,7 @@ export default {
   requestLibPath: "@/request",
   requestOptionsType: "import('@/request').RequestOptions",
   namespace: "HotKeyAPI",
-  nullable: true,
+  nullable: false,
   enumStyle: "string-literal",
   isCamelCase: true,
   declareType: "type",

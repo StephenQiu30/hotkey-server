@@ -1,9 +1,15 @@
+from uuid import UUID
+
 import pytest
 from fastapi import FastAPI, HTTPException, Query
 from httpx import ASGITransport, AsyncClient
 
-from core.errors import ApplicationError
+from core.errors import DependencyUnavailableError
 from core.schemas import HealthView
+
+
+def assert_uuid(value: str) -> None:
+    assert str(UUID(value)) == value
 
 
 @pytest.mark.anyio
@@ -57,6 +63,45 @@ async def test_http_exception_is_normalized_and_preserves_headers(app: FastAPI) 
 
 
 @pytest.mark.anyio
+async def test_http_exception_rejects_untrusted_headers_and_server_detail(app: FastAPI) -> None:
+    def raise_http_error() -> HealthView:
+        raise HTTPException(
+            status_code=500,
+            detail="token=should-not-leak",
+            headers={
+                "Set-Cookie": "session=should-not-leak",
+                "X-Injected": "should-not-leak",
+            },
+        )
+
+    app.add_api_route(
+        "/__test/http-server-error",
+        raise_http_error,
+        methods=["GET"],
+        include_in_schema=False,
+    )
+
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://test",
+        ) as client,
+    ):
+        response = await client.get("/__test/http-server-error")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "code": "internal_error",
+        "message": "服务暂时不可用",
+        "request_id": response.headers["x-request-id"],
+    }
+    assert "set-cookie" not in response.headers
+    assert "x-injected" not in response.headers
+    assert "should-not-leak" not in response.text
+
+
+@pytest.mark.anyio
 async def test_not_found_is_normalized(app: FastAPI) -> None:
     async with (
         app.router.lifespan_context(app),
@@ -78,7 +123,7 @@ async def test_not_found_is_normalized(app: FastAPI) -> None:
 @pytest.mark.anyio
 async def test_application_error_is_normalized(app: FastAPI) -> None:
     def raise_application_error() -> HealthView:
-        raise ApplicationError("example_error", "示例业务错误", status_code=409)
+        raise DependencyUnavailableError()
 
     app.add_api_route(
         "/__test/application-error",
@@ -96,10 +141,10 @@ async def test_application_error_is_normalized(app: FastAPI) -> None:
     ):
         response = await client.get("/__test/application-error")
 
-    assert response.status_code == 409
+    assert response.status_code == 503
     assert response.json() == {
-        "code": "example_error",
-        "message": "示例业务错误",
+        "code": "database_unavailable",
+        "message": "数据库暂不可用",
         "request_id": response.headers["x-request-id"],
     }
 
@@ -134,7 +179,7 @@ async def test_request_validation_error_is_normalized_with_safe_field_details(
     assert body["details"] == [
         {
             "location": ["query", "limit"],
-            "message": "Input should be a valid integer, unable to parse string as an integer",
+            "message": "请输入有效整数",
             "type": "int_parsing",
         }
     ]
@@ -142,7 +187,10 @@ async def test_request_validation_error_is_normalized_with_safe_field_details(
 
 
 @pytest.mark.anyio
-async def test_unexpected_exception_is_safe_and_has_request_id(app: FastAPI) -> None:
+async def test_unexpected_exception_is_safe_and_has_request_id(
+    app: FastAPI,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     def raise_unexpected_error() -> HealthView:
         raise RuntimeError("database password=should-not-leak")
 
@@ -168,7 +216,9 @@ async def test_unexpected_exception_is_safe_and_has_request_id(app: FastAPI) -> 
         "message": "服务暂时不可用",
         "request_id": response.headers["x-request-id"],
     }
+    assert_uuid(response.headers["x-request-id"])
     assert "database password" not in response.text
+    assert "database password" not in capsys.readouterr().out
 
 
 @pytest.mark.anyio

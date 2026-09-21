@@ -11,6 +11,7 @@ router = APIRouter(tags=["系统状态"])
     operation_id="getHealth",
     summary="查询服务存活状态",
     response_model=HealthView,
+    responses={500: {"model": ErrorView, "description": "服务内部异常"}},
     status_code=200,
 )
 def get_health() -> HealthView:
@@ -22,7 +23,10 @@ def get_health() -> HealthView:
     operation_id="getReadiness",
     summary="查询服务就绪状态",
     response_model=HealthView,
-    responses={503: {"model": ErrorView, "description": "必要依赖不可用"}},
+    responses={
+        500: {"model": ErrorView, "description": "服务内部异常"},
+        503: {"model": ErrorView, "description": "必要依赖不可用"},
+    },
     status_code=200,
 )
 def get_readiness(_: DatabaseReadyDependency) -> HealthView:

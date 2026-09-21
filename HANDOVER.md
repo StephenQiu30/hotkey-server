@@ -12,9 +12,9 @@
 
 ## 前端基础
 
-- `src/request.ts` 是唯一 Axios 请求封装，统一处理凭据、超时、响应数据和错误。
+- `src/request.ts` 是唯一 Axios 请求封装，统一处理凭据、超时、响应数据和错误；业务 HTTP、网络、超时、取消及协议错误保持可判别。
 - Umi OpenAPI 读取后端自动生成的 `/openapi.json`，生成文件直接写入 `src/api/`；命令环境变量 `HOTKEY_OPENAPI_URL` 可覆盖默认地址。
-- `src/proxy.ts` 处理 CSP nonce 和同源 `/api/*` 转发。
+- `src/proxy.ts` 只处理页面 CSP nonce；`src/app/api/[[...path]]/route.ts` 负责同源 `/api/*` 转发及可控 502/504 错误契约。
 - 页面采用组件优先的无边框设计，只使用 Tailwind 命名尺度及 `sm/md/lg/xl/2xl`。
 - App Router 已配置 loading、error、global-error、not-found 和 `/health`。
 - Dockerfile 定义 standalone、非 root 用户和健康检查；生产只读文件系统仍需根 Compose 落地并实际验证。
@@ -32,22 +32,21 @@
 
 ## 待完成
 
-**首先完成 [046 前置计划](docs/plans/046-全局异常与响应契约前置计划.md)，再继续以下实施。** 2026-09-21 已建立统一设计和所有计划的开工门禁；代码修复尚未执行。已核对的缺口包括未知异常 request_id=unknown、自定义 HTTP 5xx detail 外泄、自动 OpenAPI 422 与 ErrorView 不符、Web 读取 detail/details 不一致。046 S03 未通过，不能把现有基础测试通过视作已满足共同前置。
+**[046 前置计划](docs/plans/046-全局异常与响应契约前置计划.md) 已完成并通过 Acceptance。** 未知异常请求标识、5xx/校验信息泄漏、OpenAPI 错误模型、Web 错误读取、同源代理失败及生成客户端漂移门禁均已修复和验证。后续接口继续复用该契约；下一执行点是 B00 总体/先行 Design 与来源条件登记，随后进入 B01/042 S01。
 
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 建立根 Compose，并在 CI 接入 OpenAPI 客户端自动生成与差异检查。
+1. 建立根 Compose，并把现有 OpenAPI 客户端生成与差异检查扩展到真实依赖环境。
 2. 明确旧 PostgreSQL 数据的保留、重建和校验导入策略，再同步实现首个业务领域 Model 与 `database/schema.sql` DDL。
-3. 生成前端 API 客户端并验证真实请求与错误契约。
-4. 接入隔离的 PostgreSQL、Redis、Kafka 完成真实集成验证。
-5. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
+3. 接入隔离的 PostgreSQL、Redis、Kafka 完成真实集成验证。
+4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
 
 ## 检查
 
-后端在 `backend/` 执行 `uv run ruff format --check .`、`uv run ruff check .`、`uv run mypy` 和 `uv run pytest`。前端执行 `pnpm lint`、`pnpm typecheck`、`pnpm format:check` 和 `pnpm build`。产品进度以 `BACKLOG.md` 和对应 Acceptance 为准。
+后端在 `backend/` 执行 `uv run ruff format --check .`、`uv run ruff check .`、`uv run mypy` 和 `uv run pytest`。前端执行 `pnpm test`、`pnpm lint`、`pnpm typecheck`、`pnpm format:check` 和 `pnpm build`；运行中的后端配合 `pnpm openapi:check` 校验生成漂移。产品进度以 `BACKLOG.md` 和对应 Acceptance 为准。
 
 ## 本轮产品文档复核
 
-2026-09-21 基于当前 HEAD `9093ed47` 静态核对工程，修正计划中的空基线、旧目录、契约快照和领域归属冲突。BACKLOG 已补完整交付内容、跨计划批次、平台扩面与 App 队列；001/042 改为 in_progress，只表示规划及底座工作已开始。所有产品 AC 仍未通过，根 Compose、真实集成、业务流程和验收仍待完成。
+2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046。BACKLOG 已补完整交付内容、跨计划批次、平台扩面与 App 队列；001/042 为 in_progress，只表示规划及底座工作已开始。046 技术前置 8/8 AC 已通过，但所有产品 AC 仍未通过，根 Compose、真实集成、业务流程和验收仍待完成。
 
-本轮未执行应用构建、来源探测、数据库变更或部署；文档校验结果见交付说明，不继承过去运行结论作为当前实测。
+本轮已执行应用测试、构建、OpenAPI 生成/漂移探针、真实同源代理和桌面/窄屏浏览器验证；未执行来源探测、数据库变更、真实消息集成或部署。证据与边界见 046 Acceptance，不继承过去运行结论作为当前实测。

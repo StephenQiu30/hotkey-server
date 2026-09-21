@@ -1,4 +1,5 @@
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
@@ -15,6 +16,16 @@ class HealthView(OutputModel):
     status: Literal["ok", "ready"]
 
 
+class PageView[OutputT](OutputModel):
+    items: list[OutputT]
+    next_cursor: str | None
+
+
+class JobAcceptedView(OutputModel):
+    job_id: UUID
+    status: Literal["queued"]
+
+
 class ValidationErrorItem(OutputModel):
     location: list[str | int]
     message: str
@@ -24,5 +35,5 @@ class ValidationErrorItem(OutputModel):
 class ErrorView(OutputModel):
     code: str
     message: str
-    request_id: str
+    request_id: UUID
     details: list[ValidationErrorItem] | None = None

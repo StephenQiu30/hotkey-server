@@ -4,6 +4,7 @@ import ast
 from pathlib import Path
 
 from api.router import api_router
+from core.errors import ERROR_CATEGORIES, ApplicationError
 
 BACKEND = Path(__file__).resolve().parents[2]
 APP = BACKEND / "app"
@@ -69,6 +70,22 @@ def test_schema_modules_do_not_depend_on_http_or_orm() -> None:
     for path in APP.rglob("schemas.py"):
         imports = _imports(path)
         assert not any(name.startswith(("fastapi", "starlette", "sqlalchemy")) for name in imports)
+
+
+def test_application_errors_are_registered_without_http_status() -> None:
+    error = ApplicationError(next(iter(ERROR_CATEGORIES)))
+
+    assert error.code in ERROR_CATEGORIES
+    assert not hasattr(error, "status_code")
+    assert not hasattr(error, "message")
+    assert not any(
+        name.startswith(("fastapi", "starlette")) for name in _imports(APP / "core" / "errors.py")
+    )
+
+
+def test_worker_does_not_depend_on_http_protocol() -> None:
+    for path in (APP / "worker").glob("*.py"):
+        assert not any(name.startswith(("fastapi", "starlette")) for name in _imports(path))
 
 
 def test_resource_routes_declare_openapi_contract_fields() -> None:

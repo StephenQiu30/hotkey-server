@@ -48,6 +48,9 @@ jobs:
       - name: Lint (eslint)
         run: pnpm lint
 
+      - name: Test (vitest)
+        run: pnpm test
+
       - name: Type check (tsc)
         run: pnpm typecheck
 

@@ -29,7 +29,7 @@ def require_database(session: SessionDependency) -> None:
     try:
         session.execute(text("SELECT 1"))
     except SQLAlchemyError as error:
-        raise DependencyUnavailableError("database_unavailable", "数据库暂不可用") from error
+        raise DependencyUnavailableError() from error
 
 
 DatabaseReadyDependency = Annotated[None, Depends(require_database)]
