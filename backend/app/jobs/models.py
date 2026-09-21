@@ -7,6 +7,7 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     LargeBinary,
@@ -20,6 +21,110 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.base import Base
 
 type JsonValue = str | int | bool | None
+
+
+class ResourceComponentPolicy(Base):
+    __tablename__ = "resource_component_policies"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id",
+            "component_key",
+            name="resource_component_policies_owner_component_key",
+        ),
+        UniqueConstraint(
+            "owner_id",
+            "id",
+            name="resource_component_policies_owner_id_key",
+        ),
+        CheckConstraint(
+            "component_key ~ '^[a-z][a-z0-9_.:-]{0,127}$'",
+            name="resource_component_policies_component_key_check",
+        ),
+        CheckConstraint(
+            "cost_class IN ('local', 'zero_price', 'free_credit', 'paid', 'unknown')",
+            name="resource_component_policies_cost_class_check",
+        ),
+        CheckConstraint(
+            "NOT enabled_for_core OR cost_class IN ('local', 'zero_price')",
+            name="resource_component_policies_core_cost_check",
+        ),
+        CheckConstraint(
+            "policy_version >= 1",
+            name="resource_component_policies_version_check",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at",
+            name="resource_component_policies_updated_at_check",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id", ondelete="CASCADE"))
+    component_key: Mapped[str] = mapped_column(String(128))
+    component_version: Mapped[str] = mapped_column(String(128))
+    cost_class: Mapped[str] = mapped_column(String(32))
+    enabled_for_core: Mapped[bool]
+    terms_reference: Mapped[str] = mapped_column(String(512))
+    reviewed_at: Mapped[datetime]
+    policy_version: Mapped[int] = mapped_column(BigInteger, server_default=text("1"))
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]
+
+
+class ResourceUsageAttempt(Base):
+    __tablename__ = "resource_usage_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id",
+            "attempt_id",
+            name="resource_usage_attempts_owner_attempt_key",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "component_policy_id"],
+            ["resource_component_policies.owner_id", "resource_component_policies.id"],
+            ondelete="CASCADE",
+            name="resource_usage_attempts_owner_policy_fkey",
+        ),
+        CheckConstraint(
+            "usage_kind IN ('network_request', 'analysis_attempt')",
+            name="resource_usage_attempts_kind_check",
+        ),
+        CheckConstraint(
+            "stage ~ '^[a-z][a-z0-9_.:-]{0,127}$'",
+            name="resource_usage_attempts_stage_check",
+        ),
+        CheckConstraint(
+            "outcome IN ('started', 'succeeded', 'failed', 'filtered', 'empty')",
+            name="resource_usage_attempts_outcome_check",
+        ),
+        CheckConstraint(
+            "(outcome = 'started' AND finished_at IS NULL) OR "
+            "(outcome <> 'started' AND finished_at IS NOT NULL)",
+            name="resource_usage_attempts_finished_pair_check",
+        ),
+        CheckConstraint(
+            "finished_at IS NULL OR finished_at >= started_at",
+            name="resource_usage_attempts_finished_at_check",
+        ),
+        Index(
+            "resource_usage_attempts_operation_idx",
+            "owner_id",
+            "operation_id",
+            "started_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID]
+    attempt_id: Mapped[UUID]
+    operation_id: Mapped[UUID]
+    component_policy_id: Mapped[UUID]
+    component_version: Mapped[str] = mapped_column(String(128))
+    usage_kind: Mapped[str] = mapped_column(String(32))
+    stage: Mapped[str] = mapped_column(String(128))
+    outcome: Mapped[str] = mapped_column(String(32), server_default=text("'started'"))
+    started_at: Mapped[datetime]
+    finished_at: Mapped[datetime | None]
 
 
 class Job(Base):

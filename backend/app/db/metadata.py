@@ -7,7 +7,14 @@ from evidence.models import (
     SourceAccessPolicy,
 )
 from identity.models import IdentitySession, IdentityUser
-from jobs.models import Job, JobAttempt, OutboxMessage, ProcessedMessage
+from jobs.models import (
+    Job,
+    JobAttempt,
+    OutboxMessage,
+    ProcessedMessage,
+    ResourceComponentPolicy,
+    ResourceUsageAttempt,
+)
 
 # Import each domain's models here for runtime mapping and clean-database verification.
 # DDL ownership remains exclusively in database/schema.sql.
@@ -23,6 +30,8 @@ __all__ = [
     "JobAttempt",
     "OutboxMessage",
     "ProcessedMessage",
+    "ResourceComponentPolicy",
+    "ResourceUsageAttempt",
     "RetentionPolicy",
     "SourceAccessPolicy",
     "metadata",

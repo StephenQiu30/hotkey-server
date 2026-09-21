@@ -7,19 +7,42 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from core.errors import ApplicationError
 from jobs.execution import ScheduleWindow, scheduled_operation_id
-from jobs.models import Job, OutboxMessage
-from jobs.schemas import JobAcceptanceInput, JobStatus, JobView
+from jobs.models import Job, OutboxMessage, ResourceComponentPolicy, ResourceUsageAttempt
+from jobs.schemas import (
+    ComponentPolicyInput,
+    ComponentPolicyView,
+    CostClass,
+    JobAcceptanceInput,
+    JobStatus,
+    JobView,
+    UsageAttemptInput,
+    UsageAttemptView,
+    UsageOutcome,
+    UsageSummaryView,
+)
 
 JOB_ACCEPTED_EVENT_TYPE = "job.accepted.v1"
 JOB_ACCEPTED_TOPIC = "hotkey.jobs.accepted.v1"
 
 type PublishOutbox = Callable[["OutboxEnvelope"], None]
+
+
+class ResourceBudgetError(RuntimeError):
+    """Base class for resource policy and metering conflicts."""
+
+
+class ComponentPolicyUnavailableError(ResourceBudgetError):
+    """The requested component is absent or not eligible for the core path."""
+
+
+class UsageConflictError(ResourceBudgetError):
+    """An attempt identifier was replayed with conflicting data or outcome."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +71,252 @@ def fingerprint_request(command: JobAcceptanceInput) -> bytes:
         sort_keys=True,
     )
     return hashlib.sha256(canonical.encode()).digest()
+
+
+class ResourceBudgetService:
+    _CORE_COST_CLASSES = frozenset({CostClass.LOCAL.value, CostClass.ZERO_PRICE.value})
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def save_component_policy(
+        self,
+        *,
+        owner_id: UUID,
+        command: ComponentPolicyInput,
+    ) -> ComponentPolicyView:
+        now = datetime.now(UTC)
+        self._session.rollback()
+        with self._session.begin():
+            statement = insert(ResourceComponentPolicy).values(
+                id=uuid4(),
+                owner_id=owner_id,
+                component_key=command.component_key,
+                component_version=command.component_version,
+                cost_class=command.cost_class.value,
+                enabled_for_core=command.enabled_for_core,
+                terms_reference=command.terms_reference,
+                reviewed_at=command.reviewed_at,
+                policy_version=1,
+                created_at=now,
+                updated_at=now,
+            )
+            policy_id = self._session.scalar(
+                statement.on_conflict_do_update(
+                    constraint="resource_component_policies_owner_component_key",
+                    set_={
+                        "component_version": statement.excluded.component_version,
+                        "cost_class": statement.excluded.cost_class,
+                        "enabled_for_core": statement.excluded.enabled_for_core,
+                        "terms_reference": statement.excluded.terms_reference,
+                        "reviewed_at": statement.excluded.reviewed_at,
+                        "policy_version": ResourceComponentPolicy.policy_version + 1,
+                        "updated_at": now,
+                    },
+                    where=or_(
+                        ResourceComponentPolicy.component_version
+                        != statement.excluded.component_version,
+                        ResourceComponentPolicy.cost_class != statement.excluded.cost_class,
+                        ResourceComponentPolicy.enabled_for_core
+                        != statement.excluded.enabled_for_core,
+                        ResourceComponentPolicy.terms_reference
+                        != statement.excluded.terms_reference,
+                        ResourceComponentPolicy.reviewed_at != statement.excluded.reviewed_at,
+                    ),
+                ).returning(ResourceComponentPolicy.id)
+            )
+            if policy_id is None:
+                model = self._session.scalar(
+                    select(ResourceComponentPolicy).where(
+                        ResourceComponentPolicy.owner_id == owner_id,
+                        ResourceComponentPolicy.component_key == command.component_key,
+                    )
+                )
+            else:
+                model = self._session.get(ResourceComponentPolicy, policy_id)
+            if model is None:
+                raise RuntimeError("saved component policy is not visible")
+            view = self._policy_view(model)
+        return view
+
+    def begin_attempt(
+        self,
+        *,
+        owner_id: UUID,
+        command: UsageAttemptInput,
+    ) -> UsageAttemptView:
+        self._session.rollback()
+        with self._session.begin():
+            existing = self._session.scalar(
+                select(ResourceUsageAttempt).where(
+                    ResourceUsageAttempt.owner_id == owner_id,
+                    ResourceUsageAttempt.attempt_id == command.attempt_id,
+                )
+            )
+            if existing is not None:
+                self._require_same_attempt(existing, command)
+                return self._attempt_view(existing)
+
+            policy = self._session.scalar(
+                select(ResourceComponentPolicy)
+                .where(
+                    ResourceComponentPolicy.owner_id == owner_id,
+                    ResourceComponentPolicy.component_key == command.component_key,
+                )
+                .with_for_update()
+            )
+            if (
+                policy is None
+                or not policy.enabled_for_core
+                or policy.cost_class not in self._CORE_COST_CLASSES
+            ):
+                raise ComponentPolicyUnavailableError(
+                    "component is not enabled for zero-cost core execution"
+                )
+
+            usage_id = uuid4()
+            inserted_id = self._session.scalar(
+                insert(ResourceUsageAttempt)
+                .values(
+                    id=usage_id,
+                    owner_id=owner_id,
+                    attempt_id=command.attempt_id,
+                    operation_id=command.operation_id,
+                    component_policy_id=policy.id,
+                    component_version=policy.component_version,
+                    usage_kind=command.usage_kind.value,
+                    stage=command.stage,
+                    outcome=UsageOutcome.STARTED.value,
+                    started_at=command.started_at,
+                    finished_at=None,
+                )
+                .on_conflict_do_nothing(constraint="resource_usage_attempts_owner_attempt_key")
+                .returning(ResourceUsageAttempt.id)
+            )
+            if inserted_id is not None:
+                model = self._session.get(ResourceUsageAttempt, inserted_id)
+            else:
+                model = self._session.scalar(
+                    select(ResourceUsageAttempt).where(
+                        ResourceUsageAttempt.owner_id == owner_id,
+                        ResourceUsageAttempt.attempt_id == command.attempt_id,
+                    )
+                )
+                if model is None:
+                    raise RuntimeError("conflicting usage attempt is not visible")
+                self._require_same_attempt(model, command)
+            if model is None:
+                raise RuntimeError("inserted usage attempt is not visible")
+            view = self._attempt_view(model)
+        return view
+
+    def finish_attempt(
+        self,
+        *,
+        owner_id: UUID,
+        attempt_id: UUID,
+        outcome: UsageOutcome,
+        finished_at: datetime,
+    ) -> UsageAttemptView:
+        if outcome is UsageOutcome.STARTED:
+            raise ValueError("finish outcome must be terminal")
+        if finished_at.tzinfo is None:
+            raise ValueError("finished_at must be timezone-aware")
+
+        self._session.rollback()
+        with self._session.begin():
+            model = self._session.scalar(
+                select(ResourceUsageAttempt)
+                .where(
+                    ResourceUsageAttempt.owner_id == owner_id,
+                    ResourceUsageAttempt.attempt_id == attempt_id,
+                )
+                .with_for_update()
+            )
+            if model is None:
+                raise ComponentPolicyUnavailableError("usage attempt is not available")
+            if model.outcome == UsageOutcome.STARTED.value:
+                if finished_at < model.started_at:
+                    raise ValueError("finished_at cannot precede started_at")
+                model.outcome = outcome.value
+                model.finished_at = finished_at
+            elif model.outcome != outcome.value:
+                raise UsageConflictError("attempt already has another terminal outcome")
+            view = self._attempt_view(model)
+        return view
+
+    def usage_summary(self, *, owner_id: UUID, operation_id: UUID) -> UsageSummaryView:
+        outcomes = list(
+            self._session.scalars(
+                select(ResourceUsageAttempt.outcome).where(
+                    ResourceUsageAttempt.owner_id == owner_id,
+                    ResourceUsageAttempt.operation_id == operation_id,
+                )
+            )
+        )
+        self._session.rollback()
+        counts = {outcome.value: outcomes.count(outcome.value) for outcome in UsageOutcome}
+        return UsageSummaryView(
+            owner_id=owner_id,
+            operation_id=operation_id,
+            total_attempts=len(outcomes),
+            started_attempts=counts[UsageOutcome.STARTED.value],
+            succeeded_attempts=counts[UsageOutcome.SUCCEEDED.value],
+            failed_attempts=counts[UsageOutcome.FAILED.value],
+            filtered_attempts=counts[UsageOutcome.FILTERED.value],
+            empty_attempts=counts[UsageOutcome.EMPTY.value],
+        )
+
+    def _require_same_attempt(
+        self,
+        model: ResourceUsageAttempt,
+        command: UsageAttemptInput,
+    ) -> None:
+        component_key = self._session.scalar(
+            select(ResourceComponentPolicy.component_key).where(
+                ResourceComponentPolicy.owner_id == model.owner_id,
+                ResourceComponentPolicy.id == model.component_policy_id,
+            )
+        )
+        if (
+            component_key != command.component_key
+            or model.operation_id != command.operation_id
+            or model.usage_kind != command.usage_kind.value
+            or model.stage != command.stage
+        ):
+            raise UsageConflictError("attempt identifier already has other data")
+
+    @staticmethod
+    def _policy_view(model: ResourceComponentPolicy) -> ComponentPolicyView:
+        return ComponentPolicyView(
+            id=model.id,
+            owner_id=model.owner_id,
+            component_key=model.component_key,
+            component_version=model.component_version,
+            cost_class=CostClass(model.cost_class),
+            enabled_for_core=model.enabled_for_core,
+            terms_reference=model.terms_reference,
+            reviewed_at=model.reviewed_at,
+            policy_version=model.policy_version,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+        )
+
+    @staticmethod
+    def _attempt_view(model: ResourceUsageAttempt) -> UsageAttemptView:
+        return UsageAttemptView(
+            id=model.id,
+            owner_id=model.owner_id,
+            attempt_id=model.attempt_id,
+            operation_id=model.operation_id,
+            component_policy_id=model.component_policy_id,
+            component_version=model.component_version,
+            usage_kind=model.usage_kind,
+            stage=model.stage,
+            outcome=model.outcome,
+            started_at=model.started_at,
+            finished_at=model.finished_at,
+        )
 
 
 class JobService:

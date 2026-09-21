@@ -210,6 +210,58 @@ CREATE TABLE evidence_cleanup_targets (
 CREATE INDEX evidence_cleanup_targets_claim_idx
     ON evidence_cleanup_targets (status, next_attempt_at);
 
+CREATE TABLE resource_component_policies (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    component_key VARCHAR(128) NOT NULL CHECK (
+        component_key ~ '^[a-z][a-z0-9_.:-]{0,127}$'
+    ),
+    component_version VARCHAR(128) NOT NULL CHECK (component_version <> ''),
+    cost_class VARCHAR(32) NOT NULL CHECK (
+        cost_class IN ('local', 'zero_price', 'free_credit', 'paid', 'unknown')
+    ),
+    enabled_for_core BOOLEAN NOT NULL,
+    terms_reference VARCHAR(512) NOT NULL CHECK (terms_reference <> ''),
+    reviewed_at TIMESTAMPTZ NOT NULL,
+    policy_version BIGINT NOT NULL DEFAULT 1 CHECK (policy_version >= 1),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT resource_component_policies_owner_component_key
+        UNIQUE (owner_id, component_key),
+    CONSTRAINT resource_component_policies_owner_id_key UNIQUE (owner_id, id),
+    CHECK (NOT enabled_for_core OR cost_class IN ('local', 'zero_price'))
+);
+
+CREATE TABLE resource_usage_attempts (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    attempt_id UUID NOT NULL,
+    operation_id UUID NOT NULL,
+    component_policy_id UUID NOT NULL,
+    component_version VARCHAR(128) NOT NULL CHECK (component_version <> ''),
+    usage_kind VARCHAR(32) NOT NULL CHECK (
+        usage_kind IN ('network_request', 'analysis_attempt')
+    ),
+    stage VARCHAR(128) NOT NULL CHECK (stage ~ '^[a-z][a-z0-9_.:-]{0,127}$'),
+    outcome VARCHAR(32) NOT NULL DEFAULT 'started' CHECK (
+        outcome IN ('started', 'succeeded', 'failed', 'filtered', 'empty')
+    ),
+    started_at TIMESTAMPTZ NOT NULL,
+    finished_at TIMESTAMPTZ,
+    CONSTRAINT resource_usage_attempts_owner_attempt_key UNIQUE (owner_id, attempt_id),
+    CONSTRAINT resource_usage_attempts_owner_policy_fkey
+        FOREIGN KEY (owner_id, component_policy_id)
+        REFERENCES resource_component_policies (owner_id, id) ON DELETE CASCADE,
+    CHECK (
+        (outcome = 'started' AND finished_at IS NULL)
+        OR (outcome <> 'started' AND finished_at IS NOT NULL)
+    ),
+    CHECK (finished_at IS NULL OR finished_at >= started_at)
+);
+
+CREATE INDEX resource_usage_attempts_operation_idx
+    ON resource_usage_attempts (owner_id, operation_id, started_at);
+
 CREATE TABLE jobs (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,

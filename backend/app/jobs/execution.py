@@ -17,6 +17,7 @@ type CheckpointValue = str | int | bool | None
 type Clock = Callable[[], datetime]
 
 _SCHEDULE_NAMESPACE = UUID("3e9db697-785d-4d82-a152-66dd5266ee9a")
+_RESOURCE_ATTEMPT_NAMESPACE = UUID("f41e16e5-70e2-47fb-b5db-b216f4c03c4e")
 _MAX_CHECKPOINT_ITEMS = 32
 _STABLE_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_.:-]{0,127}$")
 
@@ -121,6 +122,27 @@ def scheduled_operation_id(
         separators=(",", ":"),
     )
     return uuid5(_SCHEDULE_NAMESPACE, identity)
+
+
+def resource_attempt_id(
+    *,
+    operation_id: UUID,
+    component_key: str,
+    stage: str,
+    sequence: int,
+) -> UUID:
+    if _STABLE_KEY_PATTERN.fullmatch(component_key) is None:
+        raise ValueError("component_key must be a stable lowercase identifier")
+    if _STABLE_KEY_PATTERN.fullmatch(stage) is None:
+        raise ValueError("stage must be a stable lowercase identifier")
+    if sequence < 1:
+        raise ValueError("sequence must be positive")
+    identity = json.dumps(
+        [str(operation_id), component_key, stage, sequence],
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+    return uuid5(_RESOURCE_ATTEMPT_NAMESPACE, identity)
 
 
 def _validate_checkpoint(checkpoint: Mapping[str, CheckpointValue]) -> dict[str, CheckpointValue]:
