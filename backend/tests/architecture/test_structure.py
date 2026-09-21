@@ -72,6 +72,25 @@ def test_schema_modules_do_not_depend_on_http_or_orm() -> None:
         assert not any(name.startswith(("fastapi", "starlette", "sqlalchemy")) for name in imports)
 
 
+def test_source_contracts_do_not_depend_on_runtime_or_business_domains() -> None:
+    imports = _imports(APP / "sources" / "contracts.py")
+    forbidden = (
+        "api",
+        "db",
+        "evidence",
+        "jobs",
+        "worker",
+        "fastapi",
+        "httpx",
+        "sqlalchemy",
+        "starlette",
+    )
+
+    assert not any(
+        name == prefix or name.startswith(f"{prefix}.") for name in imports for prefix in forbidden
+    )
+
+
 def test_application_errors_are_registered_without_http_status() -> None:
     error = ApplicationError(next(iter(ERROR_CATEGORIES)))
 

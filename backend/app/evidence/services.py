@@ -39,8 +39,8 @@ from evidence.schemas import (
     RetentionPolicyView,
     SourceAccessPolicyInput,
     SourceAccessPolicyView,
-    SourceCapability,
 )
+from sources.contracts import SourceCapability
 
 type Clock = Callable[[], datetime]
 

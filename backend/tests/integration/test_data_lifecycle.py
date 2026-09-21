@@ -25,7 +25,6 @@ from evidence.schemas import (
     DeletionReason,
     RetentionPolicyInput,
     SourceAccessPolicyInput,
-    SourceCapability,
 )
 from evidence.services import (
     CleanupProcessor,
@@ -35,6 +34,7 @@ from evidence.services import (
     SourceAccessPolicyService,
     SourceAccessUnavailableError,
 )
+from sources.contracts import SourceCapability
 
 
 @dataclass(frozen=True, slots=True)

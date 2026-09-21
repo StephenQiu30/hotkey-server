@@ -14,9 +14,9 @@ from evidence.schemas import (
     DataClass,
     RetentionPolicyInput,
     SourceAccessPolicyInput,
-    SourceCapability,
 )
 from evidence.services import effective_retention_days, minimize_payload, retry_delay
+from sources.contracts import SourceCapability
 
 
 def _approved_input(**changes: object) -> SourceAccessPolicyInput:

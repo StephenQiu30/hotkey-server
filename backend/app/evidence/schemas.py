@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from sources.contracts import SourceCapability
+
 type AdmittedScalar = str | int | float | bool | None
 type AdmittedValue = AdmittedScalar | list[AdmittedScalar]
 
@@ -27,13 +29,6 @@ _SECRET_FIELD_NAMES = frozenset(
         "token",
     }
 )
-
-
-class SourceCapability(StrEnum):
-    SEARCH = "search"
-    AUTHOR_POSTS = "author_posts"
-    COMMENTS = "comments"
-    REPLIES = "replies"
 
 
 class AccessPolicyStatus(StrEnum):
