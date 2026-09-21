@@ -1,3 +1,4 @@
+from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
@@ -21,9 +22,13 @@ class PageView[OutputT](OutputModel):
     next_cursor: str | None
 
 
+class JobAcceptanceStatus(StrEnum):
+    QUEUED = "queued"
+
+
 class JobAcceptedView(OutputModel):
     job_id: UUID
-    status: Literal["queued"]
+    status: JobAcceptanceStatus
 
 
 class ValidationErrorItem(OutputModel):

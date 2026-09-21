@@ -26,6 +26,10 @@ class JobStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class CollectionJobKind(StrEnum):
+    MONITOR_COLLECT = "monitor.collect"
+
+
 class OperationalTaskStatus(StrEnum):
     QUEUED = "queued"
     DELAYED = "delayed"
@@ -319,6 +323,10 @@ class JobObservationContext(BaseModel):
         return self
 
 
+class CollectionJobObservationInput(JobObservationContext):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=False)
+
+
 class StageAttemptInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
@@ -513,11 +521,18 @@ class JobAcceptanceInput(BaseModel):
         return value
 
 
-class JobView(BaseModel):
+class CollectionJobInput(JobAcceptanceInput):
+    kind: CollectionJobKind
+    observation: CollectionJobObservationInput
+
+    def to_acceptance(self) -> JobAcceptanceInput:
+        return JobAcceptanceInput.model_validate(self.model_dump())
+
+
+class JobStatusView(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID
-    owner_id: UUID
     operation_id: UUID
     kind: str
     observation: JobObservationContext
@@ -526,6 +541,10 @@ class JobView(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
+
+
+class JobView(JobStatusView):
+    owner_id: UUID
 
 
 class JobAcceptedMessage(BaseModel):

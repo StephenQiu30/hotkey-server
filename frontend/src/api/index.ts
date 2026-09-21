@@ -4,7 +4,9 @@
 // API 唯一标识：
 import * as xitongzhuangtai from "./xitongzhuangtai";
 import * as identity from "./identity";
+import * as caijirenwu from "./caijirenwu";
 export default {
   xitongzhuangtai,
   identity,
+  caijirenwu,
 };

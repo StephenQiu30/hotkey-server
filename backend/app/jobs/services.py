@@ -45,6 +45,7 @@ from jobs.schemas import (
     JobStage,
     JobStageOutcome,
     JobStatus,
+    JobStatusView,
     JobView,
     OperationalSnapshot,
     OperationalSummary,
@@ -1186,6 +1187,21 @@ class JobService:
 
         return view
 
+    def get_status(self, *, owner_id: UUID, job_id: UUID) -> JobStatusView:
+        model = self._session.scalar(
+            select(Job).where(
+                Job.owner_id == owner_id,
+                Job.id == job_id,
+            )
+        )
+        if model is None:
+            self._session.rollback()
+            raise ApplicationError("resource_not_found")
+        try:
+            return self._status_view(model)
+        finally:
+            self._session.rollback()
+
     def accept_schedule_window(
         self,
         *,
@@ -1226,6 +1242,20 @@ class JobService:
         return JobView(
             id=model.id,
             owner_id=model.owner_id,
+            operation_id=model.operation_id,
+            kind=model.kind,
+            observation=JobObservationService._observation(model),
+            status=JobStatus(model.status),
+            scheduled_for_at=model.scheduled_for_at,
+            started_at=model.started_at,
+            completed_at=model.completed_at,
+            created_at=model.created_at,
+        )
+
+    @staticmethod
+    def _status_view(model: Job) -> JobStatusView:
+        return JobStatusView(
+            id=model.id,
             operation_id=model.operation_id,
             kind=model.kind,
             observation=JobObservationService._observation(model),

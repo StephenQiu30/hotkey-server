@@ -71,9 +71,11 @@
 
 **[032 计划](docs/plans/032-备份与恢复计划.md) S00/S01 已完成，Plan 保持 in_progress。** 维护 CLI 已增加 `backup create-candidate`，复用 PostgreSQL 18.4 官方 `pg_dump`/`pg_restore` 与现有 MinIO SDK：数据库归档、19 表计数和证据引用基于同一导出快照，清单记录 schema/归档 SHA-256、对象 present/missing/deleted 三态及 `0700/0600` 权限；临时 passfile 不把密码放入 argv、环境或候选包。复用现有 `.env` 和已启动服务，专用 5 tests、后端全量 114 tests、12 个架构测试及静态门禁通过，未新增 DDL、依赖、Compose、脚本、HTTP/UI。MinIO 内容仍未复制，输出明确 `candidate`、`inventory_only`、`restore_verified=false`；S02—S04、独立介质、真实恢复、删除重放、B0 与 032 产品 AC 仍为 0/6，未建立 Acceptance。
 
+**[009 计划](docs/plans/009-采集任务控制计划.md) S00/S01 已完成，Plan 保持 in_progress。** 新增 `POST /api/jobs` 与 owner 隔离 `GET /api/jobs/{job_id}`，持久提交后返回 202/Location，重复三次只保留一个 job/Outbox，冲突复用返回 409；运行时 OpenAPI 已生成 Web 客户端。复用现有服务并将忽略提交的 `backend/.env` 映射到项目专用 `hotkey_dev_test` 及现有 Redis/Kafka/MinIO，未启动或重启服务。专用 6 tests、后端全量 120 tests、前端 15 tests 与静态/生产构建门禁通过；无 DDL、依赖、Compose、脚本或页面。S02—S04、真实处理器/来源、任务页与 009 产品 0/6 AC 仍待执行，未建立 Acceptance。
+
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 按 BACKLOG 进入 B03，继续推进 009 S00/S01；先冻结采集任务创建、暂停/继续/取消与运行记录边界。031 S03 留在 M5 长时可靠性阶段继续。
+1. 按 BACKLOG 继续 B03 的 009 S02；先冻结进度、取消意图、在途请求与已写入结果边界。031 S03 留在 M5 长时可靠性阶段继续。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
@@ -86,4 +88,4 @@
 
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 
-本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 028/029/032/034/035/038/039 S00/S01、027 S00 与 031/036/037 S00—S02，在真实 PostgreSQL、既有 Redis/MinIO/Kafka 及浏览器中验证身份/授权、任务可靠性、生命周期、全尝试计量、分层预算预留、纯来源契约、任务关联/统计口径、不可变溯源清单、分阶段时间链与候选备份。当前后端 114 tests、前端 13 tests 及适用静态/构建门禁通过。未执行业务消息处理、真实来源探测、SDK 内部计量、真实评分/模型记录、独立对象备份/真实恢复、最后成功/延期/缺口/陈旧传播、036/037 S03/S04、028/029/032/038/039 S02—S04、完整 B0 或产品 Acceptance。
+本轮新增执行唯一 Compose 构建与真实 PostgreSQL/Redis/Kafka、空库初始化、API/Web 健康、同源代理、空 Worker、资源快照和部署态 OpenAPI 检查；随后交付 009/028/029/032/034/035/038/039 S00/S01、027 S00 与 031/036/037 S00—S02，在真实 PostgreSQL、既有 Redis/MinIO/Kafka 及浏览器中验证身份/授权、任务持久受理/读取与可靠性、生命周期、全尝试计量、分层预算预留、纯来源契约、任务关联/统计口径、不可变溯源清单、分阶段时间链与候选备份。当前后端 120 tests、前端 15 tests 及适用静态/构建门禁通过。未执行业务消息处理、任务进度/取消/重试页面、真实来源探测、SDK 内部计量、真实评分/模型记录、独立对象备份/真实恢复、最后成功/延期/缺口/陈旧传播、009 S02—S04、036/037 S03/S04、028/029/032/038/039 S02—S04、完整 B0 或产品 Acceptance。
