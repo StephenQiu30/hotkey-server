@@ -23,11 +23,11 @@
 
 ### 逐项需求交付台账
 
-003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 草案与执行计划；009/027/028/029/031/032/034/035/036/037/038/039/042 为 in_progress 且已有 accepted Design，其余为 planned；尚未建立对应 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
+003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 与执行计划；003/009/027/028/029/031/032/034/035/036/037/038/039/042 为 in_progress 且已有 accepted Design，其余为 planned；尚未建立对应 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
 
 | 编号 | PRD 主题 | 来源需求 | 优先级 | PRD 状态 | Plan |
 |---|---|---|---|---|---|
-| 003 | [监控主题管理](prd/003-监控主题管理.md) | FR-001-001 | P0 | draft | [计划](plans/003-监控主题管理计划.md) · planned |
+| 003 | [监控主题管理](prd/003-监控主题管理.md) | FR-001-001 | P0 | accepted | [设计](design/003-监控主题管理设计.md) · accepted；[计划](plans/003-监控主题管理计划.md) · in_progress |
 | 004 | [平台与连接管理](prd/004-平台与连接管理.md) | FR-001-002 | P0 | draft | [计划](plans/004-平台与连接管理计划.md) · planned |
 | 005 | [关键词主动发现](prd/005-关键词主动发现.md) | FR-001-003 | P0 | draft | [计划](plans/005-关键词主动发现计划.md) · planned |
 | 006 | [指定用户作品追踪](prd/006-指定用户作品追踪.md) | FR-001-004 | P0 | draft | [计划](plans/006-指定用户作品追踪计划.md) · planned |

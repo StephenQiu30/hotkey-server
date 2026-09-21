@@ -73,9 +73,11 @@
 
 **[009 计划](docs/plans/009-采集任务控制计划.md) S00—S03 已完成，Plan 保持 in_progress。** S03 已实现结构化失败、来源有限策略、PostgreSQL attempt/job/Inbox/Outbox 同事务延期、`dispatch_sequence`/`available_at`、严格联合消息、到期发布及 `POST /api/jobs/{job_id}/retry`。受控验证得到 delayed/delayed/failed、权限错误零自动重投、同一消息三次重放只转换一次、Outbox 到期只发布一次，手动重试重复点击幂等。详情页展示失败分类、稳定代码、下一动作/时间和重试入口；真实点击后同一 job 转 queued，次数 1→2，桌面/390×844 与未登录边界通过。继续复用现有 env 及 PostgreSQL/Redis/Kafka/MinIO，未新增依赖、服务、脚本或 `.sh`；QA 数据已清理。后端 132 tests、前端 15 tests、静态检查、OpenAPI 生成与生产构建通过，G3/G4 已勾选。真实处理器/来源、S04 与产品 0/6 AC 仍待执行，未建立 Acceptance。
 
+**[003 计划](docs/plans/003-监控主题管理计划.md) S00 已完成，Plan 进入 in_progress。** PRD v1.2 与 Design v1.0 已冻结 S01 的 NFKC/大小写/空白规范化、OR/AND/排除优先、不可变规则版本、owner/CSRF、三个 HTTP 操作、创建/编辑页与 12 组固定样本。新建主题在没有来源目录证据前只能为 paused/pending source，不虚构平台、回溯、频率或预算默认值。S00 未改代码、DDL 或运行服务，产品 AC 仍为 0/6，未建立 Acceptance。
+
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 按 B03 顺序进入 003 S01；009 S04 等待真实处理器和来源样本后逐项执行，031 S03 留在 M5 长时可靠性阶段继续。
+1. 按 B03 顺序进入 003 S01 Red；009 S04 等待真实处理器和来源样本后逐项执行，031 S03 留在 M5 长时可靠性阶段继续。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
