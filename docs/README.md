@@ -1,6 +1,6 @@
 # HotKey 文档索引
 
-当前为需求/设计复核与工程底座补齐阶段。已有部分工程实现，业务闭环尚未验收；43 项逐项 PRD 仍为草案。2026-09-21 已核对现有代码并修正计划基线、目录与契约引用。
+当前为需求/设计复核与工程底座补齐阶段。已有部分工程实现，业务闭环尚未验收；43 项逐项 PRD 仍为草案。2026-09-21 已建立 proposed 总体 Design，并完成 046 公共技术前置；首批来源和产品范围仍待评审。
 
 总体实施顺序与进度见 [BACKLOG](../BACKLOG.md)，具体任务和阶段 checklist 见 [执行计划索引](plans/README.md)。
 
@@ -12,7 +12,7 @@
 
 | 编号 | 主题 | Research | PRD | Design | Plan / Acceptance |
 |---|---|---|---|---|---|
-| 001 | 热点事件监控平台 | [鱼皮项目功能对照调研](research/001-热点事件监控平台调研.md) · draft | [功能与非功能需求](prd/001-热点事件监控平台功能与非功能需求.md) · draft | 尚未建立总体设计 | [总计划](plans/001-热点事件监控平台总计划.md) · in_progress；Acceptance 未建立 |
+| 001 | 热点事件监控平台 | [鱼皮项目功能对照调研](research/001-热点事件监控平台调研.md) · draft | [功能与非功能需求](prd/001-热点事件监控平台功能与非功能需求.md) · draft | [总体设计](design/001-热点事件监控平台总体设计.md) · proposed | [总计划](plans/001-热点事件监控平台总计划.md) · in_progress；Acceptance 未建立 |
 | 002 | X 免费采集与热点监控专项 | 一手资料包含在专项设计 | 尚未建立独立专项 PRD；受 001 总体需求约束 | [专项设计](design/002-X免费采集与热点监控设计.md) · proposed | [专项计划](plans/002-X免费采集与热点监控计划.md) · planned；Acceptance 未建立 |
 | 043 | 模型服务接入与模型配置 | [OpenRouter / Vercel / 本地模型调研](research/043-模型服务接入与模型配置调研.md) · draft | [模型配置 PRD](prd/043-模型服务接入与模型配置.md) · draft | [模型服务设计](design/043-模型服务接入与模型配置设计.md) · proposed | [执行计划](plans/043-模型服务接入与模型配置计划.md) · planned；Acceptance 未建立 |
 | 044 | 模型平台信息采集与变更监控 | [调研](research/044-模型平台信息采集与变更监控调研.md) · draft | [PRD](prd/044-模型平台信息采集与变更监控.md) · draft | [设计](design/044-模型平台信息采集与变更监控设计.md) · proposed | [计划](plans/044-模型平台信息采集与变更监控计划.md) · planned；Acceptance 未建立 |
