@@ -28,13 +28,17 @@ def owner_client() -> Iterator[TestClient]:
     )
     engine = create_engine(database_url)
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE identity_sessions, identity_users"))
+        connection.execute(
+            text("TRUNCATE outbox_messages, jobs, identity_sessions, identity_users")
+        )
     try:
         with TestClient(create_app(settings)) as client:
             yield client
     finally:
         with engine.begin() as connection:
-            connection.execute(text("TRUNCATE identity_sessions, identity_users"))
+            connection.execute(
+                text("TRUNCATE outbox_messages, jobs, identity_sessions, identity_users")
+            )
         engine.dispose()
 
 

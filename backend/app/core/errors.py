@@ -23,6 +23,7 @@ ERROR_CATEGORIES: Mapping[str, ErrorCategory] = MappingProxyType(
         "database_unavailable": ErrorCategory.DEPENDENCY_UNAVAILABLE,
         "identity_already_initialized": ErrorCategory.CONFLICT,
         "identity_not_initialized": ErrorCategory.NOT_FOUND,
+        "idempotency_conflict": ErrorCategory.CONFLICT,
         "invalid_credentials": ErrorCategory.AUTHENTICATION,
         "invalid_password": ErrorCategory.INVALID_INPUT,
         "invalid_session": ErrorCategory.AUTHENTICATION,

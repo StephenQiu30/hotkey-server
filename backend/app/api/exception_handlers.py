@@ -52,6 +52,7 @@ APPLICATION_ERRORS: Mapping[str, PublicError] = {
         "使用者已完成初始化",
     ),
     "identity_not_initialized": PublicError(404, "identity_not_initialized", "使用者尚未初始化"),
+    "idempotency_conflict": PublicError(409, "idempotency_conflict", "操作标识已用于其他请求"),
     "invalid_credentials": PublicError(401, "invalid_credentials", "用户名或密码错误"),
     "invalid_password": PublicError(422, "invalid_password", "密码不符合安全要求"),
     "invalid_session": PublicError(401, "invalid_session", "会话无效或已过期"),

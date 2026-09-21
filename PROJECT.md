@@ -191,7 +191,7 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 2. 业务变更与 Outbox 写入同一 PostgreSQL 事务。独立发布器可靠地发送到 Kafka；消费者允许重复读取，以消息 ID、数据库唯一约束和业务状态保证幂等。
 3. 消费者在业务事务提交后提交连续完成位置的 offset；处理并发时不得越过尚未完成的记录。Kafka 事务不能直接保证 PostgreSQL 副作用的原子性。[Kafka 消息交付语义](https://kafka.apache.org/41/design/design/)
 4. Redis 的数据丢失不能导致任务或证据丢失。缓存设有效期与失效规则；限流故障时采用明确的保守策略。执行权、不可超额预算与撤权不能只依赖 Redis 锁或缓存。
-5. `worker/` 维护 Kafka 客户端和消费者生命周期，`jobs/` 维护任务状态机；拟定入口 `python -m worker`。在 031/042 设计中明确 topic、partition key、consumer group、重试、死信、延迟/周期调度和再均衡处理，不能把 Kafka 当作已有任务调度器。
+5. `worker/` 维护 Kafka 客户端和消费者生命周期，`jobs/` 维护任务状态机；入口 `python -m worker`。031 S01 已冻结并实现 `hotkey.jobs.accepted.v1` outbox 与任务 ID 分区键，但尚无发布器或消费者；S02 继续明确 consumer group、inbox/offset、执行权、检查点、再均衡和有限调度恢复，S03 再实现重试、死信和度量，不能把 Kafka 当作已有任务调度器。
 6. API、Worker 各自创建数据库连接池和消息客户端，Session 不跨线程/任务共享。同步数据库调用不直接放入异步路由。
 7. FastAPI 从路由装饰器、类型注解和 Pydantic 模型自动生成 `/openapi.json`。它是唯一 API 契约视图；Swagger UI、Scalar、Umi OpenAPI 和 Flutter 客户端共用该地址，不维护独立契约文件。客户端由生成命令更新，CI 负责自动生成与差异检查。
 8. 数据库结构只由 `backend/database/schema.sql` 定义，SQLAlchemy Model 必须与其同批更新。当前不支持存量库自动就地升级；保留数据时采用备份、全新建库、完整建表和校验后导入流程。
@@ -205,7 +205,7 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 
 ## 5. 实施与验证
 
-按总体 Design → 需求/Plan → 失败验证 → 实现 → 回归/Acceptance 推进。研究、范围和设计可先开展；[046 前置计划](docs/plans/046-全局异常与响应契约前置计划.md) S03 已于 2026-09-21 通过，后续端点持续受同一契约和 CI 门禁约束。下一步先完成 [001 总计划](docs/plans/001-热点事件监控平台总计划.md) B00 总体/先行 Design 与来源条件登记，再通过 [042](docs/plans/042-容量与部署可重复性计划.md) 扩展底座、根 Compose 和真实依赖；[031](docs/plans/031-可靠执行与幂等计划.md) 承接 Kafka 消费和恢复语义。046 不替代总体/领域设计，不把技术前置通过视作产品验收。
+按总体 Design → 需求/Plan → 失败验证 → 实现 → 回归/Acceptance 推进。研究、范围和设计可先开展；[046 前置计划](docs/plans/046-全局异常与响应契约前置计划.md) S03 已于 2026-09-21 通过，后续端点持续受同一契约和 CI 门禁约束。[042](docs/plans/042-容量与部署可重复性计划.md) S00/S01 已交付底座，[031](docs/plans/031-可靠执行与幂等计划.md) S00/S01 已交付持久受理与事务 outbox，下一步由 031 S02 承接 Kafka 发布/消费、执行权和恢复语义。001 B00 的外部来源条件继续登记，不阻塞内部领域切片；技术前置通过不等于产品验收。
 
 交付前执行后端 Ruff、mypy、pytest、OpenAPI 漂移与客户端生成检查，以及前端 ESLint、Prettier、类型检查、生产构建和浏览器验证。集成测试使用隔离的 PostgreSQL、Redis、Kafka，并验证重复事件、提交后中断、消费者再均衡、Redis 失效和任务恢复。
 
