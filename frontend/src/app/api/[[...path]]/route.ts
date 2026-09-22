@@ -99,7 +99,7 @@ function createProxyError(status: 502 | 504): Response {
   });
 }
 
-export async function proxyApiRequest(
+async function proxyApiRequest(
   request: Request,
   context: ApiRouteContext,
 ): Promise<Response> {

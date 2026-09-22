@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { proxyApiRequest } from "./route";
+import * as route from "./route";
 
 const ORIGINAL_API_ORIGIN = process.env.HOTKEY_API_ORIGIN;
 
@@ -34,6 +34,18 @@ async function close(server: Server): Promise<void> {
 }
 
 describe("API route proxy", () => {
+  it("exports only supported HTTP handlers", () => {
+    expect(Object.keys(route).sort()).toEqual([
+      "DELETE",
+      "GET",
+      "HEAD",
+      "OPTIONS",
+      "PATCH",
+      "POST",
+      "PUT",
+    ]);
+  });
+
   it("streams payloads and preserves credentials and response headers", async () => {
     let receivedBody = "";
     let receivedAuthorization = "";
@@ -61,7 +73,7 @@ describe("API route proxy", () => {
     process.env.HOTKEY_API_ORIGIN = `http://127.0.0.1:${port}`;
 
     try {
-      const response = await proxyApiRequest(
+      const response = await route.POST(
         new Request("http://web.test/api/files/example?download=1", {
           body: "payload",
           headers: {
@@ -104,7 +116,7 @@ describe("API route proxy", () => {
     await close(server);
     process.env.HOTKEY_API_ORIGIN = `http://127.0.0.1:${port}`;
 
-    const response = await proxyApiRequest(
+    const response = await route.GET(
       new Request("http://web.test/api/health", {
         headers: {
           "X-Request-ID": "0125d835-4eab-4e6b-86fe-f5aa94fd9e50",
@@ -126,7 +138,7 @@ describe("API route proxy", () => {
       vi.fn().mockRejectedValue(new DOMException("secret", "TimeoutError")),
     );
 
-    const response = await proxyApiRequest(
+    const response = await route.GET(
       new Request("http://web.test/api/health"),
       { params: Promise.resolve({ path: ["health"] }) },
     );
