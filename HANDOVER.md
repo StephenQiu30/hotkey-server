@@ -2,13 +2,15 @@
 
 更新日期：2026-09-23。
 
-## 本地网页与浏览器采集 S01 / S02 / S03-T00/T01
+## 本地网页与浏览器采集 S01 / S02 / S03-T00/T01、T02 局部
 
 已建立 [047 Research](docs/research/047-本地网页与浏览器采集调研.md)、[047 Design](docs/design/047-本地网页与浏览器采集设计.md) 与 [047 Plan](docs/plans/047-本地网页与浏览器采集计划.md)。Design 已接受 S00/S01/S02 网页业务闭环及 S03-T00/T01 浏览器基础，Plan 为 in_progress，G1/G2/G3/G4-001 已关闭，产品 AC 仍为 0/8。`web` 已具备无凭据版本、精确允许域名、collector_call、类型化 API→Outbox→Kafka→Worker→Firecrawl→webpage 原子结果与恢复；现有内容页可提交 URL，任务页可取消、手动重试、显示部分状态并打开持久资料。用户明确 B站、小红书、抖音、微博评论均必需，后续按四平台独立完成评论路径。
 
 调研发现小红书 0 值配置文档与源码不一致、微博候选缺楼中楼继续分页、opencli B站评论仅单页；MediaCrawler 的置顶漏采已修复但许可证限制仍需遵循，Nemo2011/bilibili-api 已关停。S03-T00 在相同受控页面比较 Scrapling 0.4.15 与直接 Playwright：两者均可展开并保留字符串 ID，但 Scrapling 动作失败/超时仍返回 200、自适应误认另一评论 ID，默认记录完整 URL。选用 Playwright 1.63.0 原生 WS 单浏览器拓扑，不引入 Scrapling/Selector/CDP。S03-T01 已构建非 root、sandbox、只读、内部 WS 且默认断网的 browser；Worker 一次性容器的无网络探针成功，公网/宿主数据库端点不可达。Linux-arm64 Docker Desktop 证据不代替生产主机或真实平台验收。
 
-S01 已增加独立 `page_content` 文档契约、精确域名/默认端口目标约束、固定 `firecrawl/2.11.162` HTTPX 适配器、配置及 DDL 能力同步；`python -m cli sources probe-webpage` 只做显式、无持久化诊断，不输出目标和正文。独立 Firecrawl `main` 的 `6d9fb16` 完成中央日志脱敏、Playwright 原始请求日志移除和出站目标加固，只原位恢复既有两个容器并复用宿主依赖。HotKey CLI 的普通页 180 字符、动态页 1574 字符、私网拒绝和日志 query 标记 0 命中通过。S02 已将类型化 `webpage.collect` 接入真实 Kafka/Worker/Firecrawl，调用前锁定租约、连接/域名、政策/保留和预算，调用后结算 collector attempt，并把正文/观察/发现、生命周期、能力证据和 checkpoint 原子提交；任务状态暴露 `result_content_id`。真实 PostgreSQL 用例覆盖消息重放、换版、限流、未知 kind、partial、结算前与页提交后中断恢复，显式 live Kafka 链实际读取当前 Firecrawl 的 `example.com`。内容页新增 URL 表单，任务页可取消、手动重试、显示部分状态并打开结果；桌面/390×844、双击单请求、operation ID 重试、CSRF 请求头和 axe 0 violation 已验证。后端全量 310 tests、前端 35 tests 及静态/契约/构建通过。尚无受控动态动作/会话、真实平台评论证据或 Acceptance。
+S01 已增加独立 `page_content` 文档契约、精确域名/默认端口目标约束、固定 `firecrawl/2.11.162` HTTPX 适配器、配置及 DDL 能力同步；`python -m cli sources probe-webpage` 只做显式、无持久化诊断，不输出目标和正文。独立 Firecrawl `main` 的 `6d9fb16` 完成中央日志脱敏、Playwright 原始请求日志移除和出站目标加固，只原位恢复既有两个容器并复用宿主依赖。HotKey CLI 的普通页 180 字符、动态页 1574 字符、私网拒绝和日志 query 标记 0 命中通过。S02 已将类型化 `webpage.collect` 接入真实 Kafka/Worker/Firecrawl，调用前锁定租约、连接/域名、政策/保留和预算，调用后结算 collector attempt，并把正文/观察/发现、生命周期、能力证据和 checkpoint 原子提交；任务状态暴露 `result_content_id`。真实 PostgreSQL 用例覆盖消息重放、换版、限流、未知 kind、partial、结算前与页提交后中断恢复，显式 live Kafka 链实际读取当前 Firecrawl 的 `example.com`。内容页新增 URL 表单，任务页可取消、手动重试、显示部分状态并打开结果；桌面/390×844、双击单请求、operation ID 重试、CSRF 请求头和 axe 0 violation 已验证。此前后端全量 310 tests、前端 35 tests 及静态/契约/构建通过。尚无会话、真实平台评论证据或 Acceptance。
+
+S03-T02 的受控动态交互子片已用现有断网 browser 内网通过 2 项 live 测试：内存页面输入、滚动、展开、有限页结束、无限分页显式上限，以及新 context 不继承前一 context 的 Cookie/localStorage。没有新服务或真实平台请求。连接状态文件/人工登录 CLI、认证失效、取消/崩溃与版本拒写仍待实现，因此 T02、G4-002 和 EV-047-005 未关闭。
 
 ## 当前结构
 
@@ -91,7 +93,7 @@ S01 已增加独立 `page_content` 文档契约、精确域名/默认端口目�
 
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 047 S02 网页业务闭环及 S03-T00/T01 浏览器基础已完成：固定 Playwright Python/Server 1.63.0 原生 WS，browser 默认断网且非 root/sandbox，暂不引入 Scrapling/Selector/CDP。下一步严格进入 S03-T02，验证动态动作、独立 context、会话状态及取消/换版；平台出站仍须独立安全门禁。不得把内部无网络探针当作四平台评论或产品 Acceptance，产品 AC 仍为 0/8。
+1. 047 S02 网页业务闭环及 S03-T00/T01 浏览器基础已完成：固定 Playwright Python/Server 1.63.0 原生 WS，browser 默认断网且非 root/sandbox，暂不引入 Scrapling/Selector/CDP。S03-T02 受控动态动作与 context 隔离已局部验证；下一步仍需连接状态、人工登录 CLI、认证失效及取消/换版门禁，平台出站须另行通过安全验证。不得把内部无网络探针当作四平台评论或产品 Acceptance，产品 AC 仍为 0/8。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。

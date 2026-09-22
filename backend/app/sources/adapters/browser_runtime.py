@@ -52,9 +52,7 @@ class BrowserRuntime:
                 self._ws_url, timeout=self._connect_timeout_ms
             )
             try:
-                context = await browser.new_context(
-                    accept_downloads=False, service_workers="block"
-                )
+                context = await browser.new_context(accept_downloads=False, service_workers="block")
                 try:
                     yield context
                 finally:

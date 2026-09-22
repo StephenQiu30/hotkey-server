@@ -62,9 +62,7 @@ def test_browser_runtime_closes_context_and_connection_on_failure(
     asyncio.run(run())
 
     playwright.chromium.connect.assert_awaited_once_with("ws://browser:3000/", timeout=1500)
-    browser.new_context.assert_awaited_once_with(
-        accept_downloads=False, service_workers="block"
-    )
+    browser.new_context.assert_awaited_once_with(accept_downloads=False, service_workers="block")
     context.close.assert_awaited_once()
     browser.close.assert_awaited_once()
 
