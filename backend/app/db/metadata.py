@@ -1,3 +1,8 @@
+from connections.models import (
+    SourceCapabilityEvidence,
+    SourceConnection,
+    SourceConnectionVersion,
+)
 from db.base import Base
 from evidence.models import (
     CleanupTarget,
@@ -49,5 +54,8 @@ __all__ = [
     "ResourceUsageAttempt",
     "RetentionPolicy",
     "SourceAccessPolicy",
+    "SourceCapabilityEvidence",
+    "SourceConnection",
+    "SourceConnectionVersion",
     "metadata",
 ]

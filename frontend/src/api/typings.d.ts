@@ -289,6 +289,13 @@ declare namespace HotKeyAPI {
     next_cursor: string | null;
   };
 
+  type PageViewSourcePlatformView_ = {
+    /** Items */
+    items: SourcePlatformView[];
+    /** Next Cursor */
+    next_cursor: string | null;
+  };
+
   type pauseMonitorTopicParams = {
     topic_id: string;
   };
@@ -304,6 +311,72 @@ declare namespace HotKeyAPI {
   };
 
   type SourceCapability = "search" | "author_posts" | "comments" | "replies";
+
+  type SourceCapabilityStatus =
+    | "unconfigured"
+    | "pending_verification"
+    | "available"
+    | "authentication_required"
+    | "restricted"
+    | "disabled";
+
+  type SourceCapabilityView = {
+    capability: SourceCapability;
+    /** Display Name */
+    display_name: string;
+    manual: SourceEntryPointView;
+    scheduled: SourceEntryPointView;
+  };
+
+  type SourceEntryPointView = {
+    status: SourceCapabilityStatus;
+    /** Last Checked At */
+    last_checked_at: string | null;
+    /** Last Persisted Success At */
+    last_persisted_success_at: string | null;
+    stop_reason: SourceStopReason | null;
+    /** Next Action */
+    next_action: string;
+  };
+
+  type SourcePlatformStatus =
+    | "unconfigured"
+    | "pending_verification"
+    | "available"
+    | "authentication_required"
+    | "restricted"
+    | "disabled"
+    | "partial";
+
+  type SourcePlatformView = {
+    /** Source Key */
+    source_key: string;
+    /** Display Name */
+    display_name: string;
+    rollout_role: SourceRolloutRole;
+    status: SourcePlatformStatus;
+    /** Connection Version */
+    connection_version: number | null;
+    /** Has Credentials */
+    has_credentials: boolean;
+    /** Capabilities */
+    capabilities: SourceCapabilityView[];
+  };
+
+  type SourceRolloutRole = "required" | "candidate";
+
+  type SourceStopReason =
+    | "end_of_results"
+    | "source_empty"
+    | "rate_limited"
+    | "authentication_required"
+    | "access_denied"
+    | "not_found"
+    | "unsupported"
+    | "cancelled"
+    | "budget_exhausted"
+    | "upstream_error"
+    | "protocol_error";
 
   type updateMonitorTopicParams = {
     topic_id: string;

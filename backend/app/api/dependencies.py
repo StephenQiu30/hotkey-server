@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from connections.services import SourceConnectionService
 from core.errors import DependencyUnavailableError
 from identity.services import AuthenticatedIdentity, IdentityService
 from jobs.services import JobService
@@ -60,6 +61,16 @@ def get_monitor_topic_service(session: SessionDependency) -> MonitorTopicService
 MonitorTopicServiceDependency = Annotated[
     MonitorTopicService,
     Depends(get_monitor_topic_service),
+]
+
+
+def get_source_connection_service(session: SessionDependency) -> SourceConnectionService:
+    return SourceConnectionService(session)
+
+
+SourceConnectionServiceDependency = Annotated[
+    SourceConnectionService,
+    Depends(get_source_connection_service),
 ]
 
 _SESSION_COOKIE = APIKeyCookie(

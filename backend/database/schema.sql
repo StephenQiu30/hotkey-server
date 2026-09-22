@@ -75,6 +75,109 @@ CREATE TABLE monitor_topic_versions (
 CREATE INDEX monitor_topic_versions_created_by_idx
     ON monitor_topic_versions (created_by);
 
+CREATE TABLE source_connections (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    source_key VARCHAR(64) NOT NULL CHECK (
+        source_key ~ '^[a-z][a-z0-9_-]{0,63}$'
+    ),
+    status VARCHAR(16) NOT NULL CHECK (status IN ('active', 'disabled')),
+    current_version INTEGER NOT NULL DEFAULT 1 CHECK (current_version >= 1),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT source_connections_owner_source_key UNIQUE (owner_id, source_key),
+    CONSTRAINT source_connections_owner_id_key UNIQUE (owner_id, id)
+);
+
+CREATE TABLE source_connection_versions (
+    connection_id UUID NOT NULL,
+    version INTEGER NOT NULL CHECK (version >= 1),
+    owner_id UUID NOT NULL,
+    secret_ref VARCHAR(256) NOT NULL CHECK (
+        secret_ref ~ '^[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9_./:-]+$'
+    ),
+    created_by UUID NOT NULL REFERENCES identity_users (id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (connection_id, version),
+    CONSTRAINT source_connection_versions_owner_connection_version_key
+        UNIQUE (owner_id, connection_id, version),
+    CONSTRAINT source_connection_versions_owner_connection_fkey
+        FOREIGN KEY (owner_id, connection_id)
+        REFERENCES source_connections (owner_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX source_connection_versions_created_by_idx
+    ON source_connection_versions (created_by);
+
+ALTER TABLE source_connections
+    ADD CONSTRAINT source_connections_current_version_fkey
+    FOREIGN KEY (owner_id, id, current_version)
+    REFERENCES source_connection_versions (owner_id, connection_id, version)
+    DEFERRABLE INITIALLY DEFERRED;
+
+CREATE TABLE source_capability_evidence (
+    id UUID PRIMARY KEY,
+    operation_id UUID NOT NULL,
+    owner_id UUID NOT NULL,
+    connection_id UUID NOT NULL,
+    connection_version INTEGER NOT NULL CHECK (connection_version >= 1),
+    capability VARCHAR(32) NOT NULL CHECK (
+        capability IN ('search', 'author_posts', 'comments', 'replies')
+    ),
+    entry_point VARCHAR(16) NOT NULL CHECK (
+        entry_point IN ('manual', 'scheduled')
+    ),
+    kind VARCHAR(32) NOT NULL CHECK (kind IN ('probe', 'persisted_read')),
+    outcome VARCHAR(16) NOT NULL CHECK (outcome IN ('succeeded', 'failed')),
+    stop_reason VARCHAR(32) CHECK (
+        stop_reason IS NULL
+        OR stop_reason IN (
+            'end_of_results',
+            'source_empty',
+            'rate_limited',
+            'authentication_required',
+            'access_denied',
+            'not_found',
+            'unsupported',
+            'cancelled',
+            'budget_exhausted',
+            'upstream_error',
+            'protocol_error'
+        )
+    ),
+    resource_ref VARCHAR(512),
+    component_name VARCHAR(128) NOT NULL,
+    component_version VARCHAR(64) NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT source_capability_evidence_owner_operation_key
+        UNIQUE (owner_id, operation_id),
+    CONSTRAINT source_capability_evidence_connection_version_fkey
+        FOREIGN KEY (owner_id, connection_id, connection_version)
+        REFERENCES source_connection_versions (owner_id, connection_id, version)
+        ON DELETE CASCADE,
+    CHECK (
+        (outcome = 'succeeded' AND stop_reason IS NULL)
+        OR (outcome = 'failed' AND stop_reason IS NOT NULL)
+    ),
+    CHECK (kind <> 'probe' OR resource_ref IS NULL),
+    CHECK (
+        kind <> 'persisted_read'
+        OR outcome <> 'succeeded'
+        OR resource_ref IS NOT NULL
+    )
+);
+
+CREATE INDEX source_capability_evidence_latest_idx
+    ON source_capability_evidence (
+        owner_id,
+        connection_id,
+        connection_version,
+        capability,
+        entry_point,
+        observed_at
+    );
+
 CREATE TABLE source_access_policies (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,

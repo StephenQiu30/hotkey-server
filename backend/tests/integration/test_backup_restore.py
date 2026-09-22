@@ -49,7 +49,8 @@ def backup_environment() -> Iterator[tuple[str, Minio, str, str]]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE provenance_manifest_inputs, provenance_manifests, "
+                "TRUNCATE source_capability_evidence, source_connection_versions, "
+                "source_connections, provenance_manifest_inputs, provenance_manifests, "
                 "evidence_cleanup_targets, evidence_deletions, evidence_resources, "
                 "evidence_retention_policies, source_access_policies, "
                 "resource_budget_reservations, resource_budget_windows, "
@@ -129,7 +130,8 @@ def backup_environment() -> Iterator[tuple[str, Minio, str, str]]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE provenance_manifest_inputs, provenance_manifests, "
+                    "TRUNCATE source_capability_evidence, source_connection_versions, "
+                    "source_connections, provenance_manifest_inputs, provenance_manifests, "
                     "evidence_cleanup_targets, evidence_deletions, evidence_resources, "
                     "evidence_retention_policies, source_access_policies, "
                     "resource_budget_reservations, resource_budget_windows, "

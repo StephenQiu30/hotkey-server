@@ -93,6 +93,28 @@ CLEANUP_LEASE_DURATION = timedelta(minutes=5)
 MAX_CLEANUP_ATTEMPTS = 6
 
 
+def load_source_access_readiness(
+    session: Session,
+    *,
+    owner_id: UUID,
+    now: datetime,
+) -> dict[tuple[str, SourceCapability], bool]:
+    """Return current source-policy readiness without owning the caller's transaction."""
+    policies = session.scalars(
+        select(SourceAccessPolicy).where(SourceAccessPolicy.owner_id == owner_id)
+    )
+    return {
+        (policy.source_key, SourceCapability(policy.capability)): (
+            policy.status == AccessPolicyStatus.APPROVED.value
+            and policy.enabled
+            and policy.reviewed_at is not None
+            and policy.reviewed_at <= now
+            and (policy.review_expires_at is None or policy.review_expires_at > now)
+        )
+        for policy in policies
+    }
+
+
 def _is_admitted_scalar(value: object) -> TypeGuard[AdmittedScalar]:
     return value is None or isinstance(value, (str, int, float, bool))
 

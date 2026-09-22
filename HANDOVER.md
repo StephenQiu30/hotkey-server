@@ -25,7 +25,7 @@
 - `app/api/` 统一管理路由、依赖、中间件、异常与文档；提供 `/api/health`、数据库 `/api/ready`、`/openapi.json`、`/docs` 和 `/scalar`。
 - `app/core/` 管理 `HOTKEY_` 配置、结构化日志、公共错误和 Pydantic 基类；`app/db/` 管理唯一 DeclarativeBase、Engine、Session 和运行时模型元数据。
 - `database/schema.sql` 是唯一数据库结构事实源，仅用于全新空库。项目没有 Alembic、revision 目录或应用启动建表逻辑。
-- 业务领域目录不提前创建空包；当前实际领域为 `identity`、`jobs`、`sources`、`evidence`、`backups`、`monitors`，其余 `ai`、`audit` 等候选主责遵循 `PROJECT.md`，具体切片落地时再创建实际文件。
+- 业务领域目录不提前创建空包；当前实际领域为 `identity`、`jobs`、`sources`、`evidence`、`backups`、`monitors`、`connections`，其余 `ai`、`audit` 等候选主责遵循 `PROJECT.md`，具体切片落地时再创建实际文件。
 - `python -m worker` 是 Kafka Worker 入口。已有 outbox 发布、手动 offset、inbox、租约/检查点恢复的运行装配；尚无具体业务消息处理器时安全退出，不订阅或提交任何消息。处理器只能在对应任务设计完成后注册。
 - `python -m cli` 是 Typer 管理入口。`tests/unit`、`tests/integration`、`tests/architecture` 分别承载规则、HTTP 契约和依赖边界验证。
 - `app/identity/` 已实现单 owner 初始化、Argon2 密码散列、服务端不透明会话、CSRF、注销和维护恢复；`python -m cli identity reset-password` 从隐藏交互输入读取新密码并撤销全部旧会话。
@@ -75,11 +75,11 @@
 
 **[003 计划](docs/plans/003-监控主题管理计划.md) S00—S03 已完成，Plan 保持 in_progress。** `monitors` 领域除本地规则和不可变版本外，已实现 owner UUID 游标列表、独立复制 v1/默认暂停、行锁启停/归档、ready 门禁、归档写保护，以及会话/CSRF 保护的纯本地规则预览。预览不回显标题样本、不写主题/版本/job、不调用来源；本地别名明确 0 查询/0 预算，上游查询和预算保持未知。浏览器验证发现并修复 Portal 内预览提交冒泡导致外层主题表单误提交。运行时 OpenAPI、生成客户端、工作台/详情及共用预览 Dialog 已闭环。后端 149 passed/4 skipped，前端 16 tests、静态检查、OpenAPI 漂移与生产构建通过；桌面/390×844 无横向溢出，axe 0 violation，修复后数据库为 0 主题/0 版本/0 job，QA 数据已清理。没有真实上游扩词、调度器、主题业务 job 或来源，单任务取消继续使用 009 入口；未新增依赖、DDL、服务、脚本或 `.sh`，产品 AC 仍为 0/6，未建立 Acceptance。
 
-**[004 计划](docs/plans/004-平台与连接管理计划.md) S00 已完成，Plan 进入 in_progress。** Design v1.0 冻结独立 `connections` 领域、平台静态目录、按能力及 `manual`/`scheduled` 入口状态、连接版本与追加式证据三表、只读 `GET /api/source-capabilities` 和 `/sources` 页面边界。可用状态必须同时具备当前连接版本的持久读取成功证据与当前已批准来源政策；探针成功不等于可用，秘密只保存引用。按 2026-09-22 官方资料，X 在零付费核心约束下记为 `restricted`，抖音仍是候选且搜索权限默认未开通。此切片仅修改文档，没有代码、DDL、环境变更、外部平台调用或新服务，真实连接/探针及产品 AC 仍为 0/6，未建立 Acceptance。
+**[004 计划](docs/plans/004-平台与连接管理计划.md) S00/S01 已完成，Plan 保持 in_progress。** `connections` 已实现 X/抖音静态目录、连接/不可变版本/追加式能力证据三表、当前准入政策与当前连接版本投影、按 `manual`/`scheduled` 分开的状态、会话保护的 `GET /api/source-capabilities`、生成客户端和 `/sources`。X 在零付费核心约束下固定 `restricted`；抖音默认未配置，只有当前版本的持久读取成功与当前批准政策才能把对应入口标为 `available`。专用 12 tests、后端全量 161 passed/4 skipped、前端 16 tests、静态门禁、生产构建及桌面/390×844 浏览器通过；axe WCAG A/AA 0 violation。开发/测试库按唯一 schema 重建为 24 表，QA 数据清理后开发库 0 行；普通 API/Web 已恢复。没有真实连接、探针、来源适配器、写 API、Worker 或外部请求，产品 AC 仍为 0/6，未建立 Acceptance。
 
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 按 B03 顺序进入 004 S01 Red，先用失败测试固定连接目录、版本/证据持久化、owner 隔离和只读能力 API；003 的真实上游扩词、调度/主题任务留待 S04 联验，009 S04 等待真实处理器和来源样本，031 S03 留在 M5 长时可靠性阶段继续。
+1. 按 B03 顺序进入 004 S02 Red，先用失败测试固定探针/持久读取证据登记及手动/定时入口一致性；003 的真实上游扩词、调度/主题任务留待 S04 联验，009 S04 等待真实处理器和来源样本，031 S03 留在 M5 长时可靠性阶段继续。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
@@ -92,4 +92,4 @@
 
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 
-本轮已交付 009 S00—S03、003 S00—S03 与 004 S00：前者覆盖持久任务受理/读取/取消、分类失败、有限重试与任务页；003 覆盖本地主题规则、不可变版本、创建/编辑、列表、独立复制、启停/归档和零写入预览；004 仅完成连接领域与状态证据边界设计。验证复用当前 PostgreSQL/Redis/Kafka/MinIO 与 env，未启动第二套依赖；003 S03 结束时后端 149 passed/4 skipped、前端 16 tests、OpenAPI 生成/漂移、生产构建、桌面/390×844 真实浏览器及 WCAG A/AA 通过。尚未执行真实业务处理器/来源、连接探针、上游扩词、SDK 内部计量、真实评分/模型记录、独立对象备份/真实恢复、最后成功/缺口/陈旧传播、003 S04、004 S01—S04、009 S04、完整 B0 或产品 Acceptance。
+本轮已交付 009 S00—S03、003 S00—S03 与 004 S00/S01：前者覆盖持久任务受理/读取/取消、分类失败、有限重试与任务页；003 覆盖本地主题规则、不可变版本、创建/编辑、列表、独立复制、启停/归档和零写入预览；004 覆盖连接领域、事实表、状态投影、只读 API 与来源能力页。验证复用当前 PostgreSQL/Redis/Kafka/MinIO 与 env，未启动第二套依赖；004 S01 结束时后端 161 passed/4 skipped、前端 16 tests、OpenAPI 生成、生产构建、桌面/390×844 真实浏览器及 WCAG A/AA 通过。尚未执行真实业务处理器/来源、连接探针、证据登记入口、上游扩词、SDK 内部计量、真实评分/模型记录、独立对象备份/真实恢复、最后成功/缺口/陈旧传播、003 S04、004 S02—S04、009 S04、完整 B0 或产品 Acceptance。
