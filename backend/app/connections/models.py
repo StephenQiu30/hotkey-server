@@ -91,13 +91,17 @@ class SourceConnectionVersion(Base):
             name="source_connection_versions_version_check",
         ),
         CheckConstraint(
-            "auth_kind IN ('none', 'server_credential')",
+            "auth_kind IN ('none', 'server_credential', 'browser_state')",
             name="source_connection_versions_auth_kind_check",
         ),
         CheckConstraint(
             "(auth_kind = 'none' AND secret_ref IS NULL) OR "
             "(auth_kind = 'server_credential' AND secret_ref IS NOT NULL AND "
-            "secret_ref ~ '^[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9_./:-]+$')",
+            "secret_ref ~ '^[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9_./:-]+$') OR "
+            "(auth_kind = 'browser_state' AND secret_ref IS NOT NULL AND "
+            "secret_ref = 'browser-state:' || "
+            "replace(owner_id::text, '-', '') || '/' || "
+            "replace(connection_id::text, '-', '') || '/' || version::text)",
             name="source_connection_versions_auth_secret_check",
         ),
         CheckConstraint(

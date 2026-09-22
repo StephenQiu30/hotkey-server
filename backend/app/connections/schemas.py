@@ -25,6 +25,7 @@ class SourceConnectionStatus(StrEnum):
 class SourceConnectionAuthKind(StrEnum):
     NONE = "none"
     SERVER_CREDENTIAL = "server_credential"
+    BROWSER_STATE = "browser_state"
 
 
 class SourceEntryPoint(StrEnum):

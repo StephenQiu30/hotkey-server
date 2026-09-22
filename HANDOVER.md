@@ -10,7 +10,9 @@
 
 S01 已增加独立 `page_content` 文档契约、精确域名/默认端口目标约束、固定 `firecrawl/2.11.162` HTTPX 适配器、配置及 DDL 能力同步；`python -m cli sources probe-webpage` 只做显式、无持久化诊断，不输出目标和正文。独立 Firecrawl `main` 的 `6d9fb16` 完成中央日志脱敏、Playwright 原始请求日志移除和出站目标加固，只原位恢复既有两个容器并复用宿主依赖。HotKey CLI 的普通页 180 字符、动态页 1574 字符、私网拒绝和日志 query 标记 0 命中通过。S02 已将类型化 `webpage.collect` 接入真实 Kafka/Worker/Firecrawl，调用前锁定租约、连接/域名、政策/保留和预算，调用后结算 collector attempt，并把正文/观察/发现、生命周期、能力证据和 checkpoint 原子提交；任务状态暴露 `result_content_id`。真实 PostgreSQL 用例覆盖消息重放、换版、限流、未知 kind、partial、结算前与页提交后中断恢复，显式 live Kafka 链实际读取当前 Firecrawl 的 `example.com`。内容页新增 URL 表单，任务页可取消、手动重试、显示部分状态并打开结果；桌面/390×844、双击单请求、operation ID 重试、CSRF 请求头和 axe 0 violation 已验证。此前后端全量 310 tests、前端 35 tests 及静态/契约/构建通过。尚无会话、真实平台评论证据或 Acceptance。
 
-S03-T02 的受控动态交互与离线状态子片已用现有断网 browser 内网通过 2 项 live 测试：内存页面输入、滚动、展开、有限页结束、无限分页显式上限；状态在临时 0700 目录以 owner/连接/版本不可变保存并显式加载到新 context，未传状态的新 context 不继承 Cookie/localStorage。状态存储单测覆盖 0600 文件、符号链接/宽权限/跨 owner 拒绝；没有永久平台秘密、新服务或真实平台请求。连接 `browser_state` 版本类型/人工登录 CLI、认证失效、取消/崩溃与版本拒写仍待实现，因此 T02、G4-002 和 EV-047-005 未关闭。
+S03-T02 的受控动态交互与离线状态子片已用现有断网 browser 内网通过 2 项 live 测试：内存页面输入、滚动、展开、有限页结束、无限分页显式上限；状态在临时 0700 目录以 owner/连接/版本不可变保存并显式加载到新 context，未传状态的新 context 不继承 Cookie/localStorage。状态存储单测覆盖 0600 文件、符号链接/宽权限/跨 owner 拒绝；没有永久平台秘密、新服务或真实平台请求。
+
+S03-T02 连接执行门禁又增加 `browser_state` DDL/ORM 精确引用约束与事务内当前版本、停用、认证失效、缺文件拒绝。在现有 PostgreSQL 的一次性空库应用完整 `schema.sql` 后，真实集成及后端全量 320 passed/2 skipped，Ruff/mypy 通过；库随验证删除并确认临时库 0 个，既有开发/测试库未改动。此实现仍无平台目录、人工登录/换版 CLI 或业务任务调用，不能当作真实会话可用。
 
 ## 当前结构
 
@@ -93,7 +95,7 @@ S03-T02 的受控动态交互与离线状态子片已用现有断网 browser 内
 
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 047 S02 网页业务闭环及 S03-T00/T01 浏览器基础已完成：固定 Playwright Python/Server 1.63.0 原生 WS，browser 默认断网且非 root/sandbox，暂不引入 Scrapling/Selector/CDP。S03-T02 受控动态动作、离线状态文件和 context 隔离已局部验证；下一步仍需连接 `browser_state` 版本与人工登录 CLI、认证失效及取消/换版门禁，平台出站须另行通过安全验证。不得把内部无网络探针当作四平台评论或产品 Acceptance，产品 AC 仍为 0/8。
+1. 047 S02 网页业务闭环及 S03-T00/T01 浏览器基础已完成：固定 Playwright Python/Server 1.63.0 原生 WS，browser 默认断网且非 root/sandbox，暂不引入 Scrapling/Selector/CDP。S03-T02 受控动态动作、离线状态文件和连接执行门禁已局部验证；下一步仍需人工登录/换版 CLI、取消/崩溃资源回收及平台出站安全验证。不得把内部无网络探针当作四平台评论或产品 Acceptance，产品 AC 仍为 0/8。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。

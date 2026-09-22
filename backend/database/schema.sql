@@ -94,7 +94,7 @@ CREATE TABLE source_connection_versions (
     version INTEGER NOT NULL CHECK (version >= 1),
     owner_id UUID NOT NULL,
     auth_kind VARCHAR(32) NOT NULL DEFAULT 'server_credential' CHECK (
-        auth_kind IN ('none', 'server_credential')
+        auth_kind IN ('none', 'server_credential', 'browser_state')
     ),
     secret_ref VARCHAR(256),
     configuration JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (
@@ -109,6 +109,14 @@ CREATE TABLE source_connection_versions (
             auth_kind = 'server_credential'
             AND secret_ref IS NOT NULL
             AND secret_ref ~ '^[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9_./:-]+$'
+        )
+        OR (
+            auth_kind = 'browser_state'
+            AND secret_ref IS NOT NULL
+            AND secret_ref = 'browser-state:'
+                || replace(owner_id::text, '-', '') || '/'
+                || replace(connection_id::text, '-', '') || '/'
+                || version::text
         )
     ),
     CONSTRAINT source_connection_versions_owner_connection_version_key

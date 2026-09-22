@@ -4,6 +4,7 @@ import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from threading import Event
 from uuid import UUID, uuid4
 
@@ -11,9 +12,11 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import IntegrityError
 from typer.testing import CliRunner
 
 from cli.commands import app as cli_app
+from connections.adapters.local_secrets import BrowserStateStore
 from connections.schemas import (
     ConnectionEvidenceOutcome,
     PersistedReadEvidenceInput,
@@ -26,6 +29,7 @@ from connections.schemas import (
 from connections.services import (
     SourceCapabilityEvidenceService,
     SourceConnectionService,
+    require_browser_state_execution,
     require_web_connection_execution,
     source_credential_reference,
 )
@@ -903,3 +907,145 @@ def test_disabled_connection_rejects_manual_retry_but_preserves_accepted_replay(
             session.scalar(text("SELECT status FROM jobs WHERE id = :id"), {"id": job_id})
             == "failed"
         )
+
+
+def test_browser_state_execution_requires_current_active_authenticated_version(
+    source_connection_client: TestClient, tmp_path: Path
+) -> None:
+    client = source_connection_client
+    owner_id = UUID(_initialize(client))
+    connection_id = uuid4()
+    root = tmp_path / "browser-states"
+    root.mkdir(mode=0o700)
+    store = BrowserStateStore(root)
+    state = {"cookies": [], "origins": []}
+    reference = store.save(owner_id=owner_id, connection_id=connection_id, version=1, state=state)
+    now = datetime.now(UTC)
+    factory = client.app.state.session_factory
+    with factory() as session, session.begin():
+        session.execute(
+            text(
+                "INSERT INTO source_connections "
+                "(id, owner_id, source_key, status, current_version, created_at, updated_at) "
+                "VALUES (:id, :owner_id, 'browser_fixture', 'active', 1, :now, :now)"
+            ),
+            {"id": connection_id, "owner_id": owner_id, "now": now},
+        )
+        session.execute(
+            text(
+                "INSERT INTO source_connection_versions "
+                "(connection_id, version, owner_id, auth_kind, secret_ref, created_by, "
+                "created_at) VALUES (:id, 1, :owner_id, 'browser_state', :reference, "
+                ":owner_id, :now)"
+            ),
+            {"id": connection_id, "owner_id": owner_id, "reference": reference, "now": now},
+        )
+
+    def read(version: int, *, owner: UUID = owner_id) -> dict[str, object]:
+        with factory() as session, session.begin():
+            return require_browser_state_execution(
+                session,
+                owner_id=owner,
+                connection_id=connection_id,
+                connection_version=version,
+                store=store,
+            )
+
+    assert read(1) == state
+    with pytest.raises(ApplicationError, match="resource_not_found"):
+        read(1, owner=uuid4())
+
+    second_reference = store.save(
+        owner_id=owner_id, connection_id=connection_id, version=2, state=state
+    )
+    with factory() as session, session.begin():
+        session.execute(
+            text(
+                "INSERT INTO source_connection_versions "
+                "(connection_id, version, owner_id, auth_kind, secret_ref, created_by, "
+                "created_at) VALUES (:id, 2, :owner_id, 'browser_state', :reference, "
+                ":owner_id, :now)"
+            ),
+            {
+                "id": connection_id,
+                "owner_id": owner_id,
+                "reference": second_reference,
+                "now": now,
+            },
+        )
+        session.execute(
+            text("UPDATE source_connections SET current_version = 2 WHERE id = :id"),
+            {"id": connection_id},
+        )
+    with pytest.raises(ApplicationError, match="connection_version_conflict"):
+        read(1)
+    assert read(2) == state
+
+    with factory() as session:
+        SourceCapabilityEvidenceService(session).record_probe(
+            owner_id=owner_id,
+            command=ProbeEvidenceInput(
+                operation_id=uuid4(),
+                connection_id=connection_id,
+                connection_version=2,
+                capability=SourceCapability.COMMENTS,
+                entry_point=SourceEntryPoint.MANUAL,
+                outcome=ConnectionEvidenceOutcome.FAILED,
+                stop_reason=SourceStopReason.AUTHENTICATION_REQUIRED,
+                component_name="browser-fixture",
+                component_version="1",
+            ),
+        )
+    with pytest.raises(ApplicationError, match="connection_authentication_required"):
+        read(2)
+
+    with factory() as session, session.begin():
+        session.execute(
+            text("UPDATE source_connections SET status = 'disabled' WHERE id = :id"),
+            {"id": connection_id},
+        )
+    with pytest.raises(ApplicationError, match="connection_disabled"):
+        read(2)
+
+    missing_reference = f"browser-state:{owner_id.hex}/{connection_id.hex}/3"
+    with factory() as session, session.begin():
+        session.execute(
+            text(
+                "INSERT INTO source_connection_versions "
+                "(connection_id, version, owner_id, auth_kind, secret_ref, created_by, "
+                "created_at) VALUES (:id, 3, :owner_id, 'browser_state', :reference, "
+                ":owner_id, :now)"
+            ),
+            {
+                "id": connection_id,
+                "owner_id": owner_id,
+                "reference": missing_reference,
+                "now": now,
+            },
+        )
+        session.execute(
+            text(
+                "UPDATE source_connections SET status = 'active', current_version = 3 "
+                "WHERE id = :id"
+            ),
+            {"id": connection_id},
+        )
+    with pytest.raises(ApplicationError, match="connection_credentials_missing"):
+        read(3)
+
+    for invalid_reference in (None, f"browser-state:{uuid4().hex}/{connection_id.hex}/4"):
+        with pytest.raises(IntegrityError), factory() as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO source_connection_versions "
+                    "(connection_id, version, owner_id, auth_kind, secret_ref, created_by, "
+                    "created_at) VALUES (:id, 4, :owner_id, 'browser_state', :reference, "
+                    ":owner_id, :now)"
+                ),
+                {
+                    "id": connection_id,
+                    "owner_id": owner_id,
+                    "reference": invalid_reference,
+                    "now": now,
+                },
+            )

@@ -6,11 +6,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from playwright.async_api import StorageState
 from pydantic import SecretStr
 from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from connections.adapters.local_secrets import BrowserStateError, BrowserStateStore
 from connections.catalog import CAPABILITY_LABELS, SOURCE_CATALOG, SourceCatalogEntry
 from connections.models import (
     SourceCapabilityEvidence,
@@ -761,12 +763,56 @@ def require_source_connection_enabled(
     )
     if connection is not None and connection.status == SourceConnectionStatus.DISABLED.value:
         raise ApplicationError("connection_disabled")
+    if connection is not None and _authentication_failed(session, connection):
+        raise ApplicationError("connection_authentication_required")
+
+
+def require_browser_state_execution(
+    session: Session,
+    *,
+    owner_id: UUID,
+    connection_id: UUID,
+    connection_version: int,
+    store: BrowserStateStore,
+) -> StorageState:
+    """Resolve only the current, active browser state inside the caller's transaction."""
+    connection = session.scalar(
+        select(SourceConnection)
+        .where(SourceConnection.owner_id == owner_id, SourceConnection.id == connection_id)
+        .with_for_update()
+    )
+    if connection is None:
+        raise ApplicationError("resource_not_found")
+    if connection.status == SourceConnectionStatus.DISABLED.value:
+        raise ApplicationError("connection_disabled")
+    if connection.current_version != connection_version:
+        raise ApplicationError("connection_version_conflict")
+    if _authentication_failed(session, connection):
+        raise ApplicationError("connection_authentication_required")
+    version = session.get(SourceConnectionVersion, (connection_id, connection_version))
     if (
-        connection is not None
-        and session.scalar(
+        version is None
+        or version.auth_kind != SourceConnectionAuthKind.BROWSER_STATE.value
+        or version.secret_ref is None
+    ):
+        raise ApplicationError("connection_credentials_missing")
+    try:
+        return store.load(
+            owner_id=owner_id,
+            connection_id=connection_id,
+            version=connection_version,
+            reference=version.secret_ref,
+        )
+    except BrowserStateError as error:
+        raise ApplicationError("connection_credentials_missing") from error
+
+
+def _authentication_failed(session: Session, connection: SourceConnection) -> bool:
+    return (
+        session.scalar(
             select(SourceCapabilityEvidence.id)
             .where(
-                SourceCapabilityEvidence.owner_id == owner_id,
+                SourceCapabilityEvidence.owner_id == connection.owner_id,
                 SourceCapabilityEvidence.connection_id == connection.id,
                 SourceCapabilityEvidence.connection_version == connection.current_version,
                 SourceCapabilityEvidence.stop_reason
@@ -775,5 +821,4 @@ def require_source_connection_enabled(
             .limit(1)
         )
         is not None
-    ):
-        raise ApplicationError("connection_authentication_required")
+    )
