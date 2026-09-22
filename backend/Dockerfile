@@ -1,5 +1,15 @@
 FROM ghcr.io/astral-sh/uv:0.11.32 AS uv
-FROM python:3.12-slim
+
+FROM mcr.microsoft.com/playwright:v1.63.0-noble AS browser
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN npm install --global playwright@1.63.0
+COPY browser/server.js /srv/browser/server.js
+USER pwuser
+WORKDIR /srv/browser
+EXPOSE 3000
+CMD ["node", "server.js"]
+
+FROM python:3.12-slim AS backend
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

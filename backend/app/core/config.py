@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     firecrawl_timeout_seconds: int = Field(default=20, ge=1, le=20)
     firecrawl_max_response_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=2 * 1024 * 1024)
 
+    browser_enabled: bool = False
+    browser_ws_url: str = "ws://browser:3000/"
+    browser_connect_timeout_seconds: int = Field(default=5, ge=1, le=10)
+
     minio_endpoint: str = "127.0.0.1:9000"
     minio_secure: bool = False
     minio_access_key: str = ""
@@ -83,6 +87,27 @@ class Settings(BaseSettings):
         ):
             raise ValueError("invalid Firecrawl base URL")
         return value.removesuffix("/")
+
+    @field_validator("browser_ws_url")
+    @classmethod
+    def validate_browser_ws_url(cls, value: str) -> str:
+        try:
+            parsed = urlsplit(value)
+            port = parsed.port
+        except ValueError as error:
+            raise ValueError("invalid browser WS URL") from error
+        if (
+            parsed.scheme not in {"ws", "wss"}
+            or parsed.hostname is None
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or port is None
+        ):
+            raise ValueError("invalid browser WS URL")
+        return value
 
     @field_validator("bootstrap_token", mode="before")
     @classmethod

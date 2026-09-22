@@ -198,7 +198,9 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 
 ## 4. 产品约束与未定事项
 
-本地网页与浏览器采集的设计见 [047 Design](docs/design/047-本地网页与浏览器采集设计.md)，实施拆分见 [047 Plan](docs/plans/047-本地网页与浏览器采集计划.md)。复用既有 Firecrawl 获取公开网页正文，平台交互固定选用 Playwright Python `1.63.0` 原生 WebSocket 与匹配版本的单 browser 服务；Scrapling 0.4.15、CDP 及自适应 Selector 不作为本期运行依赖。浏览器脚本归 `sources/adapters/`，业务执行与存储仍归 content/jobs/connections/evidence 及 Kafka/PostgreSQL，不另建队列或任务库。047 S00—S02 已交付单 URL 网页业务和用户闭环，S03-T00 完成受控选型；隔离浏览器、四平台评论与产品验收尚未完成。Python 依赖、镜像和隔离配置随 S03-T01 的真实调用者加入，不提前安装闲置包。
+本地网页与浏览器采集的设计见 [047 Design](docs/design/047-本地网页与浏览器采集设计.md)，实施拆分见 [047 Plan](docs/plans/047-本地网页与浏览器采集计划.md)。复用既有 Firecrawl 获取公开网页正文，平台交互固定选用 Playwright Python `1.63.0` 原生 WebSocket 与匹配版本的单 browser 服务；Scrapling 0.4.15、CDP 及自适应 Selector 不作为本期运行依赖。浏览器脚本归 `sources/adapters/`，业务执行与存储仍归 content/jobs/connections/evidence 及 Kafka/PostgreSQL，不另建队列或任务库。047 S00—S02 已交付单 URL 网页业务和用户闭环，S03-T00/T01 已交付受控选型与断网浏览器运行基础；平台会话、四平台评论与产品验收尚未完成。Playwright Python 包、镜像和隔离配置随 T01 真实 runtime/CLI 调用者加入。
+
+S03 browser 使用 `backend/Dockerfile` 的独立构建 target、`backend/browser/server.js` 和固定官方 seccomp；现有 API/Worker target 不安装浏览器二进制。根 Compose 的 browser 仅接入与 Worker 共享的 `internal` 网络，不发布端口、不挂业务卷、不连接数据库网络；默认无出站，已验证远程协议、非 root sandbox、context 与隔离。目标网站出站必须在后续平台适配器具备受控出口及请求计量后显式开放，不能以通用 Docker bridge 直通替代 SSRF 边界。
 
 - 复用现有 MinIO；内容来源采用免费或自建方案，只采集公开或获授权数据。X 为首版必需来源；2026-09-22 用户明确 B站、小红书、抖音、微博的评论与回复都需要，四个平台分别验收。已知作品 URL 评论路径可先于各平台全站搜索，不能以首个国内来源成功关闭四平台需求。契约见 [008 Design](docs/design/008-评论与回复采集设计.md)，候选与证据见 [047 Research](docs/research/047-本地网页与浏览器采集调研.md)。
 - twscrape 仍为 [002](docs/design/002-X免费采集与热点监控设计.md) 的验证候选；模型供应商、SDK、模型与设备仍按 [043](docs/design/043-模型服务接入与模型配置设计.md) 等专项处理，不能写成已接入。

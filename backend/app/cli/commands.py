@@ -1,9 +1,11 @@
+import asyncio
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 import typer
 from minio import Minio
+from playwright.async_api import Error as PlaywrightError
 from pydantic import ValidationError
 from redis import Redis
 
@@ -25,6 +27,7 @@ from evidence.adapters.minio import MinioObjectCleanup
 from evidence.schemas import CleanupTargetKind
 from evidence.services import CleanupProcessor, LifecycleService
 from identity.services import IdentityService
+from sources.adapters.browser_runtime import BrowserRuntime, BrowserRuntimeDisabledError
 from sources.adapters.firecrawl import FirecrawlAdapter
 from sources.contracts import SourceCapability, SourceStopReason, WebPageRequest
 
@@ -112,6 +115,31 @@ def probe_webpage(
         f"collector calls: {result.collector_call_count}; "
         f"target requests: {target_requests}"
     )
+
+
+@sources_app.command("probe-browser")
+def probe_browser() -> None:
+    """Verify the managed browser connection without visiting a target website."""
+    settings = get_settings()
+    runtime = BrowserRuntime(
+        ws_url=settings.browser_ws_url,
+        enabled=settings.browser_enabled,
+        connect_timeout_ms=settings.browser_connect_timeout_seconds * 1_000,
+    )
+
+    async def verify() -> None:
+        async with runtime.context() as context:
+            page = await context.new_page()
+            await page.set_content('<main data-hotkey-browser-probe="ready"></main>')
+            if await page.locator('[data-hotkey-browser-probe="ready"]').count() != 1:
+                raise ValueError("browser probe failed")
+
+    try:
+        asyncio.run(verify())
+    except (BrowserRuntimeDisabledError, PlaywrightError, TimeoutError, ValueError) as error:
+        typer.echo("Browser probe complete; status: failed", err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo("Browser probe complete; status: succeeded")
 
 
 @connections_app.command("record-probe")

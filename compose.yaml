@@ -5,6 +5,8 @@ x-backend-environment: &backend-environment
   HOTKEY_REDIS_URL: redis://redis:6379/0
   HOTKEY_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
   HOTKEY_SOURCE_CREDENTIALS: '${HOTKEY_SOURCE_CREDENTIALS:-{}}'
+  HOTKEY_BROWSER_ENABLED: ${HOTKEY_BROWSER_ENABLED:-false}
+  HOTKEY_BROWSER_WS_URL: ${HOTKEY_BROWSER_WS_URL:-ws://browser:3000/}
 
 x-backend-service: &backend-service
   build:
@@ -165,11 +167,54 @@ services:
       redis:
         condition: service_healthy
     profiles: ["worker"]
+    networks:
+      - default
+      - browser-internal
     deploy:
       resources:
         limits:
           cpus: "0.50"
           memory: 512M
+
+  browser:
+    build:
+      context: ./backend
+      target: browser
+    image: ${HOTKEY_BROWSER_IMAGE:-hotkey-browser:local}
+    init: true
+    user: pwuser
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=512m
+      - /home/pwuser:rw,nosuid,size=64m
+    shm_size: 512m
+    cap_drop: [ALL]
+    cap_add: [SYS_CHROOT]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:./backend/browser/seccomp.json
+    networks:
+      - browser-internal
+    profiles: ["browser"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect(3000,'127.0.0.1').on('connect',function(){this.end()}).on('error',()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 2G
+          pids: 256
 
   cli:
     <<: *backend-service
@@ -181,6 +226,10 @@ services:
         limits:
           cpus: "0.25"
           memory: 256M
+
+networks:
+  browser-internal:
+    internal: true
 
 volumes:
   kafka-data:
