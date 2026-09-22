@@ -31,7 +31,7 @@
 | 004 | [平台与连接管理](prd/004-平台与连接管理.md) | FR-001-002 | P0 | accepted | [设计](design/004-平台与连接管理设计.md) · accepted；[计划](plans/004-平台与连接管理计划.md) · in_progress（S00—S02，0/6 AC） |
 | 005 | [关键词主动发现](prd/005-关键词主动发现.md) | FR-001-003 | P0 | draft | [计划](plans/005-关键词主动发现计划.md) · planned |
 | 006 | [指定用户作品追踪](prd/006-指定用户作品追踪.md) | FR-001-004 | P0 | draft | [计划](plans/006-指定用户作品追踪计划.md) · planned |
-| 007 | [作品资料与上下文](prd/007-作品资料与上下文.md) | FR-001-005 | P0 | accepted | [设计](design/007-作品资料与上下文设计.md) · accepted；[计划](plans/007-作品资料与上下文计划.md) · in_progress（S00/S01，0/6 AC） |
+| 007 | [作品资料与上下文](prd/007-作品资料与上下文.md) | FR-001-005 | P0 | accepted | [设计](design/007-作品资料与上下文设计.md) · accepted（S00—S02）；[计划](plans/007-作品资料与上下文计划.md) · in_progress（S00/S01，0/6 AC） |
 | 008 | [评论与回复采集](prd/008-评论与回复采集.md) | FR-001-006 | P0 | draft | [计划](plans/008-评论与回复采集计划.md) · planned |
 | 009 | [采集任务控制](prd/009-采集任务控制.md) | FR-001-007 | P0 | draft | [设计](design/009-采集任务控制设计.md) · accepted；[计划](plans/009-采集任务控制计划.md) · in_progress |
 | 010 | [增量更新与历史回补](prd/010-增量更新与历史回补.md) | FR-001-008 | P0 | draft | [计划](plans/010-增量更新与历史回补计划.md) · planned |
