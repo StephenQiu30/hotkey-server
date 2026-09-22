@@ -14,6 +14,8 @@ S03-T02 的受控动态交互与离线状态子片已用现有断网 browser 内
 
 S03-T02 连接执行门禁又增加 `browser_state` DDL/ORM 精确引用约束与事务内当前版本、停用、认证失效、缺文件拒绝。在现有 PostgreSQL 的一次性空库应用完整 `schema.sql` 后，真实集成及后端全量 320 passed/2 skipped，Ruff/mypy 通过；库随验证删除并确认临时库 0 个，既有开发/测试库未改动。此实现仍无平台目录、人工登录/换版 CLI 或业务任务调用，不能当作真实会话可用。
 
+S03-T02 又为每次 BrowserContext 交互设置默认及最大 45 秒截止；现有 browser 内网 live 测试增至 3 项，超时、主动取消后页面关闭且可重新建 context。一次性 Worker 客户端持有页面时 browser 渲染进程为 1，`SIGKILL` 后回到 0，browser 保持 healthy，测试容器自动移除；这只证明本机渲染进程回收，不证明业务任务崩溃恢复。计时不包含连接/清理。人工登录导出拟复用 Playwright 官方 `codegen --save-storage`，仍未接入真实平台或维护 CLI。
+
 ## 当前结构
 
 - `backend/`：Python 3.12、FastAPI、SQLAlchemy 2、PostgreSQL、Redis、Kafka；底座可运行，依赖由 uv 锁定，数据库 DDL 由单一事务化 SQL 文件管理。

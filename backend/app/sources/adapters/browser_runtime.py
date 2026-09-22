@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import math
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
@@ -20,6 +22,7 @@ class BrowserRuntime:
         ws_url: str,
         enabled: bool,
         connect_timeout_ms: int = 5_000,
+        execution_timeout_seconds: float = 45,
     ) -> None:
         try:
             parsed = urlsplit(ws_url)
@@ -39,9 +42,12 @@ class BrowserRuntime:
             raise ValueError("invalid browser WS URL")
         if not 1 <= connect_timeout_ms <= 10_000:
             raise ValueError("invalid browser connect timeout")
+        if not math.isfinite(execution_timeout_seconds) or not 0 < execution_timeout_seconds <= 45:
+            raise ValueError("invalid browser execution timeout")
         self._ws_url = ws_url
         self._enabled = enabled
         self._connect_timeout_ms = connect_timeout_ms
+        self._execution_timeout_seconds = execution_timeout_seconds
 
     @asynccontextmanager
     async def context(
@@ -65,7 +71,8 @@ class BrowserRuntime:
                         storage_state=storage_state,
                     )
                 try:
-                    yield context
+                    async with asyncio.timeout(self._execution_timeout_seconds):
+                        yield context
                 finally:
                     await context.close()
             finally:

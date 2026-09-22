@@ -165,3 +165,46 @@ class BrowserCollectionLiveTests(unittest.TestCase):
                 self.assertTrue(await page.locator("#next").is_enabled())
 
         asyncio.run(verify())
+
+    def test_timeout_and_cancellation_close_remote_contexts(self) -> None:
+        async def verify() -> None:
+            runtime = BrowserRuntime(
+                ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", "ws://browser:3000/"),
+                enabled=True,
+                execution_timeout_seconds=1,
+            )
+            timed_out_page = None
+            with self.assertRaises(TimeoutError):
+                async with runtime.context() as context:
+                    timed_out_page = await context.new_page()
+                    await timed_out_page.set_content("<main>bounded</main>")
+                    await asyncio.sleep(2)
+            self.assertIsNotNone(timed_out_page)
+            assert timed_out_page is not None
+            self.assertTrue(timed_out_page.is_closed())
+
+            entered = asyncio.Event()
+            cancelled_page = None
+
+            async def hold_context() -> None:
+                nonlocal cancelled_page
+                async with runtime.context() as context:
+                    cancelled_page = await context.new_page()
+                    entered.set()
+                    await asyncio.Future()
+
+            task = asyncio.create_task(hold_context())
+            await asyncio.wait_for(entered.wait(), timeout=5)
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+            self.assertIsNotNone(cancelled_page)
+            assert cancelled_page is not None
+            self.assertTrue(cancelled_page.is_closed())
+
+            async with runtime.context() as context:
+                page = await context.new_page()
+                await page.set_content("<main>still available</main>")
+                self.assertEqual(await page.locator("main").inner_text(), "still available")
+
+        asyncio.run(verify())

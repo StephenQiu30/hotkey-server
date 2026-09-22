@@ -105,3 +105,33 @@ def test_browser_runtime_loads_only_an_explicit_state_object(
     browser.new_context.assert_awaited_once_with(
         accept_downloads=False, service_workers="block", storage_state=state
     )
+
+
+def test_browser_runtime_enforces_interaction_deadline_and_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, browser, context = _playwright(monkeypatch)
+    runtime = BrowserRuntime(
+        ws_url="ws://browser:3000/",
+        enabled=True,
+        execution_timeout_seconds=0.01,
+    )
+
+    async def run() -> None:
+        with pytest.raises(TimeoutError):
+            async with runtime.context():
+                await asyncio.sleep(1)
+
+    asyncio.run(run())
+    context.close.assert_awaited_once()
+    browser.close.assert_awaited_once()
+
+
+def test_browser_runtime_rejects_unbounded_interaction_deadline() -> None:
+    for duration in (0, -1, 46, float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="execution timeout"):
+            BrowserRuntime(
+                ws_url="ws://browser:3000/",
+                enabled=True,
+                execution_timeout_seconds=duration,
+            )
