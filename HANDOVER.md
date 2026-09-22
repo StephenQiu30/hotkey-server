@@ -1,12 +1,12 @@
 # HotKey Server 交接
 
-更新日期：2026-09-22。
+更新日期：2026-09-23。
 
-## 本地网页与浏览器采集 S01 / S02-T01/T02
+## 本地网页与浏览器采集 S01 / S02
 
-已建立 [047 Research](docs/research/047-本地网页与浏览器采集调研.md)、[047 Design](docs/design/047-本地网页与浏览器采集设计.md) 与 [047 Plan](docs/plans/047-本地网页与浏览器采集计划.md)。Design 已接受 S00/S01 与 S02-T01/T02 后端闭环，Plan 为 in_progress，G1/G2/G3 已关闭，产品 AC 仍为 0/8。`web` 已具备无凭据版本、精确允许域名、collector_call、webpage 原子页提交，以及类型化 API→Outbox→Kafka→Worker→Firecrawl→持久结果；URL UI 与用户入口交互仍待 T03。用户明确 B站、小红书、抖音、微博评论均必需，后续按四平台独立完成评论路径。
+已建立 [047 Research](docs/research/047-本地网页与浏览器采集调研.md)、[047 Design](docs/design/047-本地网页与浏览器采集设计.md) 与 [047 Plan](docs/plans/047-本地网页与浏览器采集计划.md)。Design 已接受 S00/S01/S02 网页业务闭环，Plan 为 in_progress，G1/G2/G3/G4-001 已关闭，产品 AC 仍为 0/8。`web` 已具备无凭据版本、精确允许域名、collector_call、类型化 API→Outbox→Kafka→Worker→Firecrawl→webpage 原子结果与恢复；现有内容页可提交 URL，任务页可取消、手动重试、显示部分状态并打开持久资料。用户明确 B站、小红书、抖音、微博评论均必需，后续按四平台独立完成评论路径。
 
-调研发现小红书 0 值配置文档与源码不一致、微博候选缺楼中楼继续分页、opencli B站评论仅单页；MediaCrawler 的置顶漏采已修复但许可证限制仍需遵循，Nemo2011/bilibili-api 已关停。Scrapling 0.4.15 的临时环境实验验证动态展开/会话机制，也复现动作失败仍返回 200、自适应误匹配与断点损坏后重新开始，列为待验证组件候选。S01 已增加独立 `page_content` 文档契约、精确域名/默认端口目标约束、固定 `firecrawl/2.11.162` HTTPX 适配器、配置及 DDL 能力同步；`python -m cli sources probe-webpage` 只做显式、无持久化诊断，不输出目标和正文。独立 Firecrawl `main` 的 `6d9fb16` 完成中央日志脱敏、Playwright 原始请求日志移除和出站目标加固，只原位恢复既有两个容器并复用宿主依赖。HotKey CLI 的普通页 180 字符、动态页 1574 字符、私网拒绝和日志 query 标记 0 命中通过。S02 现已将类型化 `webpage.collect` 接入真实 Kafka/Worker/Firecrawl，调用前锁定租约、连接/域名、政策/保留和预算，调用后结算 collector attempt，并把正文/观察/发现、生命周期、能力证据和 checkpoint 原子提交；任务状态暴露 `result_content_id`。真实 PostgreSQL 用例覆盖消息重放、换版、限流、未知 kind、partial、结算前与页提交后中断恢复，显式 live Kafka 链实际读取当前 Firecrawl 的 `example.com`。后端全量 310 tests、前端 25 tests 及静态/契约/构建通过。尚无网页 UI、真实平台评论证据或 Acceptance。
+调研发现小红书 0 值配置文档与源码不一致、微博候选缺楼中楼继续分页、opencli B站评论仅单页；MediaCrawler 的置顶漏采已修复但许可证限制仍需遵循，Nemo2011/bilibili-api 已关停。Scrapling 0.4.15 的临时环境实验验证动态展开/会话机制，也复现动作失败仍返回 200、自适应误匹配与断点损坏后重新开始，列为待验证组件候选。S01 已增加独立 `page_content` 文档契约、精确域名/默认端口目标约束、固定 `firecrawl/2.11.162` HTTPX 适配器、配置及 DDL 能力同步；`python -m cli sources probe-webpage` 只做显式、无持久化诊断，不输出目标和正文。独立 Firecrawl `main` 的 `6d9fb16` 完成中央日志脱敏、Playwright 原始请求日志移除和出站目标加固，只原位恢复既有两个容器并复用宿主依赖。HotKey CLI 的普通页 180 字符、动态页 1574 字符、私网拒绝和日志 query 标记 0 命中通过。S02 现已将类型化 `webpage.collect` 接入真实 Kafka/Worker/Firecrawl，调用前锁定租约、连接/域名、政策/保留和预算，调用后结算 collector attempt，并把正文/观察/发现、生命周期、能力证据和 checkpoint 原子提交；任务状态暴露 `result_content_id`。真实 PostgreSQL 用例覆盖消息重放、换版、限流、未知 kind、partial、结算前与页提交后中断恢复，显式 live Kafka 链实际读取当前 Firecrawl 的 `example.com`。内容页新增 URL 表单，任务页可取消、手动重试、显示部分状态并打开结果；桌面/390×844、双击单请求、operation ID 重试、CSRF 请求头和 axe 0 violation 已验证。后端全量 310 tests、前端 35 tests 及静态/契约/构建通过。尚无隔离浏览器、真实平台评论证据或 Acceptance。
 
 ## 当前结构
 
@@ -59,7 +59,7 @@
 
 **[035 计划](docs/plans/035-权限与数据隔离计划.md) S00/S01 已完成，S02 当前资源先行输出通过，Plan 保持 in_progress。** 在既有工作区授权上增加主题/任务越权操作矩阵、作品关联失败整笔回滚、连接证据隔离、删除目标引用不展开、混合证据清单整体拒绝及注销后拒绝。修复统一错误响应缺少 no-store 的缓存边界。真实 PostgreSQL 全量 243 tests、前端 22 tests、静态/契约及隔离构建通过；现有 API 已替换为当前代码，原 Web 代理确认禁存头与 request ID 透传，未新增服务/脚本。完整 S02 的评论/事件、实际缓存/异步发布/导出下载及 S03/S04 随业务接入，产品 AC 仍为 0/6，未建立 Acceptance。
 
-**[031 计划](docs/plans/031-可靠执行与幂等计划.md) S00—S02 已完成，Plan 保持 in_progress。** 原子受理、outbox 重发、消费组中断/再均衡、手动 offset、inbox、租约 fencing、checkpoint 恢复、有限调度追赶和 Redis 不可用已通过本机既有 PostgreSQL 18.4 与 Kafka；后端 51 tests 与静态门禁通过。当前没有具体业务消息处理器，Worker 按文档入口安全空闲退出；S03/S04、72 小时运行及 031 产品 AC 仍为 0/6，未建立 Acceptance。
+**[031 计划](docs/plans/031-可靠执行与幂等计划.md) S00—S02 已完成，Plan 保持 in_progress。** 原子受理、outbox 重发、消费组中断/再均衡、手动 offset、inbox、租约 fencing、checkpoint 恢复、有限调度追赶和 Redis 不可用已通过本机既有 PostgreSQL 18.4 与 Kafka；后端 51 tests 与静态门禁通过。047 已在该底座上登记首个固定 `webpage.collect` 处理器，并验证真实 Kafka 重投与检查点恢复；其他业务 kind、S03/S04、72 小时运行及 031 产品 AC 仍为 0/6，未建立 Acceptance。
 
 **[036 计划](docs/plans/036-数据访问与生命周期计划.md) S00—S02 已完成，Plan 保持 in_progress。** 来源政策、字段最小化、从严保留与缩期、即时读取屏障、幂等删除、Redis/MinIO 在线清理和有限重试已通过本机既有 PostgreSQL 18.4、Redis 与 MinIO；专用 12 tests、后端全量 63 tests 及静态门禁通过。受控样本不代表任何真实平台已授权；没有 HTTP/UI/Worker 变化或真实业务对象接入，S03 的备份/回补和来源状态、S04 及 036 产品 AC 仍为 0/6，未建立 Acceptance。
 
@@ -89,7 +89,7 @@
 
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 047 S02-T02 后端闭环已完成；下一步严格进入 S02-T03，在现有 `/content`、`/jobs/[jobId]` 与 `/content/[contentId]` 接入 URL 表单、结果跳转、取消/手动重试及桌面/窄屏状态验证。不得把后端 live 链或 G3 当作用户闭环，G4 与产品 AC 仍未关闭。
+1. 047 S02 网页业务闭环已完成；下一步严格进入 S03-T00，对固定 Scrapling 候选与直接 Playwright/Selector 复用做受控比较，先形成运行拓扑结论再增加依赖。不得把 G4-001 当作隔离浏览器、四平台评论或产品 Acceptance，产品 AC 仍为 0/8。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。

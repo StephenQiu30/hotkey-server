@@ -15,7 +15,7 @@ import {
   visibilityStatusLabel,
   visibilityStatusNotice,
 } from "@/app/content/components/content-presenters";
-import { PageState } from "@/components/system/page-state";
+import { WebPageCaptureForm } from "@/app/content/components/webpage-capture-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -229,26 +229,6 @@ export function ContentList() {
     }
   }
 
-  if (state.status === "error") {
-    return (
-      <PageState
-        eyebrow="作品资料"
-        title="暂时无法读取作品"
-        description={
-          state.requestId
-            ? `${state.message} 请求编号：${state.requestId}`
-            : state.message
-        }
-        action={
-          <Button onClick={() => void load()}>
-            <RotateCcwIcon data-icon="inline-start" />
-            重新加载
-          </Button>
-        }
-      />
-    );
-  }
-
   return (
     <div className="bg-background min-h-screen">
       <header className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8 xl:px-0">
@@ -273,6 +253,22 @@ export function ContentList() {
         <p className="text-muted-foreground mt-4 max-w-2xl leading-7">
           查看已持久保存且仍可读的作品身份、正文边界与最近观察。摘要、截断和未知保持原语义，读取不会触发来源请求。
         </p>
+
+        <WebPageCaptureForm />
+
+        {state.status === "error" ? (
+          <section className="bg-destructive/10 mt-8 rounded-2xl p-6 sm:p-8">
+            <h2 className="text-lg font-medium">暂时无法读取作品</h2>
+            <p className="text-muted-foreground mt-2 text-sm leading-6">
+              {state.message}
+              {state.requestId ? ` 请求编号：${state.requestId}` : null}
+            </p>
+            <Button className="mt-5" onClick={() => void load()}>
+              <RotateCcwIcon data-icon="inline-start" />
+              重新加载
+            </Button>
+          </section>
+        ) : null}
 
         {state.status === "loading" ? <LoadingContentList /> : null}
 

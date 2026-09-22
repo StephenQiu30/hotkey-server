@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   BanIcon,
   RefreshCwIcon,
   RotateCcwIcon,
@@ -96,6 +97,40 @@ function DetailItem({ label, value }: { label: string; value: string }) {
       <dt className="text-muted-foreground text-sm">{label}</dt>
       <dd className="mt-1 text-base font-medium">{value}</dd>
     </div>
+  );
+}
+
+export function JobResult({
+  resultContentId,
+  savedDescription,
+  updatedAt,
+}: {
+  resultContentId: string | null;
+  savedDescription: string;
+  updatedAt: string | null;
+}) {
+  return (
+    <section className="mt-10">
+      <h2 className="text-xl font-semibold">已写入结果</h2>
+      <div className="bg-muted mt-4 rounded-2xl p-6 sm:p-8">
+        <p className="text-base font-medium">{savedDescription}</p>
+        <p className="text-muted-foreground mt-2 text-sm leading-6">
+          最后进度时间：{formatTime(updatedAt)}。
+        </p>
+        {resultContentId ? (
+          <Button asChild className="mt-5">
+            <Link href={`/content/${resultContentId}`}>
+              打开作品资料
+              <ArrowRightIcon data-icon="inline-end" />
+            </Link>
+          </Button>
+        ) : (
+          <p className="text-muted-foreground mt-3 text-sm leading-6">
+            当前没有可打开的作品资料；失败或部分原因以上方持久状态为准。
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -415,16 +450,11 @@ export function JobDetail({ jobId }: JobDetailProps) {
           </div>
         </section>
 
-        <section className="mt-10">
-          <h2 className="text-xl font-semibold">已写入结果</h2>
-          <div className="bg-muted mt-4 rounded-2xl p-6 sm:p-8">
-            <p className="text-base font-medium">{savedDescription}</p>
-            <p className="text-muted-foreground mt-2 text-sm leading-6">
-              最后进度时间：{formatTime(job.progress.updated_at)}
-              。结果正文将在对应来源能力交付后按权限展示。
-            </p>
-          </div>
-        </section>
+        <JobResult
+          resultContentId={job.result_content_id}
+          savedDescription={savedDescription}
+          updatedAt={job.progress.updated_at}
+        />
 
         <section className="mt-10" aria-labelledby="job-facts-title">
           <h2 id="job-facts-title" className="text-xl font-semibold">
