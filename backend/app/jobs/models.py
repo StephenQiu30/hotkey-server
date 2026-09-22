@@ -41,7 +41,8 @@ class ResourceBudgetPolicy(Base):
             name="resource_budget_policies_key_check",
         ),
         CheckConstraint(
-            "metric IN ('network_request', 'analysis_attempt', 'concurrency_slot')",
+            "metric IN ('network_request', 'collector_call', 'analysis_attempt', "
+            "'concurrency_slot')",
             name="resource_budget_policies_metric_check",
         ),
         CheckConstraint(
@@ -166,7 +167,8 @@ class ResourceBudgetReservation(Base):
             name="resource_budget_reservations_owner_window_fkey",
         ),
         CheckConstraint(
-            "metric IN ('network_request', 'analysis_attempt', 'concurrency_slot')",
+            "metric IN ('network_request', 'collector_call', 'analysis_attempt', "
+            "'concurrency_slot')",
             name="resource_budget_reservations_metric_check",
         ),
         CheckConstraint(
@@ -296,7 +298,7 @@ class ResourceUsageAttempt(Base):
             name="resource_usage_attempts_owner_policy_fkey",
         ),
         CheckConstraint(
-            "usage_kind IN ('network_request', 'analysis_attempt')",
+            "usage_kind IN ('network_request', 'collector_call', 'analysis_attempt')",
             name="resource_usage_attempts_kind_check",
         ),
         CheckConstraint(

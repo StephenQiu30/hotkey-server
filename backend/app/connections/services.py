@@ -37,6 +37,7 @@ from connections.schemas import (
 )
 from core.errors import ApplicationError
 from evidence.services import load_source_access_readiness
+from sources.adapters.web_targets import normalize_web_url
 from sources.contracts import SourceCapability, SourceStopReason
 
 type Clock = Callable[[], datetime]
@@ -334,6 +335,11 @@ class SourceConnectionService:
         catalog = next((item for item in SOURCE_CATALOG if item.source_key == source_key), None)
         if catalog is None:
             raise ApplicationError("resource_not_found")
+        if (
+            catalog.auth_kind is SourceConnectionAuthKind.SERVER_CREDENTIAL
+            and command.allowed_hosts
+        ):
+            raise ApplicationError("invalid_connection_configuration")
         secret_ref = (
             self._credential_refs.get(source_key)
             if catalog.auth_kind is SourceConnectionAuthKind.SERVER_CREDENTIAL
@@ -367,6 +373,12 @@ class SourceConnectionService:
                     .returning(SourceConnection.id)
                 )
                 if connection_id is not None:
+                    if catalog.auth_kind is SourceConnectionAuthKind.NONE:
+                        if not command.allowed_hosts:
+                            raise ApplicationError("invalid_connection_configuration")
+                        configuration = {"allowed_hosts": list(command.allowed_hosts)}
+                    else:
+                        configuration = {}
                     self._session.add(
                         SourceConnectionVersion(
                             connection_id=connection_id,
@@ -374,6 +386,7 @@ class SourceConnectionService:
                             version=1,
                             auth_kind=catalog.auth_kind.value,
                             secret_ref=secret_ref,
+                            configuration=configuration,
                             created_by=owner_id,
                             created_at=now,
                         )
@@ -383,6 +396,7 @@ class SourceConnectionService:
                         source_key=source_key,
                         status=command.status,
                         version=1,
+                        allowed_hosts=list(command.allowed_hosts),
                         updated_at=now,
                     )
             connection = self._session.scalar(
@@ -403,13 +417,25 @@ class SourceConnectionService:
             if command.status is SourceConnectionStatus.DISABLED:
                 target_auth_kind = SourceConnectionAuthKind(previous.auth_kind)
                 target_ref = previous.secret_ref
+                target_configuration = dict(previous.configuration)
             else:
                 target_auth_kind = catalog.auth_kind
                 target_ref = secret_ref
+                if target_auth_kind is SourceConnectionAuthKind.NONE:
+                    target_configuration = (
+                        {"allowed_hosts": list(command.allowed_hosts)}
+                        if command.allowed_hosts
+                        else dict(previous.configuration)
+                    )
+                    if not self._allowed_hosts(target_configuration):
+                        raise ApplicationError("invalid_connection_configuration")
+                else:
+                    target_configuration = {}
             unchanged = (
                 connection.status == command.status.value
                 and previous.auth_kind == target_auth_kind.value
                 and previous.secret_ref == target_ref
+                and previous.configuration == target_configuration
             )
             if connection.current_version != command.expected_version:
                 if not (unchanged and connection.current_version == command.expected_version + 1):
@@ -425,6 +451,7 @@ class SourceConnectionService:
                         version=connection.current_version,
                         auth_kind=target_auth_kind.value,
                         secret_ref=target_ref,
+                        configuration=target_configuration,
                         created_by=owner_id,
                         created_at=now,
                     )
@@ -434,6 +461,7 @@ class SourceConnectionService:
                 source_key=source_key,
                 status=SourceConnectionStatus(connection.status),
                 version=connection.current_version,
+                allowed_hosts=list(self._allowed_hosts(target_configuration)),
                 updated_at=connection.updated_at.astimezone(UTC),
             )
 
@@ -610,14 +638,74 @@ class SourceConnectionService:
             and catalog.auth_kind is SourceConnectionAuthKind.SERVER_CREDENTIAL
             and configured_ref is not None
             and not credential_matches,
+            allowed_hosts=(
+                list(self._allowed_hosts(current_version.configuration))
+                if current_version is not None
+                else []
+            ),
             capabilities=capability_views,
         )
+
+    @staticmethod
+    def _allowed_hosts(configuration: Mapping[str, object]) -> tuple[str, ...]:
+        value = configuration.get("allowed_hosts", [])
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            raise RuntimeError("connection allowed_hosts configuration is invalid")
+        return tuple(value)
 
 
 def source_credential_reference(source_key: str, credential: SecretStr) -> str:
     """Return a non-reversible server-only reference; never expose it over HTTP."""
     digest = hashlib.sha256(credential.get_secret_value().encode()).hexdigest()
     return f"settings:{source_key}:{digest}"
+
+
+@dataclass(frozen=True, slots=True)
+class WebConnectionExecution:
+    connection_id: UUID
+    connection_version: int
+    normalized_url: str
+    allowed_hosts: frozenset[str]
+
+
+def require_web_connection_execution(
+    session: Session,
+    *,
+    owner_id: UUID,
+    connection_id: UUID,
+    connection_version: int,
+    target_url: str,
+) -> WebConnectionExecution:
+    """Lock and validate one public-web execution inside the caller's transaction."""
+    connection = session.scalar(
+        select(SourceConnection)
+        .where(
+            SourceConnection.owner_id == owner_id,
+            SourceConnection.id == connection_id,
+            SourceConnection.source_key == "web",
+        )
+        .with_for_update()
+    )
+    if connection is None:
+        raise ApplicationError("resource_not_found")
+    if connection.status == SourceConnectionStatus.DISABLED.value:
+        raise ApplicationError("connection_disabled")
+    if connection.current_version != connection_version:
+        raise ApplicationError("connection_version_conflict")
+    version = session.get(SourceConnectionVersion, (connection.id, connection_version))
+    if version is None or version.auth_kind != SourceConnectionAuthKind.NONE.value:
+        raise RuntimeError("web connection version is invalid")
+    allowed_hosts = frozenset(SourceConnectionService._allowed_hosts(version.configuration))
+    try:
+        normalized_url = normalize_web_url(target_url, allowed_hosts=allowed_hosts)
+    except ValueError as error:
+        raise ApplicationError("source_target_not_allowed") from error
+    return WebConnectionExecution(
+        connection_id=connection.id,
+        connection_version=connection.current_version,
+        normalized_url=normalized_url,
+        allowed_hosts=allowed_hosts,
+    )
 
 
 def require_source_connection_enabled(

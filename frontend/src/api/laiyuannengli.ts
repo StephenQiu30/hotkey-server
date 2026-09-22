@@ -15,7 +15,7 @@ export async function listSourceCapabilities(
   );
 }
 
-/** 配置或启停来源连接 仅使用服务端已配置凭据; 版本变化后必须重新验证, 历史资料保留。 PUT /api/source-connections/${param0} */
+/** 配置或启停来源连接 凭据来源只使用服务端配置; 公开网页需给出精确允许域名。版本变化后必须重新验证, 历史资料保留。 PUT /api/source-connections/${param0} */
 export async function updateSourceConnection(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.updateSourceConnectionParams,

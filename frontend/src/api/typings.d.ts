@@ -511,6 +511,8 @@ declare namespace HotKeyAPI {
     /** Expected Version */
     expected_version: number;
     status: SourceConnectionStatus;
+    /** Allowed Hosts */
+    allowed_hosts?: string[];
   };
 
   type SourceConnectionView = {
@@ -521,6 +523,8 @@ declare namespace HotKeyAPI {
     status: SourceConnectionStatus;
     /** Version */
     version: number;
+    /** Allowed Hosts */
+    allowed_hosts: string[];
     /** Updated At */
     updated_at: string;
   };
@@ -563,6 +567,8 @@ declare namespace HotKeyAPI {
     credential_configured: boolean;
     /** Credential Update Available */
     credential_update_available: boolean;
+    /** Allowed Hosts */
+    allowed_hosts: string[];
     /** Capabilities */
     capabilities: SourceCapabilityView[];
   };

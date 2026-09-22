@@ -101,6 +101,7 @@ class CostClass(StrEnum):
 
 class UsageKind(StrEnum):
     NETWORK_REQUEST = "network_request"
+    COLLECTOR_CALL = "collector_call"
     ANALYSIS_ATTEMPT = "analysis_attempt"
 
 
@@ -114,6 +115,7 @@ class UsageOutcome(StrEnum):
 
 class BudgetMetric(StrEnum):
     NETWORK_REQUEST = "network_request"
+    COLLECTOR_CALL = "collector_call"
     ANALYSIS_ATTEMPT = "analysis_attempt"
     CONCURRENCY_SLOT = "concurrency_slot"
 

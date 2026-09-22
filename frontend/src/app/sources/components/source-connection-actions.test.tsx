@@ -17,6 +17,7 @@ const platform: HotKeyAPI.SourcePlatformView = {
   has_credentials: false,
   credential_configured: false,
   credential_update_available: false,
+  allowed_hosts: [],
   capabilities: [],
 };
 

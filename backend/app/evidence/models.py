@@ -40,7 +40,7 @@ class SourceAccessPolicy(Base):
             name="source_access_policies_source_key_check",
         ),
         CheckConstraint(
-            "capability IN ('search', 'author_posts', 'comments', 'replies')",
+            "capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content')",
             name="source_access_policies_capability_check",
         ),
         CheckConstraint(
@@ -49,7 +49,8 @@ class SourceAccessPolicy(Base):
         ),
         CheckConstraint(
             "access_basis IS NULL OR access_basis IN "
-            "('official_api', 'authorized_feed', 'written_permission', 'manual_import')",
+            "('official_api', 'authorized_feed', 'written_permission', 'manual_import', "
+            "'public_web')",
             name="source_access_policies_access_basis_check",
         ),
         CheckConstraint(

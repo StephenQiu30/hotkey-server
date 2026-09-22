@@ -11,6 +11,37 @@ def _canonical_host(value: str) -> str:
         raise ValueError("web target host is invalid") from error
 
 
+def normalize_web_host(value: str) -> str:
+    """Normalize one exact public domain used by a versioned web connection."""
+    if (
+        value != value.strip()
+        or not value
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise ValueError("web target host is invalid")
+    try:
+        parsed = urlsplit(f"//{value}")
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError("web target host is invalid") from error
+    if (
+        parsed.hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or port is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("web target host is invalid")
+    host = _canonical_host(parsed.hostname)
+    try:
+        ip_address(host)
+    except ValueError:
+        return host
+    raise ValueError("web target host must be a public domain")
+
+
 def normalize_web_url(url: str, *, allowed_hosts: frozenset[str]) -> str:
     """Normalize an allowlisted public HTTP URL without changing path or query meaning."""
     try:
@@ -29,16 +60,10 @@ def normalize_web_url(url: str, *, allowed_hosts: frozenset[str]) -> str:
         raise ValueError("web target URL is not allowed")
 
     scheme = parsed.scheme.lower()
-    host = _canonical_host(parsed.hostname)
-    allowed = frozenset(_canonical_host(item) for item in allowed_hosts)
+    host = normalize_web_host(parsed.hostname)
+    allowed = frozenset(normalize_web_host(item) for item in allowed_hosts)
     if not allowed or host not in allowed:
         raise ValueError("web target host is not allowlisted")
-    try:
-        address = ip_address(host)
-    except ValueError:
-        address = None
-    if address is not None:
-        raise ValueError("web target must use an allowlisted domain")
     if port not in {None, 80 if scheme == "http" else 443}:
         raise ValueError("web target port is not allowed")
 

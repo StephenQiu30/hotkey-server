@@ -53,6 +53,7 @@ class AccessBasis(StrEnum):
     AUTHORIZED_FEED = "authorized_feed"
     WRITTEN_PERMISSION = "written_permission"
     MANUAL_IMPORT = "manual_import"
+    PUBLIC_WEB = "public_web"
 
 
 class DataClass(StrEnum):

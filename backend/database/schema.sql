@@ -97,6 +97,9 @@ CREATE TABLE source_connection_versions (
         auth_kind IN ('none', 'server_credential')
     ),
     secret_ref VARCHAR(256),
+    configuration JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (
+        jsonb_typeof(configuration) = 'object'
+    ),
     created_by UUID NOT NULL REFERENCES identity_users (id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (connection_id, version),
@@ -202,7 +205,8 @@ CREATE TABLE source_access_policies (
             'official_api',
             'authorized_feed',
             'written_permission',
-            'manual_import'
+            'manual_import',
+            'public_web'
         )
     ),
     terms_reference VARCHAR(512),
@@ -372,7 +376,7 @@ CREATE TABLE resource_budget_policies (
         budget_key ~ '^[a-z][a-z0-9_.:-]{0,127}$'
     ),
     metric VARCHAR(32) NOT NULL CHECK (
-        metric IN ('network_request', 'analysis_attempt', 'concurrency_slot')
+        metric IN ('network_request', 'collector_call', 'analysis_attempt', 'concurrency_slot')
     ),
     scope_kind VARCHAR(32) NOT NULL CHECK (
         scope_kind IN ('global', 'source', 'connection', 'job')
@@ -431,7 +435,7 @@ CREATE TABLE resource_budget_reservations (
     policy_version BIGINT NOT NULL CHECK (policy_version >= 1),
     limit_units BIGINT NOT NULL CHECK (limit_units > 0),
     metric VARCHAR(32) NOT NULL CHECK (
-        metric IN ('network_request', 'analysis_attempt', 'concurrency_slot')
+        metric IN ('network_request', 'collector_call', 'analysis_attempt', 'concurrency_slot')
     ),
     budget_mode VARCHAR(32) NOT NULL CHECK (
         budget_mode IN ('cumulative', 'concurrent')
@@ -508,7 +512,7 @@ CREATE TABLE resource_usage_attempts (
     component_policy_id UUID NOT NULL,
     component_version VARCHAR(128) NOT NULL CHECK (component_version <> ''),
     usage_kind VARCHAR(32) NOT NULL CHECK (
-        usage_kind IN ('network_request', 'analysis_attempt')
+        usage_kind IN ('network_request', 'collector_call', 'analysis_attempt')
     ),
     stage VARCHAR(128) NOT NULL CHECK (stage ~ '^[a-z][a-z0-9_.:-]{0,127}$'),
     outcome VARCHAR(32) NOT NULL DEFAULT 'started' CHECK (

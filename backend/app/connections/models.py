@@ -13,6 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.base import Base
@@ -99,6 +100,10 @@ class SourceConnectionVersion(Base):
             "secret_ref ~ '^[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9_./:-]+$')",
             name="source_connection_versions_auth_secret_check",
         ),
+        CheckConstraint(
+            "jsonb_typeof(configuration) = 'object'",
+            name="source_connection_versions_configuration_check",
+        ),
         Index(
             "source_connection_versions_created_by_idx",
             "created_by",
@@ -110,6 +115,9 @@ class SourceConnectionVersion(Base):
     owner_id: Mapped[UUID]
     auth_kind: Mapped[str] = mapped_column(String(32), server_default=text("'server_credential'"))
     secret_ref: Mapped[str | None] = mapped_column(String(256))
+    configuration: Mapped[dict[str, object]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
     created_by: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime]
 

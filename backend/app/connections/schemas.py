@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import Field, field_validator, model_validator
 
 from core.schemas import InputModel, OutputModel
+from sources.adapters.web_targets import normalize_web_host
 from sources.contracts import SourceCapability, SourceStopReason
 
 
@@ -34,6 +35,15 @@ class SourceEntryPoint(StrEnum):
 class SourceConnectionUpdateInput(InputModel):
     expected_version: int = Field(ge=0, le=2_147_483_646)
     status: SourceConnectionStatus
+    allowed_hosts: tuple[str, ...] = Field(default=(), max_length=32)
+
+    @field_validator("allowed_hosts")
+    @classmethod
+    def validate_allowed_hosts(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(sorted(normalize_web_host(item) for item in value))
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("allowed_hosts must contain unique exact domains")
+        return normalized
 
 
 class SourceConnectionView(OutputModel):
@@ -41,6 +51,7 @@ class SourceConnectionView(OutputModel):
     source_key: str
     status: SourceConnectionStatus
     version: int
+    allowed_hosts: list[str]
     updated_at: datetime
 
 
@@ -168,4 +179,5 @@ class SourcePlatformView(OutputModel):
     connection_status: SourceConnectionStatus | None
     credential_configured: bool
     credential_update_available: bool
+    allowed_hosts: list[str]
     capabilities: list[SourceCapabilityView]

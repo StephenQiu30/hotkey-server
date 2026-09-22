@@ -77,6 +77,8 @@ def test_component_policy_accepts_explicit_zero_price_component() -> None:
 
     assert policy.cost_class is CostClass.ZERO_PRICE
     assert UsageKind.NETWORK_REQUEST == "network_request"
+    assert UsageKind.COLLECTOR_CALL == "collector_call"
+    assert BudgetMetric.COLLECTOR_CALL == "collector_call"
 
 
 def test_global_budget_policy_has_no_scope_reference() -> None:

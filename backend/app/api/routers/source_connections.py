@@ -17,7 +17,10 @@ router = APIRouter(prefix="/source-connections", tags=["来源能力"])
     response_model=SourceConnectionView,
     status_code=status.HTTP_200_OK,
     summary="配置或启停来源连接",
-    description="仅使用服务端已配置凭据; 版本变化后必须重新验证, 历史资料保留。",
+    description=(
+        "凭据来源只使用服务端配置; 公开网页需给出精确允许域名。"
+        "版本变化后必须重新验证, 历史资料保留。"
+    ),
     responses={
         401: {"model": ErrorView, "description": "会话无效或已过期"},
         403: {"model": ErrorView, "description": "请求安全校验失败"},

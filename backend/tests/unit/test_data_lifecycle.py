@@ -43,6 +43,10 @@ def _approved_input(**changes: object) -> SourceAccessPolicyInput:
     return SourceAccessPolicyInput.model_validate(values)
 
 
+def test_public_web_is_an_explicit_access_basis() -> None:
+    assert AccessBasis.PUBLIC_WEB == "public_web"
+
+
 def test_only_complete_approved_policy_can_be_enabled() -> None:
     with pytest.raises(ValidationError):
         _approved_input(status=AccessPolicyStatus.PENDING)

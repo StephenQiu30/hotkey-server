@@ -26,6 +26,7 @@ from connections.schemas import (
 from connections.services import (
     SourceCapabilityEvidenceService,
     SourceConnectionService,
+    require_web_connection_execution,
     source_credential_reference,
 )
 from core.config import Settings, get_settings
@@ -184,15 +185,28 @@ def test_anonymous_web_connection_versions_without_fabricating_credentials(
     owner_id = _initialize(client)
     headers = {"X-HotKey-CSRF": client.cookies["hotkey_csrf"]}
 
-    created = client.put(
+    missing_scope = client.put(
         "/api/source-connections/web",
         headers=headers,
         json={"expected_version": 0, "status": "active"},
+    )
+    assert missing_scope.status_code == 422
+    assert missing_scope.json()["code"] == "invalid_connection_configuration"
+
+    created = client.put(
+        "/api/source-connections/web",
+        headers=headers,
+        json={
+            "expected_version": 0,
+            "status": "active",
+            "allowed_hosts": ["Example.COM."],
+        },
     )
 
     assert created.status_code == 200
     assert created.json()["source_key"] == "web"
     assert created.json()["version"] == 1
+    assert created.json()["allowed_hosts"] == ["example.com"]
     web = next(
         item
         for item in client.get("/api/source-capabilities").json()["items"]
@@ -203,6 +217,26 @@ def test_anonymous_web_connection_versions_without_fabricating_credentials(
     assert web["has_credentials"] is False
     assert web["credential_configured"] is False
     assert web["credential_update_available"] is False
+    assert web["allowed_hosts"] == ["example.com"]
+
+    with client.app.state.session_factory() as session, session.begin():
+        execution = require_web_connection_execution(
+            session,
+            owner_id=UUID(owner_id),
+            connection_id=UUID(created.json()["id"]),
+            connection_version=1,
+            target_url="HTTPS://Example.COM:443/path?keep=value#fragment",
+        )
+        assert execution.normalized_url == "https://example.com/path?keep=value"
+        assert execution.allowed_hosts == frozenset({"example.com"})
+        with pytest.raises(ApplicationError, match="source_target_not_allowed"):
+            require_web_connection_execution(
+                session,
+                owner_id=UUID(owner_id),
+                connection_id=UUID(created.json()["id"]),
+                connection_version=1,
+                target_url="https://other.example/path",
+            )
 
     disabled = client.put(
         "/api/source-connections/web",
@@ -214,15 +248,30 @@ def test_anonymous_web_connection_versions_without_fabricating_credentials(
     with client.app.state.session_factory() as session:
         versions = session.execute(
             text(
-                "SELECT version, auth_kind, secret_ref "
+                "SELECT version, auth_kind, secret_ref, configuration "
                 "FROM source_connection_versions "
                 "WHERE owner_id = :owner_id ORDER BY version"
             ),
             {"owner_id": owner_id},
         ).all()
-    assert versions == [(1, "none", None), (2, "none", None)]
+    assert versions == [
+        (1, "none", None, {"allowed_hosts": ["example.com"]}),
+        (2, "none", None, {"allowed_hosts": ["example.com"]}),
+    ]
     assert "secret" not in created.text.lower()
     assert "secret" not in disabled.text.lower()
+
+    rejected_social_scope = client.put(
+        "/api/source-connections/douyin",
+        headers=headers,
+        json={
+            "expected_version": 0,
+            "status": "active",
+            "allowed_hosts": ["example.com"],
+        },
+    )
+    assert rejected_social_scope.status_code == 422
+    assert rejected_social_scope.json()["code"] == "invalid_connection_configuration"
 
 
 def test_current_version_persisted_evidence_projects_partial_without_cross_entry_leak(
