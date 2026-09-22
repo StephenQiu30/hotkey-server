@@ -58,7 +58,8 @@ def observation_context() -> Iterator[ObservationTestContext]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE content_discoveries, content_observations, content_records, "
+                "TRUNCATE content_version_relations, content_observations, content_versions, "
+                "content_discoveries, content_records, "
                 "source_capability_evidence, source_connection_versions, "
                 "source_connections, provenance_manifest_inputs, provenance_manifests, "
                 "evidence_cleanup_targets, evidence_deletions, "
@@ -89,7 +90,8 @@ def observation_context() -> Iterator[ObservationTestContext]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE content_discoveries, content_observations, content_records, "
+                    "TRUNCATE content_version_relations, content_observations, content_versions, "
+                    "content_discoveries, content_records, "
                     "source_capability_evidence, source_connection_versions, "
                     "source_connections, provenance_manifest_inputs, provenance_manifests, "
                     "evidence_cleanup_targets, evidence_deletions, "

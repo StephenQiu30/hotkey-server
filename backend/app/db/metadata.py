@@ -3,7 +3,13 @@ from connections.models import (
     SourceConnection,
     SourceConnectionVersion,
 )
-from content.models import ContentDiscovery, ContentObservation, ContentRecord
+from content.models import (
+    ContentDiscovery,
+    ContentObservation,
+    ContentRecord,
+    ContentVersion,
+    ContentVersionRelation,
+)
 from db.base import Base
 from evidence.models import (
     CleanupTarget,
@@ -38,6 +44,8 @@ __all__ = [
     "ContentDiscovery",
     "ContentObservation",
     "ContentRecord",
+    "ContentVersion",
+    "ContentVersionRelation",
     "DeletionDirective",
     "EvidenceResource",
     "IdentitySession",

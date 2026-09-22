@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
@@ -14,13 +19,25 @@ from connections.schemas import (
     PersistedReadEvidenceInput,
 )
 from connections.services import SourceCapabilityEvidenceService
-from content.models import ContentDiscovery, ContentObservation, ContentRecord
+from content.models import (
+    ContentDiscovery,
+    ContentObservation,
+    ContentRecord,
+    ContentVersion,
+    ContentVersionRelation,
+)
 from content.schemas import (
     ContentDiscoveryView,
     ContentMetricView,
     ContentObservationView,
     ContentRecordDetailView,
     ContentRecordSummaryView,
+    ContentRelationType,
+    ContentTextOrigin,
+    ContentTextScope,
+    ContentTruncationReason,
+    ContentVersionRelationView,
+    ContentVersionView,
     PersistContentPostInput,
 )
 from core.errors import ApplicationError
@@ -47,6 +64,18 @@ _ALLOWED_FIELDS = frozenset(
         "view_count",
         "play_count",
         "danmaku_count",
+        "text_scope",
+        "text_origin",
+        "text_origin_ref",
+        "title",
+        "body",
+        "truncation_reason",
+        "quote_target_external_id",
+        "quote_target_native_scope",
+        "quote_target_author_external_id",
+        "repost_target_external_id",
+        "repost_target_native_scope",
+        "repost_target_author_external_id",
     }
 )
 _METRIC_FIELDS = (
@@ -58,6 +87,53 @@ _METRIC_FIELDS = (
     "danmaku_count",
 )
 _MAX_BIGINT = 9_223_372_036_854_775_807
+_RFC3339_PATTERN = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(\d{1,6}))?(?:Z|[+-]\d{2}:\d{2})$"
+)
+_VERSION_FIELD_NAMES = frozenset(
+    {
+        "text_scope",
+        "text_origin",
+        "text_origin_ref",
+        "title",
+        "body",
+        "truncation_reason",
+        "quote_target_external_id",
+        "quote_target_native_scope",
+        "quote_target_author_external_id",
+        "repost_target_external_id",
+        "repost_target_native_scope",
+        "repost_target_author_external_id",
+    }
+)
+
+
+@dataclass(frozen=True)
+class _ContentRelationValues:
+    relation_type: ContentRelationType
+    target_native_scope: str | None
+    target_external_id: str
+    target_author_external_id: str | None
+
+    def canonical_value(self) -> dict[str, str | None]:
+        return {
+            "relation_type": self.relation_type.value,
+            "target_native_scope": self.target_native_scope,
+            "target_external_id": self.target_external_id,
+            "target_author_external_id": self.target_author_external_id,
+        }
+
+
+@dataclass(frozen=True)
+class _ContentVersionValues:
+    fingerprint: bytes
+    text_scope: ContentTextScope
+    text_origin: ContentTextOrigin
+    text_origin_ref: str | None
+    title: str | None
+    body: str | None
+    truncation_reason: ContentTruncationReason | None
+    relations: tuple[_ContentRelationValues, ...]
 
 
 def _optional_identifier(fields: Mapping[str, object], name: str) -> str | None:
@@ -95,19 +171,25 @@ def _optional_url(fields: Mapping[str, object]) -> str | None:
     return value
 
 
-def _optional_datetime(fields: Mapping[str, object], name: str) -> datetime | None:
+def _optional_datetime_with_precision(
+    fields: Mapping[str, object], name: str
+) -> tuple[datetime | None, int | None]:
     value = fields.get(name)
     if value is None:
-        return None
+        return None, None
     if not isinstance(value, str):
         raise ValueError(f"{name} must be an RFC 3339 string")
+    match = _RFC3339_PATTERN.fullmatch(value)
+    if match is None:
+        raise ValueError(f"{name} must be an RFC 3339 string with at most 6 fractional digits")
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as error:
         raise ValueError(f"{name} must be an RFC 3339 string") from error
     if parsed.utcoffset() is None:
         raise ValueError(f"{name} must be timezone-aware")
-    return parsed
+    fractional = match.group(1)
+    return parsed, len(fractional) if fractional is not None else 0
 
 
 def _optional_metric(fields: Mapping[str, object], name: str) -> int | None:
@@ -119,10 +201,141 @@ def _optional_metric(fields: Mapping[str, object], name: str) -> int | None:
     return value
 
 
+def _optional_text(
+    fields: Mapping[str, object],
+    name: str,
+    *,
+    max_length: int,
+) -> str | None:
+    value = fields.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip() or len(value) > max_length:
+        raise ValueError(f"{name} must be non-empty and at most {max_length} characters")
+    if any(ord(character) < 32 and character not in "\t\n\r" for character in value) or any(
+        ord(character) == 127 for character in value
+    ):
+        raise ValueError(f"{name} contains unsupported control characters")
+    return value
+
+
+def _required_enum[EnumT: StrEnum](
+    fields: Mapping[str, object],
+    name: str,
+    enum_type: type[EnumT],
+) -> EnumT:
+    value = fields.get(name)
+    if not isinstance(value, str):
+        raise ValueError(f"{name} is required")
+    try:
+        return enum_type(value)
+    except ValueError as error:
+        raise ValueError(f"{name} has an unsupported value") from error
+
+
+def _optional_truncation_reason(
+    fields: Mapping[str, object],
+) -> ContentTruncationReason | None:
+    value = fields.get("truncation_reason")
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("truncation_reason has an unsupported value")
+    try:
+        return ContentTruncationReason(value)
+    except ValueError as error:
+        raise ValueError("truncation_reason has an unsupported value") from error
+
+
+def _relation_values(
+    fields: Mapping[str, object],
+    relation_type: ContentRelationType,
+) -> _ContentRelationValues | None:
+    prefix = relation_type.value
+    external_id = _optional_identifier(fields, f"{prefix}_target_external_id")
+    native_scope = _optional_identifier(fields, f"{prefix}_target_native_scope")
+    author_external_id = _optional_identifier(fields, f"{prefix}_target_author_external_id")
+    if external_id is None:
+        if native_scope is not None or author_external_id is not None:
+            raise ValueError(f"{prefix} target identity requires an external_id")
+        return None
+    return _ContentRelationValues(
+        relation_type=relation_type,
+        target_native_scope=native_scope,
+        target_external_id=external_id,
+        target_author_external_id=author_external_id,
+    )
+
+
+def _content_version_values(fields: Mapping[str, object]) -> _ContentVersionValues | None:
+    if not any(fields.get(name) is not None for name in _VERSION_FIELD_NAMES):
+        return None
+    text_scope = _required_enum(fields, "text_scope", ContentTextScope)
+    text_origin = _required_enum(fields, "text_origin", ContentTextOrigin)
+    text_origin_ref = _optional_identifier(fields, "text_origin_ref")
+    title = _optional_text(fields, "title", max_length=2_000)
+    body = _optional_text(fields, "body", max_length=100_000)
+    truncation_reason = _optional_truncation_reason(fields)
+    relations = tuple(
+        relation
+        for relation_type in (ContentRelationType.QUOTE, ContentRelationType.REPOST)
+        if (relation := _relation_values(fields, relation_type)) is not None
+    )
+
+    if text_origin is ContentTextOrigin.SOURCE and text_origin_ref is not None:
+        raise ValueError("source text cannot declare a machine extraction reference")
+    if text_origin is ContentTextOrigin.MACHINE_EXTRACTED and text_origin_ref is None:
+        raise ValueError("machine-extracted text requires text_origin_ref")
+    if text_scope is ContentTextScope.MEDIA_ONLY:
+        if title is not None or body is not None:
+            raise ValueError("media-only content cannot contain invented title or body text")
+        if text_origin is not ContentTextOrigin.SOURCE:
+            raise ValueError("media-only content must describe the source observation")
+    elif title is None and body is None:
+        raise ValueError("text content requires a title or body")
+    if text_scope is ContentTextScope.TRUNCATED:
+        if truncation_reason is None:
+            raise ValueError("truncated text requires truncation_reason")
+    elif truncation_reason is not None:
+        raise ValueError("truncation_reason is only valid for truncated text")
+
+    canonical = {
+        "text_scope": text_scope.value,
+        "text_origin": text_origin.value,
+        "text_origin_ref": text_origin_ref,
+        "title": title,
+        "body": body,
+        "truncation_reason": truncation_reason.value if truncation_reason else None,
+        "relations": [relation.canonical_value() for relation in relations],
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).digest()
+    return _ContentVersionValues(
+        fingerprint=fingerprint,
+        text_scope=text_scope,
+        text_origin=text_origin,
+        text_origin_ref=text_origin_ref,
+        title=title,
+        body=body,
+        truncation_reason=truncation_reason,
+        relations=relations,
+    )
+
+
 class ContentService:
     def __init__(self, session: Session, *, clock: Clock | None = None) -> None:
         self._session = session
         self._clock = clock or (lambda: datetime.now(UTC))
+
+    @staticmethod
+    def _selected_version_view(
+        observation: ContentObservation,
+        version_views: Mapping[UUID, ContentVersionView],
+    ) -> ContentVersionView | None:
+        if observation.content_version_id is None:
+            return None
+        return version_views.get(observation.content_version_id)
 
     def persist_post(
         self,
@@ -148,6 +361,7 @@ class ContentService:
         if external_id is None:
             raise ValueError("external_id is required")
         values = self._observation_values(fields)
+        version_values = _content_version_values(fields)
 
         self._session.rollback()
         with self._session.begin():
@@ -169,6 +383,13 @@ class ContentService:
                 external_id=external_id,
                 created_at=now,
             )
+            content_version = self._find_or_create_content_version(
+                owner_id=owner_id,
+                content_id=content.id,
+                values=version_values,
+                created_at=now,
+            )
+            values["content_version_id"] = content_version.id if content_version else None
             observation = self._find_or_create_observation(
                 owner_id=owner_id,
                 content_id=content.id,
@@ -209,9 +430,15 @@ class ContentService:
                     component_version=command.component_version,
                 ),
             )
+            version_views = self._content_version_views(
+                owner_id=owner_id,
+                content_observations=[(content, observation)],
+                now=now,
+            )
             view = self._detail_view(
                 content=content,
                 observation=observation,
+                content_version=self._selected_version_view(observation, version_views),
                 discoveries=self._discoveries(owner_id, content.id, {job.job_id}),
                 job_contexts={job.job_id: job},
             )
@@ -243,9 +470,15 @@ class ContentService:
                 owner_id=owner_id,
                 job_ids={item.job_id for item in discoveries},
             )
+            version_views = self._content_version_views(
+                owner_id=owner_id,
+                content_observations=[(content, observation)],
+                now=now,
+            )
             return self._detail_view(
                 content=content,
                 observation=observation,
+                content_version=self._selected_version_view(observation, version_views),
                 discoveries=discoveries,
                 job_contexts=contexts,
             )
@@ -296,10 +529,16 @@ class ContentService:
                 owner_id=owner_id,
                 readable_jobs={record.id: job_ids for record, _, job_ids in page},
             )
+            version_views = self._content_version_views(
+                owner_id=owner_id,
+                content_observations=[(content, observation) for content, observation, _ in page],
+                now=now,
+            )
             items = [
                 self._summary_view(
                     content=content,
                     observation=observation,
+                    content_version=self._selected_version_view(observation, version_views),
                     discovery_count=discovery_counts.get(content.id, 0),
                 )
                 for content, observation, _ in page
@@ -309,10 +548,14 @@ class ContentService:
 
     @staticmethod
     def _observation_values(fields: Mapping[str, object]) -> dict[str, object]:
+        published_at, published_at_fractional_digits = _optional_datetime_with_precision(
+            fields, "published_at"
+        )
         return {
             "canonical_url": _optional_url(fields),
             "author_external_id": _optional_identifier(fields, "author_external_id"),
-            "published_at": _optional_datetime(fields, "published_at"),
+            "published_at": published_at,
+            "published_at_fractional_digits": published_at_fractional_digits,
             **{name: _optional_metric(fields, name) for name in _METRIC_FIELDS},
         }
 
@@ -365,6 +608,80 @@ class ContentService:
         if existing is None:
             raise RuntimeError("conflicting content identity is not visible")
         return existing
+
+    def _find_or_create_content_version(
+        self,
+        *,
+        owner_id: UUID,
+        content_id: UUID,
+        values: _ContentVersionValues | None,
+        created_at: datetime,
+    ) -> ContentVersion | None:
+        if values is None:
+            return None
+        version_id = uuid4()
+        inserted_id = self._session.scalar(
+            insert(ContentVersion)
+            .values(
+                id=version_id,
+                owner_id=owner_id,
+                content_id=content_id,
+                fingerprint=values.fingerprint,
+                text_scope=values.text_scope.value,
+                text_origin=values.text_origin.value,
+                text_origin_ref=values.text_origin_ref,
+                title=values.title,
+                body=values.body,
+                truncation_reason=(
+                    values.truncation_reason.value if values.truncation_reason else None
+                ),
+                created_at=created_at,
+            )
+            .on_conflict_do_nothing(constraint="content_versions_owner_content_fingerprint_key")
+            .returning(ContentVersion.id)
+        )
+        if inserted_id is None:
+            existing = self._session.scalar(
+                select(ContentVersion)
+                .where(
+                    ContentVersion.owner_id == owner_id,
+                    ContentVersion.content_id == content_id,
+                    ContentVersion.fingerprint == values.fingerprint,
+                )
+                .with_for_update()
+            )
+            if existing is None:
+                raise RuntimeError("conflicting content version is not visible")
+            return existing
+
+        for relation in values.relations:
+            self._session.add(
+                ContentVersionRelation(
+                    id=uuid4(),
+                    owner_id=owner_id,
+                    content_version_id=inserted_id,
+                    relation_type=relation.relation_type.value,
+                    target_native_scope=relation.target_native_scope,
+                    target_external_id=relation.target_external_id,
+                    target_author_external_id=relation.target_author_external_id,
+                )
+            )
+        self._session.flush()
+        return ContentVersion(
+            id=inserted_id,
+            owner_id=owner_id,
+            content_id=content_id,
+            fingerprint=values.fingerprint,
+            text_scope=values.text_scope.value,
+            text_origin=values.text_origin.value,
+            text_origin_ref=values.text_origin_ref,
+            title=values.title,
+            body=values.body,
+            truncation_reason=(
+                values.truncation_reason.value if values.truncation_reason else None
+            ),
+            created_at=created_at,
+        )
 
     def _find_or_create_observation(
         self,
@@ -536,18 +853,135 @@ class ContentService:
             counts[content_id] = int(count or 0)
         return counts
 
+    def _content_version_views(
+        self,
+        *,
+        owner_id: UUID,
+        content_observations: list[tuple[ContentRecord, ContentObservation]],
+        now: datetime,
+    ) -> dict[UUID, ContentVersionView]:
+        version_ids = {
+            observation.content_version_id
+            for _, observation in content_observations
+            if observation.content_version_id is not None
+        }
+        if not version_ids:
+            return {}
+        versions = list(
+            self._session.scalars(
+                select(ContentVersion).where(
+                    ContentVersion.owner_id == owner_id,
+                    ContentVersion.id.in_(version_ids),
+                )
+            ).all()
+        )
+        relations = list(
+            self._session.scalars(
+                select(ContentVersionRelation).where(
+                    ContentVersionRelation.owner_id == owner_id,
+                    ContentVersionRelation.content_version_id.in_(version_ids),
+                )
+            ).all()
+        )
+        content_by_id = {content.id: content for content, _ in content_observations}
+        relation_version = {version.id: version for version in versions}
+        target_external_ids = {relation.target_external_id for relation in relations}
+        target_source_keys = {
+            content_by_id[version.content_id].source_key
+            for version in versions
+            if version.content_id in content_by_id
+        }
+        target_candidates = (
+            list(
+                self._session.scalars(
+                    select(ContentRecord).where(
+                        ContentRecord.owner_id == owner_id,
+                        ContentRecord.object_type == "post",
+                        ContentRecord.source_key.in_(target_source_keys),
+                        ContentRecord.external_id.in_(target_external_ids),
+                    )
+                ).all()
+            )
+            if target_external_ids and target_source_keys
+            else []
+        )
+        readable_target_ids = set(
+            self._readable_observations(
+                owner_id=owner_id,
+                content_ids={candidate.id for candidate in target_candidates},
+                now=now,
+            )
+        )
+        readable_targets = {
+            (
+                candidate.source_key,
+                candidate.native_scope,
+                candidate.external_id,
+            ): candidate.id
+            for candidate in target_candidates
+            if candidate.id in readable_target_ids
+        }
+        grouped_relations: dict[UUID, list[ContentVersionRelationView]] = {}
+        relation_order = {
+            ContentRelationType.QUOTE.value: 0,
+            ContentRelationType.REPOST.value: 1,
+        }
+        for relation in sorted(
+            relations,
+            key=lambda item: (relation_order[item.relation_type], item.id),
+        ):
+            version = relation_version[relation.content_version_id]
+            source_key = content_by_id[version.content_id].source_key
+            grouped_relations.setdefault(relation.content_version_id, []).append(
+                ContentVersionRelationView(
+                    relation_type=ContentRelationType(relation.relation_type),
+                    target_native_scope=relation.target_native_scope,
+                    target_external_id=relation.target_external_id,
+                    target_author_external_id=relation.target_author_external_id,
+                    target_content_id=readable_targets.get(
+                        (
+                            source_key,
+                            relation.target_native_scope,
+                            relation.target_external_id,
+                        )
+                    ),
+                )
+            )
+        return {
+            version.id: ContentVersionView(
+                id=version.id,
+                text_scope=ContentTextScope(version.text_scope),
+                text_origin=ContentTextOrigin(version.text_origin),
+                text_origin_ref=version.text_origin_ref,
+                title=version.title,
+                body=version.body,
+                truncation_reason=(
+                    ContentTruncationReason(version.truncation_reason)
+                    if version.truncation_reason
+                    else None
+                ),
+                relations=grouped_relations.get(version.id, []),
+            )
+            for version in versions
+        }
+
     @staticmethod
-    def _observation_view(observation: ContentObservation) -> ContentObservationView:
+    def _observation_view(
+        observation: ContentObservation,
+        content_version: ContentVersionView | None,
+    ) -> ContentObservationView:
         return ContentObservationView(
             id=observation.id,
             observed_at=observation.observed_at,
             received_at=observation.received_at,
             published_at=observation.published_at,
+            published_at_fractional_digits=observation.published_at_fractional_digits,
             canonical_url=observation.canonical_url,
             author_external_id=observation.author_external_id,
             metrics=ContentMetricView(
                 **{name: getattr(observation, name) for name in _METRIC_FIELDS}
             ),
+            content_version=content_version,
         )
 
     @classmethod
@@ -556,6 +990,7 @@ class ContentService:
         *,
         content: ContentRecord,
         observation: ContentObservation,
+        content_version: ContentVersionView | None,
         discovery_count: int,
     ) -> ContentRecordSummaryView:
         return ContentRecordSummaryView(
@@ -564,7 +999,7 @@ class ContentService:
             object_type=content.object_type,
             native_scope=content.native_scope,
             external_id=content.external_id,
-            latest_observation=cls._observation_view(observation),
+            latest_observation=cls._observation_view(observation, content_version),
             discovery_count=discovery_count,
         )
 
@@ -574,6 +1009,7 @@ class ContentService:
         *,
         content: ContentRecord,
         observation: ContentObservation,
+        content_version: ContentVersionView | None,
         discoveries: list[ContentDiscovery],
         job_contexts: dict[UUID, ContentJobContext],
     ) -> ContentRecordDetailView:
@@ -590,6 +1026,7 @@ class ContentService:
         summary = cls._summary_view(
             content=content,
             observation=observation,
+            content_version=content_version,
             discovery_count=len(discovery_views),
         )
         return ContentRecordDetailView(

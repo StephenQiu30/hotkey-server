@@ -7,10 +7,15 @@ import { ArrowLeftIcon, ExternalLinkIcon, RotateCcwIcon } from "lucide-react";
 
 import { getContentRecord } from "@/api/zuopinziliao";
 import {
+  contentOriginLabel,
+  contentScopeLabel,
+  contentScopeNotice,
   formatMetric,
   formatTime,
   hasUnknownMetrics,
   METRIC_LABELS,
+  relationTypeLabel,
+  truncationReasonLabel,
 } from "@/app/content/components/content-presenters";
 import { PageState } from "@/components/system/page-state";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +40,106 @@ function DetailItem({ label, value }: { label: string; value: string }) {
       <dt className="text-muted-foreground text-sm">{label}</dt>
       <dd className="mt-1 font-medium break-words">{value}</dd>
     </div>
+  );
+}
+
+function ContentVersionSection({
+  version,
+}: {
+  version: HotKeyAPI.ContentVersionView | null;
+}) {
+  if (version === null) {
+    return (
+      <section aria-labelledby="content-heading" className="mt-10">
+        <h2 id="content-heading" className="text-xl font-medium">
+          正文与上下文
+        </h2>
+        <div className="bg-muted mt-4 rounded-2xl p-6">
+          <p className="font-medium">未取得正文</p>
+          <p className="text-muted-foreground mt-2 text-sm leading-6">
+            当前观察没有可用正文版本；未知不等于空正文。
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  const notice = contentScopeNotice(version.text_scope);
+  return (
+    <section aria-labelledby="content-heading" className="mt-10">
+      <h2 id="content-heading" className="text-xl font-medium">
+        正文与上下文
+      </h2>
+      <div className="bg-muted mt-4 rounded-2xl p-6">
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="secondary">
+            {contentScopeLabel(version.text_scope)}
+          </Badge>
+          <Badge variant="outline">
+            {contentOriginLabel(version.text_origin)}
+          </Badge>
+        </div>
+        {notice ? (
+          <p className="border-border text-muted-foreground mt-4 border-l-2 pl-4 text-sm leading-6">
+            {notice}
+          </p>
+        ) : null}
+        {version.title ? (
+          <h3 className="mt-6 text-lg font-medium break-words whitespace-pre-wrap">
+            {version.title}
+          </h3>
+        ) : null}
+        {version.body ? (
+          <p className="mt-4 leading-7 break-words whitespace-pre-wrap">
+            {version.body}
+          </p>
+        ) : null}
+        {version.truncation_reason ? (
+          <p className="text-muted-foreground mt-4 text-sm">
+            截断原因：{truncationReasonLabel(version.truncation_reason)}
+          </p>
+        ) : null}
+        {version.text_origin_ref ? (
+          <p className="text-muted-foreground mt-2 font-mono text-xs break-all">
+            提取依据：{version.text_origin_ref}
+          </p>
+        ) : null}
+      </div>
+
+      {version.relations.length > 0 ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {version.relations.map((relation) => (
+            <article
+              key={`${relation.relation_type}:${relation.target_native_scope ?? ""}:${relation.target_external_id}`}
+              className="border-border rounded-2xl border p-5"
+            >
+              <Badge variant="outline">
+                {relationTypeLabel(relation.relation_type)}
+              </Badge>
+              <p className="mt-3 font-mono text-sm break-all">
+                {relation.target_external_id}
+              </p>
+              <p className="text-muted-foreground mt-2 text-xs break-all">
+                目标作者：
+                {relation.target_author_external_id ?? "未知"}
+              </p>
+              {relation.target_content_id ? (
+                <Link
+                  className="mt-3 inline-flex text-sm underline underline-offset-4"
+                  href={`/content/${relation.target_content_id}`}
+                >
+                  查看已获取的目标作品
+                </Link>
+              ) : (
+                <p className="text-muted-foreground mt-3 text-sm">
+                  目标作品未获取或当前不可读。
+                </p>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -203,6 +308,8 @@ export function ContentDetail({ contentId }: ContentDetailProps) {
             <p className="text-muted-foreground mt-4 text-sm">原文链接未知</p>
           )}
         </section>
+
+        <ContentVersionSection version={observation.content_version ?? null} />
 
         <section aria-labelledby="metrics-heading" className="mt-10">
           <h2 id="metrics-heading" className="text-xl font-medium">

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal, Self
 from uuid import UUID
 
@@ -70,14 +71,57 @@ class ContentMetricView(OutputModel):
     danmaku_count: int | None = Field(ge=0)
 
 
+class ContentTextScope(StrEnum):
+    FULL = "full"
+    SUMMARY = "summary"
+    TRUNCATED = "truncated"
+    MEDIA_ONLY = "media_only"
+
+
+class ContentTextOrigin(StrEnum):
+    SOURCE = "source"
+    MACHINE_EXTRACTED = "machine_extracted"
+
+
+class ContentTruncationReason(StrEnum):
+    SOURCE_LIMIT = "source_limit"
+    COLLECTOR_LIMIT = "collector_limit"
+
+
+class ContentRelationType(StrEnum):
+    QUOTE = "quote"
+    REPOST = "repost"
+
+
+class ContentVersionRelationView(OutputModel):
+    relation_type: ContentRelationType
+    target_native_scope: str | None
+    target_external_id: str
+    target_author_external_id: str | None
+    target_content_id: UUID | None
+
+
+class ContentVersionView(OutputModel):
+    id: UUID
+    text_scope: ContentTextScope
+    text_origin: ContentTextOrigin
+    text_origin_ref: str | None
+    title: str | None
+    body: str | None
+    truncation_reason: ContentTruncationReason | None
+    relations: list[ContentVersionRelationView]
+
+
 class ContentObservationView(OutputModel):
     id: UUID
     observed_at: datetime
     received_at: datetime
     published_at: datetime | None
+    published_at_fractional_digits: int | None = Field(ge=0, le=6)
     canonical_url: str | None
     author_external_id: str | None
     metrics: ContentMetricView
+    content_version: ContentVersionView | None
 
 
 class ContentDiscoveryView(OutputModel):

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  contentScopeLabel,
+  contentScopeNotice,
   formatMetric,
   formatTime,
   hasUnknownMetrics,
@@ -30,5 +32,14 @@ describe("content presenters", () => {
 
   it("does not invent an unknown timestamp", () => {
     expect(formatTime(null)).toBe("未知");
+  });
+
+  it("labels partial and media-only content without promoting it to full text", () => {
+    expect(contentScopeLabel("full")).toBe("完整原文");
+    expect(contentScopeLabel("summary")).toBe("摘要");
+    expect(contentScopeLabel("truncated")).toBe("已截断");
+    expect(contentScopeLabel("media_only")).toBe("仅媒体");
+    expect(contentScopeNotice("summary")).toContain("不代表完整原文");
+    expect(contentScopeNotice("media_only")).toContain("未保存或理解媒体内容");
   });
 });

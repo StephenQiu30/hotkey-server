@@ -24,7 +24,8 @@ from sources.contracts import SourceCapability
 _BOOTSTRAP_TOKEN = "content-records-isolated-bootstrap-token"
 _PASSWORD = "correct horse battery staple"
 _TRUNCATE = (
-    "TRUNCATE content_discoveries, content_observations, content_records, "
+    "TRUNCATE content_version_relations, content_observations, content_versions, "
+    "content_discoveries, content_records, "
     "source_capability_evidence, source_connection_versions, source_connections, "
     "provenance_manifest_inputs, provenance_manifests, evidence_cleanup_targets, "
     "evidence_deletions, evidence_resources, evidence_retention_policies, "
@@ -108,6 +109,18 @@ def _seed_context(client: TestClient, owner_id: UUID) -> tuple[UUID, UUID, UUID,
             "view_count": "浏览观察",
             "play_count": "播放观察",
             "danmaku_count": "弹幕观察",
+            "text_scope": "正文完整度",
+            "text_origin": "正文来源",
+            "text_origin_ref": "机器提取依据",
+            "title": "作品标题",
+            "body": "作品正文",
+            "truncation_reason": "截断原因",
+            "quote_target_external_id": "引用目标身份",
+            "quote_target_native_scope": "引用目标作用域",
+            "quote_target_author_external_id": "引用目标作者",
+            "repost_target_external_id": "转帖目标身份",
+            "repost_target_native_scope": "转帖目标作用域",
+            "repost_target_author_external_id": "转帖目标作者",
         }
         session.execute(
             text(
@@ -174,6 +187,8 @@ def _command(
     operation_id: UUID,
     observed_at: datetime,
     like_count: int = 0,
+    external_id: str = "post-001",
+    extra_fields: dict[str, object] | None = None,
 ) -> PersistContentPostInput:
     return PersistContentPostInput(
         job_id=job_id,
@@ -196,8 +211,8 @@ def _command(
             expires_at=observed_at + timedelta(days=30),
             fields={
                 "object_type": "post",
-                "external_id": "post-001",
-                "canonical_url": "https://example.invalid/posts/1",
+                "external_id": external_id,
+                "canonical_url": f"https://example.invalid/posts/{external_id}",
                 "author_external_id": "author-1",
                 "published_at": "2026-09-22T07:00:00Z",
                 "like_count": like_count,
@@ -206,9 +221,263 @@ def _command(
                 "view_count": None,
                 "play_count": None,
                 "danmaku_count": None,
+                **(extra_fields or {}),
             },
         ),
     )
+
+
+def test_content_versions_preserve_scope_provenance_relations_and_snapshot_time(
+    content_client: TestClient,
+) -> None:
+    owner_id = _initialize(content_client)
+    connection_id, policy_id, retention_id, first_job_id, second_job_id = _seed_context(
+        content_client, owner_id
+    )
+    base_time = datetime.now(UTC) - timedelta(minutes=3)
+    factory = content_client.app.state.session_factory
+
+    target_command = _command(
+        owner_id=owner_id,
+        connection_id=connection_id,
+        policy_id=policy_id,
+        retention_id=retention_id,
+        job_id=first_job_id,
+        operation_id=uuid4(),
+        observed_at=base_time,
+        external_id="post-target",
+        extra_fields={
+            "text_scope": "full",
+            "text_origin": "source",
+            "title": "目标作品",
+            "body": "目标正文",
+            "published_at": "2026-09-22T06:59:59.123456Z",
+        },
+    )
+    subject_fields = {
+        "author_external_id": "author-subject",
+        "published_at": "2026-09-22T07:00:00.123Z",
+        "text_scope": "summary",
+        "text_origin": "source",
+        "title": "摘要标题",
+        "body": "<b>来源摘要</b>",
+        "quote_target_external_id": "post-missing",
+        "quote_target_author_external_id": "author-quote",
+        "repost_target_external_id": "post-target",
+        "repost_target_author_external_id": "author-target",
+    }
+    first_operation = uuid4()
+    subject = _command(
+        owner_id=owner_id,
+        connection_id=connection_id,
+        policy_id=policy_id,
+        retention_id=retention_id,
+        job_id=first_job_id,
+        operation_id=first_operation,
+        observed_at=base_time + timedelta(minutes=1),
+        external_id="post-subject",
+        extra_fields=subject_fields,
+    )
+    later = _command(
+        owner_id=owner_id,
+        connection_id=connection_id,
+        policy_id=policy_id,
+        retention_id=retention_id,
+        job_id=second_job_id,
+        operation_id=uuid4(),
+        observed_at=base_time + timedelta(minutes=2),
+        external_id="post-subject",
+        extra_fields=subject_fields,
+    )
+
+    with factory() as session:
+        service = ContentService(session)
+        target = service.persist_post(owner_id=owner_id, command=target_command)
+        created = service.persist_post(owner_id=owner_id, command=subject)
+        replayed = service.persist_post(owner_id=owner_id, command=subject)
+        updated = service.persist_post(owner_id=owner_id, command=later)
+
+    assert created.latest_observation.id == replayed.latest_observation.id
+    assert created.latest_observation.content_version is not None
+    assert updated.latest_observation.content_version is not None
+    assert (
+        created.latest_observation.content_version.id
+        == updated.latest_observation.content_version.id
+    )
+    detail = content_client.get(f"/api/contents/{created.id}")
+    assert detail.status_code == 200, detail.json()
+    observation = detail.json()["latest_observation"]
+    assert observation["observed_at"] != created.latest_observation.observed_at.isoformat()
+    assert observation["published_at_fractional_digits"] == 3
+    assert observation["author_external_id"] == "author-subject"
+    assert observation["content_version"] == {
+        "id": str(created.latest_observation.content_version.id),
+        "text_scope": "summary",
+        "text_origin": "source",
+        "text_origin_ref": None,
+        "title": "摘要标题",
+        "body": "<b>来源摘要</b>",
+        "truncation_reason": None,
+        "relations": [
+            {
+                "relation_type": "quote",
+                "target_native_scope": None,
+                "target_external_id": "post-missing",
+                "target_author_external_id": "author-quote",
+                "target_content_id": None,
+            },
+            {
+                "relation_type": "repost",
+                "target_native_scope": None,
+                "target_external_id": "post-target",
+                "target_author_external_id": "author-target",
+                "target_content_id": str(target.id),
+            },
+        ],
+    }
+    with factory() as session:
+        counts = session.execute(
+            text(
+                "SELECT (SELECT count(*) FROM content_records), "
+                "(SELECT count(*) FROM content_versions), "
+                "(SELECT count(*) FROM content_version_relations), "
+                "(SELECT count(*) FROM content_observations)"
+            )
+        ).one()
+    assert tuple(counts) == (2, 2, 2, 3)
+
+
+@pytest.mark.parametrize(
+    ("extra_fields", "message"),
+    [
+        ({"text_scope": "summary", "text_origin": "source"}, "requires a title or body"),
+        (
+            {"text_scope": "truncated", "text_origin": "source", "body": "部分正文"},
+            "requires truncation_reason",
+        ),
+        (
+            {"text_scope": "media_only", "text_origin": "source", "body": "伪造媒体文本"},
+            "cannot contain invented",
+        ),
+        (
+            {"text_scope": "full", "text_origin": "machine_extracted", "body": "提取文本"},
+            "requires text_origin_ref",
+        ),
+        (
+            {
+                "text_scope": "full",
+                "text_origin": "source",
+                "text_origin_ref": "media_extraction:1",
+                "body": "来源原文",
+            },
+            "cannot declare a machine extraction reference",
+        ),
+        (
+            {
+                "text_scope": "full",
+                "text_origin": "source",
+                "body": "来源原文",
+                "quote_target_author_external_id": "author-only",
+            },
+            "target identity requires an external_id",
+        ),
+        (
+            {
+                "published_at": "2026-09-22T07:00:00.1234567Z",
+                "text_scope": "full",
+                "text_origin": "source",
+                "body": "来源原文",
+            },
+            "at most 6 fractional digits",
+        ),
+    ],
+)
+def test_content_version_contract_rejects_false_or_untraceable_text(
+    content_client: TestClient,
+    extra_fields: dict[str, object],
+    message: str,
+) -> None:
+    owner_id = _initialize(content_client)
+    connection_id, policy_id, retention_id, job_id, _ = _seed_context(content_client, owner_id)
+    command = _command(
+        owner_id=owner_id,
+        connection_id=connection_id,
+        policy_id=policy_id,
+        retention_id=retention_id,
+        job_id=job_id,
+        operation_id=uuid4(),
+        observed_at=datetime.now(UTC) - timedelta(minutes=1),
+        extra_fields=extra_fields,
+    )
+
+    with (
+        content_client.app.state.session_factory() as session,
+        pytest.raises(ValueError, match=message),
+    ):
+        ContentService(session).persist_post(owner_id=owner_id, command=command)
+
+
+def test_content_versions_keep_truncated_media_and_machine_extracted_semantics(
+    content_client: TestClient,
+) -> None:
+    owner_id = _initialize(content_client)
+    connection_id, policy_id, retention_id, job_id, _ = _seed_context(content_client, owner_id)
+    cases = (
+        (
+            "post-truncated",
+            {
+                "text_scope": "truncated",
+                "text_origin": "source",
+                "body": "来源只返回的前半段",
+                "truncation_reason": "source_limit",
+            },
+        ),
+        ("post-media", {"text_scope": "media_only", "text_origin": "source"}),
+        (
+            "post-extracted",
+            {
+                "text_scope": "full",
+                "text_origin": "machine_extracted",
+                "text_origin_ref": "media_extraction:controlled-001",
+                "body": "受控提取文本",
+            },
+        ),
+    )
+    observed_at = datetime.now(UTC) - timedelta(minutes=1)
+    created = []
+    with content_client.app.state.session_factory() as session:
+        service = ContentService(session)
+        for index, (external_id, fields) in enumerate(cases):
+            created.append(
+                service.persist_post(
+                    owner_id=owner_id,
+                    command=_command(
+                        owner_id=owner_id,
+                        connection_id=connection_id,
+                        policy_id=policy_id,
+                        retention_id=retention_id,
+                        job_id=job_id,
+                        operation_id=uuid4(),
+                        observed_at=observed_at + timedelta(seconds=index),
+                        external_id=external_id,
+                        extra_fields=fields,
+                    ),
+                )
+            )
+
+    versions = [item.latest_observation.content_version for item in created]
+    assert [version.text_scope if version else None for version in versions] == [
+        "truncated",
+        "media_only",
+        "full",
+    ]
+    assert versions[0] is not None
+    assert versions[0].truncation_reason == "source_limit"
+    assert versions[1] is not None
+    assert versions[1].title is None and versions[1].body is None
+    assert versions[2] is not None
+    assert versions[2].text_origin == "machine_extracted"
+    assert versions[2].text_origin_ref == "media_extraction:controlled-001"
 
 
 def test_same_post_keeps_two_discoveries_zero_unknown_and_idempotent_observations(

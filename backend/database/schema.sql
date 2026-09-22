@@ -715,15 +715,114 @@ CREATE TABLE content_discoveries (
 CREATE INDEX content_discoveries_content_idx
     ON content_discoveries (owner_id, content_id);
 
+CREATE TABLE content_versions (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    content_id UUID NOT NULL,
+    fingerprint BYTEA NOT NULL CHECK (octet_length(fingerprint) = 32),
+    text_scope VARCHAR(16) NOT NULL CHECK (
+        text_scope IN ('full', 'summary', 'truncated', 'media_only')
+    ),
+    text_origin VARCHAR(32) NOT NULL CHECK (
+        text_origin IN ('source', 'machine_extracted')
+    ),
+    text_origin_ref VARCHAR(512),
+    title VARCHAR(2000),
+    body TEXT,
+    truncation_reason VARCHAR(32),
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT content_versions_owner_id_key UNIQUE (owner_id, id),
+    CONSTRAINT content_versions_owner_content_id_key
+        UNIQUE (owner_id, content_id, id),
+    CONSTRAINT content_versions_owner_content_fingerprint_key
+        UNIQUE (owner_id, content_id, fingerprint),
+    CONSTRAINT content_versions_owner_content_fkey
+        FOREIGN KEY (owner_id, content_id)
+        REFERENCES content_records (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT content_versions_origin_ref_check CHECK (
+        (text_origin = 'source' AND text_origin_ref IS NULL)
+        OR (
+            text_origin = 'machine_extracted'
+            AND text_origin_ref IS NOT NULL
+            AND text_origin_ref <> ''
+        )
+    ),
+    CONSTRAINT content_versions_text_length_check CHECK (
+        (title IS NULL OR char_length(title) BETWEEN 1 AND 2000)
+        AND (body IS NULL OR char_length(body) BETWEEN 1 AND 100000)
+    ),
+    CONSTRAINT content_versions_scope_content_check CHECK (
+        (
+            text_scope = 'media_only'
+            AND title IS NULL
+            AND body IS NULL
+            AND truncation_reason IS NULL
+            AND text_origin = 'source'
+        )
+        OR (
+            text_scope IN ('full', 'summary')
+            AND (title IS NOT NULL OR body IS NOT NULL)
+            AND truncation_reason IS NULL
+        )
+        OR (
+            text_scope = 'truncated'
+            AND (title IS NOT NULL OR body IS NOT NULL)
+            AND truncation_reason IN ('source_limit', 'collector_limit')
+        )
+    )
+);
+
+CREATE INDEX content_versions_content_idx
+    ON content_versions (owner_id, content_id, created_at, id);
+
+CREATE TABLE content_version_relations (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    content_version_id UUID NOT NULL,
+    relation_type VARCHAR(16) NOT NULL CHECK (
+        relation_type IN ('quote', 'repost')
+    ),
+    target_native_scope VARCHAR(512) CHECK (
+        target_native_scope IS NULL OR target_native_scope <> ''
+    ),
+    target_external_id VARCHAR(512) NOT NULL CHECK (
+        target_external_id <> ''
+    ),
+    target_author_external_id VARCHAR(512) CHECK (
+        target_author_external_id IS NULL OR target_author_external_id <> ''
+    ),
+    CONSTRAINT content_version_relations_target_key
+        UNIQUE NULLS NOT DISTINCT (
+            owner_id,
+            content_version_id,
+            relation_type,
+            target_native_scope,
+            target_external_id
+        ),
+    CONSTRAINT content_version_relations_owner_version_fkey
+        FOREIGN KEY (owner_id, content_version_id)
+        REFERENCES content_versions (owner_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX content_version_relations_version_idx
+    ON content_version_relations (
+        owner_id,
+        content_version_id,
+        relation_type,
+        id
+    );
+
 CREATE TABLE content_observations (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL,
     content_id UUID NOT NULL,
     job_id UUID NOT NULL,
     source_operation_id UUID NOT NULL,
+    content_version_id UUID,
     observed_at TIMESTAMPTZ NOT NULL,
     received_at TIMESTAMPTZ NOT NULL CHECK (received_at >= observed_at),
     published_at TIMESTAMPTZ,
+    published_at_fractional_digits SMALLINT,
     canonical_url VARCHAR(2048) CHECK (
         canonical_url IS NULL OR canonical_url ~ '^https?://'
     ),
@@ -743,7 +842,17 @@ CREATE TABLE content_observations (
         REFERENCES content_records (owner_id, id) ON DELETE CASCADE,
     CONSTRAINT content_observations_owner_job_fkey
         FOREIGN KEY (owner_id, job_id)
-        REFERENCES jobs (owner_id, id) ON DELETE RESTRICT
+        REFERENCES jobs (owner_id, id) ON DELETE RESTRICT,
+    CONSTRAINT content_observations_owner_content_version_fkey
+        FOREIGN KEY (owner_id, content_id, content_version_id)
+        REFERENCES content_versions (owner_id, content_id, id) ON DELETE RESTRICT,
+    CONSTRAINT content_observations_published_precision_check CHECK (
+        (published_at IS NULL AND published_at_fractional_digits IS NULL)
+        OR (
+            published_at IS NOT NULL
+            AND published_at_fractional_digits BETWEEN 0 AND 6
+        )
+    )
 );
 
 CREATE INDEX content_observations_latest_idx

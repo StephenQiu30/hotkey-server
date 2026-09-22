@@ -69,11 +69,14 @@ declare namespace HotKeyAPI {
     received_at: string;
     /** Published At */
     published_at: string | null;
+    /** Published At Fractional Digits */
+    published_at_fractional_digits: number | null;
     /** Canonical Url */
     canonical_url: string | null;
     /** Author External Id */
     author_external_id: string | null;
     metrics: ContentMetricView;
+    content_version: ContentVersionView | null;
   };
 
   type ContentRecordDetailView = {
@@ -108,6 +111,42 @@ declare namespace HotKeyAPI {
     latest_observation: ContentObservationView;
     /** Discovery Count */
     discovery_count: number;
+  };
+
+  type ContentRelationType = "quote" | "repost";
+
+  type ContentTextOrigin = "source" | "machine_extracted";
+
+  type ContentTextScope = "full" | "summary" | "truncated" | "media_only";
+
+  type ContentTruncationReason = "source_limit" | "collector_limit";
+
+  type ContentVersionRelationView = {
+    relation_type: ContentRelationType;
+    /** Target Native Scope */
+    target_native_scope: string | null;
+    /** Target External Id */
+    target_external_id: string;
+    /** Target Author External Id */
+    target_author_external_id: string | null;
+    /** Target Content Id */
+    target_content_id: string | null;
+  };
+
+  type ContentVersionView = {
+    /** Id */
+    id: string;
+    text_scope: ContentTextScope;
+    text_origin: ContentTextOrigin;
+    /** Text Origin Ref */
+    text_origin_ref: string | null;
+    /** Title */
+    title: string | null;
+    /** Body */
+    body: string | null;
+    truncation_reason: ContentTruncationReason | null;
+    /** Relations */
+    relations: ContentVersionRelationView[];
   };
 
   type ErrorView = {

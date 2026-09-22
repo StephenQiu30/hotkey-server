@@ -16,7 +16,8 @@ from monitors.services import MonitorTopicService
 _BOOTSTRAP_TOKEN = "monitor-topics-isolated-bootstrap-token"
 _PASSWORD = "correct horse battery staple"
 _TRUNCATE = (
-    "TRUNCATE content_discoveries, content_observations, content_records, "
+    "TRUNCATE content_version_relations, content_observations, content_versions, "
+    "content_discoveries, content_records, "
     "source_capability_evidence, source_connection_versions, "
     "source_connections, provenance_manifest_inputs, provenance_manifests, "
     "evidence_cleanup_targets, evidence_deletions, "

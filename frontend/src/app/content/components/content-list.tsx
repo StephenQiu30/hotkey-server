@@ -7,6 +7,8 @@ import { ArrowRightIcon, ExternalLinkIcon, RotateCcwIcon } from "lucide-react";
 
 import { listContentRecords } from "@/api/zuopinziliao";
 import {
+  contentScopeLabel,
+  contentScopeNotice,
   formatMetric,
   formatTime,
   hasUnknownMetrics,
@@ -65,6 +67,33 @@ function PrimaryMetrics({ metrics }: { metrics: HotKeyAPI.ContentMetricView }) {
       {formatMetric(metrics.comment_count)} · 转发{" "}
       {formatMetric(metrics.repost_count)}
     </span>
+  );
+}
+
+function ContentVersionSummary({
+  version,
+}: {
+  version: HotKeyAPI.ContentVersionView | null;
+}) {
+  if (version === null) {
+    return <p className="text-muted-foreground mt-2 text-xs">未取得正文</p>;
+  }
+  const preview = version.title ?? version.body;
+  const notice = contentScopeNotice(version.text_scope);
+  return (
+    <div className="mt-2 min-w-0">
+      <Badge variant="secondary">{contentScopeLabel(version.text_scope)}</Badge>
+      {preview ? (
+        <p className="mt-2 line-clamp-2 text-sm break-words whitespace-pre-wrap">
+          {preview}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
+          {notice}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -206,7 +235,7 @@ export function ContentList() {
           作品资料
         </h1>
         <p className="text-muted-foreground mt-4 max-w-2xl leading-7">
-          查看已经持久保存且仍可读取的作品身份与最近一次观察。未知指标保持未知，读取不会触发来源请求。
+          查看已持久保存且仍可读的作品身份、正文边界与最近观察。摘要、截断和未知保持原语义，读取不会触发来源请求。
         </p>
 
         {state.status === "loading" ? <LoadingContentList /> : null}
@@ -244,6 +273,11 @@ export function ContentList() {
                         <p className="mt-2 font-mono text-xs break-all">
                           {content.external_id}
                         </p>
+                        <ContentVersionSummary
+                          version={
+                            content.latest_observation.content_version ?? null
+                          }
+                        />
                         <p className="text-muted-foreground mt-1 text-xs">
                           作者：
                           {content.latest_observation.author_external_id ??
@@ -289,6 +323,9 @@ export function ContentList() {
                   <h2 className="mt-4 font-mono text-sm font-medium break-all">
                     {content.external_id}
                   </h2>
+                  <ContentVersionSummary
+                    version={content.latest_observation.content_version ?? null}
+                  />
                   <p className="text-muted-foreground mt-2 text-xs">
                     作者：
                     {content.latest_observation.author_external_id ?? "未知"}

@@ -9,7 +9,10 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    LargeBinary,
+    SmallInteger,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -87,6 +90,128 @@ class ContentDiscovery(Base):
     created_at: Mapped[datetime]
 
 
+class ContentVersion(Base):
+    __tablename__ = "content_versions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "content_id"],
+            ["content_records.owner_id", "content_records.id"],
+            ondelete="CASCADE",
+            name="content_versions_owner_content_fkey",
+        ),
+        UniqueConstraint("owner_id", "id", name="content_versions_owner_id_key"),
+        UniqueConstraint(
+            "owner_id",
+            "content_id",
+            "id",
+            name="content_versions_owner_content_id_key",
+        ),
+        UniqueConstraint(
+            "owner_id",
+            "content_id",
+            "fingerprint",
+            name="content_versions_owner_content_fingerprint_key",
+        ),
+        CheckConstraint(
+            "octet_length(fingerprint) = 32",
+            name="content_versions_fingerprint_check",
+        ),
+        CheckConstraint(
+            "text_scope IN ('full', 'summary', 'truncated', 'media_only')",
+            name="content_versions_text_scope_check",
+        ),
+        CheckConstraint(
+            "text_origin IN ('source', 'machine_extracted')",
+            name="content_versions_text_origin_check",
+        ),
+        CheckConstraint(
+            "(text_origin = 'source' AND text_origin_ref IS NULL) OR "
+            "(text_origin = 'machine_extracted' AND text_origin_ref IS NOT NULL "
+            "AND text_origin_ref <> '')",
+            name="content_versions_origin_ref_check",
+        ),
+        CheckConstraint(
+            "(title IS NULL OR (char_length(title) BETWEEN 1 AND 2000)) AND "
+            "(body IS NULL OR (char_length(body) BETWEEN 1 AND 100000))",
+            name="content_versions_text_length_check",
+        ),
+        CheckConstraint(
+            "(text_scope = 'media_only' AND title IS NULL AND body IS NULL "
+            "AND truncation_reason IS NULL AND text_origin = 'source') OR "
+            "(text_scope IN ('full', 'summary') AND (title IS NOT NULL OR body IS NOT NULL) "
+            "AND truncation_reason IS NULL) OR "
+            "(text_scope = 'truncated' AND (title IS NOT NULL OR body IS NOT NULL) "
+            "AND truncation_reason IN ('source_limit', 'collector_limit'))",
+            name="content_versions_scope_content_check",
+        ),
+        Index("content_versions_content_idx", "owner_id", "content_id", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID]
+    content_id: Mapped[UUID]
+    fingerprint: Mapped[bytes] = mapped_column(LargeBinary(32))
+    text_scope: Mapped[str] = mapped_column(String(16))
+    text_origin: Mapped[str] = mapped_column(String(32))
+    text_origin_ref: Mapped[str | None] = mapped_column(String(512))
+    title: Mapped[str | None] = mapped_column(String(2000))
+    body: Mapped[str | None] = mapped_column(Text)
+    truncation_reason: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime]
+
+
+class ContentVersionRelation(Base):
+    __tablename__ = "content_version_relations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "content_version_id"],
+            ["content_versions.owner_id", "content_versions.id"],
+            ondelete="CASCADE",
+            name="content_version_relations_owner_version_fkey",
+        ),
+        UniqueConstraint(
+            "owner_id",
+            "content_version_id",
+            "relation_type",
+            "target_native_scope",
+            "target_external_id",
+            name="content_version_relations_target_key",
+            postgresql_nulls_not_distinct=True,
+        ),
+        CheckConstraint(
+            "relation_type IN ('quote', 'repost')",
+            name="content_version_relations_type_check",
+        ),
+        CheckConstraint(
+            "target_native_scope IS NULL OR target_native_scope <> ''",
+            name="content_version_relations_scope_check",
+        ),
+        CheckConstraint(
+            "target_external_id <> ''",
+            name="content_version_relations_external_id_check",
+        ),
+        CheckConstraint(
+            "target_author_external_id IS NULL OR target_author_external_id <> ''",
+            name="content_version_relations_author_check",
+        ),
+        Index(
+            "content_version_relations_version_idx",
+            "owner_id",
+            "content_version_id",
+            "relation_type",
+            "id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID]
+    content_version_id: Mapped[UUID]
+    relation_type: Mapped[str] = mapped_column(String(16))
+    target_native_scope: Mapped[str | None] = mapped_column(String(512))
+    target_external_id: Mapped[str] = mapped_column(String(512))
+    target_author_external_id: Mapped[str | None] = mapped_column(String(512))
+
+
 class ContentObservation(Base):
     __tablename__ = "content_observations"
     __table_args__ = (
@@ -101,6 +226,12 @@ class ContentObservation(Base):
             ["jobs.owner_id", "jobs.id"],
             ondelete="RESTRICT",
             name="content_observations_owner_job_fkey",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "content_id", "content_version_id"],
+            ["content_versions.owner_id", "content_versions.content_id", "content_versions.id"],
+            ondelete="RESTRICT",
+            name="content_observations_owner_content_version_fkey",
         ),
         UniqueConstraint(
             "owner_id",
@@ -119,6 +250,11 @@ class ContentObservation(Base):
         CheckConstraint(
             "author_external_id IS NULL OR author_external_id <> ''",
             name="content_observations_author_check",
+        ),
+        CheckConstraint(
+            "(published_at IS NULL AND published_at_fractional_digits IS NULL) OR "
+            "(published_at IS NOT NULL AND published_at_fractional_digits BETWEEN 0 AND 6)",
+            name="content_observations_published_precision_check",
         ),
         CheckConstraint(
             "(like_count IS NULL OR like_count >= 0) AND "
@@ -144,9 +280,11 @@ class ContentObservation(Base):
     content_id: Mapped[UUID]
     job_id: Mapped[UUID]
     source_operation_id: Mapped[UUID]
+    content_version_id: Mapped[UUID | None]
     observed_at: Mapped[datetime]
     received_at: Mapped[datetime]
     published_at: Mapped[datetime | None]
+    published_at_fractional_digits: Mapped[int | None] = mapped_column(SmallInteger)
     canonical_url: Mapped[str | None] = mapped_column(String(2048))
     author_external_id: Mapped[str | None] = mapped_column(String(512))
     like_count: Mapped[int | None] = mapped_column(BigInteger)

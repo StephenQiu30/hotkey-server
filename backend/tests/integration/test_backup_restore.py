@@ -49,7 +49,8 @@ def backup_environment() -> Iterator[tuple[str, Minio, str, str]]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE content_discoveries, content_observations, content_records, "
+                "TRUNCATE content_version_relations, content_observations, content_versions, "
+                "content_discoveries, content_records, "
                 "source_capability_evidence, source_connection_versions, "
                 "source_connections, provenance_manifest_inputs, provenance_manifests, "
                 "evidence_cleanup_targets, evidence_deletions, evidence_resources, "
@@ -131,7 +132,8 @@ def backup_environment() -> Iterator[tuple[str, Minio, str, str]]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE content_discoveries, content_observations, content_records, "
+                    "TRUNCATE content_version_relations, content_observations, content_versions, "
+                    "content_discoveries, content_records, "
                     "source_capability_evidence, source_connection_versions, "
                     "source_connections, provenance_manifest_inputs, provenance_manifests, "
                     "evidence_cleanup_targets, evidence_deletions, evidence_resources, "
@@ -178,6 +180,8 @@ def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
         "content_discoveries",
         "content_observations",
         "content_records",
+        "content_version_relations",
+        "content_versions",
         "evidence_cleanup_targets",
         "evidence_deletions",
         "evidence_resources",
