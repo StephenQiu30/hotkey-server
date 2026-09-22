@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -51,11 +52,37 @@ class Settings(BaseSettings):
     job_lease_seconds: int = Field(default=60, ge=5, le=300)
     job_max_catchup_windows: int = Field(default=3, ge=1, le=100)
 
+    firecrawl_enabled: bool = False
+    firecrawl_base_url: str = "http://127.0.0.1:3002"
+    firecrawl_timeout_seconds: int = Field(default=20, ge=1, le=20)
+    firecrawl_max_response_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=2 * 1024 * 1024)
+
     minio_endpoint: str = "127.0.0.1:9000"
     minio_secure: bool = False
     minio_access_key: str = ""
     minio_secret_key: str = ""
     minio_bucket: str = "hotkey-evidence"
+
+    @field_validator("firecrawl_base_url")
+    @classmethod
+    def validate_firecrawl_base_url(cls, value: str) -> str:
+        try:
+            parsed = urlsplit(value)
+            port = parsed.port
+        except ValueError as error:
+            raise ValueError("invalid Firecrawl base URL") from error
+        if (
+            parsed.scheme not in {"http", "https"}
+            or parsed.hostname is None
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or port is None
+        ):
+            raise ValueError("invalid Firecrawl base URL")
+        return value.removesuffix("/")
 
     @field_validator("bootstrap_token", mode="before")
     @classmethod

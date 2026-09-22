@@ -517,7 +517,7 @@ class SourceConnectionService:
         authentication_failed = connection is not None and connection.id in authentication_failures
         capability_views: list[SourceCapabilityView] = []
         statuses: list[SourceCapabilityStatus] = []
-        for capability in SourceCapability:
+        for capability in catalog.capabilities:
             entry_views: dict[SourceEntryPoint, SourceEntryPointView] = {}
             for entry_point in SourceEntryPoint:
                 key = (

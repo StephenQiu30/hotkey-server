@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from sources.contracts import SourceCapability
+from sources.contracts import SocialSourceCapability, SourceCapability
 
 type JobScopeValue = str | int | bool | None
 
@@ -346,6 +346,7 @@ class JobObservationContext(BaseModel):
 
 class CollectionJobObservationInput(JobObservationContext):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=False)
+    source_capability: SocialSourceCapability | None = None
 
 
 class StageAttemptInput(BaseModel):

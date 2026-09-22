@@ -31,7 +31,7 @@ declare namespace HotKeyAPI {
     configuration_version: number;
     /** Source Key */
     source_key?: string | null;
-    source_capability?: SourceCapability | null;
+    source_capability?: SocialSourceCapability | null;
   };
 
   type ContentDiscoveryView = {
@@ -483,7 +483,11 @@ declare namespace HotKeyAPI {
     job_id: string;
   };
 
-  type SourceCapability = "search" | "author_posts" | "comments" | "replies";
+  type SocialSourceCapability =
+    "search" | "author_posts" | "comments" | "replies";
+
+  type SourceCapability =
+    "search" | "author_posts" | "comments" | "replies" | "page_content";
 
   type SourceCapabilityStatus =
     | "unconfigured"

@@ -122,7 +122,7 @@ CREATE TABLE source_capability_evidence (
     connection_id UUID NOT NULL,
     connection_version INTEGER NOT NULL CHECK (connection_version >= 1),
     capability VARCHAR(32) NOT NULL CHECK (
-        capability IN ('search', 'author_posts', 'comments', 'replies')
+        capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content')
     ),
     entry_point VARCHAR(16) NOT NULL CHECK (
         entry_point IN ('manual', 'scheduled')
@@ -183,7 +183,7 @@ CREATE TABLE source_access_policies (
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
     source_key VARCHAR(64) NOT NULL CHECK (source_key ~ '^[a-z][a-z0-9_-]{0,63}$'),
     capability VARCHAR(32) NOT NULL CHECK (
-        capability IN ('search', 'author_posts', 'comments', 'replies')
+        capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content')
     ),
     status VARCHAR(16) NOT NULL CHECK (status IN ('pending', 'approved', 'blocked')),
     enabled BOOLEAN NOT NULL DEFAULT false,
@@ -575,7 +575,9 @@ CREATE TABLE jobs (
             source_key IS NOT NULL
             AND source_capability IS NOT NULL
             AND source_key ~ '^[a-z][a-z0-9_-]{0,63}$'
-            AND source_capability IN ('search', 'author_posts', 'comments', 'replies')
+            AND source_capability IN (
+                'search', 'author_posts', 'comments', 'replies', 'page_content'
+            )
         )
     ),
     CHECK (

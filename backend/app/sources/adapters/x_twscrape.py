@@ -21,11 +21,11 @@ from twscrape.utils import get_by_path, to_old_rep
 from twscrape.xclid import XClIdAccountError, XClIdGen, XClIdParseError, load_keys
 
 from sources.contracts import (
+    SOCIAL_CAPABILITIES,
     AuthorPostsRequest,
     CommentsRequest,
     RepliesRequest,
     SearchRequest,
-    SourceCapability,
     SourceComment,
     SourceItem,
     SourcePage,
@@ -150,7 +150,7 @@ class XTwscrapeAdapter:
     """One bounded collection run. The caller owns authorization, lease and durable budget."""
 
     source_key = "x"
-    capabilities = frozenset(SourceCapability)
+    capabilities = frozenset(SOCIAL_CAPABILITIES)
 
     def __init__(
         self,

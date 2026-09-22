@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal, Protocol
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -15,6 +16,23 @@ class SourceCapability(StrEnum):
     AUTHOR_POSTS = "author_posts"
     COMMENTS = "comments"
     REPLIES = "replies"
+    PAGE_CONTENT = "page_content"
+
+
+type SocialSourceCapability = Literal[
+    SourceCapability.SEARCH,
+    SourceCapability.AUTHOR_POSTS,
+    SourceCapability.COMMENTS,
+    SourceCapability.REPLIES,
+]
+
+
+SOCIAL_CAPABILITIES: tuple[SocialSourceCapability, ...] = (
+    SourceCapability.SEARCH,
+    SourceCapability.AUTHOR_POSTS,
+    SourceCapability.COMMENTS,
+    SourceCapability.REPLIES,
+)
 
 
 class SourceSort(StrEnum):
@@ -135,6 +153,82 @@ type SourceRequest = Annotated[
 ]
 
 
+class WebPageRequest(_ContractModel):
+    capability: Literal[SourceCapability.PAGE_CONTENT] = SourceCapability.PAGE_CONTENT
+    url: str = Field(min_length=1, max_length=2048)
+    timeout_seconds: int = Field(default=20, ge=1, le=20)
+    max_content_characters: int = Field(default=100_000, ge=1, le=100_000)
+    refresh: Literal["fresh"] = "fresh"
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        if value != value.strip() or any(
+            ord(character) < 32 or ord(character) == 127 for character in value
+        ):
+            raise ValueError("web page URL cannot contain whitespace or controls")
+        try:
+            parsed = urlsplit(value)
+            port = parsed.port
+        except ValueError as error:
+            raise ValueError("web page URL is invalid") from error
+        scheme = parsed.scheme.lower()
+        if (
+            scheme not in {"http", "https"}
+            or parsed.hostname is None
+            or parsed.username is not None
+            or parsed.password is not None
+            or port not in {None, 80 if scheme == "http" else 443}
+        ):
+            raise ValueError("web page URL is not an allowed HTTP target")
+        return value
+
+
+class SourceDocument(_ContractModel):
+    request_url: str = Field(min_length=1, max_length=2048)
+    final_url: str = Field(min_length=1, max_length=2048)
+    title: str | None = Field(default=None, max_length=512)
+    text: str = Field(min_length=1, max_length=_MAX_TEXT_LENGTH)
+    text_scope: Literal["full", "truncated"]
+    observed_at: datetime
+    published_at: datetime | None
+    content_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    extractor_version: str = Field(min_length=1, max_length=64)
+
+    @field_validator("observed_at", "published_at")
+    @classmethod
+    def validate_datetimes(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("document timestamps must be timezone-aware")
+        return value
+
+
+class WebPageResult(_ContractModel):
+    document: SourceDocument | None = None
+    stop_reason: SourceStopReason | None = None
+    target_status_code: int | None = Field(default=None, ge=100, le=599)
+    collector_call_count: int = Field(ge=0, le=1)
+    target_request_count: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_result(self) -> WebPageResult:
+        if self.document is not None:
+            valid = (
+                self.stop_reason is None
+                and self.target_status_code is not None
+                and 200 <= self.target_status_code < 300
+                and self.collector_call_count == 1
+            )
+        else:
+            valid = self.stop_reason is not None and (
+                self.collector_call_count == 1
+                or (self.target_status_code is None and self.target_request_count is None)
+            )
+        if not valid:
+            raise ValueError("web page result fields do not match its outcome")
+        return self
+
+
 class SourcePost(_ContractModel):
     object_type: Literal["post"] = "post"
     source_key: str = Field(
@@ -218,7 +312,7 @@ class SourcePage(_ContractModel):
         max_length=64,
         pattern=r"^[a-z][a-z0-9_-]{0,63}$",
     )
-    capability: SourceCapability
+    capability: SocialSourceCapability
     state: SourcePageState
     items: tuple[SourceItem, ...] = Field(max_length=100)
     next_page_token: str | None = Field(
@@ -308,6 +402,10 @@ class SourceAdapter(Protocol):
     def source_key(self) -> str: ...
 
     @property
-    def capabilities(self) -> frozenset[SourceCapability]: ...
+    def capabilities(self) -> frozenset[SocialSourceCapability]: ...
 
     def fetch_page(self, request: SourceRequest) -> SourcePage: ...
+
+
+class DocumentAdapter(Protocol):
+    def fetch_document(self, request: WebPageRequest) -> WebPageResult: ...

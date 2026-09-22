@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from sources.contracts import (
+    SOCIAL_CAPABILITIES,
     AuthorPostsRequest,
     CommentsRequest,
     RepliesRequest,
@@ -82,7 +83,7 @@ def test_capability_requests_keep_distinct_targets_and_opaque_paging() -> None:
         author_posts.capability,
         comments.capability,
         replies.capability,
-    ] == list(SourceCapability)
+    ] == list(SOCIAL_CAPABILITIES)
 
     with pytest.raises(ValidationError):
         SearchRequest(source_key="source-a", query="topic", page_size=0)
@@ -99,6 +100,20 @@ def test_capability_requests_keep_distinct_targets_and_opaque_paging() -> None:
             query="topic",
             page_size=20,
             provider_secret="must-not-enter-contract",
+        )
+
+
+def test_page_content_cannot_enter_the_social_paging_contract() -> None:
+    with pytest.raises(ValidationError):
+        SourcePage(
+            source_key="source-a",
+            capability=SourceCapability.PAGE_CONTENT,
+            state=SourcePageState.STOPPED,
+            items=(),
+            next_page_token=None,
+            watermark=None,
+            stop_reason=SourceStopReason.UNSUPPORTED,
+            observed_at=OBSERVED_AT,
         )
 
 
