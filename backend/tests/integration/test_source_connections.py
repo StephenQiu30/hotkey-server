@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import create_engine, text
 from typer.testing import CliRunner
 
@@ -18,13 +19,19 @@ from connections.schemas import (
     PersistedReadEvidenceInput,
     ProbeEvidenceInput,
     SourceCapabilityEvidenceView,
+    SourceConnectionStatus,
+    SourceConnectionUpdateInput,
     SourceEntryPoint,
 )
-from connections.services import SourceCapabilityEvidenceService, SourceConnectionService
+from connections.services import (
+    SourceCapabilityEvidenceService,
+    SourceConnectionService,
+    source_credential_reference,
+)
 from core.config import Settings, get_settings
 from core.errors import ApplicationError
 from main import create_app
-from sources.contracts import SourceCapability
+from sources.contracts import SourceCapability, SourceStopReason
 
 _BOOTSTRAP_TOKEN = "source-connection-bootstrap-token"
 _PASSWORD = "correct horse battery staple"
@@ -89,6 +96,8 @@ def _seed_search_connection(client: TestClient, owner_id: str) -> UUID:
     factory = client.app.state.session_factory
     connection_id = uuid4()
     now = datetime.now(UTC)
+    credential = SecretStr("controlled-source-credential-for-tests-only")
+    client.app.state.settings.source_credentials = {"douyin": credential}
     with factory() as session, session.begin():
         session.execute(
             text(
@@ -107,7 +116,7 @@ def _seed_search_connection(client: TestClient, owner_id: str) -> UUID:
             {
                 "connection_id": connection_id,
                 "owner_id": owner_id,
-                "secret_ref": "env:HOTKEY_DOUYIN_TOKEN",
+                "secret_ref": source_credential_reference("douyin", credential),
                 "now": now,
             },
         )
@@ -227,7 +236,10 @@ def test_current_version_persisted_evidence_projects_partial_without_cross_entry
             {
                 "connection_id": connection_id,
                 "owner_id": owner_id,
-                "secret_ref": "env:HOTKEY_DOUYIN_TOKEN_V2",
+                "secret_ref": source_credential_reference(
+                    "douyin",
+                    source_connection_client.app.state.settings.source_credentials["douyin"],
+                ),
                 "now": now + timedelta(minutes=1),
             },
         )
@@ -515,3 +527,277 @@ def test_evidence_waits_for_connection_lock_and_observes_committed_disable(
             future.result(timeout=5)
     with factory() as session:
         assert session.scalar(text("SELECT count(*) FROM source_capability_evidence")) == 0
+
+
+def test_connection_management_requires_auth_csrf_and_server_credentials(
+    source_connection_client: TestClient,
+) -> None:
+    client = source_connection_client
+    payload = {"expected_version": 0, "status": "active"}
+    assert client.put("/api/source-connections/douyin", json=payload).status_code == 401
+    _initialize(client)
+    assert client.put("/api/source-connections/douyin", json=payload).status_code == 403
+    headers = {"X-HotKey-CSRF": client.cookies["hotkey_csrf"]}
+    missing = client.put("/api/source-connections/douyin", json=payload, headers=headers)
+    assert missing.status_code == 409
+    assert missing.json()["code"] == "connection_credentials_missing"
+    assert missing.headers["cache-control"] == "no-store"
+
+
+def test_connection_rotation_disable_and_resume_are_versioned_without_secrets(
+    source_connection_client: TestClient,
+) -> None:
+    client = source_connection_client
+    owner_id = _initialize(client)
+    headers = {"X-HotKey-CSRF": client.cookies["hotkey_csrf"]}
+    secret = "controlled-source-credential-for-tests-only"
+    client.app.state.settings.source_credentials = {"douyin": SecretStr(secret)}
+    payload = {"expected_version": 0, "status": "active"}
+    created = client.put("/api/source-connections/douyin", headers=headers, json=payload)
+    assert created.status_code == 200
+    assert created.json()["version"] == 1
+    repeated = client.put("/api/source-connections/douyin", headers=headers, json=payload)
+    assert repeated.json() == created.json()
+    client.app.state.settings.source_credentials = {"douyin": SecretStr(secret + "-rotated")}
+    platform = client.get("/api/source-capabilities").json()["items"][1]
+    assert platform["credential_update_available"]
+    assert platform["status"] == "authentication_required"
+    rotated = client.put(
+        "/api/source-connections/douyin",
+        headers=headers,
+        json={"expected_version": 1, "status": "active"},
+    )
+    assert rotated.status_code == 200
+    assert rotated.json()["version"] == 2
+    platform = client.get("/api/source-capabilities").json()["items"][1]
+    assert not platform["credential_update_available"]
+    assert all(item["manual"]["status"] != "available" for item in platform["capabilities"])
+    disabled = client.put(
+        "/api/source-connections/douyin",
+        headers=headers,
+        json={"expected_version": 2, "status": "disabled"},
+    )
+    assert disabled.json()["version"] == 3
+    stale = client.put(
+        "/api/source-connections/douyin",
+        headers=headers,
+        json={"expected_version": 2, "status": "active"},
+    )
+    assert stale.status_code == 409
+    resumed = client.put(
+        "/api/source-connections/douyin",
+        headers=headers,
+        json={"expected_version": 3, "status": "active"},
+    )
+    assert resumed.json()["version"] == 4
+    for response in (created, repeated, rotated, disabled, stale, resumed):
+        assert secret not in response.text
+        assert "settings:" not in response.text
+        assert "secret_ref" not in response.text
+        assert response.headers["cache-control"] == "no-store"
+    with client.app.state.session_factory() as session:
+        rows = session.execute(
+            text(
+                "SELECT version, created_by FROM source_connection_versions "
+                "WHERE owner_id = :owner_id ORDER BY version"
+            ),
+            {"owner_id": owner_id},
+        ).all()
+    assert rows == [(version, UUID(owner_id)) for version in range(1, 5)]
+
+
+def test_disabled_connection_rejects_new_jobs_without_outbox(
+    source_connection_client: TestClient,
+) -> None:
+    client = source_connection_client
+    owner_id = _initialize(client)
+    _seed_search_connection(client, owner_id)
+    headers = {"X-HotKey-CSRF": client.cookies["hotkey_csrf"]}
+    disabled = client.put(
+        "/api/source-connections/douyin",
+        headers=headers,
+        json={"expected_version": 1, "status": "disabled"},
+    )
+    assert disabled.status_code == 200
+    response = client.post(
+        "/api/jobs",
+        headers=headers,
+        json={
+            "operation_id": str(uuid4()),
+            "kind": "monitor.collect",
+            "observation": {
+                "configuration_ref": "monitor:test",
+                "configuration_version": 1,
+                "source_key": "douyin",
+                "source_capability": "search",
+            },
+            "scope": {},
+        },
+    )
+    assert response.status_code == 409
+    assert response.json()["code"] == "connection_disabled"
+    with client.app.state.session_factory() as session:
+        assert session.scalar(text("SELECT count(*) FROM jobs")) == 0
+        assert session.scalar(text("SELECT count(*) FROM outbox_messages")) == 0
+
+
+@pytest.mark.parametrize(
+    "reason", [SourceStopReason.ACCESS_DENIED, SourceStopReason.AUTHENTICATION_REQUIRED]
+)
+def test_connection_auth_failure_propagates_but_capability_denial_is_local(
+    source_connection_client: TestClient,
+    reason: SourceStopReason,
+) -> None:
+    client = source_connection_client
+    owner_id = UUID(_initialize(client))
+    connection_id = _seed_search_connection(client, str(owner_id))
+    with client.app.state.session_factory() as session:
+        service = SourceCapabilityEvidenceService(session)
+        service.record_persisted_read(
+            owner_id=owner_id,
+            command=PersistedReadEvidenceInput(
+                operation_id=uuid4(),
+                connection_id=connection_id,
+                connection_version=1,
+                capability=SourceCapability.SEARCH,
+                entry_point=SourceEntryPoint.MANUAL,
+                outcome=ConnectionEvidenceOutcome.SUCCEEDED,
+                stop_reason=None,
+                resource_ref="content:fixture",
+                component_name="fixture",
+                component_version="1",
+            ),
+        )
+        service.record_probe(
+            owner_id=owner_id,
+            command=ProbeEvidenceInput(
+                operation_id=uuid4(),
+                connection_id=connection_id,
+                connection_version=1,
+                capability=SourceCapability.COMMENTS,
+                entry_point=SourceEntryPoint.MANUAL,
+                outcome=ConnectionEvidenceOutcome.FAILED,
+                stop_reason=reason,
+                component_name="fixture",
+                component_version="1",
+            ),
+        )
+    platform = client.get("/api/source-capabilities").json()["items"][1]
+    search_status = _capability(platform, "search")["manual"]["status"]
+    accepted = client.post(
+        "/api/jobs",
+        headers={"X-HotKey-CSRF": client.cookies["hotkey_csrf"]},
+        json={
+            "operation_id": str(uuid4()),
+            "kind": "monitor.collect",
+            "observation": {
+                "configuration_ref": "monitor:test",
+                "configuration_version": 1,
+                "source_key": "douyin",
+                "source_capability": "search",
+            },
+            "scope": {},
+        },
+    )
+    if reason is SourceStopReason.AUTHENTICATION_REQUIRED:
+        assert accepted.status_code == 409
+        assert accepted.json()["code"] == "connection_authentication_required"
+        with client.app.state.session_factory() as session:
+            assert session.scalar(text("SELECT count(*) FROM jobs")) == 0
+            assert session.scalar(text("SELECT count(*) FROM outbox_messages")) == 0
+        assert search_status == "authentication_required"
+        assert all(
+            item["scheduled"]["status"] == "authentication_required"
+            for item in platform["capabilities"]
+        )
+    else:
+        assert accepted.status_code == 202
+        assert search_status == "available"
+        assert _capability(platform, "comments")["manual"]["status"] == "restricted"
+
+
+def test_concurrent_connection_requests_create_one_version_per_transition(
+    source_connection_client: TestClient,
+) -> None:
+    client = source_connection_client
+    owner_id = UUID(_initialize(client))
+    credentials = {"douyin": SecretStr("controlled-source-credential-for-tests-only")}
+
+    def update(expected_version: int, status: SourceConnectionStatus):
+        with client.app.state.session_factory() as session:
+            return SourceConnectionService(session, credentials=credentials).update_connection(
+                owner_id=owner_id,
+                source_key="douyin",
+                command=SourceConnectionUpdateInput(
+                    expected_version=expected_version, status=status
+                ),
+            )
+
+    for expected, status in [
+        (0, SourceConnectionStatus.ACTIVE),
+        (1, SourceConnectionStatus.DISABLED),
+    ]:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(update, expected, status) for _ in range(2)]
+            first, second = [future.result(timeout=5) for future in futures]
+        assert first == second
+        assert first.version == expected + 1
+    with client.app.state.session_factory() as session:
+        assert session.scalar(text("SELECT count(*) FROM source_connections")) == 1
+        assert session.scalar(text("SELECT count(*) FROM source_connection_versions")) == 2
+        with pytest.raises(ApplicationError, match="resource_not_found"):
+            SourceConnectionService(session, credentials=credentials).update_connection(
+                owner_id=uuid4(),
+                source_key="douyin",
+                command=SourceConnectionUpdateInput(
+                    expected_version=2, status=SourceConnectionStatus.DISABLED
+                ),
+            )
+
+
+def test_disabled_connection_rejects_manual_retry_but_preserves_accepted_replay(
+    source_connection_client: TestClient,
+) -> None:
+    client = source_connection_client
+    owner_id = _initialize(client)
+    _seed_search_connection(client, owner_id)
+    headers = {"X-HotKey-CSRF": client.cookies["hotkey_csrf"]}
+    payload = {
+        "operation_id": str(uuid4()),
+        "kind": "monitor.collect",
+        "scope": {},
+        "observation": {
+            "configuration_ref": "monitor:test",
+            "configuration_version": 1,
+            "source_key": "douyin",
+            "source_capability": "search",
+        },
+    }
+    created = client.post("/api/jobs", headers=headers, json=payload)
+    assert created.status_code == 202
+    job_id = created.json()["job_id"]
+    client.app.state.settings.source_credentials = {}
+    disabled = client.put(
+        "/api/source-connections/douyin",
+        headers=headers,
+        json={"expected_version": 1, "status": "disabled"},
+    )
+    assert disabled.status_code == 200
+    assert client.post("/api/jobs", headers=headers, json=payload).json() == created.json()
+    with client.app.state.session_factory() as session, session.begin():
+        session.execute(
+            text(
+                "UPDATE jobs SET status = 'failed', manual_retry_allowed = true, "
+                "completed_at = now() WHERE id = :id"
+            ),
+            {"id": job_id},
+        )
+    retry = client.post(f"/api/jobs/{job_id}/retry", headers=headers)
+    assert retry.status_code == 409
+    assert retry.json()["code"] == "connection_disabled"
+    with client.app.state.session_factory() as session:
+        assert session.scalar(text("SELECT count(*) FROM outbox_messages")) == 1
+        assert (
+            session.scalar(text("SELECT status FROM jobs WHERE id = :id"), {"id": job_id})
+            == "failed"
+        )

@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ApiRequestError } from "@/request";
+import { SourceConnectionActions } from "./source-connection-actions";
 
 type MatrixState =
   | { status: "loading" }
@@ -115,8 +116,10 @@ function CapabilityStatus({
 
 function PlatformSection({
   platform,
+  onChanged,
 }: {
   platform: HotKeyAPI.SourcePlatformView;
+  onChanged: () => Promise<void>;
 }) {
   return (
     <section
@@ -143,8 +146,10 @@ function PlatformSection({
             {platform.connection_version === null
               ? "尚未配置连接"
               : `当前连接版本 v${platform.connection_version}`}
+            {platform.connection_status === "disabled" ? " · 连接已停用" : null}
           </p>
         </div>
+        <SourceConnectionActions platform={platform} onChanged={onChanged} />
       </div>
 
       <div className="mt-5 hidden md:block">
@@ -229,6 +234,15 @@ export function SourceCapabilityMatrix() {
     setState(result);
   }, [router]);
 
+  const refresh = useCallback(async () => {
+    const result = await readCapabilities();
+    if (result.status === "unauthenticated") {
+      router.replace("/login");
+      return;
+    }
+    setState(result);
+  }, [router]);
+
   useEffect(() => {
     let isCurrent = true;
     void readCapabilities().then((result) => {
@@ -302,7 +316,11 @@ export function SourceCapabilityMatrix() {
         ) : null}
         {state.status === "ready"
           ? state.platforms.map((platform) => (
-              <PlatformSection key={platform.source_key} platform={platform} />
+              <PlatformSection
+                key={platform.source_key}
+                platform={platform}
+                onChanged={refresh}
+              />
             ))
           : null}
       </main>

@@ -4,6 +4,7 @@ x-backend-environment: &backend-environment
   HOTKEY_DATABASE_URL: postgresql+psycopg://hotkey:${HOTKEY_POSTGRES_PASSWORD:?set HOTKEY_POSTGRES_PASSWORD in the environment or root .env}@postgres:5432/hotkey
   HOTKEY_REDIS_URL: redis://redis:6379/0
   HOTKEY_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  HOTKEY_SOURCE_CREDENTIALS: '${HOTKEY_SOURCE_CREDENTIALS:-{}}'
 
 x-backend-service: &backend-service
   build:

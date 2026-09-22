@@ -20,6 +20,8 @@ ERROR_CATEGORIES: Mapping[str, ErrorCategory] = MappingProxyType(
     {
         "bootstrap_forbidden": ErrorCategory.AUTHORIZATION,
         "connection_disabled": ErrorCategory.CONFLICT,
+        "connection_authentication_required": ErrorCategory.CONFLICT,
+        "connection_credentials_missing": ErrorCategory.CONFLICT,
         "connection_version_conflict": ErrorCategory.CONFLICT,
         "csrf_invalid": ErrorCategory.AUTHORIZATION,
         "database_unavailable": ErrorCategory.DEPENDENCY_UNAVAILABLE,

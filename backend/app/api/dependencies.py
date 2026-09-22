@@ -65,8 +65,12 @@ MonitorTopicServiceDependency = Annotated[
 ]
 
 
-def get_source_connection_service(session: SessionDependency) -> SourceConnectionService:
-    return SourceConnectionService(session)
+def get_source_connection_service(
+    request: Request, session: SessionDependency
+) -> SourceConnectionService:
+    return SourceConnectionService(
+        session, credentials=request.app.state.settings.source_credentials
+    )
 
 
 SourceConnectionServiceDependency = Annotated[

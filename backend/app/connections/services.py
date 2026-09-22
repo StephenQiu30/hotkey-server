@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+import hashlib
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from pydantic import SecretStr
 from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -24,6 +26,8 @@ from connections.schemas import (
     SourceCapabilityStatus,
     SourceCapabilityView,
     SourceConnectionStatus,
+    SourceConnectionUpdateInput,
+    SourceConnectionView,
     SourceEntryPoint,
     SourceEntryPointView,
     SourcePlatformStatus,
@@ -309,9 +313,116 @@ def _next_action(
 
 
 class SourceConnectionService:
-    def __init__(self, session: Session, *, clock: Clock | None = None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        credentials: Mapping[str, SecretStr] | None = None,
+        clock: Clock | None = None,
+    ) -> None:
         self._session = session
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._credential_refs = {
+            key: source_credential_reference(key, value)
+            for key, value in (credentials or {}).items()
+        }
+
+    def update_connection(
+        self, *, owner_id: UUID, source_key: str, command: SourceConnectionUpdateInput
+    ) -> SourceConnectionView:
+        if source_key not in {item.source_key for item in SOURCE_CATALOG}:
+            raise ApplicationError("resource_not_found")
+        secret_ref = self._credential_refs.get(source_key)
+        if command.status is SourceConnectionStatus.ACTIVE and secret_ref is None:
+            raise ApplicationError("connection_credentials_missing")
+        now = self._clock()
+        if now.tzinfo is None:
+            raise ValueError("clock must return a timezone-aware datetime")
+        now = now.astimezone(UTC)
+        self._session.rollback()
+        with self._session.begin():
+            if command.expected_version == 0 and command.status is SourceConnectionStatus.ACTIVE:
+                connection_id = self._session.scalar(
+                    insert(SourceConnection)
+                    .values(
+                        id=uuid4(),
+                        owner_id=owner_id,
+                        source_key=source_key,
+                        status=command.status.value,
+                        current_version=1,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    .on_conflict_do_nothing(constraint="source_connections_owner_source_key")
+                    .returning(SourceConnection.id)
+                )
+                if connection_id is not None:
+                    assert secret_ref is not None
+                    self._session.add(
+                        SourceConnectionVersion(
+                            connection_id=connection_id,
+                            owner_id=owner_id,
+                            version=1,
+                            secret_ref=secret_ref,
+                            created_by=owner_id,
+                            created_at=now,
+                        )
+                    )
+                    return SourceConnectionView(
+                        id=connection_id,
+                        source_key=source_key,
+                        status=command.status,
+                        version=1,
+                        updated_at=now,
+                    )
+            connection = self._session.scalar(
+                select(SourceConnection)
+                .where(
+                    SourceConnection.owner_id == owner_id,
+                    SourceConnection.source_key == source_key,
+                )
+                .with_for_update()
+            )
+            if connection is None:
+                raise ApplicationError("resource_not_found")
+            previous = self._session.get(
+                SourceConnectionVersion, (connection.id, connection.current_version)
+            )
+            if previous is None:
+                raise RuntimeError("current connection version is not visible")
+            target_ref = (
+                previous.secret_ref
+                if command.status is SourceConnectionStatus.DISABLED
+                else secret_ref
+            )
+            unchanged = (
+                connection.status == command.status.value and previous.secret_ref == target_ref
+            )
+            if connection.current_version != command.expected_version:
+                if not (unchanged and connection.current_version == command.expected_version + 1):
+                    raise ApplicationError("connection_version_conflict")
+            elif not unchanged:
+                assert target_ref is not None
+                connection.current_version += 1
+                connection.status = command.status.value
+                connection.updated_at = now
+                self._session.add(
+                    SourceConnectionVersion(
+                        connection_id=connection.id,
+                        owner_id=owner_id,
+                        version=connection.current_version,
+                        secret_ref=target_ref,
+                        created_by=owner_id,
+                        created_at=now,
+                    )
+                )
+            return SourceConnectionView(
+                id=connection.id,
+                source_key=source_key,
+                status=SourceConnectionStatus(connection.status),
+                version=connection.current_version,
+                updated_at=connection.updated_at.astimezone(UTC),
+            )
 
     def list_platforms(self, *, owner_id: UUID) -> list[SourcePlatformView]:
         now = self._clock()
@@ -332,6 +443,9 @@ class SourceConnectionService:
                 ).all()
             )
             connections = {connection.source_key: connection for connection, _ in connection_rows}
+            current_refs = {
+                connection.id: version.secret_ref for connection, version in connection_rows
+            }
             evidence_rows = list(
                 self._session.scalars(
                     select(SourceCapabilityEvidence)
@@ -360,9 +474,12 @@ class SourceConnectionService:
 
             latest: dict[tuple[UUID, str, str], SourceCapabilityEvidence] = {}
             last_success: dict[tuple[UUID, str, str], datetime] = {}
+            authentication_failures: set[UUID] = set()
             for evidence in evidence_rows:
                 key = (evidence.connection_id, evidence.capability, evidence.entry_point)
                 latest[key] = evidence
+                if evidence.stop_reason == SourceStopReason.AUTHENTICATION_REQUIRED.value:
+                    authentication_failures.add(evidence.connection_id)
                 if (
                     evidence.kind == ConnectionEvidenceKind.PERSISTED_READ.value
                     and evidence.outcome == ConnectionEvidenceOutcome.SUCCEEDED.value
@@ -373,6 +490,8 @@ class SourceConnectionService:
                 self._platform_view(
                     catalog=catalog,
                     connection=connections.get(catalog.source_key),
+                    current_refs=current_refs,
+                    authentication_failures=authentication_failures,
                     policy_readiness=policy_readiness,
                     latest=latest,
                     last_success=last_success,
@@ -385,10 +504,17 @@ class SourceConnectionService:
         *,
         catalog: SourceCatalogEntry,
         connection: SourceConnection | None,
+        current_refs: Mapping[UUID, str],
+        authentication_failures: set[UUID],
         policy_readiness: dict[tuple[str, SourceCapability], bool],
         latest: dict[tuple[UUID, str, str], SourceCapabilityEvidence],
         last_success: dict[tuple[UUID, str, str], datetime],
     ) -> SourcePlatformView:
+        configured_ref = self._credential_refs.get(catalog.source_key)
+        credential_matches = (
+            connection is not None and configured_ref == current_refs[connection.id]
+        )
+        authentication_failed = connection is not None and connection.id in authentication_failures
         capability_views: list[SourceCapabilityView] = []
         statuses: list[SourceCapabilityStatus] = []
         for capability in SourceCapability:
@@ -428,6 +554,18 @@ class SourceConnectionService:
                     last_persisted_success_at=last_success.get(key),
                 )
                 status = resolve_capability_status(facts)
+                if (
+                    connection is not None
+                    and connection.status == SourceConnectionStatus.ACTIVE.value
+                    and not catalog.product_restricted
+                    and (not credential_matches or authentication_failed)
+                ):
+                    status = SourceCapabilityStatus.AUTHENTICATION_REQUIRED
+                    facts = CapabilityStatusFacts(
+                        stop_reason=SourceStopReason.AUTHENTICATION_REQUIRED,
+                        last_checked_at=facts.last_checked_at,
+                        last_persisted_success_at=facts.last_persisted_success_at,
+                    )
                 statuses.append(status)
                 entry_views[entry_point] = SourceEntryPointView(
                     status=status,
@@ -452,5 +590,48 @@ class SourceConnectionService:
             status=aggregate_platform_status(statuses),
             connection_version=connection.current_version if connection is not None else None,
             has_credentials=connection is not None,
+            connection_id=connection.id if connection is not None else None,
+            connection_status=SourceConnectionStatus(connection.status) if connection else None,
+            credential_configured=configured_ref is not None,
+            credential_update_available=connection is not None
+            and configured_ref is not None
+            and not credential_matches,
             capabilities=capability_views,
         )
+
+
+def source_credential_reference(source_key: str, credential: SecretStr) -> str:
+    """Return a non-reversible server-only reference; never expose it over HTTP."""
+    digest = hashlib.sha256(credential.get_secret_value().encode()).hexdigest()
+    return f"settings:{source_key}:{digest}"
+
+
+def require_source_connection_enabled(
+    session: Session, *, owner_id: UUID, source_key: str | None
+) -> None:
+    """Apply an existing connection's stop barrier in the caller's transaction."""
+    if source_key is None:
+        return
+    connection = session.scalar(
+        select(SourceConnection)
+        .where(SourceConnection.owner_id == owner_id, SourceConnection.source_key == source_key)
+        .with_for_update()
+    )
+    if connection is not None and connection.status == SourceConnectionStatus.DISABLED.value:
+        raise ApplicationError("connection_disabled")
+    if (
+        connection is not None
+        and session.scalar(
+            select(SourceCapabilityEvidence.id)
+            .where(
+                SourceCapabilityEvidence.owner_id == owner_id,
+                SourceCapabilityEvidence.connection_id == connection.id,
+                SourceCapabilityEvidence.connection_version == connection.current_version,
+                SourceCapabilityEvidence.stop_reason
+                == SourceStopReason.AUTHENTICATION_REQUIRED.value,
+            )
+            .limit(1)
+        )
+        is not None
+    ):
+        raise ApplicationError("connection_authentication_required")

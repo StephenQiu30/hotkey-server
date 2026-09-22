@@ -45,6 +45,12 @@ HTTP_ERRORS: Mapping[int, PublicError] = {
 APPLICATION_ERRORS: Mapping[str, PublicError] = {
     "bootstrap_forbidden": PublicError(403, "bootstrap_forbidden", "初始化授权无效"),
     "connection_disabled": PublicError(409, "connection_disabled", "连接已停用"),
+    "connection_authentication_required": PublicError(
+        409, "connection_authentication_required", "连接授权已失效且需要更新凭据后重新验证"
+    ),
+    "connection_credentials_missing": PublicError(
+        409, "connection_credentials_missing", "请先由维护者配置服务端连接凭据"
+    ),
     "connection_version_conflict": PublicError(
         409, "connection_version_conflict", "连接版本已变更且需要重新验证"
     ),

@@ -29,6 +29,18 @@ class Settings(BaseSettings):
 
     bootstrap_token: SecretStr | None = Field(default=None, min_length=32)
     session_ttl_seconds: int = Field(default=43_200, ge=900, le=86_400)
+    source_credentials: dict[Literal["x", "douyin"], SecretStr] = Field(
+        default_factory=dict, repr=False
+    )
+
+    @field_validator("source_credentials")
+    @classmethod
+    def validate_source_credentials(
+        cls, value: dict[Literal["x", "douyin"], SecretStr]
+    ) -> dict[Literal["x", "douyin"], SecretStr]:
+        if any(not 32 <= len(secret.get_secret_value()) <= 65_536 for secret in value.values()):
+            raise ValueError("source credentials must contain 32 to 65536 characters")
+        return value
 
     redis_url: str = "redis://127.0.0.1:6379/0"
     kafka_bootstrap_servers: str = "127.0.0.1:9092"

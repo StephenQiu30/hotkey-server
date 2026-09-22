@@ -11,6 +11,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from connections.services import require_source_connection_enabled
 from core.errors import ApplicationError
 from jobs.execution import ScheduleWindow, scheduled_operation_id
 from jobs.models import (
@@ -1200,6 +1201,11 @@ class JobService:
             )
 
             if inserted_id is not None:
+                require_source_connection_enabled(
+                    self._session,
+                    owner_id=owner_id,
+                    source_key=command.observation.source_key,
+                )
                 self._session.add(
                     OutboxMessage(
                         id=uuid4(),
@@ -1342,6 +1348,9 @@ class JobService:
             if model.status != JobStatus.FAILED.value or not model.manual_retry_allowed:
                 raise ApplicationError("job_not_retryable")
 
+            require_source_connection_enabled(
+                self._session, owner_id=owner_id, source_key=model.source_key
+            )
             retry_count = model.retry_count + 1
             dispatch_sequence = (
                 self._session.scalar(

@@ -26,6 +26,19 @@ class SourceEntryPoint(StrEnum):
     SCHEDULED = "scheduled"
 
 
+class SourceConnectionUpdateInput(InputModel):
+    expected_version: int = Field(ge=0, le=2_147_483_646)
+    status: SourceConnectionStatus
+
+
+class SourceConnectionView(OutputModel):
+    id: UUID
+    source_key: str
+    status: SourceConnectionStatus
+    version: int
+    updated_at: datetime
+
+
 class ConnectionEvidenceKind(StrEnum):
     PROBE = "probe"
     PERSISTED_READ = "persisted_read"
@@ -146,4 +159,8 @@ class SourcePlatformView(OutputModel):
     status: SourcePlatformStatus
     connection_version: int | None
     has_credentials: bool
+    connection_id: UUID | None
+    connection_status: SourceConnectionStatus | None
+    credential_configured: bool
+    credential_update_available: bool
     capabilities: list[SourceCapabilityView]

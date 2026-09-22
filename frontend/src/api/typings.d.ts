@@ -501,6 +501,26 @@ declare namespace HotKeyAPI {
     scheduled: SourceEntryPointView;
   };
 
+  type SourceConnectionStatus = "active" | "disabled";
+
+  type SourceConnectionUpdateInput = {
+    /** Expected Version */
+    expected_version: number;
+    status: SourceConnectionStatus;
+  };
+
+  type SourceConnectionView = {
+    /** Id */
+    id: string;
+    /** Source Key */
+    source_key: string;
+    status: SourceConnectionStatus;
+    /** Version */
+    version: number;
+    /** Updated At */
+    updated_at: string;
+  };
+
   type SourceEntryPointView = {
     status: SourceCapabilityStatus;
     /** Last Checked At */
@@ -532,6 +552,13 @@ declare namespace HotKeyAPI {
     connection_version: number | null;
     /** Has Credentials */
     has_credentials: boolean;
+    /** Connection Id */
+    connection_id: string | null;
+    connection_status: SourceConnectionStatus | null;
+    /** Credential Configured */
+    credential_configured: boolean;
+    /** Credential Update Available */
+    credential_update_available: boolean;
     /** Capabilities */
     capabilities: SourceCapabilityView[];
   };
@@ -553,6 +580,10 @@ declare namespace HotKeyAPI {
 
   type updateMonitorTopicParams = {
     topic_id: string;
+  };
+
+  type updateSourceConnectionParams = {
+    source_key: string;
   };
 
   type ValidationErrorItem = {
