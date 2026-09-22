@@ -90,8 +90,14 @@ class SourceConnectionVersion(Base):
             name="source_connection_versions_version_check",
         ),
         CheckConstraint(
-            "secret_ref ~ '^[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9_./:-]+$'",
-            name="source_connection_versions_secret_ref_check",
+            "auth_kind IN ('none', 'server_credential')",
+            name="source_connection_versions_auth_kind_check",
+        ),
+        CheckConstraint(
+            "(auth_kind = 'none' AND secret_ref IS NULL) OR "
+            "(auth_kind = 'server_credential' AND secret_ref IS NOT NULL AND "
+            "secret_ref ~ '^[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9_./:-]+$')",
+            name="source_connection_versions_auth_secret_check",
         ),
         Index(
             "source_connection_versions_created_by_idx",
@@ -102,7 +108,8 @@ class SourceConnectionVersion(Base):
     connection_id: Mapped[UUID] = mapped_column(primary_key=True)
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[UUID]
-    secret_ref: Mapped[str] = mapped_column(String(256))
+    auth_kind: Mapped[str] = mapped_column(String(32), server_default=text("'server_credential'"))
+    secret_ref: Mapped[str | None] = mapped_column(String(256))
     created_by: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime]
 
@@ -130,7 +137,7 @@ class SourceCapabilityEvidence(Base):
             name="source_capability_evidence_connection_version_check",
         ),
         CheckConstraint(
-            "capability IN ('search', 'author_posts', 'comments', 'replies')",
+            "capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content')",
             name="source_capability_evidence_capability_check",
         ),
         CheckConstraint(

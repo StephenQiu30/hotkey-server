@@ -25,6 +25,7 @@ from connections.schemas import (
     SourceCapabilityEvidenceView,
     SourceCapabilityStatus,
     SourceCapabilityView,
+    SourceConnectionAuthKind,
     SourceConnectionStatus,
     SourceConnectionUpdateInput,
     SourceConnectionView,
@@ -330,10 +331,19 @@ class SourceConnectionService:
     def update_connection(
         self, *, owner_id: UUID, source_key: str, command: SourceConnectionUpdateInput
     ) -> SourceConnectionView:
-        if source_key not in {item.source_key for item in SOURCE_CATALOG}:
+        catalog = next((item for item in SOURCE_CATALOG if item.source_key == source_key), None)
+        if catalog is None:
             raise ApplicationError("resource_not_found")
-        secret_ref = self._credential_refs.get(source_key)
-        if command.status is SourceConnectionStatus.ACTIVE and secret_ref is None:
+        secret_ref = (
+            self._credential_refs.get(source_key)
+            if catalog.auth_kind is SourceConnectionAuthKind.SERVER_CREDENTIAL
+            else None
+        )
+        if (
+            command.status is SourceConnectionStatus.ACTIVE
+            and catalog.auth_kind is SourceConnectionAuthKind.SERVER_CREDENTIAL
+            and secret_ref is None
+        ):
             raise ApplicationError("connection_credentials_missing")
         now = self._clock()
         if now.tzinfo is None:
@@ -357,12 +367,12 @@ class SourceConnectionService:
                     .returning(SourceConnection.id)
                 )
                 if connection_id is not None:
-                    assert secret_ref is not None
                     self._session.add(
                         SourceConnectionVersion(
                             connection_id=connection_id,
                             owner_id=owner_id,
                             version=1,
+                            auth_kind=catalog.auth_kind.value,
                             secret_ref=secret_ref,
                             created_by=owner_id,
                             created_at=now,
@@ -390,19 +400,21 @@ class SourceConnectionService:
             )
             if previous is None:
                 raise RuntimeError("current connection version is not visible")
-            target_ref = (
-                previous.secret_ref
-                if command.status is SourceConnectionStatus.DISABLED
-                else secret_ref
-            )
+            if command.status is SourceConnectionStatus.DISABLED:
+                target_auth_kind = SourceConnectionAuthKind(previous.auth_kind)
+                target_ref = previous.secret_ref
+            else:
+                target_auth_kind = catalog.auth_kind
+                target_ref = secret_ref
             unchanged = (
-                connection.status == command.status.value and previous.secret_ref == target_ref
+                connection.status == command.status.value
+                and previous.auth_kind == target_auth_kind.value
+                and previous.secret_ref == target_ref
             )
             if connection.current_version != command.expected_version:
                 if not (unchanged and connection.current_version == command.expected_version + 1):
                     raise ApplicationError("connection_version_conflict")
             elif not unchanged:
-                assert target_ref is not None
                 connection.current_version += 1
                 connection.status = command.status.value
                 connection.updated_at = now
@@ -411,6 +423,7 @@ class SourceConnectionService:
                         connection_id=connection.id,
                         owner_id=owner_id,
                         version=connection.current_version,
+                        auth_kind=target_auth_kind.value,
                         secret_ref=target_ref,
                         created_by=owner_id,
                         created_at=now,
@@ -443,9 +456,7 @@ class SourceConnectionService:
                 ).all()
             )
             connections = {connection.source_key: connection for connection, _ in connection_rows}
-            current_refs = {
-                connection.id: version.secret_ref for connection, version in connection_rows
-            }
+            current_versions = {connection.id: version for connection, version in connection_rows}
             evidence_rows = list(
                 self._session.scalars(
                     select(SourceCapabilityEvidence)
@@ -490,7 +501,7 @@ class SourceConnectionService:
                 self._platform_view(
                     catalog=catalog,
                     connection=connections.get(catalog.source_key),
-                    current_refs=current_refs,
+                    current_versions=current_versions,
                     authentication_failures=authentication_failures,
                     policy_readiness=policy_readiness,
                     latest=latest,
@@ -504,15 +515,17 @@ class SourceConnectionService:
         *,
         catalog: SourceCatalogEntry,
         connection: SourceConnection | None,
-        current_refs: Mapping[UUID, str],
+        current_versions: Mapping[UUID, SourceConnectionVersion],
         authentication_failures: set[UUID],
         policy_readiness: dict[tuple[str, SourceCapability], bool],
         latest: dict[tuple[UUID, str, str], SourceCapabilityEvidence],
         last_success: dict[tuple[UUID, str, str], datetime],
     ) -> SourcePlatformView:
         configured_ref = self._credential_refs.get(catalog.source_key)
-        credential_matches = (
-            connection is not None and configured_ref == current_refs[connection.id]
+        current_version = current_versions.get(connection.id) if connection is not None else None
+        credential_matches = current_version is not None and (
+            current_version.auth_kind == SourceConnectionAuthKind.NONE.value
+            or configured_ref == current_version.secret_ref
         )
         authentication_failed = connection is not None and connection.id in authentication_failures
         capability_views: list[SourceCapabilityView] = []
@@ -589,11 +602,12 @@ class SourceConnectionService:
             rollout_role=SourceRolloutRole(catalog.rollout_role),
             status=aggregate_platform_status(statuses),
             connection_version=connection.current_version if connection is not None else None,
-            has_credentials=connection is not None,
+            has_credentials=current_version is not None and current_version.secret_ref is not None,
             connection_id=connection.id if connection is not None else None,
             connection_status=SourceConnectionStatus(connection.status) if connection else None,
             credential_configured=configured_ref is not None,
             credential_update_available=connection is not None
+            and catalog.auth_kind is SourceConnectionAuthKind.SERVER_CREDENTIAL
             and configured_ref is not None
             and not credential_matches,
             capabilities=capability_views,

@@ -21,6 +21,11 @@ class SourceConnectionStatus(StrEnum):
     DISABLED = "disabled"
 
 
+class SourceConnectionAuthKind(StrEnum):
+    NONE = "none"
+    SERVER_CREDENTIAL = "server_credential"
+
+
 class SourceEntryPoint(StrEnum):
     MANUAL = "manual"
     SCHEDULED = "scheduled"

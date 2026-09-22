@@ -93,12 +93,21 @@ CREATE TABLE source_connection_versions (
     connection_id UUID NOT NULL,
     version INTEGER NOT NULL CHECK (version >= 1),
     owner_id UUID NOT NULL,
-    secret_ref VARCHAR(256) NOT NULL CHECK (
-        secret_ref ~ '^[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9_./:-]+$'
+    auth_kind VARCHAR(32) NOT NULL DEFAULT 'server_credential' CHECK (
+        auth_kind IN ('none', 'server_credential')
     ),
+    secret_ref VARCHAR(256),
     created_by UUID NOT NULL REFERENCES identity_users (id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (connection_id, version),
+    CONSTRAINT source_connection_versions_auth_secret_check CHECK (
+        (auth_kind = 'none' AND secret_ref IS NULL)
+        OR (
+            auth_kind = 'server_credential'
+            AND secret_ref IS NOT NULL
+            AND secret_ref ~ '^[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9_./:-]+$'
+        )
+    ),
     CONSTRAINT source_connection_versions_owner_connection_version_key
         UNIQUE (owner_id, connection_id, version),
     CONSTRAINT source_connection_versions_owner_connection_fkey

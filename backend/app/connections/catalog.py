@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from connections.schemas import SourceConnectionAuthKind
 from sources.contracts import SOCIAL_CAPABILITIES, SourceCapability
 
 
@@ -13,6 +14,7 @@ class SourceCatalogEntry:
     product_restricted: bool
     restricted_next_action: str
     capabilities: tuple[SourceCapability, ...]
+    auth_kind: SourceConnectionAuthKind
 
 
 SOURCE_CATALOG = (
@@ -23,6 +25,7 @@ SOURCE_CATALOG = (
         product_restricted=True,
         restricted_next_action="当前零采购约束下不启用付费 X API。请等待范围决策。",
         capabilities=SOCIAL_CAPABILITIES,
+        auth_kind=SourceConnectionAuthKind.SERVER_CREDENTIAL,
     ),
     SourceCatalogEntry(
         source_key="douyin",
@@ -31,6 +34,16 @@ SOURCE_CATALOG = (
         product_restricted=False,
         restricted_next_action="确认开放平台权限、授权主体和当前准入政策后再验证。",
         capabilities=SOCIAL_CAPABILITIES,
+        auth_kind=SourceConnectionAuthKind.SERVER_CREDENTIAL,
+    ),
+    SourceCatalogEntry(
+        source_key="web",
+        display_name="公开网页",
+        rollout_role="required",
+        product_restricted=False,
+        restricted_next_action="配置明确域名范围和准入政策后执行有界读取。",
+        capabilities=(SourceCapability.PAGE_CONTENT,),
+        auth_kind=SourceConnectionAuthKind.NONE,
     ),
 )
 

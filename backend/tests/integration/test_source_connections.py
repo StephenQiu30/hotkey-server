@@ -157,7 +157,7 @@ def test_capability_catalog_requires_session_and_reports_truthful_defaults(
     assert response.headers["cache-control"] == "no-store"
     assert response.json()["next_cursor"] is None
     platforms = response.json()["items"]
-    assert [platform["source_key"] for platform in platforms] == ["x", "douyin"]
+    assert [platform["source_key"] for platform in platforms] == ["x", "douyin", "web"]
     assert platforms[0]["status"] == "restricted"
     assert platforms[0]["rollout_role"] == "required"
     assert platforms[1]["status"] == "unconfigured"
@@ -168,8 +168,61 @@ def test_capability_catalog_requires_session_and_reports_truthful_defaults(
         "comments",
         "replies",
     }
+    assert platforms[2]["status"] == "unconfigured"
+    assert platforms[2]["rollout_role"] == "required"
+    assert platforms[2]["credential_configured"] is False
+    assert platforms[2]["has_credentials"] is False
+    assert [item["capability"] for item in platforms[2]["capabilities"]] == ["page_content"]
     assert "secret" not in response.text.lower()
     assert "owner_id" not in response.text
+
+
+def test_anonymous_web_connection_versions_without_fabricating_credentials(
+    source_connection_client: TestClient,
+) -> None:
+    client = source_connection_client
+    owner_id = _initialize(client)
+    headers = {"X-HotKey-CSRF": client.cookies["hotkey_csrf"]}
+
+    created = client.put(
+        "/api/source-connections/web",
+        headers=headers,
+        json={"expected_version": 0, "status": "active"},
+    )
+
+    assert created.status_code == 200
+    assert created.json()["source_key"] == "web"
+    assert created.json()["version"] == 1
+    web = next(
+        item
+        for item in client.get("/api/source-capabilities").json()["items"]
+        if item["source_key"] == "web"
+    )
+    assert web["status"] == "restricted"
+    assert web["connection_status"] == "active"
+    assert web["has_credentials"] is False
+    assert web["credential_configured"] is False
+    assert web["credential_update_available"] is False
+
+    disabled = client.put(
+        "/api/source-connections/web",
+        headers=headers,
+        json={"expected_version": 1, "status": "disabled"},
+    )
+    assert disabled.status_code == 200
+    assert disabled.json()["version"] == 2
+    with client.app.state.session_factory() as session:
+        versions = session.execute(
+            text(
+                "SELECT version, auth_kind, secret_ref "
+                "FROM source_connection_versions "
+                "WHERE owner_id = :owner_id ORDER BY version"
+            ),
+            {"owner_id": owner_id},
+        ).all()
+    assert versions == [(1, "none", None), (2, "none", None)]
+    assert "secret" not in created.text.lower()
+    assert "secret" not in disabled.text.lower()
 
 
 def test_current_version_persisted_evidence_projects_partial_without_cross_entry_leak(
