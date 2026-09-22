@@ -13,7 +13,12 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from connections.schemas import SourceEntryPoint
-from content.collection import WebPageCommitService
+from content.collection import (
+    WebPageBudgetDelayedError,
+    WebPageCommitService,
+    WebPageFetchInput,
+    WebPageFetchService,
+)
 from content.schemas import PersistContentDocumentInput
 from core.errors import ApplicationError
 from evidence.schemas import AdmittedSourcePayload, DataClass
@@ -23,7 +28,22 @@ from jobs.execution import (
     JobLeaseUnavailableError,
     StaleExecutionLeaseError,
 )
-from sources.contracts import SourceCapability
+from jobs.schemas import (
+    BudgetContext,
+    BudgetMetric,
+    BudgetPolicyInput,
+    BudgetReservationInput,
+    BudgetScopeKind,
+    ComponentPolicyInput,
+    CostClass,
+)
+from jobs.services import ResourceBudgetService, UsageConflictError
+from sources.contracts import (
+    SourceCapability,
+    SourceDocument,
+    WebPageRequest,
+    WebPageResult,
+)
 
 _TABLES = (
     "content_version_relations, content_visibility_observations, content_observations, "
@@ -47,6 +67,7 @@ class WebPageContext:
     policy_id: UUID
     retention_id: UUID
     job_id: UUID
+    operation_id: UUID
     now: datetime
 
 
@@ -62,6 +83,7 @@ def webpage_context() -> Iterator[WebPageContext]:
     policy_id = uuid4()
     retention_id = uuid4()
     job_id = uuid4()
+    operation_id = uuid4()
     now = datetime.now(UTC).replace(microsecond=0)
     field_purposes = {
         "object_type": "资料类型",
@@ -154,7 +176,7 @@ def webpage_context() -> Iterator[WebPageContext]:
             {
                 "id": job_id,
                 "owner_id": owner_id,
-                "operation_id": uuid4(),
+                "operation_id": operation_id,
                 "fingerprint": b"w" * 32,
                 "now": now,
             },
@@ -168,6 +190,7 @@ def webpage_context() -> Iterator[WebPageContext]:
             policy_id=policy_id,
             retention_id=retention_id,
             job_id=job_id,
+            operation_id=operation_id,
             now=now,
         )
     finally:
@@ -231,6 +254,303 @@ def _content_side_effect_counts(context: WebPageContext) -> tuple[int, ...]:
                 )
             ).one()
         )
+
+
+def _enable_firecrawl_budget(context: WebPageContext, *, limit_units: int = 2) -> None:
+    clock = context.now + timedelta(seconds=1)
+    with context.sessions() as session:
+        service = ResourceBudgetService(session, clock=lambda: clock)
+        service.save_component_policy(
+            owner_id=context.owner_id,
+            command=ComponentPolicyInput(
+                component_key="collector.firecrawl",
+                component_version="2.11.162",
+                cost_class=CostClass.LOCAL,
+                enabled_for_core=True,
+                terms_reference="https://github.com/firecrawl/firecrawl",
+                reviewed_at=context.now,
+            ),
+        )
+        service.save_budget_policy(
+            owner_id=context.owner_id,
+            command=BudgetPolicyInput(
+                budget_key="global.collector-calls",
+                metric=BudgetMetric.COLLECTOR_CALL,
+                scope_kind=BudgetScopeKind.GLOBAL,
+                scope_reference=None,
+                limit_units=limit_units,
+                window_seconds=60,
+                window_anchor_at=context.now,
+                enabled=True,
+            ),
+        )
+
+
+class InspectingDocumentAdapter:
+    def __init__(self, context: WebPageContext) -> None:
+        self._context = context
+        self.requests: list[WebPageRequest] = []
+
+    def __enter__(self) -> InspectingDocumentAdapter:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def fetch_document(self, request: WebPageRequest) -> WebPageResult:
+        self.requests.append(request)
+        with self._context.engine.connect() as connection:
+            preflight = connection.execute(
+                text(
+                    "SELECT r.status, a.outcome, j.requests_sent "
+                    "FROM resource_budget_reservations r "
+                    "JOIN resource_usage_attempts a ON a.attempt_id = r.reservation_id "
+                    "JOIN jobs j ON j.id = :job_id"
+                ),
+                {"job_id": self._context.job_id},
+            ).one()
+        assert tuple(preflight) == ("reserved", "started", 1)
+        body = "Budgeted document body."
+        return WebPageResult(
+            document=SourceDocument(
+                request_url=request.url,
+                final_url="https://example.com/articles/final",
+                title="Budgeted page",
+                text=body,
+                text_scope="full",
+                observed_at=self._context.now + timedelta(seconds=3),
+                published_at=None,
+                content_fingerprint=hashlib.sha256(body.encode()).hexdigest(),
+                extractor_version="firecrawl/2.11.162",
+            ),
+            target_status_code=200,
+            collector_call_count=1,
+            target_request_count=1,
+        )
+
+
+class ExplodingDocumentAdapter:
+    def __enter__(self) -> ExplodingDocumentAdapter:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def fetch_document(self, request: WebPageRequest) -> WebPageResult:
+        raise RuntimeError("collector transport failed")
+
+
+def test_firecrawl_call_reserves_and_settles_collector_budget(
+    webpage_context: WebPageContext,
+) -> None:
+    _enable_firecrawl_budget(webpage_context)
+    clock = webpage_context.now + timedelta(seconds=2)
+    adapter = InspectingDocumentAdapter(webpage_context)
+
+    with webpage_context.sessions() as session:
+        lease = JobExecutionService(session, lease_seconds=60, clock=lambda: clock).acquire(
+            job_id=webpage_context.job_id,
+            worker_id="web-worker",
+        )
+        service = WebPageFetchService(
+            session,
+            lease_seconds=60,
+            clock=lambda: clock,
+        )
+        command = WebPageFetchInput(
+            operation_id=webpage_context.operation_id,
+            connection_id=webpage_context.connection_id,
+            connection_version=1,
+            target_url="https://example.com/Articles/One?q=1#ignored",
+        )
+        fetched = service.fetch_document(
+            owner_id=webpage_context.owner_id,
+            lease=lease,
+            command=command,
+            adapter_factory=lambda allowed_hosts: adapter,
+        )
+        with pytest.raises(UsageConflictError, match="already settled"):
+            service.fetch_document(
+                owner_id=webpage_context.owner_id,
+                lease=fetched.lease,
+                command=command,
+                adapter_factory=lambda allowed_hosts: adapter,
+            )
+
+    assert fetched.result.document is not None
+    assert fetched.result.document.request_url == "https://example.com/Articles/One?q=1"
+    assert fetched.lease.epoch == lease.epoch
+    assert adapter.requests == [WebPageRequest(url="https://example.com/Articles/One?q=1")]
+    with webpage_context.engine.connect() as connection:
+        settled = connection.execute(
+            text(
+                "SELECT r.status, r.actual_units, r.released_units, a.outcome, "
+                "w.used_units, w.reserved_units, j.requests_sent "
+                "FROM resource_budget_reservations r "
+                "JOIN resource_usage_attempts a ON a.attempt_id = r.reservation_id "
+                "JOIN resource_budget_windows w ON w.id = r.budget_window_id "
+                "JOIN jobs j ON j.id = :job_id"
+            ),
+            {"job_id": webpage_context.job_id},
+        ).one()
+    assert tuple(settled) == ("settled", 1, 0, "succeeded", 1, 0, 1)
+
+
+def test_failed_firecrawl_call_is_charged_and_recorded(
+    webpage_context: WebPageContext,
+) -> None:
+    _enable_firecrawl_budget(webpage_context)
+    clock = webpage_context.now + timedelta(seconds=2)
+
+    with webpage_context.sessions() as session:
+        lease = JobExecutionService(session, lease_seconds=60, clock=lambda: clock).acquire(
+            job_id=webpage_context.job_id,
+            worker_id="web-worker",
+        )
+        with pytest.raises(RuntimeError, match="collector transport failed"):
+            WebPageFetchService(
+                session,
+                lease_seconds=60,
+                clock=lambda: clock,
+            ).fetch_document(
+                owner_id=webpage_context.owner_id,
+                lease=lease,
+                command=WebPageFetchInput(
+                    operation_id=webpage_context.operation_id,
+                    connection_id=webpage_context.connection_id,
+                    connection_version=1,
+                    target_url="https://example.com/articles/one",
+                ),
+                adapter_factory=lambda allowed_hosts: ExplodingDocumentAdapter(),
+            )
+
+    with webpage_context.engine.connect() as connection:
+        settled = connection.execute(
+            text(
+                "SELECT r.status, r.actual_units, a.outcome, w.used_units, "
+                "w.reserved_units, j.requests_sent "
+                "FROM resource_budget_reservations r "
+                "JOIN resource_usage_attempts a ON a.attempt_id = r.reservation_id "
+                "JOIN resource_budget_windows w ON w.id = r.budget_window_id "
+                "JOIN jobs j ON j.id = :job_id"
+            ),
+            {"job_id": webpage_context.job_id},
+        ).one()
+    assert tuple(settled) == ("settled", 1, "failed", 1, 0, 1)
+
+
+def test_exhausted_collector_budget_stops_before_request(
+    webpage_context: WebPageContext,
+) -> None:
+    _enable_firecrawl_budget(webpage_context, limit_units=1)
+    clock = webpage_context.now + timedelta(seconds=2)
+    with webpage_context.sessions() as session:
+        budget = ResourceBudgetService(session, clock=lambda: clock)
+        reservation_id = uuid4()
+        budget.reserve_budget(
+            owner_id=webpage_context.owner_id,
+            command=BudgetReservationInput(
+                reservation_id=reservation_id,
+                operation_id=uuid4(),
+                metric=BudgetMetric.COLLECTOR_CALL,
+                requested_units=1,
+                context=BudgetContext(source_ref="web"),
+            ),
+        )
+        budget.settle_budget_reservation(
+            owner_id=webpage_context.owner_id,
+            reservation_id=reservation_id,
+            actual_units=1,
+        )
+        lease = JobExecutionService(session, lease_seconds=60, clock=lambda: clock).acquire(
+            job_id=webpage_context.job_id,
+            worker_id="web-worker",
+        )
+        called = False
+
+        def adapter_factory(allowed_hosts: frozenset[str]) -> ExplodingDocumentAdapter:
+            nonlocal called
+            called = True
+            return ExplodingDocumentAdapter()
+
+        with pytest.raises(WebPageBudgetDelayedError) as error:
+            WebPageFetchService(
+                session,
+                lease_seconds=60,
+                clock=lambda: clock,
+            ).fetch_document(
+                owner_id=webpage_context.owner_id,
+                lease=lease,
+                command=WebPageFetchInput(
+                    operation_id=webpage_context.operation_id,
+                    connection_id=webpage_context.connection_id,
+                    connection_version=1,
+                    target_url="https://example.com/articles/one",
+                ),
+                adapter_factory=adapter_factory,
+            )
+
+    assert not called
+    assert error.value.decision.remaining_units == 0
+    assert error.value.decision.retry_at == webpage_context.now + timedelta(seconds=60)
+    with webpage_context.engine.connect() as connection:
+        counts = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM resource_budget_reservations), "
+                "(SELECT count(*) FROM resource_usage_attempts), "
+                "(SELECT requests_sent FROM jobs WHERE id = :job_id)"
+            ),
+            {"job_id": webpage_context.job_id},
+        ).one()
+    assert tuple(counts) == (1, 0, 0)
+
+
+def test_connection_version_conflict_stops_before_budget_or_request(
+    webpage_context: WebPageContext,
+) -> None:
+    _enable_firecrawl_budget(webpage_context)
+    clock = webpage_context.now + timedelta(seconds=2)
+    called = False
+
+    def adapter_factory(allowed_hosts: frozenset[str]) -> ExplodingDocumentAdapter:
+        nonlocal called
+        called = True
+        return ExplodingDocumentAdapter()
+
+    with webpage_context.sessions() as session:
+        lease = JobExecutionService(session, lease_seconds=60, clock=lambda: clock).acquire(
+            job_id=webpage_context.job_id,
+            worker_id="web-worker",
+        )
+        with pytest.raises(ApplicationError, match="connection_version_conflict"):
+            WebPageFetchService(
+                session,
+                lease_seconds=60,
+                clock=lambda: clock,
+            ).fetch_document(
+                owner_id=webpage_context.owner_id,
+                lease=lease,
+                command=WebPageFetchInput(
+                    operation_id=webpage_context.operation_id,
+                    connection_id=webpage_context.connection_id,
+                    connection_version=2,
+                    target_url="https://example.com/articles/one",
+                ),
+                adapter_factory=adapter_factory,
+            )
+
+    assert not called
+    with webpage_context.engine.connect() as connection:
+        counts = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM resource_budget_reservations), "
+                "(SELECT count(*) FROM resource_usage_attempts), "
+                "(SELECT count(*) FROM resource_budget_windows), "
+                "(SELECT requests_sent FROM jobs WHERE id = :job_id)"
+            ),
+            {"job_id": webpage_context.job_id},
+        ).one()
+    assert tuple(counts) == (0, 0, 0, 0)
 
 
 def test_document_page_is_persisted_with_checkpoint_in_one_transaction(

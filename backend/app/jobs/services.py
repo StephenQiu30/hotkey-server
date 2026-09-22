@@ -317,68 +317,76 @@ class ResourceBudgetService:
     ) -> UsageAttemptView:
         self._session.rollback()
         with self._session.begin():
-            existing = self._session.scalar(
+            return self.begin_attempt_in_transaction(owner_id=owner_id, command=command)
+
+    def begin_attempt_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: UsageAttemptInput,
+    ) -> UsageAttemptView:
+        """Persist a usage attempt inside an existing outer transaction."""
+        existing = self._session.scalar(
+            select(ResourceUsageAttempt).where(
+                ResourceUsageAttempt.owner_id == owner_id,
+                ResourceUsageAttempt.attempt_id == command.attempt_id,
+            )
+        )
+        if existing is not None:
+            self._require_same_attempt(existing, command)
+            return self._attempt_view(existing)
+
+        policy = self._session.scalar(
+            select(ResourceComponentPolicy)
+            .where(
+                ResourceComponentPolicy.owner_id == owner_id,
+                ResourceComponentPolicy.component_key == command.component_key,
+            )
+            .with_for_update()
+        )
+        if (
+            policy is None
+            or not policy.enabled_for_core
+            or policy.cost_class not in self._CORE_COST_CLASSES
+        ):
+            raise ComponentPolicyUnavailableError(
+                "component is not enabled for zero-cost core execution"
+            )
+
+        usage_id = uuid4()
+        inserted_id = self._session.scalar(
+            insert(ResourceUsageAttempt)
+            .values(
+                id=usage_id,
+                owner_id=owner_id,
+                attempt_id=command.attempt_id,
+                operation_id=command.operation_id,
+                component_policy_id=policy.id,
+                component_version=policy.component_version,
+                usage_kind=command.usage_kind.value,
+                stage=command.stage,
+                outcome=UsageOutcome.STARTED.value,
+                started_at=command.started_at,
+                finished_at=None,
+            )
+            .on_conflict_do_nothing(constraint="resource_usage_attempts_owner_attempt_key")
+            .returning(ResourceUsageAttempt.id)
+        )
+        if inserted_id is not None:
+            model = self._session.get(ResourceUsageAttempt, inserted_id)
+        else:
+            model = self._session.scalar(
                 select(ResourceUsageAttempt).where(
                     ResourceUsageAttempt.owner_id == owner_id,
                     ResourceUsageAttempt.attempt_id == command.attempt_id,
                 )
             )
-            if existing is not None:
-                self._require_same_attempt(existing, command)
-                return self._attempt_view(existing)
-
-            policy = self._session.scalar(
-                select(ResourceComponentPolicy)
-                .where(
-                    ResourceComponentPolicy.owner_id == owner_id,
-                    ResourceComponentPolicy.component_key == command.component_key,
-                )
-                .with_for_update()
-            )
-            if (
-                policy is None
-                or not policy.enabled_for_core
-                or policy.cost_class not in self._CORE_COST_CLASSES
-            ):
-                raise ComponentPolicyUnavailableError(
-                    "component is not enabled for zero-cost core execution"
-                )
-
-            usage_id = uuid4()
-            inserted_id = self._session.scalar(
-                insert(ResourceUsageAttempt)
-                .values(
-                    id=usage_id,
-                    owner_id=owner_id,
-                    attempt_id=command.attempt_id,
-                    operation_id=command.operation_id,
-                    component_policy_id=policy.id,
-                    component_version=policy.component_version,
-                    usage_kind=command.usage_kind.value,
-                    stage=command.stage,
-                    outcome=UsageOutcome.STARTED.value,
-                    started_at=command.started_at,
-                    finished_at=None,
-                )
-                .on_conflict_do_nothing(constraint="resource_usage_attempts_owner_attempt_key")
-                .returning(ResourceUsageAttempt.id)
-            )
-            if inserted_id is not None:
-                model = self._session.get(ResourceUsageAttempt, inserted_id)
-            else:
-                model = self._session.scalar(
-                    select(ResourceUsageAttempt).where(
-                        ResourceUsageAttempt.owner_id == owner_id,
-                        ResourceUsageAttempt.attempt_id == command.attempt_id,
-                    )
-                )
-                if model is None:
-                    raise RuntimeError("conflicting usage attempt is not visible")
-                self._require_same_attempt(model, command)
             if model is None:
-                raise RuntimeError("inserted usage attempt is not visible")
-            view = self._attempt_view(model)
-        return view
+                raise RuntimeError("conflicting usage attempt is not visible")
+            self._require_same_attempt(model, command)
+        if model is None:
+            raise RuntimeError("inserted usage attempt is not visible")
+        return self._attempt_view(model)
 
     def finish_attempt(
         self,
@@ -395,25 +403,44 @@ class ResourceBudgetService:
 
         self._session.rollback()
         with self._session.begin():
-            model = self._session.scalar(
-                select(ResourceUsageAttempt)
-                .where(
-                    ResourceUsageAttempt.owner_id == owner_id,
-                    ResourceUsageAttempt.attempt_id == attempt_id,
-                )
-                .with_for_update()
+            return self.finish_attempt_in_transaction(
+                owner_id=owner_id,
+                attempt_id=attempt_id,
+                outcome=outcome,
+                finished_at=finished_at,
             )
-            if model is None:
-                raise ComponentPolicyUnavailableError("usage attempt is not available")
-            if model.outcome == UsageOutcome.STARTED.value:
-                if finished_at < model.started_at:
-                    raise ValueError("finished_at cannot precede started_at")
-                model.outcome = outcome.value
-                model.finished_at = finished_at
-            elif model.outcome != outcome.value:
-                raise UsageConflictError("attempt already has another terminal outcome")
-            view = self._attempt_view(model)
-        return view
+
+    def finish_attempt_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        attempt_id: UUID,
+        outcome: UsageOutcome,
+        finished_at: datetime,
+    ) -> UsageAttemptView:
+        """Finish a usage attempt inside an existing outer transaction."""
+        if outcome is UsageOutcome.STARTED:
+            raise ValueError("finish outcome must be terminal")
+        if finished_at.tzinfo is None:
+            raise ValueError("finished_at must be timezone-aware")
+        model = self._session.scalar(
+            select(ResourceUsageAttempt)
+            .where(
+                ResourceUsageAttempt.owner_id == owner_id,
+                ResourceUsageAttempt.attempt_id == attempt_id,
+            )
+            .with_for_update()
+        )
+        if model is None:
+            raise ComponentPolicyUnavailableError("usage attempt is not available")
+        if model.outcome == UsageOutcome.STARTED.value:
+            if finished_at < model.started_at:
+                raise ValueError("finished_at cannot precede started_at")
+            model.outcome = outcome.value
+            model.finished_at = finished_at
+        elif model.outcome != outcome.value:
+            raise UsageConflictError("attempt already has another terminal outcome")
+        return self._attempt_view(model)
 
     def usage_summary(self, *, owner_id: UUID, operation_id: UUID) -> UsageSummaryView:
         outcomes = list(
@@ -510,96 +537,105 @@ class ResourceBudgetService:
         owner_id: UUID,
         command: BudgetReservationInput,
     ) -> BudgetReservationDecision:
+        self._session.rollback()
+        with self._session.begin():
+            return self.reserve_budget_in_transaction(owner_id=owner_id, command=command)
+
+    def reserve_budget_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: BudgetReservationInput,
+    ) -> BudgetReservationDecision:
+        """Reserve all applicable budgets inside an existing outer transaction."""
         now = self._clock()
         self._require_aware_clock(now)
         fingerprint = self._budget_context_fingerprint(command)
-        self._session.rollback()
-        with self._session.begin():
-            existing = self._locked_reservations(owner_id, command.reservation_id)
-            if existing:
-                return self._reservation_replay(existing, command, fingerprint)
+        existing = self._locked_reservations(owner_id, command.reservation_id)
+        if existing:
+            return self._reservation_replay(existing, command, fingerprint)
 
-            policies = self._applicable_budget_policies(owner_id, command, now)
-            if not any(policy.scope_kind == BudgetScopeKind.GLOBAL.value for policy in policies):
-                raise BudgetPolicyUnavailableError("an active global budget policy is required")
+        policies = self._applicable_budget_policies(owner_id, command, now)
+        if not any(policy.scope_kind == BudgetScopeKind.GLOBAL.value for policy in policies):
+            raise BudgetPolicyUnavailableError("an active global budget policy is required")
 
-            existing = self._locked_reservations(owner_id, command.reservation_id)
-            if existing:
-                return self._reservation_replay(existing, command, fingerprint)
+        existing = self._locked_reservations(owner_id, command.reservation_id)
+        if existing:
+            return self._reservation_replay(existing, command, fingerprint)
 
-            windows: list[tuple[ResourceBudgetPolicy, ResourceBudgetWindow, int]] = []
-            for policy in policies:
-                window = self._locked_current_window(policy, now)
-                remaining = max(
-                    0,
-                    policy.limit_units - window.used_units - window.reserved_units,
-                )
-                windows.append((policy, window, remaining))
+        windows: list[tuple[ResourceBudgetPolicy, ResourceBudgetWindow, int]] = []
+        for policy in policies:
+            window = self._locked_current_window(policy, now)
+            remaining = max(
+                0,
+                policy.limit_units - window.used_units - window.reserved_units,
+            )
+            windows.append((policy, window, remaining))
 
-            limiting = [item for item in windows if item[2] < command.requested_units]
-            if limiting:
-                retry_at = (
-                    None
-                    if command.metric is BudgetMetric.CONCURRENCY_SLOT
-                    else max(window.window_end for _, window, _ in limiting)
-                )
-                return BudgetReservationDecision(
-                    status=BudgetDecisionStatus.DELAYED,
-                    reservation_id=command.reservation_id,
-                    operation_id=command.operation_id,
-                    metric=command.metric,
-                    requested_units=command.requested_units,
-                    remaining_units=min(remaining for _, _, remaining in windows),
-                    limiting_budget_keys=tuple(policy.budget_key for policy, _, _ in limiting),
-                    resume_condition=(
-                        BudgetResumeCondition.CAPACITY_RELEASE
-                        if command.metric is BudgetMetric.CONCURRENCY_SLOT
-                        else BudgetResumeCondition.NEXT_WINDOW
-                    ),
-                    retry_at=retry_at,
-                )
-
-            mode = self._budget_mode(command.metric)
-            remaining_after: list[int] = []
-            for policy, window, remaining in windows:
-                after = remaining - command.requested_units
-                window.reserved_units += command.requested_units
-                window.updated_at = now
-                self._session.add(
-                    ResourceBudgetReservation(
-                        id=uuid4(),
-                        owner_id=owner_id,
-                        reservation_id=command.reservation_id,
-                        operation_id=command.operation_id,
-                        budget_policy_id=policy.id,
-                        budget_window_id=window.id,
-                        policy_version=policy.policy_version,
-                        limit_units=policy.limit_units,
-                        metric=command.metric.value,
-                        budget_mode=mode,
-                        requested_units=command.requested_units,
-                        actual_units=None,
-                        released_units=None,
-                        remaining_units_after=after,
-                        context_fingerprint=fingerprint,
-                        status=BudgetReservationStatus.RESERVED.value,
-                        created_at=now,
-                        settled_at=None,
-                    )
-                )
-                remaining_after.append(after)
-
+        limiting = [item for item in windows if item[2] < command.requested_units]
+        if limiting:
+            retry_at = (
+                None
+                if command.metric is BudgetMetric.CONCURRENCY_SLOT
+                else max(window.window_end for _, window, _ in limiting)
+            )
             return BudgetReservationDecision(
-                status=BudgetDecisionStatus.RESERVED,
+                status=BudgetDecisionStatus.DELAYED,
                 reservation_id=command.reservation_id,
                 operation_id=command.operation_id,
                 metric=command.metric,
                 requested_units=command.requested_units,
-                remaining_units=min(remaining_after),
-                limiting_budget_keys=(),
-                resume_condition=None,
-                retry_at=None,
+                remaining_units=min(remaining for _, _, remaining in windows),
+                limiting_budget_keys=tuple(policy.budget_key for policy, _, _ in limiting),
+                resume_condition=(
+                    BudgetResumeCondition.CAPACITY_RELEASE
+                    if command.metric is BudgetMetric.CONCURRENCY_SLOT
+                    else BudgetResumeCondition.NEXT_WINDOW
+                ),
+                retry_at=retry_at,
             )
+
+        mode = self._budget_mode(command.metric)
+        remaining_after: list[int] = []
+        for policy, window, remaining in windows:
+            after = remaining - command.requested_units
+            window.reserved_units += command.requested_units
+            window.updated_at = now
+            self._session.add(
+                ResourceBudgetReservation(
+                    id=uuid4(),
+                    owner_id=owner_id,
+                    reservation_id=command.reservation_id,
+                    operation_id=command.operation_id,
+                    budget_policy_id=policy.id,
+                    budget_window_id=window.id,
+                    policy_version=policy.policy_version,
+                    limit_units=policy.limit_units,
+                    metric=command.metric.value,
+                    budget_mode=mode,
+                    requested_units=command.requested_units,
+                    actual_units=None,
+                    released_units=None,
+                    remaining_units_after=after,
+                    context_fingerprint=fingerprint,
+                    status=BudgetReservationStatus.RESERVED.value,
+                    created_at=now,
+                    settled_at=None,
+                )
+            )
+            remaining_after.append(after)
+
+        return BudgetReservationDecision(
+            status=BudgetDecisionStatus.RESERVED,
+            reservation_id=command.reservation_id,
+            operation_id=command.operation_id,
+            metric=command.metric,
+            requested_units=command.requested_units,
+            remaining_units=min(remaining_after),
+            limiting_budget_keys=(),
+            resume_condition=None,
+            retry_at=None,
+        )
 
     def settle_budget_reservation(
         self,
@@ -608,65 +644,77 @@ class ResourceBudgetService:
         reservation_id: UUID,
         actual_units: int,
     ) -> BudgetSettlementView:
+        self._session.rollback()
+        with self._session.begin():
+            return self.settle_budget_reservation_in_transaction(
+                owner_id=owner_id,
+                reservation_id=reservation_id,
+                actual_units=actual_units,
+            )
+
+    def settle_budget_reservation_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        reservation_id: UUID,
+        actual_units: int,
+    ) -> BudgetSettlementView:
+        """Settle one budget reservation inside an existing outer transaction."""
         if actual_units < 0:
             raise ValueError("actual_units cannot be negative")
         now = self._clock()
         self._require_aware_clock(now)
-        self._session.rollback()
-        with self._session.begin():
-            reservations = self._locked_reservations(owner_id, reservation_id)
-            if not reservations:
-                raise BudgetPolicyUnavailableError("budget reservation does not exist")
+        reservations = self._locked_reservations(owner_id, reservation_id)
+        if not reservations:
+            raise BudgetPolicyUnavailableError("budget reservation does not exist")
 
-            first = reservations[0]
-            if actual_units > first.requested_units:
-                raise ValueError("actual_units cannot exceed requested_units")
-            if any(row.requested_units != first.requested_units for row in reservations):
-                raise RuntimeError("budget reservation rows disagree on requested units")
+        first = reservations[0]
+        if actual_units > first.requested_units:
+            raise ValueError("actual_units cannot exceed requested_units")
+        if any(row.requested_units != first.requested_units for row in reservations):
+            raise RuntimeError("budget reservation rows disagree on requested units")
 
-            statuses = {row.status for row in reservations}
-            if statuses == {BudgetReservationStatus.SETTLED.value}:
-                if any(row.actual_units != actual_units for row in reservations):
-                    raise BudgetReservationConflictError(
-                        "reservation already has another settlement"
-                    )
-                if first.settled_at is None or first.actual_units is None:
-                    raise RuntimeError("settled reservation is incomplete")
-                return self._settlement_view(reservations, first.settled_at)
-            if statuses != {BudgetReservationStatus.RESERVED.value}:
-                raise RuntimeError("budget reservation rows have inconsistent status")
+        statuses = {row.status for row in reservations}
+        if statuses == {BudgetReservationStatus.SETTLED.value}:
+            if any(row.actual_units != actual_units for row in reservations):
+                raise BudgetReservationConflictError("reservation already has another settlement")
+            if first.settled_at is None or first.actual_units is None:
+                raise RuntimeError("settled reservation is incomplete")
+            return self._settlement_view(reservations, first.settled_at)
+        if statuses != {BudgetReservationStatus.RESERVED.value}:
+            raise RuntimeError("budget reservation rows have inconsistent status")
 
-            window_by_id: dict[UUID, ResourceBudgetWindow] = {}
-            for row in reservations:
-                window = self._session.scalar(
-                    select(ResourceBudgetWindow)
-                    .where(
-                        ResourceBudgetWindow.owner_id == owner_id,
-                        ResourceBudgetWindow.id == row.budget_window_id,
-                    )
-                    .with_for_update()
+        window_by_id: dict[UUID, ResourceBudgetWindow] = {}
+        for row in reservations:
+            window = self._session.scalar(
+                select(ResourceBudgetWindow)
+                .where(
+                    ResourceBudgetWindow.owner_id == owner_id,
+                    ResourceBudgetWindow.id == row.budget_window_id,
                 )
-                if window is None:
-                    raise RuntimeError("budget reservation window is missing")
-                window_by_id[window.id] = window
+                .with_for_update()
+            )
+            if window is None:
+                raise RuntimeError("budget reservation window is missing")
+            window_by_id[window.id] = window
 
-            for row in reservations:
-                window = window_by_id[row.budget_window_id]
-                if window.reserved_units < row.requested_units:
-                    raise RuntimeError("budget window reserved units are inconsistent")
-                window.reserved_units -= row.requested_units
-                if row.budget_mode == "cumulative":
-                    window.used_units += actual_units
-                    released_units = row.requested_units - actual_units
-                else:
-                    released_units = row.requested_units
-                window.updated_at = now
-                row.actual_units = actual_units
-                row.released_units = released_units
-                row.status = BudgetReservationStatus.SETTLED.value
-                row.settled_at = now
+        for row in reservations:
+            window = window_by_id[row.budget_window_id]
+            if window.reserved_units < row.requested_units:
+                raise RuntimeError("budget window reserved units are inconsistent")
+            window.reserved_units -= row.requested_units
+            if row.budget_mode == "cumulative":
+                window.used_units += actual_units
+                released_units = row.requested_units - actual_units
+            else:
+                released_units = row.requested_units
+            window.updated_at = now
+            row.actual_units = actual_units
+            row.released_units = released_units
+            row.status = BudgetReservationStatus.SETTLED.value
+            row.settled_at = now
 
-            return self._settlement_view(reservations, now)
+        return self._settlement_view(reservations, now)
 
     def _applicable_budget_policies(
         self,

@@ -289,6 +289,23 @@ class JobExecutionService:
             raise JobLeaseUnavailableError("job cancellation has been requested")
         return self._lease(model)
 
+    def require_current_operation_in_transaction(
+        self,
+        lease: ExecutionLease,
+        *,
+        owner_id: UUID,
+        operation_id: UUID,
+    ) -> ExecutionLease:
+        """Verify that a live lease belongs to the expected owner and operation."""
+        now = self._clock()
+        model = self._lock_job(lease.job_id)
+        self._require_current_lease(model, lease, now)
+        if model.cancel_requested_at is not None:
+            raise JobLeaseUnavailableError("job cancellation has been requested")
+        if model.owner_id != owner_id or model.operation_id != operation_id:
+            raise JobLeaseUnavailableError("job lease does not match the requested operation")
+        return self._lease(model)
+
     def save_checkpoint_in_transaction(
         self,
         lease: ExecutionLease,
@@ -339,31 +356,37 @@ class JobExecutionService:
         return self._lease(model)
 
     def begin_request(self, lease: ExecutionLease) -> tuple[ExecutionLease, bool]:
-        now = self._clock()
-        expires_at = now + self._lease_duration
         self._session.rollback()
         with self._session.begin():
-            model = self._lock_job(lease.job_id)
-            self._require_current_lease(model, lease, now)
-            if model.cancel_requested_at is not None:
-                return self._lease(model), False
+            return self.begin_request_in_transaction(lease)
 
-            model.requests_sent += 1
-            model.progress_stage = JobStage.REQUEST.value
-            model.progress_updated_at = now
-            model.lease_expires_at = expires_at
-            model.updated_at = now
-            self._session.execute(
-                update(JobAttempt)
-                .where(
-                    JobAttempt.job_id == model.id,
-                    JobAttempt.lease_epoch == model.lease_epoch,
-                    JobAttempt.finished_at.is_(None),
-                )
-                .values(lease_expires_at=expires_at)
+    def begin_request_in_transaction(
+        self,
+        lease: ExecutionLease,
+    ) -> tuple[ExecutionLease, bool]:
+        """Fence and meter one outbound request inside an existing transaction."""
+        now = self._clock()
+        expires_at = now + self._lease_duration
+        model = self._lock_job(lease.job_id)
+        self._require_current_lease(model, lease, now)
+        if model.cancel_requested_at is not None:
+            return self._lease(model), False
+
+        model.requests_sent += 1
+        model.progress_stage = JobStage.REQUEST.value
+        model.progress_updated_at = now
+        model.lease_expires_at = expires_at
+        model.updated_at = now
+        self._session.execute(
+            update(JobAttempt)
+            .where(
+                JobAttempt.job_id == model.id,
+                JobAttempt.lease_epoch == model.lease_epoch,
+                JobAttempt.finished_at.is_(None),
             )
-            renewed = self._lease(model)
-        return renewed, True
+            .values(lease_expires_at=expires_at)
+        )
+        return self._lease(model), True
 
     def cancellation_requested(self, lease: ExecutionLease) -> bool:
         now = self._clock()
