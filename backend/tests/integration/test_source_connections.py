@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Event
 from uuid import UUID, uuid4
 
 import pytest
@@ -14,6 +16,8 @@ from cli.commands import app as cli_app
 from connections.schemas import (
     ConnectionEvidenceOutcome,
     PersistedReadEvidenceInput,
+    ProbeEvidenceInput,
+    SourceCapabilityEvidenceView,
     SourceEntryPoint,
 )
 from connections.services import SourceCapabilityEvidenceService, SourceConnectionService
@@ -264,6 +268,8 @@ def test_probe_cli_records_check_without_enabling_either_entry(
                 owner_id,
                 "--connection-id",
                 str(connection_id),
+                "--connection-version",
+                "1",
                 "--operation-id",
                 str(operation_id),
                 "--capability",
@@ -314,6 +320,7 @@ def test_persisted_read_registration_is_idempotent_and_entry_scoped(
     command = PersistedReadEvidenceInput(
         operation_id=operation_id,
         connection_id=connection_id,
+        connection_version=1,
         capability=SourceCapability.SEARCH,
         entry_point=SourceEntryPoint.MANUAL,
         outcome=ConnectionEvidenceOutcome.SUCCEEDED,
@@ -367,6 +374,7 @@ def test_evidence_registration_rejects_another_owners_connection(
     command = PersistedReadEvidenceInput(
         operation_id=uuid4(),
         connection_id=connection_id,
+        connection_version=1,
         capability=SourceCapability.SEARCH,
         entry_point=SourceEntryPoint.MANUAL,
         outcome=ConnectionEvidenceOutcome.SUCCEEDED,
@@ -382,3 +390,128 @@ def test_evidence_registration_rejects_another_owners_connection(
             owner_id=uuid4(),
             command=command,
         )
+
+
+@pytest.mark.parametrize("change", ["replace", "disable"])
+@pytest.mark.parametrize("kind", ["probe", "persisted_read"])
+def test_changed_connection_rejects_late_evidence_but_preserves_replays(
+    source_connection_client: TestClient, change: str, kind: str
+) -> None:
+    owner_id = UUID(_initialize(source_connection_client))
+    connection_id = _seed_search_connection(source_connection_client, str(owner_id))
+    factory = source_connection_client.app.state.session_factory
+    command = PersistedReadEvidenceInput(
+        operation_id=uuid4(),
+        connection_id=connection_id,
+        connection_version=1,
+        capability=SourceCapability.SEARCH,
+        entry_point=SourceEntryPoint.MANUAL,
+        outcome=ConnectionEvidenceOutcome.SUCCEEDED,
+        stop_reason=None,
+        resource_ref="content:controlled-search-page",
+        component_name="controlled-collector",
+        component_version="1",
+    )
+
+    def record(
+        service: SourceCapabilityEvidenceService, operation_id: UUID
+    ) -> SourceCapabilityEvidenceView:
+        updated = command.model_copy(update={"operation_id": operation_id})
+        if kind == "probe":
+            return service.record_probe(
+                owner_id=owner_id,
+                command=ProbeEvidenceInput.model_validate(
+                    updated.model_dump(exclude={"resource_ref"})
+                ),
+            )
+        return service.record_persisted_read(owner_id=owner_id, command=updated)
+
+    with factory() as session:
+        original = record(SourceCapabilityEvidenceService(session), command.operation_id)
+    with factory() as session, session.begin():
+        if change == "replace":
+            session.execute(
+                text(
+                    "INSERT INTO source_connection_versions "
+                    "(connection_id, version, owner_id, secret_ref, created_by, created_at) "
+                    "SELECT connection_id, 2, owner_id, secret_ref, created_by, now() "
+                    "FROM source_connection_versions WHERE connection_id = :id AND version = 1"
+                ),
+                {"id": connection_id},
+            )
+            session.execute(
+                text("UPDATE source_connections SET current_version = 2 WHERE id = :id"),
+                {"id": connection_id},
+            )
+        else:
+            session.execute(
+                text("UPDATE source_connections SET status = 'disabled' WHERE id = :id"),
+                {"id": connection_id},
+            )
+
+    with factory() as session:
+        service = SourceCapabilityEvidenceService(session)
+        code = "connection_version_conflict" if change == "replace" else "connection_disabled"
+        with pytest.raises(ApplicationError, match=code):
+            record(service, uuid4())
+        replayed = record(service, command.operation_id)
+        assert replayed == original
+        with pytest.raises(ApplicationError, match="idempotency_conflict"):
+            service.record_persisted_read(
+                owner_id=owner_id,
+                command=command.model_copy(update={"resource_ref": "content:changed"}),
+            )
+        rows = session.execute(
+            text(
+                "SELECT connection_version FROM source_capability_evidence "
+                "WHERE connection_id = :id"
+            ),
+            {"id": connection_id},
+        ).all()
+        assert rows == [(1,)]
+    platform = source_connection_client.get("/api/source-capabilities").json()["items"][1]
+    assert _capability(platform, "search")["manual"]["status"] != "available"
+
+
+def test_evidence_waits_for_connection_lock_and_observes_committed_disable(
+    source_connection_client: TestClient,
+) -> None:
+    owner_id = UUID(_initialize(source_connection_client))
+    connection_id = _seed_search_connection(source_connection_client, str(owner_id))
+    factory = source_connection_client.app.state.session_factory
+    command = ProbeEvidenceInput(
+        operation_id=uuid4(),
+        connection_id=connection_id,
+        connection_version=1,
+        capability=SourceCapability.SEARCH,
+        entry_point=SourceEntryPoint.MANUAL,
+        outcome=ConnectionEvidenceOutcome.SUCCEEDED,
+        stop_reason=None,
+        component_name="controlled-probe",
+        component_version="1",
+    )
+    started = Event()
+
+    def record() -> SourceCapabilityEvidenceView:
+        with factory() as session:
+            session.execute(text("SET statement_timeout = '5s'"))
+            session.commit()
+            started.set()
+            return SourceCapabilityEvidenceService(session).record_probe(
+                owner_id=owner_id, command=command
+            )
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with factory() as session, session.begin():
+            session.execute(
+                text("UPDATE source_connections SET status = 'disabled' WHERE id = :id"),
+                {"id": connection_id},
+            )
+            future = executor.submit(record)
+            assert started.wait(timeout=5)
+            with pytest.raises(TimeoutError):
+                future.result(timeout=0.1)
+        with pytest.raises(ApplicationError, match="connection_disabled"):
+            future.result(timeout=5)
+    with factory() as session:
+        assert session.scalar(text("SELECT count(*) FROM source_capability_evidence")) == 0

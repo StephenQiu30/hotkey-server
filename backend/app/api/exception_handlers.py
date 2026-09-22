@@ -44,6 +44,10 @@ HTTP_ERRORS: Mapping[int, PublicError] = {
 }
 APPLICATION_ERRORS: Mapping[str, PublicError] = {
     "bootstrap_forbidden": PublicError(403, "bootstrap_forbidden", "初始化授权无效"),
+    "connection_disabled": PublicError(409, "connection_disabled", "连接已停用"),
+    "connection_version_conflict": PublicError(
+        409, "connection_version_conflict", "连接版本已变更且需要重新验证"
+    ),
     "csrf_invalid": PublicError(403, "csrf_invalid", "请求安全校验失败"),
     "database_unavailable": PublicError(503, "database_unavailable", "数据库暂不可用"),
     "identity_already_initialized": PublicError(

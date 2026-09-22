@@ -40,6 +40,7 @@ def _command(*, fields: dict[str, object], native_scope: str | None = None) -> d
         "job_id": uuid4(),
         "source_operation_id": uuid4(),
         "connection_id": uuid4(),
+        "connection_version": 1,
         "entry_point": SourceEntryPoint.MANUAL,
         "component_name": "controlled-collector",
         "component_version": "1",

@@ -39,6 +39,7 @@ class ConnectionEvidenceOutcome(StrEnum):
 class _SourceCapabilityEvidenceInput(InputModel):
     operation_id: UUID
     connection_id: UUID
+    connection_version: int = Field(ge=1)
     capability: SourceCapability
     entry_point: SourceEntryPoint
     outcome: ConnectionEvidenceOutcome

@@ -53,6 +53,7 @@ def version() -> None:
 def record_source_probe(
     owner_id: Annotated[UUID, typer.Option(help="Owner that controls the connection.")],
     connection_id: Annotated[UUID, typer.Option(help="Connection used by the probe.")],
+    connection_version: Annotated[int, typer.Option(min=1, help="Version used by the probe.")],
     operation_id: Annotated[UUID, typer.Option(help="Idempotency key for this probe.")],
     capability: Annotated[SourceCapability, typer.Option(help="Capability that was checked.")],
     entry_point: Annotated[SourceEntryPoint, typer.Option(help="Entry point that was checked.")],
@@ -69,6 +70,7 @@ def record_source_probe(
         command = ProbeEvidenceInput(
             operation_id=operation_id,
             connection_id=connection_id,
+            connection_version=connection_version,
             capability=capability,
             entry_point=entry_point,
             outcome=outcome,

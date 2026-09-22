@@ -182,6 +182,27 @@ class SourceCapabilityEvidenceService:
         if connection is None:
             raise ApplicationError("resource_not_found")
 
+        existing = self._session.scalar(
+            select(SourceCapabilityEvidence).where(
+                SourceCapabilityEvidence.owner_id == owner_id,
+                SourceCapabilityEvidence.operation_id == command.operation_id,
+            )
+        )
+        if existing is not None:
+            if not self._matches(
+                existing,
+                command=command,
+                kind=kind,
+                stop_reason=stop_reason,
+                resource_ref=resource_ref,
+            ):
+                raise ApplicationError("idempotency_conflict")
+            return self._view(existing)
+        if connection.status == SourceConnectionStatus.DISABLED.value:
+            raise ApplicationError("connection_disabled")
+        if command.connection_version != connection.current_version:
+            raise ApplicationError("connection_version_conflict")
+
         evidence_id = uuid4()
         inserted_id = self._session.scalar(
             insert(SourceCapabilityEvidence)
@@ -190,7 +211,7 @@ class SourceCapabilityEvidenceService:
                 operation_id=command.operation_id,
                 owner_id=owner_id,
                 connection_id=connection.id,
-                connection_version=connection.current_version,
+                connection_version=command.connection_version,
                 capability=command.capability.value,
                 entry_point=command.entry_point.value,
                 kind=kind.value,
@@ -212,7 +233,7 @@ class SourceCapabilityEvidenceService:
                 operation_id=command.operation_id,
                 owner_id=owner_id,
                 connection_id=connection.id,
-                connection_version=connection.current_version,
+                connection_version=command.connection_version,
                 capability=command.capability.value,
                 entry_point=command.entry_point.value,
                 kind=kind.value,
@@ -235,7 +256,6 @@ class SourceCapabilityEvidenceService:
                 raise RuntimeError("conflicting capability evidence is not visible")
             if not self._matches(
                 existing,
-                connection_version=connection.current_version,
                 command=command,
                 kind=kind,
                 stop_reason=stop_reason,
@@ -249,7 +269,6 @@ class SourceCapabilityEvidenceService:
     def _matches(
         evidence: SourceCapabilityEvidence,
         *,
-        connection_version: int,
         command: ProbeEvidenceInput | PersistedReadEvidenceInput,
         kind: ConnectionEvidenceKind,
         stop_reason: str | None,
@@ -257,7 +276,7 @@ class SourceCapabilityEvidenceService:
     ) -> bool:
         return (
             evidence.connection_id == command.connection_id
-            and evidence.connection_version == connection_version
+            and evidence.connection_version == command.connection_version
             and evidence.capability == command.capability.value
             and evidence.entry_point == command.entry_point.value
             and evidence.kind == kind.value

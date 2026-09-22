@@ -443,6 +443,7 @@ class ContentService:
                 command=PersistedReadEvidenceInput(
                     operation_id=command.source_operation_id,
                     connection_id=command.connection_id,
+                    connection_version=command.connection_version,
                     capability=command.admission.capability,
                     entry_point=command.entry_point,
                     outcome=ConnectionEvidenceOutcome.SUCCEEDED,

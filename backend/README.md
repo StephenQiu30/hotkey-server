@@ -52,6 +52,7 @@ docker compose run --rm cli lifecycle cleanup-once --limit 100
 uv run --env-file .env python -m cli connections record-probe \
   --owner-id OWNER_UUID \
   --connection-id CONNECTION_UUID \
+  --connection-version 1 \
   --operation-id OPERATION_UUID \
   --capability search \
   --entry-point manual \
@@ -60,7 +61,7 @@ uv run --env-file .env python -m cli connections record-probe \
   --component-version 1
 ```
 
-命令只登记 probe 事实，不读取连接秘密、不发起外部请求，也不会将能力标为可用。失败结果必须另传 `--stop-reason`；只有后续采集用例持久业务记录后才能登记 persisted read 成功。
+命令只登记 probe 事实，不读取连接秘密、不发起外部请求，也不会将能力标为可用。`--connection-version` 必须使用探测实际执行的版本，不可在登记时改成新版本；连接停用或版本已变更会拒绝新增证据，已提交的同一事实重放仍返回原记录。失败结果必须另传 `--stop-reason`；只有后续采集用例持久业务记录后才能登记 persisted read 成功。
 
 维护者可在现有本机环境显式指定一个已存在的受控目录，生成 PostgreSQL custom-format 候选归档和 MinIO 证据引用清单：
 

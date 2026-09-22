@@ -126,6 +126,7 @@ def test_failed_probe_requires_a_stable_reason() -> None:
         ProbeEvidenceInput(
             operation_id=UUID(int=1),
             connection_id=UUID(int=2),
+            connection_version=1,
             capability=SourceCapability.SEARCH,
             entry_point=SourceEntryPoint.MANUAL,
             outcome=ConnectionEvidenceOutcome.FAILED,
@@ -140,6 +141,7 @@ def test_successful_persisted_read_requires_a_resource_reference() -> None:
         PersistedReadEvidenceInput(
             operation_id=UUID(int=1),
             connection_id=UUID(int=2),
+            connection_version=1,
             capability=SourceCapability.SEARCH,
             entry_point=SourceEntryPoint.MANUAL,
             outcome=ConnectionEvidenceOutcome.SUCCEEDED,
@@ -148,3 +150,22 @@ def test_successful_persisted_read_requires_a_resource_reference() -> None:
             component_name="controlled-collector",
             component_version="1",
         )
+
+
+@pytest.mark.parametrize("version", [None, 0, -1])
+@pytest.mark.parametrize("schema", [ProbeEvidenceInput, PersistedReadEvidenceInput])
+def test_evidence_requires_explicit_positive_connection_version(schema, version) -> None:
+    payload = {
+        "operation_id": UUID(int=1),
+        "connection_id": UUID(int=2),
+        "capability": "search",
+        "entry_point": "manual",
+        "outcome": "failed",
+        "stop_reason": "authentication_required",
+        "component_name": "controlled-probe",
+        "component_version": "1",
+    }
+    if version is not None:
+        payload["connection_version"] = version
+    with pytest.raises(ValidationError, match="connection_version"):
+        schema.model_validate(payload)

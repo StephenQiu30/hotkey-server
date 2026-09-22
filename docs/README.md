@@ -28,7 +28,7 @@
 | 编号 | PRD 主题 | 来源需求 | 优先级 | PRD 状态 | Plan |
 |---|---|---|---|---|---|
 | 003 | [监控主题管理](prd/003-监控主题管理.md) | FR-001-001 | P0 | accepted | [设计](design/003-监控主题管理设计.md) · accepted；[计划](plans/003-监控主题管理计划.md) · in_progress |
-| 004 | [平台与连接管理](prd/004-平台与连接管理.md) | FR-001-002 | P0 | accepted | [设计](design/004-平台与连接管理设计.md) · accepted；[计划](plans/004-平台与连接管理计划.md) · in_progress（S00—S02，0/6 AC） |
+| 004 | [平台与连接管理](prd/004-平台与连接管理.md) | FR-001-002 | P0 | accepted | [设计](design/004-平台与连接管理设计.md) · accepted；[计划](plans/004-平台与连接管理计划.md) · in_progress（S00—S02 与 S03 版本屏障先行片，0/6 AC） |
 | 005 | [关键词主动发现](prd/005-关键词主动发现.md) | FR-001-003 | P0 | draft | [计划](plans/005-关键词主动发现计划.md) · planned |
 | 006 | [指定用户作品追踪](prd/006-指定用户作品追踪.md) | FR-001-004 | P0 | draft | [计划](plans/006-指定用户作品追踪计划.md) · planned |
 | 007 | [作品资料与上下文](prd/007-作品资料与上下文.md) | FR-001-005 | P0 | accepted | [设计](design/007-作品资料与上下文设计.md) · accepted（S00—S03）；[计划](plans/007-作品资料与上下文计划.md) · in_progress（S00—S02，0/6 AC） |

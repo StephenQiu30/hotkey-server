@@ -30,6 +30,7 @@ class PersistContentPostInput(InputModel):
     job_id: UUID
     source_operation_id: UUID
     connection_id: UUID
+    connection_version: int = Field(ge=1)
     entry_point: SourceEntryPoint
     component_name: str = Field(
         min_length=1,

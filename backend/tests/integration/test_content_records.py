@@ -207,6 +207,7 @@ def _command(
         job_id=job_id,
         source_operation_id=operation_id,
         connection_id=connection_id,
+        connection_version=1,
         entry_point=SourceEntryPoint.MANUAL,
         component_name="controlled-collector",
         component_version="1",
@@ -752,6 +753,56 @@ def test_same_post_keeps_two_discoveries_zero_unknown_and_idempotent_observation
     assert tuple(counts) == (1, 2, 2, 2, 2)
 
 
+@pytest.mark.parametrize("change", ["replace", "disable"])
+def test_connection_changes_preserve_historical_content_and_replay(
+    content_client: TestClient, change: str
+) -> None:
+    owner_id = _initialize(content_client)
+    connection_id, policy_id, retention_id, job_id, _ = _seed_context(content_client, owner_id)
+    command = _command(
+        owner_id=owner_id,
+        connection_id=connection_id,
+        policy_id=policy_id,
+        retention_id=retention_id,
+        job_id=job_id,
+        operation_id=uuid4(),
+        observed_at=datetime.now(UTC) - timedelta(minutes=1),
+        extra_fields={"body": "historical body", "text_scope": "full", "text_origin": "source"},
+    )
+    factory = content_client.app.state.session_factory
+    with factory() as session:
+        original = ContentService(session).persist_post(owner_id=owner_id, command=command)
+        with session.begin():
+            if change == "replace":
+                session.execute(
+                    text(
+                        "INSERT INTO source_connection_versions "
+                        "(connection_id, version, owner_id, secret_ref, created_by, created_at) "
+                        "SELECT connection_id, 2, owner_id, secret_ref, created_by, now() "
+                        "FROM source_connection_versions WHERE connection_id = :id AND version = 1"
+                    ),
+                    {"id": connection_id},
+                )
+                session.execute(
+                    text("UPDATE source_connections SET current_version = 2 WHERE id = :id"),
+                    {"id": connection_id},
+                )
+            else:
+                session.execute(
+                    text("UPDATE source_connections SET status = 'disabled' WHERE id = :id"),
+                    {"id": connection_id},
+                )
+        replayed = ContentService(session).persist_post(owner_id=owner_id, command=command)
+        assert replayed == original
+        assert session.execute(
+            text("SELECT connection_version FROM source_capability_evidence")
+        ).all() == [(1,)]
+        assert session.scalar(text("SELECT count(*) FROM content_observations")) == 1
+    response = content_client.get(f"/api/contents/{original.id}")
+    assert response.status_code == 200
+    assert "historical body" in response.text
+
+
 def test_content_reads_enforce_owner_and_lifecycle_boundary(content_client: TestClient) -> None:
     assert content_client.get("/api/contents").status_code == 401
     owner_id = _initialize(content_client)
@@ -786,9 +837,17 @@ def test_content_reads_enforce_owner_and_lifecycle_boundary(content_client: Test
     assert listed.json() == {"items": [], "next_cursor": None}
 
 
-@pytest.mark.parametrize("reference", ["job_id", "connection_id"])
+@pytest.mark.parametrize(
+    ("reference", "code"),
+    [
+        ("job_id", "resource_not_found"),
+        ("connection_id", "resource_not_found"),
+        ("connection_version", "connection_version_conflict"),
+        ("disabled_connection", "connection_disabled"),
+    ],
+)
 def test_unavailable_relation_rolls_back_entire_content_write(
-    content_client: TestClient, reference: str
+    content_client: TestClient, reference: str, code: str
 ) -> None:
     owner_id = _initialize(content_client)
     connection_id, policy_id, retention_id, job_id, _ = _seed_context(content_client, owner_id)
@@ -804,10 +863,18 @@ def test_unavailable_relation_rolls_back_entire_content_write(
     )
     factory = content_client.app.state.session_factory
     with factory() as session:
-        with pytest.raises(ApplicationError, match="resource_not_found"):
-            ContentService(session).persist_post(
-                owner_id=owner_id, command=command.model_copy(update={reference: uuid4()})
-            )
+        if reference == "disabled_connection":
+            with session.begin():
+                session.execute(
+                    text("UPDATE source_connections SET status = 'disabled' WHERE id = :id"),
+                    {"id": connection_id},
+                )
+            rejected = command
+        else:
+            value = 2 if reference == "connection_version" else uuid4()
+            rejected = command.model_copy(update={reference: value})
+        with pytest.raises(ApplicationError, match=code):
+            ContentService(session).persist_post(owner_id=owner_id, command=rejected)
         for table in (
             "content_records",
             "content_versions",
@@ -818,6 +885,12 @@ def test_unavailable_relation_rolls_back_entire_content_write(
             "source_capability_evidence",
         ):
             assert session.scalar(text(f"SELECT count(*) FROM {table}")) == 0
+        if reference == "disabled_connection":
+            session.execute(
+                text("UPDATE source_connections SET status = 'active' WHERE id = :id"),
+                {"id": connection_id},
+            )
+            session.commit()
         saved = ContentService(session).persist_post(owner_id=owner_id, command=command)
         outsider = uuid4()
         with pytest.raises(ApplicationError, match="resource_not_found"):
