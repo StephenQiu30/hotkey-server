@@ -1,13 +1,21 @@
 from pathlib import Path
 from typing import Annotated
+from uuid import UUID
 
 import typer
 from minio import Minio
+from pydantic import ValidationError
 from redis import Redis
 
 from backups.adapters.minio import MinioObjectInventory, ObjectInventoryError
 from backups.adapters.postgres import BackupToolError, PostgresDumpAdapter
 from backups.services import BackupError, BackupService
+from connections.schemas import (
+    ConnectionEvidenceOutcome,
+    ProbeEvidenceInput,
+    SourceEntryPoint,
+)
+from connections.services import SourceCapabilityEvidenceService
 from core.config import get_settings
 from core.errors import ApplicationError
 from db.session import create_db_engine, create_session_factory
@@ -16,14 +24,17 @@ from evidence.adapters.minio import MinioObjectCleanup
 from evidence.schemas import CleanupTargetKind
 from evidence.services import CleanupProcessor, LifecycleService
 from identity.services import IdentityService
+from sources.contracts import SourceCapability, SourceStopReason
 
 app = typer.Typer(no_args_is_help=True)
 identity_app = typer.Typer(no_args_is_help=True)
 lifecycle_app = typer.Typer(no_args_is_help=True)
 backup_app = typer.Typer(no_args_is_help=True)
+connections_app = typer.Typer(no_args_is_help=True)
 app.add_typer(identity_app, name="identity")
 app.add_typer(lifecycle_app, name="lifecycle")
 app.add_typer(backup_app, name="backup")
+app.add_typer(connections_app, name="connections")
 
 
 @app.callback()
@@ -35,6 +46,57 @@ def main() -> None:
 def version() -> None:
     """Print the backend version."""
     typer.echo(get_settings().app_version)
+
+
+@connections_app.command("record-probe")
+def record_source_probe(
+    owner_id: Annotated[UUID, typer.Option(help="Owner that controls the connection.")],
+    connection_id: Annotated[UUID, typer.Option(help="Connection used by the probe.")],
+    operation_id: Annotated[UUID, typer.Option(help="Idempotency key for this probe.")],
+    capability: Annotated[SourceCapability, typer.Option(help="Capability that was checked.")],
+    entry_point: Annotated[SourceEntryPoint, typer.Option(help="Entry point that was checked.")],
+    outcome: Annotated[ConnectionEvidenceOutcome, typer.Option(help="Probe outcome.")],
+    component_name: Annotated[str, typer.Option(help="Probe component name.")],
+    component_version: Annotated[str, typer.Option(help="Probe component version.")],
+    stop_reason: Annotated[
+        SourceStopReason | None,
+        typer.Option(help="Stable failure reason; required only when outcome is failed."),
+    ] = None,
+) -> None:
+    """Record one explicitly executed source probe without exposing credentials."""
+    try:
+        command = ProbeEvidenceInput(
+            operation_id=operation_id,
+            connection_id=connection_id,
+            capability=capability,
+            entry_point=entry_point,
+            outcome=outcome,
+            stop_reason=stop_reason,
+            component_name=component_name,
+            component_version=component_version,
+        )
+    except ValidationError as error:
+        typer.echo("Probe evidence failed: invalid_evidence", err=True)
+        raise typer.Exit(code=1) from error
+
+    settings = get_settings()
+    engine = create_db_engine(settings)
+    session = create_session_factory(engine)()
+    try:
+        evidence = SourceCapabilityEvidenceService(session).record_probe(
+            owner_id=owner_id,
+            command=command,
+        )
+    except ApplicationError as error:
+        typer.echo(f"Probe evidence failed: {error.code}", err=True)
+        raise typer.Exit(code=1) from error
+    finally:
+        session.close()
+        engine.dispose()
+    typer.echo(
+        f"Probe evidence recorded: {evidence.id}; outcome: {evidence.outcome.value}; "
+        f"connection version: {evidence.connection_version}"
+    )
 
 
 @backup_app.command("create-candidate")
