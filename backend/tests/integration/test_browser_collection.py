@@ -3,7 +3,11 @@
 import asyncio
 import os
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from uuid import uuid4
 
+from connections.adapters.local_secrets import BrowserStateStore
 from sources.adapters.browser_runtime import BrowserRuntime
 
 _FIXTURE_URL = "https://browser-fixture.invalid/"
@@ -90,6 +94,38 @@ class BrowserCollectionLiveTests(unittest.TestCase):
                     [{"name": "session", "value": "fixture-only", "url": _FIXTURE_URL}]
                 )
                 await page.evaluate("localStorage.setItem('session', 'fixture-only')")
+                state = await first.storage_state()
+
+            with TemporaryDirectory() as directory:
+                store = BrowserStateStore(Path(directory))
+                owner_id, connection_id = uuid4(), uuid4()
+                reference = store.save(
+                    owner_id=owner_id,
+                    connection_id=connection_id,
+                    version=1,
+                    state=state,
+                )
+                stored_state = store.load(
+                    owner_id=owner_id,
+                    connection_id=connection_id,
+                    version=1,
+                    reference=reference,
+                )
+                async with runtime.context(storage_state=stored_state) as authenticated:
+                    await authenticated.route(
+                        _FIXTURE_URL,
+                        lambda route: route.fulfill(
+                            status=200, body=_PAGE, content_type="text/html"
+                        ),
+                    )
+                    page = await authenticated.new_page()
+                    await page.goto(_FIXTURE_URL)
+                    self.assertEqual(
+                        (await authenticated.cookies(_FIXTURE_URL))[0]["value"], "fixture-only"
+                    )
+                    self.assertEqual(
+                        await page.evaluate("localStorage.getItem('session')"), "fixture-only"
+                    )
 
             async with runtime.context() as second:
                 await second.route(

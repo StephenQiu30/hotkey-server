@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
-from playwright.async_api import BrowserContext, async_playwright
+from playwright.async_api import BrowserContext, StorageState, async_playwright
 
 
 class BrowserRuntimeDisabledError(Exception):
@@ -44,7 +44,9 @@ class BrowserRuntime:
         self._connect_timeout_ms = connect_timeout_ms
 
     @asynccontextmanager
-    async def context(self) -> AsyncIterator[BrowserContext]:
+    async def context(
+        self, *, storage_state: StorageState | None = None
+    ) -> AsyncIterator[BrowserContext]:
         if not self._enabled:
             raise BrowserRuntimeDisabledError
         async with async_playwright() as playwright:
@@ -52,7 +54,16 @@ class BrowserRuntime:
                 self._ws_url, timeout=self._connect_timeout_ms
             )
             try:
-                context = await browser.new_context(accept_downloads=False, service_workers="block")
+                if storage_state is None:
+                    context = await browser.new_context(
+                        accept_downloads=False, service_workers="block"
+                    )
+                else:
+                    context = await browser.new_context(
+                        accept_downloads=False,
+                        service_workers="block",
+                        storage_state=storage_state,
+                    )
                 try:
                     yield context
                 finally:

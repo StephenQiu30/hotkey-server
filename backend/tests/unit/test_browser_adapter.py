@@ -88,3 +88,20 @@ def test_browser_runtime_closes_after_cancel(monkeypatch: pytest.MonkeyPatch) ->
 
     context.close.assert_awaited_once()
     browser.close.assert_awaited_once()
+
+
+def test_browser_runtime_loads_only_an_explicit_state_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, browser, _ = _playwright(monkeypatch)
+    runtime = BrowserRuntime(ws_url="ws://browser:3000/", enabled=True)
+    state = {"cookies": [], "origins": []}
+
+    async def run() -> None:
+        async with runtime.context(storage_state=state):
+            pass
+
+    asyncio.run(run())
+    browser.new_context.assert_awaited_once_with(
+        accept_downloads=False, service_workers="block", storage_state=state
+    )
