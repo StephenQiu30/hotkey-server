@@ -73,6 +73,24 @@ class JobExecutionFailure(Exception):  # noqa: N818 - frozen domain contract nam
 
 
 @dataclass(frozen=True, slots=True)
+class JobCompletion:
+    status: JobStatus
+    failure: JobExecutionFailure | None = None
+
+    def __post_init__(self) -> None:
+        if self.status not in {JobStatus.SUCCEEDED, JobStatus.PARTIALLY_SUCCEEDED}:
+            raise ValueError("completion status must be succeeded or partially_succeeded")
+        if self.status is JobStatus.SUCCEEDED and self.failure is not None:
+            raise ValueError("succeeded completion cannot contain a failure")
+        if self.status is JobStatus.PARTIALLY_SUCCEEDED and self.failure is None:
+            raise ValueError("partially_succeeded completion requires a failure")
+        if self.failure is not None and (
+            self.failure.retry_at is not None or self.failure.max_attempts is not None
+        ):
+            raise ValueError("partial completion cannot schedule an automatic retry")
+
+
+@dataclass(frozen=True, slots=True)
 class MessageReference:
     message_id: UUID
     topic: str
@@ -425,23 +443,37 @@ class JobExecutionService:
             )
         return True
 
-    def complete(self, lease: ExecutionLease, *, message: MessageReference) -> None:
+    def complete(
+        self,
+        lease: ExecutionLease,
+        *,
+        message: MessageReference,
+        completion: JobCompletion | None = None,
+    ) -> None:
         now = self._clock()
+        resolved = completion or JobCompletion(status=JobStatus.SUCCEEDED)
         self._session.rollback()
         with self._session.begin():
             model = self._lock_job(lease.job_id)
             self._require_current_lease(model, lease, now)
             cancelled = model.cancel_requested_at is not None
-            model.status = JobStatus.CANCELLED.value if cancelled else JobStatus.SUCCEEDED.value
+            model.status = JobStatus.CANCELLED.value if cancelled else resolved.status.value
             model.lease_owner = None
             model.lease_expires_at = None
             model.completed_at = now
-            if not cancelled:
+            if not cancelled and resolved.failure is None:
                 model.last_error_code = None
                 model.last_error_category = None
                 model.last_error_at = None
                 model.next_action = None
                 model.manual_retry_allowed = False
+            elif not cancelled:
+                assert resolved.failure is not None
+                model.last_error_code = resolved.failure.error_code
+                model.last_error_category = resolved.failure.category.value
+                model.last_error_at = resolved.failure.occurred_at
+                model.next_action = resolved.failure.next_action
+                model.manual_retry_allowed = resolved.failure.manual_retry_allowed
             model.updated_at = now
             self._session.execute(
                 update(JobAttempt)

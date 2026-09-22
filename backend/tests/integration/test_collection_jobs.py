@@ -120,6 +120,7 @@ def test_submitted_job_is_persisted_and_readable_after_refresh(
         },
         "cancellation": None,
         "failure": None,
+        "result_content_id": None,
         "retry_count": 0,
         "next_run_at": None,
         "scheduled_for_at": None,
@@ -129,6 +130,156 @@ def test_submitted_job_is_persisted_and_readable_after_refresh(
     }
     assert "owner_id" not in refreshed.json()
     assert "scope" not in refreshed.json()
+
+
+def test_webpage_submission_derives_connection_context_without_leaking_url_to_outbox(
+    collection_job_client: TestClient,
+) -> None:
+    _initialize(collection_job_client)
+    configured = collection_job_client.put(
+        "/api/source-connections/web",
+        headers=_csrf_headers(collection_job_client),
+        json={
+            "expected_version": 0,
+            "status": "active",
+            "allowed_hosts": ["example.com"],
+        },
+    )
+    assert configured.status_code == 200, configured.json()
+    operation_id = uuid4()
+
+    accepted = collection_job_client.post(
+        "/api/jobs",
+        headers=_csrf_headers(collection_job_client),
+        json={
+            "operation_id": str(operation_id),
+            "kind": "webpage.collect",
+            "url": "https://EXAMPLE.com/Articles/One?q=1#ignored",
+        },
+    )
+
+    assert accepted.status_code == 202, accepted.json()
+    job_id = accepted.json()["job_id"]
+    refreshed = collection_job_client.get(f"/api/jobs/{job_id}")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["kind"] == "webpage.collect"
+    assert refreshed.json()["observation"] == {
+        "configuration_ref": f"connection:{configured.json()['id'].replace('-', '')}",
+        "configuration_version": 1,
+        "source_key": "web",
+        "source_capability": "page_content",
+    }
+    assert refreshed.json()["result_content_id"] is None
+
+    factory = collection_job_client.app.state.session_factory
+    with factory() as session:
+        job = session.execute(
+            text(
+                "SELECT scope, configuration_ref, configuration_version, source_key, "
+                "source_capability FROM jobs WHERE id = :job_id"
+            ),
+            {"job_id": job_id},
+        ).one()
+        outbox_payload = session.execute(
+            text("SELECT payload FROM outbox_messages WHERE aggregate_id = :job_id"),
+            {"job_id": job_id},
+        ).scalar_one()
+    assert job.scope == {
+        "connection_id": configured.json()["id"],
+        "entry_point": "manual",
+        "target_url": "https://example.com/Articles/One?q=1",
+    }
+    assert job.configuration_ref == f"connection:{configured.json()['id'].replace('-', '')}"
+    assert job.configuration_version == 1
+    assert job.source_key == "web"
+    assert job.source_capability == "page_content"
+    assert "target_url" not in outbox_payload
+
+
+def test_webpage_submission_rejects_client_owned_execution_context(
+    collection_job_client: TestClient,
+) -> None:
+    _initialize(collection_job_client)
+
+    response = collection_job_client.post(
+        "/api/jobs",
+        headers=_csrf_headers(collection_job_client),
+        json={
+            "operation_id": str(uuid4()),
+            "kind": "webpage.collect",
+            "url": "https://example.com/article",
+            "scope": {"connection_id": str(uuid4())},
+            "observation": {
+                "configuration_ref": "attacker-controlled",
+                "configuration_version": 99,
+                "source_key": "web",
+                "source_capability": "page_content",
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    factory = collection_job_client.app.state.session_factory
+    with factory() as session:
+        assert session.execute(text("SELECT count(*) FROM jobs")).scalar_one() == 0
+
+
+def test_webpage_lost_response_replay_survives_connection_replacement(
+    collection_job_client: TestClient,
+) -> None:
+    _initialize(collection_job_client)
+    configured = collection_job_client.put(
+        "/api/source-connections/web",
+        headers=_csrf_headers(collection_job_client),
+        json={
+            "expected_version": 0,
+            "status": "active",
+            "allowed_hosts": ["example.com"],
+        },
+    )
+    assert configured.status_code == 200
+    operation_id = uuid4()
+    payload = {
+        "operation_id": str(operation_id),
+        "kind": "webpage.collect",
+        "url": "https://example.com/article#first",
+    }
+    original = collection_job_client.post(
+        "/api/jobs",
+        headers=_csrf_headers(collection_job_client),
+        json=payload,
+    )
+    replaced = collection_job_client.put(
+        "/api/source-connections/web",
+        headers=_csrf_headers(collection_job_client),
+        json={
+            "expected_version": 1,
+            "status": "active",
+            "allowed_hosts": ["other.example"],
+        },
+    )
+    replayed = collection_job_client.post(
+        "/api/jobs",
+        headers=_csrf_headers(collection_job_client),
+        json={**payload, "url": "https://EXAMPLE.com/article"},
+    )
+    conflicting = collection_job_client.post(
+        "/api/jobs",
+        headers=_csrf_headers(collection_job_client),
+        json={**payload, "url": "https://other.example/article"},
+    )
+
+    assert original.status_code == 202
+    assert replaced.status_code == 200
+    assert replaced.json()["version"] == 2
+    assert replayed.status_code == 202
+    assert replayed.json()["job_id"] == original.json()["job_id"]
+    assert conflicting.status_code == 409
+    assert conflicting.json()["code"] == "idempotency_conflict"
+    factory = collection_job_client.app.state.session_factory
+    with factory() as session:
+        assert session.execute(text("SELECT count(*) FROM jobs")).scalar_one() == 1
+        assert session.execute(text("SELECT count(*) FROM outbox_messages")).scalar_one() == 1
 
 
 def test_running_job_cancel_request_is_persisted_for_inflight_boundary(

@@ -3,23 +3,31 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 from collections.abc import Iterator
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
+from confluent_kafka import Consumer, Message
+from confluent_kafka.admin import AdminClient, NewTopic
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from connections.schemas import SourceEntryPoint
 from content.collection import (
     WebPageBudgetDelayedError,
+    WebPageCollectionExecutor,
+    WebPageCollectionService,
     WebPageCommitService,
     WebPageFetchInput,
     WebPageFetchService,
 )
 from content.schemas import PersistContentDocumentInput
+from core.config import Settings
 from core.errors import ApplicationError
 from evidence.schemas import AdmittedSourcePayload, DataClass
 from evidence.services import ResourceUnavailableError
@@ -37,13 +45,17 @@ from jobs.schemas import (
     ComponentPolicyInput,
     CostClass,
 )
-from jobs.services import ResourceBudgetService, UsageConflictError
+from jobs.services import JobService, OutboxService, ResourceBudgetService, UsageConflictError
+from sources.adapters.firecrawl import FirecrawlAdapter
 from sources.contracts import (
     SourceCapability,
     SourceDocument,
+    SourceStopReason,
     WebPageRequest,
     WebPageResult,
 )
+from worker.app import JobExecutionContext, create_job_message_handler
+from worker.messaging import create_producer, decode_job_message, publish_outbox
 
 _TABLES = (
     "content_version_relations, content_visibility_observations, content_observations, "
@@ -340,6 +352,134 @@ class ExplodingDocumentAdapter:
         raise RuntimeError("collector transport failed")
 
 
+class RateLimitedDocumentAdapter:
+    def __init__(self) -> None:
+        self.requests: list[WebPageRequest] = []
+
+    def __enter__(self) -> RateLimitedDocumentAdapter:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def fetch_document(self, request: WebPageRequest) -> WebPageResult:
+        self.requests.append(request)
+        return WebPageResult(
+            stop_reason=SourceStopReason.RATE_LIMITED,
+            collector_call_count=1,
+        )
+
+
+class SuccessfulDocumentAdapter:
+    def __init__(self, clock: list[datetime]) -> None:
+        self._clock = clock
+        self.requests: list[WebPageRequest] = []
+
+    def __enter__(self) -> SuccessfulDocumentAdapter:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def fetch_document(self, request: WebPageRequest) -> WebPageResult:
+        self.requests.append(request)
+        body = "Worker-persisted document body."
+        return WebPageResult(
+            document=SourceDocument(
+                request_url=request.url,
+                final_url="https://example.com/articles/final",
+                title="Worker page",
+                text=body,
+                text_scope="full",
+                observed_at=self._clock[0],
+                published_at=None,
+                content_fingerprint=hashlib.sha256(body.encode()).hexdigest(),
+                extractor_version="firecrawl/2.11.162",
+            ),
+            target_status_code=200,
+            collector_call_count=1,
+            target_request_count=1,
+        )
+
+
+class StoredWebPageMessage:
+    def __init__(self, *, message_id: UUID, job_id: UUID, payload: dict[str, object]) -> None:
+        self._message_id = message_id
+        self._job_id = job_id
+        self._payload = payload
+
+    def topic(self) -> str:
+        return "hotkey.jobs.accepted.v2"
+
+    def value(self) -> bytes:
+        return json.dumps(
+            {
+                **self._payload,
+                "schema_version": 2,
+                "message_id": str(self._message_id),
+                "event_type": "job.accepted.v2",
+            }
+        ).encode()
+
+    def key(self) -> bytes:
+        return str(self._job_id).encode()
+
+    def partition(self) -> int:
+        return 0
+
+    def offset(self) -> int:
+        return 0
+
+    def headers(self) -> list[tuple[str, bytes]]:
+        return [("hotkey-message-id", str(self._message_id).encode())]
+
+
+def _accept_webpage_job(
+    context: WebPageContext,
+    *,
+    clock: list[datetime],
+    target_url: str = "https://example.com/articles/one#ignored",
+) -> tuple[UUID, Message]:
+    with context.engine.begin() as connection:
+        connection.execute(text("DELETE FROM jobs WHERE id = :id"), {"id": context.job_id})
+    with context.sessions() as session:
+        job = WebPageCollectionService(session, clock=lambda: clock[0]).accept_job(
+            owner_id=context.owner_id,
+            operation_id=context.operation_id,
+            target_url=target_url,
+        )
+    with context.engine.connect() as connection:
+        outbox = connection.execute(
+            text("SELECT id, payload FROM outbox_messages WHERE aggregate_id = :job_id"),
+            {"job_id": job.id},
+        ).one()
+    return job.id, cast(
+        Message,
+        StoredWebPageMessage(message_id=outbox.id, job_id=job.id, payload=outbox.payload),
+    )
+
+
+def _poll_message(consumer: Consumer, timeout_seconds: float = 10) -> Message:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        message = consumer.poll(0.2)
+        if message is None:
+            continue
+        if message.error() is not None:
+            raise RuntimeError(str(message.error()))
+        return message
+    raise AssertionError("Kafka message was not received before the timeout")
+
+
+def _wait_for_assignment(consumer: Consumer, timeout_seconds: float = 10) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        consumer.poll(0.1)
+        if consumer.assignment():
+            return
+    raise AssertionError("Kafka consumer did not receive a partition assignment")
+
+
 def test_firecrawl_call_reserves_and_settles_collector_budget(
     webpage_context: WebPageContext,
 ) -> None:
@@ -551,6 +691,444 @@ def test_connection_version_conflict_stops_before_budget_or_request(
             {"job_id": webpage_context.job_id},
         ).one()
     assert tuple(counts) == (0, 0, 0, 0)
+
+
+def test_abandoned_collector_attempt_is_conservatively_charged_before_retry(
+    webpage_context: WebPageContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_firecrawl_budget(webpage_context, limit_units=2)
+    clock = [webpage_context.now + timedelta(seconds=2)]
+    adapter = SuccessfulDocumentAdapter(clock)
+    command = WebPageFetchInput(
+        operation_id=webpage_context.operation_id,
+        connection_id=webpage_context.connection_id,
+        connection_version=1,
+        target_url="https://example.com/articles/one",
+    )
+    original_settle = WebPageFetchService._settle
+
+    def interrupt_before_settlement(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("injected crash before settlement")
+
+    with webpage_context.sessions() as session:
+        old_lease = JobExecutionService(
+            session,
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        ).acquire(job_id=webpage_context.job_id, worker_id="old-worker")
+        monkeypatch.setattr(WebPageFetchService, "_settle", interrupt_before_settlement)
+        with pytest.raises(RuntimeError, match="crash before settlement"):
+            WebPageFetchService(
+                session,
+                lease_seconds=60,
+                clock=lambda: clock[0],
+            ).fetch_document(
+                owner_id=webpage_context.owner_id,
+                lease=old_lease,
+                command=command,
+                adapter_factory=lambda allowed_hosts: adapter,
+            )
+
+    clock[0] += timedelta(seconds=61)
+    monkeypatch.setattr(WebPageFetchService, "_settle", original_settle)
+    with webpage_context.sessions() as session:
+        recovered_lease = JobExecutionService(
+            session,
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        ).acquire(job_id=webpage_context.job_id, worker_id="new-worker")
+        fetched = WebPageFetchService(
+            session,
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        ).fetch_document(
+            owner_id=webpage_context.owner_id,
+            lease=recovered_lease,
+            command=command,
+            adapter_factory=lambda allowed_hosts: adapter,
+        )
+
+    assert fetched.result.document is not None
+    assert len(adapter.requests) == 2
+    with webpage_context.engine.connect() as connection:
+        attempts = connection.execute(
+            text(
+                "SELECT a.outcome, r.status, r.actual_units "
+                "FROM resource_usage_attempts a "
+                "JOIN resource_budget_reservations r ON r.reservation_id = a.attempt_id "
+                "ORDER BY a.started_at, a.attempt_id"
+            )
+        ).all()
+        window = connection.execute(
+            text(
+                "SELECT coalesce(sum(used_units), 0), coalesce(sum(reserved_units), 0) "
+                "FROM resource_budget_windows"
+            )
+        ).one()
+    assert attempts == [("failed", "settled", 1), ("succeeded", "settled", 1)]
+    assert tuple(window) == (2, 0)
+
+
+def test_worker_executes_webpage_job_and_replay_has_no_duplicate_effects(
+    webpage_context: WebPageContext,
+) -> None:
+    _enable_firecrawl_budget(webpage_context)
+    clock = [webpage_context.now + timedelta(seconds=2)]
+    job_id, message = _accept_webpage_job(webpage_context, clock=clock)
+    clock[0] += timedelta(seconds=1)
+    adapter = SuccessfulDocumentAdapter(clock)
+    executor = WebPageCollectionExecutor(
+        webpage_context.sessions,
+        lease_seconds=60,
+        adapter_factory=lambda allowed_hosts: adapter,
+        clock=lambda: clock[0],
+    )
+
+    def collect(context: JobExecutionContext) -> None:
+        context.lease = executor.execute(context.message, context.lease)
+
+    handler = create_job_message_handler(
+        webpage_context.sessions,
+        {"webpage.collect": collect},
+        worker_id="web-worker",
+        lease_seconds=60,
+        clock=lambda: clock[0],
+    )
+    handler(message)
+    handler(message)
+
+    with webpage_context.sessions() as session:
+        status = JobService(session, clock=lambda: clock[0]).get_status(
+            owner_id=webpage_context.owner_id,
+            job_id=job_id,
+        )
+    assert status.status == "succeeded"
+    assert status.result_content_id is not None
+    assert status.progress.requests_sent == 1
+    assert status.progress.items_saved == 1
+    assert len(adapter.requests) == 1
+    assert _content_side_effect_counts(webpage_context) == (1, 1, 1, 1, 1, 1, 1)
+    with webpage_context.engine.connect() as connection:
+        counts = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM resource_usage_attempts), "
+                "(SELECT count(*) FROM processed_messages), "
+                "(SELECT count(*) FROM job_attempts WHERE job_id = :job_id)"
+            ),
+            {"job_id": job_id},
+        ).one()
+    assert tuple(counts) == (1, 1, 1)
+
+
+def test_real_kafka_delivers_webpage_job_to_persisted_result(
+    webpage_context: WebPageContext,
+) -> None:
+    bootstrap_servers = os.getenv("HOTKEY_TEST_KAFKA_BOOTSTRAP_SERVERS")
+    if bootstrap_servers is None:
+        pytest.skip("HOTKEY_TEST_KAFKA_BOOTSTRAP_SERVERS is required for Kafka integration")
+    database_url = os.getenv("HOTKEY_TEST_DATABASE_URL")
+    if database_url is None:
+        pytest.skip("HOTKEY_TEST_DATABASE_URL is required for PostgreSQL integration tests")
+
+    _enable_firecrawl_budget(webpage_context)
+    clock = [webpage_context.now + timedelta(seconds=2)]
+    live_firecrawl = os.getenv("HOTKEY_TEST_LIVE_FIRECRAWL") == "1"
+    job_id, _ = _accept_webpage_job(
+        webpage_context,
+        clock=clock,
+        target_url=(
+            "https://example.com/" if live_firecrawl else "https://example.com/articles/one"
+        ),
+    )
+    topic = f"hotkey.tests.webpage.{uuid4().hex}"
+    group_id = f"hotkey-tests-{uuid4().hex}"
+    admin = AdminClient({"bootstrap.servers": bootstrap_servers})
+    admin.create_topics([NewTopic(topic, num_partitions=1, replication_factor=1)])[topic].result(10)
+    with webpage_context.engine.begin() as connection:
+        connection.execute(
+            text("UPDATE outbox_messages SET topic = :topic WHERE aggregate_id = :job_id"),
+            {"topic": topic, "job_id": job_id},
+        )
+
+    consumer = Consumer(
+        {
+            "bootstrap.servers": bootstrap_servers,
+            "group.id": group_id,
+            "enable.auto.commit": False,
+            "enable.auto.offset.store": False,
+            "auto.offset.reset": "earliest",
+            "session.timeout.ms": 6_000,
+            "max.poll.interval.ms": 120_000,
+        }
+    )
+    try:
+        consumer.subscribe([topic])
+        _wait_for_assignment(consumer)
+        producer = create_producer(
+            Settings(
+                database_url=database_url,
+                kafka_bootstrap_servers=bootstrap_servers,
+                kafka_delivery_timeout_seconds=10,
+            )
+        )
+        with webpage_context.sessions() as session:
+            assert (
+                OutboxService(session).publish_pending(
+                    lambda envelope: publish_outbox(producer, envelope, timeout_seconds=10)
+                )
+                == 1
+            )
+        kafka_message = _poll_message(consumer)
+        clock[0] += timedelta(seconds=1)
+        adapter = SuccessfulDocumentAdapter(clock)
+
+        def adapter_factory(allowed_hosts: frozenset[str]):
+            if live_firecrawl:
+                return FirecrawlAdapter(
+                    base_url=os.getenv(
+                        "HOTKEY_FIRECRAWL_BASE_URL",
+                        "http://127.0.0.1:3002",
+                    ),
+                    enabled=True,
+                    allowed_hosts=allowed_hosts,
+                    clock=lambda: clock[0],
+                )
+            return adapter
+
+        executor = WebPageCollectionExecutor(
+            webpage_context.sessions,
+            lease_seconds=60,
+            adapter_factory=adapter_factory,
+            clock=lambda: clock[0],
+        )
+
+        def collect(context: JobExecutionContext) -> None:
+            context.lease = executor.execute(context.message, context.lease)
+
+        create_job_message_handler(
+            webpage_context.sessions,
+            {"webpage.collect": collect},
+            worker_id="kafka-web-worker",
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        )(kafka_message)
+        consumer.commit(message=kafka_message, asynchronous=False)
+
+        with webpage_context.sessions() as session:
+            status = JobService(session, clock=lambda: clock[0]).get_status(
+                owner_id=webpage_context.owner_id,
+                job_id=job_id,
+            )
+        assert status.status == "succeeded", status.model_dump(mode="json")
+        assert status.result_content_id is not None
+        if not live_firecrawl:
+            assert len(adapter.requests) == 1
+        assert _content_side_effect_counts(webpage_context) == (1, 1, 1, 1, 1, 1, 1)
+    finally:
+        consumer.close()
+        with suppress(Exception):
+            admin.delete_topics([topic], operation_timeout=10)[topic].result(10)
+
+
+def test_worker_recovers_committed_checkpoint_without_second_source_call(
+    webpage_context: WebPageContext,
+) -> None:
+    _enable_firecrawl_budget(webpage_context)
+    clock = [webpage_context.now + timedelta(seconds=2)]
+    job_id, message = _accept_webpage_job(webpage_context, clock=clock)
+    clock[0] += timedelta(seconds=1)
+    adapter = SuccessfulDocumentAdapter(clock)
+    first_executor = WebPageCollectionExecutor(
+        webpage_context.sessions,
+        lease_seconds=60,
+        adapter_factory=lambda allowed_hosts: adapter,
+        clock=lambda: clock[0],
+    )
+    body, _ = decode_job_message(message)
+    with webpage_context.sessions() as session:
+        old_lease = JobExecutionService(
+            session,
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        ).acquire(job_id=job_id, worker_id="interrupted-worker")
+    committed_lease = first_executor.execute(body, old_lease)
+    assert committed_lease.checkpoint_sequence == 1
+
+    clock[0] += timedelta(seconds=61)
+
+    def fail_if_called(allowed_hosts: frozenset[str]) -> ExplodingDocumentAdapter:
+        raise AssertionError("recovery must not call Firecrawl again")
+
+    recovery_executor = WebPageCollectionExecutor(
+        webpage_context.sessions,
+        lease_seconds=60,
+        adapter_factory=fail_if_called,
+        clock=lambda: clock[0],
+    )
+
+    def recover(context: JobExecutionContext) -> None:
+        context.lease = recovery_executor.execute(context.message, context.lease)
+
+    create_job_message_handler(
+        webpage_context.sessions,
+        {"webpage.collect": recover},
+        worker_id="recovery-worker",
+        lease_seconds=60,
+        clock=lambda: clock[0],
+    )(message)
+
+    with webpage_context.sessions() as session:
+        status = JobService(session, clock=lambda: clock[0]).get_status(
+            owner_id=webpage_context.owner_id,
+            job_id=job_id,
+        )
+    assert status.status == "succeeded"
+    assert status.result_content_id is not None
+    assert len(adapter.requests) == 1
+    assert _content_side_effect_counts(webpage_context) == (1, 1, 1, 1, 1, 1, 1)
+    with webpage_context.engine.connect() as connection:
+        attempts = connection.execute(
+            text(
+                "SELECT lease_epoch, outcome FROM job_attempts "
+                "WHERE job_id = :job_id ORDER BY lease_epoch"
+            ),
+            {"job_id": job_id},
+        ).all()
+        processed = connection.execute(text("SELECT count(*) FROM processed_messages")).scalar_one()
+    assert attempts == [(1, "expired"), (2, "succeeded")]
+    assert processed == 1
+
+
+def test_worker_persists_connection_replacement_failure_without_source_call(
+    webpage_context: WebPageContext,
+) -> None:
+    _enable_firecrawl_budget(webpage_context)
+    clock = [webpage_context.now + timedelta(seconds=2)]
+    job_id, message = _accept_webpage_job(webpage_context, clock=clock)
+    clock[0] += timedelta(seconds=1)
+    with webpage_context.engine.begin() as connection:
+        connection.execute(text("SET CONSTRAINTS ALL DEFERRED"))
+        connection.execute(
+            text(
+                "INSERT INTO source_connection_versions "
+                "(connection_id, version, owner_id, auth_kind, secret_ref, configuration, "
+                "created_by, created_at) VALUES "
+                "(:id, 2, :owner_id, 'none', NULL, "
+                "CAST(:configuration AS jsonb), :owner_id, :now)"
+            ),
+            {
+                "id": webpage_context.connection_id,
+                "owner_id": webpage_context.owner_id,
+                "configuration": json.dumps({"allowed_hosts": ["example.com"]}),
+                "now": clock[0],
+            },
+        )
+        connection.execute(
+            text("UPDATE source_connections SET current_version = 2, updated_at = :now"),
+            {"now": clock[0]},
+        )
+
+    called = False
+
+    def adapter_factory(allowed_hosts: frozenset[str]) -> ExplodingDocumentAdapter:
+        nonlocal called
+        called = True
+        return ExplodingDocumentAdapter()
+
+    executor = WebPageCollectionExecutor(
+        webpage_context.sessions,
+        lease_seconds=60,
+        adapter_factory=adapter_factory,
+        clock=lambda: clock[0],
+    )
+
+    def collect(context: JobExecutionContext) -> None:
+        context.lease = executor.execute(context.message, context.lease)
+
+    create_job_message_handler(
+        webpage_context.sessions,
+        {"webpage.collect": collect},
+        worker_id="web-worker",
+        lease_seconds=60,
+        clock=lambda: clock[0],
+    )(message)
+
+    with webpage_context.sessions() as session:
+        status = JobService(session, clock=lambda: clock[0]).get_status(
+            owner_id=webpage_context.owner_id,
+            job_id=job_id,
+        )
+    assert not called
+    assert status.status == "failed"
+    assert status.failure is not None
+    assert status.failure.error_code == "source_connection_changed"
+    assert status.failure.category == "configuration_unavailable"
+    assert status.result_content_id is None
+    with webpage_context.engine.connect() as connection:
+        counts = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM content_records), "
+                "(SELECT count(*) FROM resource_usage_attempts), "
+                "(SELECT count(*) FROM resource_budget_reservations), "
+                "(SELECT count(*) FROM processed_messages)"
+            )
+        ).one()
+    assert tuple(counts) == (0, 0, 0, 1)
+
+
+def test_worker_persists_rate_limit_evidence_and_schedules_bounded_retry(
+    webpage_context: WebPageContext,
+) -> None:
+    _enable_firecrawl_budget(webpage_context)
+    clock = [webpage_context.now + timedelta(seconds=2)]
+    job_id, message = _accept_webpage_job(webpage_context, clock=clock)
+    clock[0] += timedelta(seconds=1)
+    adapter = RateLimitedDocumentAdapter()
+    executor = WebPageCollectionExecutor(
+        webpage_context.sessions,
+        lease_seconds=60,
+        adapter_factory=lambda allowed_hosts: adapter,
+        clock=lambda: clock[0],
+    )
+
+    def collect(context: JobExecutionContext) -> None:
+        context.lease = executor.execute(context.message, context.lease)
+
+    create_job_message_handler(
+        webpage_context.sessions,
+        {"webpage.collect": collect},
+        worker_id="web-worker",
+        lease_seconds=60,
+        clock=lambda: clock[0],
+    )(message)
+
+    with webpage_context.sessions() as session:
+        status = JobService(session, clock=lambda: clock[0]).get_status(
+            owner_id=webpage_context.owner_id,
+            job_id=job_id,
+        )
+    assert len(adapter.requests) == 1
+    assert status.status == "queued"
+    assert status.failure is not None
+    assert status.failure.error_code == "source_rate_limited"
+    assert status.failure.category == "rate_limited"
+    assert status.retry_count == 1
+    assert status.next_run_at == clock[0] + timedelta(seconds=30)
+    assert status.result_content_id is None
+    with webpage_context.engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM content_records), "
+                "(SELECT count(*) FROM source_capability_evidence "
+                " WHERE outcome = 'failed' AND stop_reason = 'rate_limited'), "
+                "(SELECT count(*) FROM resource_usage_attempts WHERE outcome = 'failed'), "
+                "(SELECT count(*) FROM outbox_messages WHERE aggregate_id = :job_id), "
+                "(SELECT count(*) FROM processed_messages WHERE job_id = :job_id)"
+            ),
+            {"job_id": job_id},
+        ).one()
+    assert tuple(row) == (0, 1, 1, 2, 1)
 
 
 def test_document_page_is_persisted_with_checkpoint_in_one_transaction(

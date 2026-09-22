@@ -366,6 +366,39 @@ class ContentService:
         self._session = session
         self._clock = clock or (lambda: datetime.now(UTC))
 
+    def require_persisted_document_result(
+        self,
+        *,
+        owner_id: UUID,
+        job_id: UUID,
+        content_id: UUID,
+        observation_id: UUID,
+    ) -> None:
+        """Verify a durable webpage checkpoint before completing recovered work."""
+        self._session.rollback()
+        with self._session.begin():
+            observation = self._session.scalar(
+                select(ContentObservation)
+                .join(ContentRecord, ContentRecord.id == ContentObservation.content_id)
+                .where(
+                    ContentObservation.owner_id == owner_id,
+                    ContentObservation.id == observation_id,
+                    ContentObservation.content_id == content_id,
+                    ContentObservation.job_id == job_id,
+                    ContentRecord.owner_id == owner_id,
+                    ContentRecord.object_type == "webpage",
+                )
+            )
+            discovery = self._session.scalar(
+                select(ContentDiscovery.id).where(
+                    ContentDiscovery.owner_id == owner_id,
+                    ContentDiscovery.content_id == content_id,
+                    ContentDiscovery.job_id == job_id,
+                )
+            )
+            if observation is None or discovery is None:
+                raise ApplicationError("resource_not_found")
+
     @staticmethod
     def _selected_version_view(
         observation: ContentObservation,

@@ -262,6 +262,51 @@ class SourceAccessPolicyService:
         finally:
             self._session.rollback()
 
+    def require_admission_ready_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        source_key: str,
+        capability: SourceCapability,
+        data_class: DataClass,
+    ) -> None:
+        """Lock and verify current source and retention policies before a source call."""
+        now = self._clock()
+        if now.tzinfo is None:
+            raise ValueError("clock must return a timezone-aware datetime")
+        policy = self._session.scalar(
+            select(SourceAccessPolicy)
+            .where(
+                SourceAccessPolicy.owner_id == owner_id,
+                SourceAccessPolicy.source_key == source_key,
+                SourceAccessPolicy.capability == capability.value,
+            )
+            .with_for_update()
+        )
+        if (
+            policy is None
+            or policy.status != AccessPolicyStatus.APPROVED.value
+            or not policy.enabled
+            or not policy.field_purposes
+            or (policy.review_expires_at is not None and policy.review_expires_at <= now)
+        ):
+            raise SourceAccessUnavailableError("source access policy is unavailable")
+        retention = self._session.scalar(
+            select(RetentionPolicy)
+            .where(
+                RetentionPolicy.owner_id == owner_id,
+                RetentionPolicy.source_policy_id == policy.id,
+                RetentionPolicy.data_class == data_class.value,
+            )
+            .with_for_update()
+        )
+        if (
+            retention is None
+            or retention.source_policy_version != policy.policy_version
+            or retention.effective_days == 0
+        ):
+            raise RetentionPolicyUnavailableError("retention policy is unavailable")
+
     def admit_payload(
         self,
         *,

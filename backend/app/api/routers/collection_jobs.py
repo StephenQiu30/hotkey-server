@@ -9,9 +9,15 @@ from api.dependencies import (
     AuthenticatedIdentityDependency,
     CsrfProtectedIdentityDependency,
     JobServiceDependency,
+    WebPageCollectionServiceDependency,
 )
 from core.schemas import ErrorView, JobAcceptedView
-from jobs.schemas import CollectionJobInput, JobStatusView
+from jobs.schemas import (
+    CollectionJobInput,
+    CollectionJobRequest,
+    JobStatusView,
+    WebPageCollectionJobInput,
+)
 
 router = APIRouter(prefix="/jobs", tags=["采集任务"])
 
@@ -39,15 +45,24 @@ _READ_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     },
 )
 def create_collection_job(
-    payload: CollectionJobInput,
+    payload: CollectionJobRequest,
     response: Response,
     service: JobServiceDependency,
+    webpage_service: WebPageCollectionServiceDependency,
     identity: CsrfProtectedIdentityDependency,
 ) -> JobAcceptedView:
-    job = service.accept(
-        owner_id=identity.view.user.id,
-        command=payload.to_acceptance(),
-    )
+    if isinstance(payload, WebPageCollectionJobInput):
+        job = webpage_service.accept_job(
+            owner_id=identity.view.user.id,
+            operation_id=payload.operation_id,
+            target_url=payload.url,
+        )
+    else:
+        assert isinstance(payload, CollectionJobInput)
+        job = service.accept(
+            owner_id=identity.view.user.id,
+            command=payload.to_acceptance(),
+        )
     response.headers["location"] = f"/api/jobs/{job.id}"
     response.headers["cache-control"] = "no-store"
     return JobAcceptedView(job_id=job.id, status="queued")

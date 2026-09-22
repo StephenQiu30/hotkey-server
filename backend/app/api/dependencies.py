@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from connections.services import SourceConnectionService
+from content.collection import WebPageCollectionService
 from content.services import ContentService
 from core.errors import DependencyUnavailableError
 from identity.services import AuthenticatedIdentity, IdentityService
@@ -53,6 +54,16 @@ def get_job_service(session: SessionDependency) -> JobService:
 
 
 JobServiceDependency = Annotated[JobService, Depends(get_job_service)]
+
+
+def get_webpage_collection_service(session: SessionDependency) -> WebPageCollectionService:
+    return WebPageCollectionService(session)
+
+
+WebPageCollectionServiceDependency = Annotated[
+    WebPageCollectionService,
+    Depends(get_webpage_collection_service),
+]
 
 
 def get_monitor_topic_service(session: SessionDependency) -> MonitorTopicService:

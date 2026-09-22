@@ -5,6 +5,7 @@ import signal
 import socket
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from threading import Event
 
 import structlog
@@ -12,19 +13,22 @@ from confluent_kafka import Message
 from sqlalchemy.orm import Session, sessionmaker
 from structlog.contextvars import bound_contextvars
 
-from core.config import get_settings
+from content.collection import WebPageCollectionExecutor
+from core.config import Settings, get_settings
 from core.logging import configure_logging
 from db.session import create_db_engine, create_session_factory
 from jobs.execution import (
     CheckpointValue,
     Clock,
     ExecutionLease,
+    JobCompletion,
     JobExecutionFailure,
     JobExecutionService,
     JobProgress,
 )
-from jobs.schemas import JobMessage
+from jobs.schemas import JobFailureCategory, JobMessage, JobStatus
 from jobs.services import JOB_ACCEPTED_TOPIC, OutboxService
+from sources.adapters.firecrawl import FirecrawlAdapter
 from worker.messaging import (
     MessageHandler,
     create_producer,
@@ -33,7 +37,7 @@ from worker.messaging import (
     run_consumer_loop,
 )
 
-JobHandler = Callable[["JobExecutionContext"], None]
+JobHandler = Callable[["JobExecutionContext"], JobCompletion | None]
 
 
 @dataclass(slots=True)
@@ -115,10 +119,22 @@ def create_job_message_handler(
                     message=reference,
                 ):
                     return
+                lease = execution.acquire(job_id=body.job_id, worker_id=worker_id)
                 handler = handlers.get(body.kind)
                 if handler is None:
-                    raise RuntimeError(f"job handler is not registered for kind: {body.kind}")
-                lease = execution.acquire(job_id=body.job_id, worker_id=worker_id)
+                    occurred_at = clock() if clock is not None else datetime.now(UTC)
+                    execution.record_failure(
+                        lease,
+                        message=reference,
+                        failure=JobExecutionFailure(
+                            error_code="job_handler_unavailable",
+                            category=JobFailureCategory.CONFIGURATION_UNAVAILABLE,
+                            occurred_at=occurred_at,
+                            next_action="启用匹配当前任务类型的处理器后重试",
+                            manual_retry_allowed=True,
+                        ),
+                    )
+                    return
 
             context = JobExecutionContext(
                 message=body,
@@ -128,7 +144,7 @@ def create_job_message_handler(
                 _clock=clock,
             )
             try:
-                handler(context)
+                completion = handler(context)
             except JobExecutionFailure as failure:
                 with sessions() as session:
                     JobExecutionService(
@@ -146,7 +162,11 @@ def create_job_message_handler(
                     session,
                     lease_seconds=lease_seconds,
                     clock=clock,
-                ).complete(context.lease, message=reference)
+                ).complete(
+                    context.lease,
+                    message=reference,
+                    completion=completion,
+                )
 
     return handle
 
@@ -155,8 +175,31 @@ def _worker_id() -> str:
     return f"{socket.gethostname()}:{os.getpid()}"
 
 
-def _registered_job_handlers() -> dict[str, JobHandler]:
-    return {}
+def _registered_job_handlers(
+    sessions: sessionmaker[Session],
+    settings: Settings,
+    *,
+    clock: Clock | None = None,
+) -> dict[str, JobHandler]:
+    executor = WebPageCollectionExecutor(
+        sessions,
+        lease_seconds=settings.job_lease_seconds,
+        timeout_seconds=settings.firecrawl_timeout_seconds,
+        clock=clock,
+        adapter_factory=lambda allowed_hosts: FirecrawlAdapter(
+            base_url=settings.firecrawl_base_url,
+            enabled=settings.firecrawl_enabled,
+            allowed_hosts=allowed_hosts,
+            max_response_bytes=settings.firecrawl_max_response_bytes,
+            clock=clock,
+        ),
+    )
+
+    def collect_webpage(context: JobExecutionContext) -> JobCompletion:
+        context.lease = executor.execute(context.message, context.lease)
+        return JobCompletion(status=JobStatus.SUCCEEDED)
+
+    return {"webpage.collect": collect_webpage}
 
 
 def run_worker() -> None:
@@ -171,14 +214,9 @@ def run_worker() -> None:
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
 
-    job_handlers = _registered_job_handlers()
-    if not job_handlers:
-        run_consumer_loop(settings, {}, stopping)
-        logger.info("worker_stopped")
-        return
-
     engine = create_db_engine(settings)
     sessions = create_session_factory(engine)
+    job_handlers = _registered_job_handlers(sessions, settings)
     producer = create_producer(settings)
     message_handler = create_job_message_handler(
         sessions,

@@ -668,6 +668,31 @@ class WebConnectionExecution:
     allowed_hosts: frozenset[str]
 
 
+def resolve_web_connection_execution(
+    session: Session,
+    *,
+    owner_id: UUID,
+    target_url: str,
+) -> WebConnectionExecution:
+    """Resolve and lock the owner's current public-web connection."""
+    connection = session.scalar(
+        select(SourceConnection)
+        .where(
+            SourceConnection.owner_id == owner_id,
+            SourceConnection.source_key == "web",
+        )
+        .with_for_update()
+    )
+    if connection is None:
+        raise ApplicationError("resource_not_found")
+    return _web_connection_execution(
+        session,
+        connection=connection,
+        connection_version=connection.current_version,
+        target_url=target_url,
+    )
+
+
 def require_web_connection_execution(
     session: Session,
     *,
@@ -688,6 +713,21 @@ def require_web_connection_execution(
     )
     if connection is None:
         raise ApplicationError("resource_not_found")
+    return _web_connection_execution(
+        session,
+        connection=connection,
+        connection_version=connection_version,
+        target_url=target_url,
+    )
+
+
+def _web_connection_execution(
+    session: Session,
+    *,
+    connection: SourceConnection,
+    connection_version: int,
+    target_url: str,
+) -> WebConnectionExecution:
     if connection.status == SourceConnectionStatus.DISABLED.value:
         raise ApplicationError("connection_disabled")
     if connection.current_version != connection_version:

@@ -3,12 +3,12 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from sources.contracts import SocialSourceCapability, SourceCapability
+from sources.contracts import SocialSourceCapability, SourceCapability, WebPageRequest
 
 type JobScopeValue = str | int | bool | None
 
@@ -49,6 +49,7 @@ class JobFailureCategory(StrEnum):
 
 class CollectionJobKind(StrEnum):
     MONITOR_COLLECT = "monitor.collect"
+    WEBPAGE_COLLECT = "webpage.collect"
 
 
 class OperationalTaskStatus(StrEnum):
@@ -546,11 +547,34 @@ class JobAcceptanceInput(BaseModel):
 
 
 class CollectionJobInput(JobAcceptanceInput):
-    kind: CollectionJobKind
+    kind: Literal[CollectionJobKind.MONITOR_COLLECT] = Field(
+        json_schema_extra={"enum": [CollectionJobKind.MONITOR_COLLECT.value]}
+    )
     observation: CollectionJobObservationInput
 
     def to_acceptance(self) -> JobAcceptanceInput:
         return JobAcceptanceInput.model_validate(self.model_dump())
+
+
+class WebPageCollectionJobInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    operation_id: UUID
+    kind: Literal[CollectionJobKind.WEBPAGE_COLLECT] = Field(
+        json_schema_extra={"enum": [CollectionJobKind.WEBPAGE_COLLECT.value]}
+    )
+    url: str = Field(min_length=1, max_length=2048)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        return WebPageRequest(url=value).url
+
+
+type CollectionJobRequest = Annotated[
+    CollectionJobInput | WebPageCollectionJobInput,
+    Field(discriminator="kind"),
+]
 
 
 class JobProgressView(BaseModel):
@@ -591,6 +615,7 @@ class JobStatusView(BaseModel):
     progress: JobProgressView
     cancellation: JobCancellationView | None
     failure: JobFailureView | None
+    result_content_id: UUID | None
     retry_count: int = Field(ge=0)
     next_run_at: datetime | None
     scheduled_for_at: datetime | None

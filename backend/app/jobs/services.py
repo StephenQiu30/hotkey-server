@@ -139,6 +139,64 @@ class ContentJobContext:
     source_capability: SourceCapability
 
 
+@dataclass(frozen=True, slots=True)
+class JobExecutionConfiguration:
+    job_id: UUID
+    owner_id: UUID
+    operation_id: UUID
+    kind: str
+    observation: JobObservationContext
+    scope: dict[str, OutboxValue]
+
+
+def load_job_execution_configuration(
+    session: Session,
+    *,
+    job_id: UUID,
+) -> JobExecutionConfiguration | None:
+    """Load server-owned execution input without controlling the transaction."""
+    job = session.get(Job, job_id)
+    return _job_execution_configuration(job) if job is not None else None
+
+
+def load_job_execution_configuration_by_operation(
+    session: Session,
+    *,
+    owner_id: UUID,
+    kind: str,
+    operation_id: UUID,
+) -> JobExecutionConfiguration | None:
+    """Find an accepted job replay without re-evaluating mutable source state."""
+    job = session.scalar(
+        select(Job).where(
+            Job.owner_id == owner_id,
+            Job.kind == kind,
+            Job.operation_id == operation_id,
+        )
+    )
+    return _job_execution_configuration(job) if job is not None else None
+
+
+def _job_execution_configuration(job: Job) -> JobExecutionConfiguration:
+    return JobExecutionConfiguration(
+        job_id=job.id,
+        owner_id=job.owner_id,
+        operation_id=job.operation_id,
+        kind=job.kind,
+        observation=JobObservationContext(
+            configuration_ref=job.configuration_ref,
+            configuration_version=job.configuration_version,
+            source_key=job.source_key,
+            source_capability=(
+                SourceCapability(job.source_capability)
+                if job.source_capability is not None
+                else None
+            ),
+        ),
+        scope=dict(job.scope),
+    )
+
+
 def load_content_job_context(
     session: Session,
     *,
@@ -441,6 +499,70 @@ class ResourceBudgetService:
         elif model.outcome != outcome.value:
             raise UsageConflictError("attempt already has another terminal outcome")
         return self._attempt_view(model)
+
+    def recover_abandoned_attempts_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        operation_id: UUID,
+        component_key: str,
+        stage: str,
+        finished_at: datetime,
+    ) -> tuple[UUID, ...]:
+        """Conservatively settle calls left open by an expired execution epoch."""
+        if finished_at.tzinfo is None:
+            raise ValueError("finished_at must be timezone-aware")
+        attempt_ids = list(
+            self._session.scalars(
+                select(ResourceUsageAttempt.attempt_id)
+                .join(
+                    ResourceComponentPolicy,
+                    (ResourceComponentPolicy.owner_id == ResourceUsageAttempt.owner_id)
+                    & (ResourceComponentPolicy.id == ResourceUsageAttempt.component_policy_id),
+                )
+                .where(
+                    ResourceUsageAttempt.owner_id == owner_id,
+                    ResourceUsageAttempt.operation_id == operation_id,
+                    ResourceComponentPolicy.component_key == component_key,
+                    ResourceUsageAttempt.stage == stage,
+                    ResourceUsageAttempt.outcome == UsageOutcome.STARTED.value,
+                )
+                .order_by(ResourceUsageAttempt.started_at, ResourceUsageAttempt.id)
+            )
+        )
+        recovered: list[UUID] = []
+        for attempt_id in attempt_ids:
+            reservations = self._locked_reservations(owner_id, attempt_id)
+            if not reservations:
+                raise RuntimeError("abandoned usage attempt has no budget reservation")
+            attempt = self._session.scalar(
+                select(ResourceUsageAttempt)
+                .where(
+                    ResourceUsageAttempt.owner_id == owner_id,
+                    ResourceUsageAttempt.attempt_id == attempt_id,
+                )
+                .with_for_update()
+            )
+            if attempt is None:
+                raise RuntimeError("abandoned usage attempt is not available")
+            if attempt.outcome != UsageOutcome.STARTED.value:
+                continue
+            requested_units = reservations[0].requested_units
+            if any(row.requested_units != requested_units for row in reservations):
+                raise RuntimeError("abandoned budget reservations disagree on requested units")
+            self.settle_budget_reservation_in_transaction(
+                owner_id=owner_id,
+                reservation_id=attempt_id,
+                actual_units=requested_units,
+            )
+            self.finish_attempt_in_transaction(
+                owner_id=owner_id,
+                attempt_id=attempt_id,
+                outcome=UsageOutcome.FAILED,
+                finished_at=finished_at,
+            )
+            recovered.append(attempt_id)
+        return tuple(recovered)
 
     def usage_summary(self, *, owner_id: UUID, operation_id: UUID) -> UsageSummaryView:
         outcomes = list(
@@ -1214,100 +1336,106 @@ class JobService:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def accept(self, *, owner_id: UUID, command: JobAcceptanceInput) -> JobView:
+        self._session.rollback()
+        with self._session.begin():
+            return self.accept_in_transaction(owner_id=owner_id, command=command)
+
+    def accept_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: JobAcceptanceInput,
+    ) -> JobView:
+        """Persist a job and its first outbox event in an existing transaction."""
         fingerprint = fingerprint_request(command)
         now = self._clock()
         if now.tzinfo is None:
             raise ValueError("clock must return a timezone-aware datetime")
         job_id = uuid4()
-        self._session.rollback()
+        inserted_id = self._session.scalar(
+            insert(Job)
+            .values(
+                id=job_id,
+                owner_id=owner_id,
+                operation_id=command.operation_id,
+                kind=command.kind,
+                configuration_ref=command.observation.configuration_ref,
+                configuration_version=command.observation.configuration_version,
+                source_key=command.observation.source_key,
+                source_capability=(
+                    command.observation.source_capability.value
+                    if command.observation.source_capability is not None
+                    else None
+                ),
+                scope=command.scope,
+                request_fingerprint=fingerprint,
+                status=JobStatus.QUEUED.value,
+                scheduled_for_at=command.scheduled_for_at,
+                created_at=now,
+                updated_at=now,
+            )
+            .on_conflict_do_nothing(constraint="jobs_owner_kind_operation_key")
+            .returning(Job.id)
+        )
 
-        with self._session.begin():
-            inserted_id = self._session.scalar(
-                insert(Job)
-                .values(
-                    id=job_id,
-                    owner_id=owner_id,
-                    operation_id=command.operation_id,
-                    kind=command.kind,
-                    configuration_ref=command.observation.configuration_ref,
-                    configuration_version=command.observation.configuration_version,
-                    source_key=command.observation.source_key,
-                    source_capability=(
-                        command.observation.source_capability.value
-                        if command.observation.source_capability is not None
-                        else None
-                    ),
-                    scope=command.scope,
-                    request_fingerprint=fingerprint,
-                    status=JobStatus.QUEUED.value,
-                    scheduled_for_at=command.scheduled_for_at,
+        if inserted_id is not None:
+            require_source_connection_enabled(
+                self._session,
+                owner_id=owner_id,
+                source_key=command.observation.source_key,
+            )
+            self._session.add(
+                OutboxMessage(
+                    id=uuid4(),
+                    aggregate_id=job_id,
+                    topic=JOB_ACCEPTED_TOPIC,
+                    message_key=job_id,
+                    event_type=JOB_ACCEPTED_EVENT_TYPE,
+                    dispatch_sequence=1,
+                    payload={
+                        "job_id": str(job_id),
+                        "owner_id": str(owner_id),
+                        "operation_id": str(command.operation_id),
+                        "kind": command.kind,
+                        "configuration_ref": command.observation.configuration_ref,
+                        "configuration_version": command.observation.configuration_version,
+                        "source_key": command.observation.source_key,
+                        "source_capability": (
+                            command.observation.source_capability.value
+                            if command.observation.source_capability is not None
+                            else None
+                        ),
+                    },
+                    available_at=now,
                     created_at=now,
-                    updated_at=now,
+                    published_at=None,
                 )
-                .on_conflict_do_nothing(constraint="jobs_owner_kind_operation_key")
-                .returning(Job.id)
+            )
+            return JobView(
+                id=job_id,
+                owner_id=owner_id,
+                operation_id=command.operation_id,
+                kind=command.kind,
+                observation=command.observation,
+                status=JobStatus.QUEUED,
+                scheduled_for_at=command.scheduled_for_at,
+                started_at=None,
+                completed_at=None,
+                created_at=now,
             )
 
-            if inserted_id is not None:
-                require_source_connection_enabled(
-                    self._session,
-                    owner_id=owner_id,
-                    source_key=command.observation.source_key,
-                )
-                self._session.add(
-                    OutboxMessage(
-                        id=uuid4(),
-                        aggregate_id=job_id,
-                        topic=JOB_ACCEPTED_TOPIC,
-                        message_key=job_id,
-                        event_type=JOB_ACCEPTED_EVENT_TYPE,
-                        dispatch_sequence=1,
-                        payload={
-                            "job_id": str(job_id),
-                            "owner_id": str(owner_id),
-                            "operation_id": str(command.operation_id),
-                            "kind": command.kind,
-                            "configuration_ref": command.observation.configuration_ref,
-                            "configuration_version": command.observation.configuration_version,
-                            "source_key": command.observation.source_key,
-                            "source_capability": (
-                                command.observation.source_capability.value
-                                if command.observation.source_capability is not None
-                                else None
-                            ),
-                        },
-                        available_at=now,
-                        created_at=now,
-                        published_at=None,
-                    )
-                )
-                view = JobView(
-                    id=job_id,
-                    owner_id=owner_id,
-                    operation_id=command.operation_id,
-                    kind=command.kind,
-                    observation=command.observation,
-                    status=JobStatus.QUEUED,
-                    scheduled_for_at=command.scheduled_for_at,
-                    started_at=None,
-                    completed_at=None,
-                    created_at=now,
-                )
-            else:
-                existing = self._session.scalar(
-                    select(Job).where(
-                        Job.owner_id == owner_id,
-                        Job.kind == command.kind,
-                        Job.operation_id == command.operation_id,
-                    )
-                )
-                if existing is None:
-                    raise RuntimeError("conflicting job is not visible after insert conflict")
-                if existing.request_fingerprint != fingerprint:
-                    raise ApplicationError("idempotency_conflict")
-                view = self._view(existing)
-
-        return view
+        existing = self._session.scalar(
+            select(Job).where(
+                Job.owner_id == owner_id,
+                Job.kind == command.kind,
+                Job.operation_id == command.operation_id,
+            )
+        )
+        if existing is None:
+            raise RuntimeError("conflicting job is not visible after insert conflict")
+        if existing.request_fingerprint != fingerprint:
+            raise ApplicationError("idempotency_conflict")
+        return self._view(existing)
 
     def get_status(self, *, owner_id: UUID, job_id: UUID) -> JobStatusView:
         now = self._clock()
@@ -1518,6 +1646,15 @@ class JobService:
                 next_action=model.next_action,
                 manual_retry_allowed=model.manual_retry_allowed,
             )
+        result_content_id = None
+        raw_content_id = model.checkpoint.get("content_id")
+        if raw_content_id is not None:
+            if not isinstance(raw_content_id, str):
+                raise RuntimeError("job result content ID is invalid")
+            try:
+                result_content_id = UUID(raw_content_id)
+            except ValueError as error:
+                raise RuntimeError("job result content ID is invalid") from error
         return JobStatusView(
             id=model.id,
             operation_id=model.operation_id,
@@ -1532,6 +1669,7 @@ class JobService:
             ),
             cancellation=cancellation,
             failure=failure,
+            result_content_id=result_content_id,
             retry_count=model.retry_count,
             next_run_at=_as_utc(model.next_run_at),
             scheduled_for_at=_as_utc(model.scheduled_for_at),

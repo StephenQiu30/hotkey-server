@@ -14,15 +14,14 @@ declare namespace HotKeyAPI {
   type CollectionJobInput = {
     /** Operation Id */
     operation_id: string;
-    kind: CollectionJobKind;
+    /** Kind */
+    kind: "monitor.collect";
     observation: CollectionJobObservationInput;
     /** Scheduled For At */
     scheduled_for_at?: string | null;
     /** Scope */
     scope: Record<string, any>;
   };
-
-  type CollectionJobKind = "monitor.collect";
 
   type CollectionJobObservationInput = {
     /** Configuration Ref */
@@ -329,6 +328,8 @@ declare namespace HotKeyAPI {
     progress: JobProgressView;
     cancellation: JobCancellationView | null;
     failure: JobFailureView | null;
+    /** Result Content Id */
+    result_content_id: string | null;
     /** Retry Count */
     retry_count: number;
     /** Next Run At */
@@ -605,5 +606,14 @@ declare namespace HotKeyAPI {
     message: string;
     /** Type */
     type: string;
+  };
+
+  type WebPageCollectionJobInput = {
+    /** Operation Id */
+    operation_id: string;
+    /** Kind */
+    kind: "webpage.collect";
+    /** Url */
+    url: string;
   };
 }

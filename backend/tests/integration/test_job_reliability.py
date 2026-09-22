@@ -23,6 +23,7 @@ from structlog.contextvars import get_contextvars
 from core.config import Settings
 from core.errors import ApplicationError
 from jobs.execution import (
+    JobCompletion,
     JobExecutionFailure,
     JobExecutionService,
     JobProgress,
@@ -30,7 +31,13 @@ from jobs.execution import (
     StaleExecutionLeaseError,
     plan_catchup_windows,
 )
-from jobs.schemas import JobAcceptanceInput, JobFailureCategory, JobObservationContext, JobStage
+from jobs.schemas import (
+    JobAcceptanceInput,
+    JobFailureCategory,
+    JobObservationContext,
+    JobStage,
+    JobStatus,
+)
 from jobs.services import JobService, OutboxService
 from sources.contracts import SourceCapability
 from worker.app import JobExecutionContext, create_job_message_handler
@@ -798,6 +805,102 @@ def test_queued_cancellation_acknowledges_outbox_without_running_handler(
         ).one()
     assert handler_calls == []
     assert tuple(row) == ("cancelled", 0, 1)
+
+
+def test_unregistered_historical_job_kind_is_persistently_failed_and_acknowledged(
+    job_context: JobTestContext,
+) -> None:
+    with job_context.sessions() as session:
+        job = JobService(session).accept(
+            owner_id=job_context.owner_id,
+            command=_command().model_copy(update={"kind": "legacy.collect"}),
+        )
+    message = _stored_message(job_context, job_id=job.id, dispatch_sequence=1, offset=8)
+    handler = create_job_message_handler(
+        job_context.sessions,
+        {},
+        worker_id="worker-unregistered-kind",
+        lease_seconds=60,
+    )
+
+    handler(message)
+    handler(message)
+
+    with job_context.engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT j.status, j.last_error_code, j.last_error_category, "
+                "j.manual_retry_allowed, "
+                "(SELECT outcome FROM job_attempts WHERE job_id = j.id), "
+                "(SELECT count(*) FROM processed_messages WHERE job_id = j.id) "
+                "FROM jobs j WHERE j.id = :job_id"
+            ),
+            {"job_id": job.id},
+        ).one()
+    assert tuple(row) == (
+        "failed",
+        "job_handler_unavailable",
+        "configuration_unavailable",
+        True,
+        "failed",
+        1,
+    )
+
+
+def test_typed_partial_completion_is_not_recorded_as_full_success(
+    job_context: JobTestContext,
+) -> None:
+    with job_context.sessions() as session:
+        job = JobService(session).accept(
+            owner_id=job_context.owner_id,
+            command=_command(),
+        )
+    clock = [job.created_at + timedelta(seconds=1)]
+
+    def save_partial(context: JobExecutionContext) -> JobCompletion:
+        context.save_checkpoint(
+            1,
+            {"page": 1},
+            progress=JobProgress(stage=JobStage.SAVE, items_saved=1),
+        )
+        return JobCompletion(
+            status=JobStatus.PARTIALLY_SUCCEEDED,
+            failure=JobExecutionFailure(
+                error_code="source_page_incomplete",
+                category=JobFailureCategory.PARSE_ERROR,
+                occurred_at=clock[0],
+                next_action="检查缺失页面后手动重试",
+                manual_retry_allowed=True,
+            ),
+        )
+
+    create_job_message_handler(
+        job_context.sessions,
+        {"monitor.collect": save_partial},
+        worker_id="worker-partial",
+        lease_seconds=60,
+        clock=lambda: clock[0],
+    )(_stored_message(job_context, job_id=job.id, dispatch_sequence=1, offset=9))
+
+    with job_context.sessions() as session:
+        status = JobService(session, clock=lambda: clock[0]).get_status(
+            owner_id=job_context.owner_id,
+            job_id=job.id,
+        )
+    assert status.status == "partially_succeeded"
+    assert status.progress.items_saved == 1
+    assert status.failure is not None
+    assert status.failure.error_code == "source_page_incomplete"
+    assert status.failure.manual_retry_allowed
+    with job_context.engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT (SELECT outcome FROM job_attempts WHERE job_id = :job_id), "
+                "(SELECT count(*) FROM processed_messages WHERE job_id = :job_id)"
+            ),
+            {"job_id": job.id},
+        ).one()
+    assert tuple(row) == ("succeeded", 1)
 
 
 def test_concurrent_schedule_window_acceptance_creates_one_job(

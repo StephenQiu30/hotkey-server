@@ -370,7 +370,8 @@ class Job(Base):
             "(source_key IS NULL AND source_capability IS NULL) OR "
             "(source_key IS NOT NULL AND source_capability IS NOT NULL AND "
             "source_key ~ '^[a-z][a-z0-9_-]{0,63}$' AND "
-            "source_capability IN ('search', 'author_posts', 'comments', 'replies'))",
+            "source_capability IN "
+            "('search', 'author_posts', 'comments', 'replies', 'page_content'))",
             name="jobs_source_context_check",
         ),
         CheckConstraint(

@@ -4,7 +4,7 @@ import request from "@/request";
 
 /** 提交采集任务 任务与 Outbox 持久提交后才返回受理, 相同操作标识复用原任务。 POST /api/jobs */
 export async function createCollectionJob(
-  body: HotKeyAPI.CollectionJobInput,
+  body: HotKeyAPI.CollectionJobInput | HotKeyAPI.WebPageCollectionJobInput,
   options?: import("@/request").RequestOptions,
 ) {
   return request<HotKeyAPI.JobAcceptedView>("/api/jobs", {
