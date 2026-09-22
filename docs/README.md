@@ -59,7 +59,7 @@
 | 032 | [备份与恢复](prd/032-备份与恢复.md) · [Design](design/032-备份与恢复设计.md) accepted | NFR-001-006 | P0 | draft | [计划](plans/032-备份与恢复计划.md) · in_progress（S00/S01 完成，0/6 AC） |
 | 033 | [故障隔离与降级](prd/033-故障隔离与降级.md) | NFR-001-007 | P0 | draft | [计划](plans/033-故障隔离与降级计划.md) · planned |
 | 034 | [凭据与应用安全](prd/034-凭据与应用安全.md) · [Design](design/034-凭据与应用安全设计.md) accepted | NFR-001-008 | P0 | draft | [计划](plans/034-凭据与应用安全计划.md) · in_progress（S00/S01 完成，0/6 AC） |
-| 035 | [权限与数据隔离](prd/035-权限与数据隔离.md) · [Design](design/035-权限与数据隔离设计.md) accepted | NFR-001-009 | P0 | draft | [计划](plans/035-权限与数据隔离计划.md) · in_progress（S00/S01 完成，0/6 AC） |
+| 035 | [权限与数据隔离](prd/035-权限与数据隔离.md) · [Design](design/035-权限与数据隔离设计.md) accepted | NFR-001-009 | P0 | draft | [计划](plans/035-权限与数据隔离计划.md) · in_progress（S00/S01 完成，S02 当前资源通过，完整切片待接入，0/6 AC） |
 | 036 | [数据访问与生命周期](prd/036-数据访问与生命周期.md) · [Design](design/036-数据访问与生命周期设计.md) accepted | NFR-001-010 | P0 | draft | [计划](plans/036-数据访问与生命周期计划.md) · in_progress（S00—S02 完成，0/6 AC） |
 | 037 | [费用与资源约束](prd/037-费用与资源约束.md) · [Design](design/037-费用与资源约束设计.md) accepted | NFR-001-011 | P0 | draft | [计划](plans/037-费用与资源约束计划.md) · in_progress（S00—S02 完成，0/6 AC） |
 | 038 | [可维护与可替换](prd/038-可维护与可替换.md) · [Design](design/038-可维护与可替换设计.md) accepted | NFR-001-012 | P0 | draft | [计划](plans/038-可维护与可替换计划.md) · in_progress（S00/S01 完成，0/6 AC） |

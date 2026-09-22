@@ -134,6 +134,7 @@ def _error_response(
         details=details,
     )
     response_headers = _safe_headers(error.status_code, headers)
+    response_headers["cache-control"] = "no-store"
     response_headers["x-request-id"] = str(view.request_id)
     return JSONResponse(
         status_code=error.status_code,

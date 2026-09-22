@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 from connections.schemas import SourceEntryPoint
+from connections.services import SourceConnectionService
 from content.schemas import (
     ContentVisibilityBasis,
     ContentVisibilityStatus,
@@ -783,6 +784,103 @@ def test_content_reads_enforce_owner_and_lifecycle_boundary(content_client: Test
     assert hidden.json()["code"] == "resource_not_found"
     assert listed.status_code == 200
     assert listed.json() == {"items": [], "next_cursor": None}
+
+
+@pytest.mark.parametrize("reference", ["job_id", "connection_id"])
+def test_unavailable_relation_rolls_back_entire_content_write(
+    content_client: TestClient, reference: str
+) -> None:
+    owner_id = _initialize(content_client)
+    connection_id, policy_id, retention_id, job_id, _ = _seed_context(content_client, owner_id)
+    command = _command(
+        owner_id=owner_id,
+        connection_id=connection_id,
+        policy_id=policy_id,
+        retention_id=retention_id,
+        job_id=job_id,
+        operation_id=uuid4(),
+        observed_at=datetime.now(UTC) - timedelta(minutes=1),
+        extra_fields={"body": "private body", "text_scope": "full", "text_origin": "source"},
+    )
+    factory = content_client.app.state.session_factory
+    with factory() as session:
+        with pytest.raises(ApplicationError, match="resource_not_found"):
+            ContentService(session).persist_post(
+                owner_id=owner_id, command=command.model_copy(update={reference: uuid4()})
+            )
+        for table in (
+            "content_records",
+            "content_versions",
+            "content_observations",
+            "content_discoveries",
+            "content_visibility_observations",
+            "evidence_resources",
+            "source_capability_evidence",
+        ):
+            assert session.scalar(text(f"SELECT count(*) FROM {table}")) == 0
+        saved = ContentService(session).persist_post(owner_id=owner_id, command=command)
+        outsider = uuid4()
+        with pytest.raises(ApplicationError, match="resource_not_found"):
+            ContentService(session).get_content(owner_id=outsider, content_id=saved.id)
+        assert ContentService(session).list_contents(owner_id=outsider, cursor=None, limit=20) == (
+            [],
+            None,
+        )
+        platforms = SourceConnectionService(session).list_platforms(owner_id=outsider)
+        for platform in platforms:
+            assert platform.connection_version is None and not platform.has_credentials
+            for capability in platform.capabilities:
+                assert capability.manual.last_checked_at is None
+                assert capability.manual.last_persisted_success_at is None
+    response = content_client.get(f"/api/contents/{saved.id}")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_reference_expansion_rechecks_target_readability(content_client: TestClient) -> None:
+    owner_id = _initialize(content_client)
+    connection_id, policy_id, retention_id, job_id, _ = _seed_context(content_client, owner_id)
+    base = _command(
+        owner_id=owner_id,
+        connection_id=connection_id,
+        policy_id=policy_id,
+        retention_id=retention_id,
+        job_id=job_id,
+        operation_id=uuid4(),
+        observed_at=datetime.now(UTC) - timedelta(minutes=1),
+        external_id="target",
+        extra_fields={"body": "private target", "text_scope": "full", "text_origin": "source"},
+    )
+    subject = base.model_copy(
+        update={
+            "source_operation_id": uuid4(),
+            "admission": base.admission.model_copy(
+                update={
+                    "fields": {
+                        **base.admission.fields,
+                        "external_id": "subject",
+                        "body": "subject only",
+                        "quote_target_external_id": "target",
+                    }
+                }
+            ),
+        }
+    )
+    with content_client.app.state.session_factory() as session:
+        service = ContentService(session)
+        target = service.persist_post(owner_id=owner_id, command=base)
+        saved = service.persist_post(owner_id=owner_id, command=subject)
+        assert saved.latest_observation.content_version.relations[0].target_content_id == target.id
+        LifecycleService(session).request_deletion(
+            owner_id=owner_id,
+            operation_id=uuid4(),
+            resource_type="content_observation",
+            resource_id=target.latest_observation.id,
+            reason=DeletionReason.USER_REQUEST,
+        )
+        current = service.get_content(owner_id=owner_id, content_id=saved.id)
+        assert current.latest_observation.content_version.relations[0].target_content_id is None
+        assert "private target" not in current.model_dump_json()
 
 
 def test_concurrent_writes_reuse_the_same_native_content_identity(

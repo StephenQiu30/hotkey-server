@@ -116,6 +116,7 @@ async def test_response_validation_failure_is_safe(
         response = await client.get("/__test/invalid-response")
 
     assert response.status_code == 500
+    assert response.headers["cache-control"] == "no-store"
     assert response.json()["code"] == "internal_error"
     assert response.json()["request_id"] == response.headers["x-request-id"]
     assert "should-not-leak" not in response.text
@@ -235,4 +236,5 @@ async def test_openapi_validation_errors_use_error_view(app: FastAPI) -> None:
     assert response_schema == {"$ref": "#/components/schemas/ErrorView"}
     assert "HTTPValidationError" not in schema["components"]["schemas"]
     assert invalid_response.json()["code"] == "validation_error"
+    assert invalid_response.headers["cache-control"] == "no-store"
     assert invalid_response.json()["request_id"] == invalid_response.headers["x-request-id"]

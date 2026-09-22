@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from dataclasses import replace
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
+from api.dependencies import require_identity_session
 from core.config import Settings
+from identity.services import IdentityService
 from main import create_app
 
 _BOOTSTRAP_TOKEN = "bootstrap-token-used-only-by-the-isolated-test"
@@ -97,3 +101,122 @@ def test_missing_and_forged_sessions_cannot_open_private_workspace(
     assert missing.status_code == forged.status_code == 401
     assert missing.json()["code"] == forged.json()["code"] == "invalid_session"
     assert set(missing.json()) == set(forged.json()) == {"code", "message", "request_id"}
+
+
+def _initialize(client: TestClient) -> None:
+    response = client.post(
+        "/api/identity/initialize",
+        headers={"X-HotKey-Bootstrap-Token": _BOOTSTRAP_TOKEN, "X-HotKey-CSRF": "1"},
+        json={"username": "owner", "password": _PASSWORD},
+    )
+    assert response.status_code == 201
+
+
+@pytest.mark.parametrize(
+    "method,path,payload",
+    [
+        ("GET", "/api/topics/{topic_id}", None),
+        (
+            "PATCH",
+            "/api/topics/{topic_id}",
+            {
+                "name": "changed",
+                "match_any": ["term"],
+                "match_all": [],
+                "exclude": [],
+                "expected_version": 1,
+            },
+        ),
+        ("POST", "/api/topics/{topic_id}/clone", None),
+        ("POST", "/api/topics/{topic_id}/pause", None),
+        ("POST", "/api/topics/{topic_id}/resume", None),
+        ("POST", "/api/topics/{topic_id}/archive", None),
+        ("GET", "/api/jobs/{job_id}", None),
+        ("POST", "/api/jobs/{job_id}/cancel", None),
+        ("POST", "/api/jobs/{job_id}/retry", None),
+    ],
+)
+def test_external_actor_cannot_read_or_mutate_known_resources(
+    owner_client: TestClient, method: str, path: str, payload: dict | None
+) -> None:
+    _initialize(owner_client)
+    headers = {"X-HotKey-CSRF": owner_client.cookies["hotkey_csrf"]}
+    topic = owner_client.post(
+        "/api/topics",
+        headers=headers,
+        json={"name": "private topic", "match_any": ["private"], "match_all": [], "exclude": []},
+    )
+    job = owner_client.post(
+        "/api/jobs",
+        headers=headers,
+        json={
+            "operation_id": str(uuid4()),
+            "kind": "monitor.collect",
+            "scope": {},
+            "observation": {"configuration_ref": "private-config", "configuration_version": 1},
+        },
+    )
+    assert topic.status_code == 201 and job.status_code == 202
+    topic_id, job_id = topic.json()["id"], job.json()["job_id"]
+    factory = owner_client.app.state.session_factory
+    with factory() as session:
+        identity = IdentityService(session, owner_client.app.state.settings).authenticate(
+            owner_client.cookies["hotkey_session"]
+        )
+    foreign = replace(
+        identity,
+        view=identity.view.model_copy(
+            update={"user": identity.view.user.model_copy(update={"id": uuid4()})}
+        ),
+    )
+    owner_client.app.dependency_overrides[require_identity_session] = lambda: foreign
+    try:
+        denied = owner_client.request(
+            method, path.format(topic_id=topic_id, job_id=job_id), headers=headers, json=payload
+        )
+        absent = owner_client.request(
+            method, path.format(topic_id=uuid4(), job_id=uuid4()), headers=headers, json=payload
+        )
+        assert denied.status_code == absent.status_code == 404
+        assert denied.json()["code"] == absent.json()["code"] == "resource_not_found"
+        assert denied.json()["message"] == absent.json()["message"]
+        assert "private" not in denied.text
+        assert owner_client.get("/api/topics").json() == {"items": [], "next_cursor": None}
+        assert owner_client.get("/api/contents").json() == {"items": [], "next_cursor": None}
+        assert denied.headers.get("cache-control") == "no-store"
+    finally:
+        owner_client.app.dependency_overrides.clear()
+    assert owner_client.get(f"/api/topics/{topic_id}").json() == topic.json()
+    assert owner_client.get(f"/api/jobs/{job_id}").json()["status"] == "queued"
+    with factory() as session:
+        assert session.scalar(text("SELECT count(*) FROM monitor_topic_versions")) == 1
+        assert session.scalar(text("SELECT count(*) FROM outbox_messages")) == 1
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/topics",
+        "/api/contents",
+        "/api/source-capabilities",
+        "/api/jobs/00000000-0000-0000-0000-000000000000",
+    ],
+)
+def test_private_errors_are_not_cacheable_and_revoked_session_stays_denied(
+    owner_client: TestClient, path: str
+) -> None:
+    missing = owner_client.get(path)
+    assert missing.status_code == 401
+    assert missing.headers.get("cache-control") == "no-store"
+    _initialize(owner_client)
+    token = owner_client.cookies["hotkey_session"]
+    assert (
+        owner_client.delete(
+            "/api/identity/session", headers={"X-HotKey-CSRF": owner_client.cookies["hotkey_csrf"]}
+        ).status_code
+        == 204
+    )
+    owner_client.cookies.set("hotkey_session", token)
+    revoked = owner_client.get(path)
+    assert revoked.status_code == 401
+    assert revoked.headers.get("cache-control") == "no-store"

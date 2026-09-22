@@ -280,6 +280,31 @@ def test_changed_reference_or_method_conflicts_with_frozen_result(
             )
 
 
+def test_mixed_input_batch_is_atomic_and_result_is_owner_scoped(
+    provenance_context: ProvenanceContext,
+) -> None:
+    context = provenance_context
+    command = _command(context)
+    invalid = command.model_copy(
+        update={
+            "references": (
+                command.references[0],
+                ProvenanceResourceRef(resource_record_id=uuid4(), snapshot_ref="unavailable"),
+            )
+        }
+    )
+    with context.sessions() as session:
+        service = ProvenanceService(session, clock=lambda: context.now)
+        with pytest.raises(ProvenanceUnavailableError):
+            service.create(owner_id=context.owner_id, command=invalid)
+        assert session.scalar(text("SELECT count(*) FROM provenance_manifests")) == 0
+        assert session.scalar(text("SELECT count(*) FROM provenance_manifest_inputs")) == 0
+        result = service.create(owner_id=context.owner_id, command=command)
+        with pytest.raises(ProvenanceUnavailableError):
+            service.get(owner_id=uuid4(), manifest_id=result.id)
+        assert service.get(owner_id=context.owner_id, manifest_id=result.id) == result
+
+
 def test_missing_or_deletion_blocked_resource_is_unavailable(
     provenance_context: ProvenanceContext,
 ) -> None:
