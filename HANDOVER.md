@@ -77,9 +77,11 @@
 
 **[004 计划](docs/plans/004-平台与连接管理计划.md) S00—S02 已完成，Plan 保持 in_progress。** `connections` 已实现 X/抖音静态目录、连接/不可变版本/追加式能力证据三表、当前准入政策与当前连接版本投影、按 `manual`/`scheduled` 分开的状态、会话保护的 `GET /api/source-capabilities`、生成客户端和 `/sources`。S02 复用 Typer 增加显式 `connections record-probe`，采集用例通过领域 Service 登记 persisted read；两者自动绑定 owner 当前版本，等价 operation 幂等、异义冲突拒绝、入口不串扰。专用 17 tests、后端全量 166 passed/4 skipped、前端 16 tests、静态门禁、OpenAPI 漂移和生产构建通过；真实 Web 验证显示 probe 不放行、persisted read 仅放行 manual，390×844 无溢出且 axe WCAG A/AA 0 violation。QA 清理后开发/测试库均 24 表 0 行，普通 API/Web 已恢复。没有真实连接、来源适配器、真实探测/采集、写 API、Worker 或外部请求，产品 AC 仍为 0/6，未建立 Acceptance。
 
+**[007 计划](docs/plans/007-作品资料与上下文计划.md) S00 已完成，Plan 保持 in_progress。** Design v1.0 冻结 owner/来源/对象类型/可空作用域/原生 ID 的作品身份、content/job 发现关系、不可变指标观察、零与未知、生命周期读取屏障、persisted read 同事务证据及只读列表/详情；没有稳定原生 ID 的链接只保留为后续线索。复用现有 env 核对 API health/ready 与 Web health 均为 200，未新增代码、DDL、依赖、服务、脚本或 `.sh`。S01—S04、真实来源/指标口径、正文版本、可见性及产品 0/6 AC 仍待执行，未建立 Acceptance。
+
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 按 B03 顺序进入 007 S00，先评审作品资料与上下文的范围、领域归属、不变式和切片证据；004 S03 属于 B04，等 B03 内容与来源前置就绪后再进入。003 的真实上游扩词、调度/主题任务留待 S04 联验，009 S04 等待真实处理器和来源样本。
+1. 按 B03 顺序进入 007 S01 Red，以 Design v1.0 的同一原生作品/两 job、零与未知、重投/冲突、owner 和生命周期样本先证明能力缺失；004 S03 属于 B04，等 B03 内容与来源前置就绪后再进入。003 的真实上游扩词、调度/主题任务留待 S04 联验，009 S04 等待真实处理器和来源样本。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
