@@ -18,8 +18,11 @@
 | 044 | 模型平台信息采集与变更监控 | [调研](research/044-模型平台信息采集与变更监控调研.md) · draft | [PRD](prd/044-模型平台信息采集与变更监控.md) · draft | [设计](design/044-模型平台信息采集与变更监控设计.md) · proposed | [计划](plans/044-模型平台信息采集与变更监控计划.md) · planned；Acceptance 未建立 |
 | 045 | 模型联网检索与线索采集 | [调研](research/045-模型联网检索与线索采集调研.md) · draft | [PRD](prd/045-模型联网检索与线索采集.md) · draft | [设计](design/045-模型联网检索与线索采集设计.md) · proposed | [计划](plans/045-模型联网检索与线索采集计划.md) · planned；Acceptance 未建立 |
 | 046 | 全局异常与响应契约前置 | 当前代码与隔离探针核对见 Design | 承接既有质量需求，不新增产品 PRD | [统一设计](design/046-全局异常与响应契约设计.md) · accepted | [前置计划](plans/046-全局异常与响应契约前置计划.md) · completed；[Acceptance](acceptance/046-全局异常与响应契约验收.md) · passed |
+| 047 | 本地网页与浏览器采集 | [GitHub / Firecrawl 调研](research/047-本地网页与浏览器采集调研.md) · draft | 承接既有采集需求，不新增产品 PRD | [采集设计](design/047-本地网页与浏览器采集设计.md) · proposed | [执行计划](plans/047-本地网页与浏览器采集计划.md) · planned，0/8 AC；Acceptance 未建立 |
 
 阅读顺序：先看 001 调研与需求，再看 [逐项 PRD 索引](prd/README.md)；002 提供 X 来源专项可行性，046 定义实施共同前置。当前不以候选采集器支持范围代替产品需求，不把专项设计当成平台总体设计。
+
+047 提供本地 Firecrawl、浏览器及候选平台服务的调研和接入设计；008 定义评论身份、父链、覆盖、增量和阅读。用户已确认 B站、小红书、抖音、微博评论均必需，四平台各自验收；网页闭环是基础，不替代任何平台验收。当前仅完成研究/设计/计划编写。
 
 ### 逐项需求交付台账
 
@@ -32,7 +35,7 @@
 | 005 | [关键词主动发现](prd/005-关键词主动发现.md) | FR-001-003 | P0 | draft | [计划](plans/005-关键词主动发现计划.md) · planned |
 | 006 | [指定用户作品追踪](prd/006-指定用户作品追踪.md) | FR-001-004 | P0 | draft | [计划](plans/006-指定用户作品追踪计划.md) · planned |
 | 007 | [作品资料与上下文](prd/007-作品资料与上下文.md) | FR-001-005 | P0 | accepted | [设计](design/007-作品资料与上下文设计.md) · accepted（S00—S03）；[计划](plans/007-作品资料与上下文计划.md) · in_progress（S00—S02，0/6 AC） |
-| 008 | [评论与回复采集](prd/008-评论与回复采集.md) | FR-001-006 | P0 | draft | [计划](plans/008-评论与回复采集计划.md) · planned |
+| 008 | [评论与回复采集](prd/008-评论与回复采集.md) | FR-001-006 | P0 | draft | [设计](design/008-评论与回复采集设计.md) · proposed；[计划](plans/008-评论与回复采集计划.md) · planned，0/6 AC |
 | 009 | [采集任务控制](prd/009-采集任务控制.md) | FR-001-007 | P0 | draft | [设计](design/009-采集任务控制设计.md) · accepted；[计划](plans/009-采集任务控制计划.md) · in_progress |
 | 010 | [增量更新与历史回补](prd/010-增量更新与历史回补.md) | FR-001-008 | P0 | draft | [计划](plans/010-增量更新与历史回补计划.md) · planned |
 | 011 | [事件识别与归并](prd/011-事件识别与归并.md) | FR-001-009 | P0 | draft | [计划](plans/011-事件识别与归并计划.md) · planned |
@@ -73,7 +76,7 @@
 
 046 为公共技术前置：[Design](design/046-全局异常与响应契约设计.md) · accepted；[Plan](plans/046-全局异常与响应契约前置计划.md) · completed；[Acceptance](acceptance/046-全局异常与响应契约验收.md) · passed。不新增产品 PRD，不改变 43 项需求及优先级分母。
 
-新增独立交付项从下一个未占用编号 **047** 登记；001 后续总体 Design、Plan、Acceptance 继续使用 001，003—046 后续同主题文档复用各自编号。文档规范见 [TEMPLATE.md](TEMPLATE.md)。只有真实实施与验证发生后，才建立 Acceptance。
+新增独立交付项从下一个未占用编号 **048** 登记；001 后续总体 Design、Plan、Acceptance 继续使用 001，003—047 后续同主题文档复用各自编号。文档规范见 [TEMPLATE.md](TEMPLATE.md)。只有真实实施与验证发生后，才建立 Acceptance。
 
 ## 本轮编号纠正
 

@@ -2,6 +2,12 @@
 
 更新日期：2026-09-22。
 
+## 本地网页与浏览器采集设计准备
+
+已建立 [047 Research](docs/research/047-本地网页与浏览器采集调研.md)、[047 Design](docs/design/047-本地网页与浏览器采集设计.md) 与 [047 Plan](docs/plans/047-本地网页与浏览器采集计划.md)，设计/计划为 proposed/planned，AC 0/8。GitHub 固定源码与 Firecrawl 文档研究已完成；用户明确 B站、小红书、抖音、微博评论均必需，并新增 [008 评论 Design](docs/design/008-评论与回复采集设计.md) proposed，008 仍 planned、0/6 AC。首片为公开 URL 的共享业务基础，随后按四平台独立完成作品定位、评论/楼中楼分页、覆盖记录和二次采集，不等待 X 搜索先通过。
+
+调研发现小红书 0 值配置文档与源码不一致、微博候选缺楼中楼继续分页、opencli B站评论仅单页；MediaCrawler 的置顶漏采已修复但许可证限制仍需遵循，Nemo2011/bilibili-api 已关停。Scrapling 0.4.15 的临时环境实验验证动态展开/会话机制，也复现动作失败仍返回 200、自适应误匹配与断点损坏后重新开始，列为待验证组件候选。代码核对确认 Worker 业务处理器为空、来源契约缺网页/作品详情能力、内容与检查点分立提交；既有本机 Firecrawl 两个容器在核对时停止，浏览器源码存在 URL/headers 日志。本次完成研究、受控实验与设计文档，没有恢复服务、修改业务代码或真实平台采集；其他任务改动保留。
+
 ## 当前结构
 
 - `backend/`：Python 3.12、FastAPI、SQLAlchemy 2、PostgreSQL、Redis、Kafka；底座可运行，依赖由 uv 锁定，数据库 DDL 由单一事务化 SQL 文件管理。
