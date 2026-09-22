@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from connections.services import SourceConnectionService
+from content.services import ContentService
 from core.errors import DependencyUnavailableError
 from identity.services import AuthenticatedIdentity, IdentityService
 from jobs.services import JobService
@@ -72,6 +73,13 @@ SourceConnectionServiceDependency = Annotated[
     SourceConnectionService,
     Depends(get_source_connection_service),
 ]
+
+
+def get_content_service(session: SessionDependency) -> ContentService:
+    return ContentService(session)
+
+
+ContentServiceDependency = Annotated[ContentService, Depends(get_content_service)]
 
 _SESSION_COOKIE = APIKeyCookie(
     name="hotkey_session",

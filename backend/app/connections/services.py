@@ -128,7 +128,38 @@ class SourceCapabilityEvidenceService:
             resource_ref=command.resource_ref,
         )
 
+    def record_persisted_read_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: PersistedReadEvidenceInput,
+    ) -> SourceCapabilityEvidenceView:
+        """Record persisted-read evidence inside an existing outer transaction."""
+        return self._record_in_transaction(
+            owner_id=owner_id,
+            command=command,
+            kind=ConnectionEvidenceKind.PERSISTED_READ,
+            resource_ref=command.resource_ref,
+        )
+
     def _record(
+        self,
+        *,
+        owner_id: UUID,
+        command: ProbeEvidenceInput | PersistedReadEvidenceInput,
+        kind: ConnectionEvidenceKind,
+        resource_ref: str | None,
+    ) -> SourceCapabilityEvidenceView:
+        self._session.rollback()
+        with self._session.begin():
+            return self._record_in_transaction(
+                owner_id=owner_id,
+                command=command,
+                kind=kind,
+                resource_ref=resource_ref,
+            )
+
+    def _record_in_transaction(
         self,
         *,
         owner_id: UUID,
@@ -140,82 +171,79 @@ class SourceCapabilityEvidenceService:
         if now.tzinfo is None:
             raise ValueError("clock must return a timezone-aware datetime")
         stop_reason = command.stop_reason.value if command.stop_reason is not None else None
-        self._session.rollback()
-        with self._session.begin():
-            connection = self._session.scalar(
-                select(SourceConnection)
-                .where(
-                    SourceConnection.owner_id == owner_id,
-                    SourceConnection.id == command.connection_id,
-                )
-                .with_for_update()
+        connection = self._session.scalar(
+            select(SourceConnection)
+            .where(
+                SourceConnection.owner_id == owner_id,
+                SourceConnection.id == command.connection_id,
             )
-            if connection is None:
-                raise ApplicationError("resource_not_found")
+            .with_for_update()
+        )
+        if connection is None:
+            raise ApplicationError("resource_not_found")
 
-            evidence_id = uuid4()
-            inserted_id = self._session.scalar(
-                insert(SourceCapabilityEvidence)
-                .values(
-                    id=evidence_id,
-                    operation_id=command.operation_id,
-                    owner_id=owner_id,
-                    connection_id=connection.id,
-                    connection_version=connection.current_version,
-                    capability=command.capability.value,
-                    entry_point=command.entry_point.value,
-                    kind=kind.value,
-                    outcome=command.outcome.value,
-                    stop_reason=stop_reason,
-                    resource_ref=resource_ref,
-                    component_name=command.component_name,
-                    component_version=command.component_version,
-                    observed_at=now,
-                    created_at=now,
-                )
-                .on_conflict_do_nothing(constraint="source_capability_evidence_owner_operation_key")
-                .returning(SourceCapabilityEvidence.id)
+        evidence_id = uuid4()
+        inserted_id = self._session.scalar(
+            insert(SourceCapabilityEvidence)
+            .values(
+                id=evidence_id,
+                operation_id=command.operation_id,
+                owner_id=owner_id,
+                connection_id=connection.id,
+                connection_version=connection.current_version,
+                capability=command.capability.value,
+                entry_point=command.entry_point.value,
+                kind=kind.value,
+                outcome=command.outcome.value,
+                stop_reason=stop_reason,
+                resource_ref=resource_ref,
+                component_name=command.component_name,
+                component_version=command.component_version,
+                observed_at=now,
+                created_at=now,
             )
-            evidence: SourceCapabilityEvidence
-            if inserted_id is not None:
-                evidence = SourceCapabilityEvidence(
-                    id=inserted_id,
-                    operation_id=command.operation_id,
-                    owner_id=owner_id,
-                    connection_id=connection.id,
-                    connection_version=connection.current_version,
-                    capability=command.capability.value,
-                    entry_point=command.entry_point.value,
-                    kind=kind.value,
-                    outcome=command.outcome.value,
-                    stop_reason=stop_reason,
-                    resource_ref=resource_ref,
-                    component_name=command.component_name,
-                    component_version=command.component_version,
-                    observed_at=now,
-                    created_at=now,
+            .on_conflict_do_nothing(constraint="source_capability_evidence_owner_operation_key")
+            .returning(SourceCapabilityEvidence.id)
+        )
+        evidence: SourceCapabilityEvidence
+        if inserted_id is not None:
+            evidence = SourceCapabilityEvidence(
+                id=inserted_id,
+                operation_id=command.operation_id,
+                owner_id=owner_id,
+                connection_id=connection.id,
+                connection_version=connection.current_version,
+                capability=command.capability.value,
+                entry_point=command.entry_point.value,
+                kind=kind.value,
+                outcome=command.outcome.value,
+                stop_reason=stop_reason,
+                resource_ref=resource_ref,
+                component_name=command.component_name,
+                component_version=command.component_version,
+                observed_at=now,
+                created_at=now,
+            )
+        else:
+            existing = self._session.scalar(
+                select(SourceCapabilityEvidence).where(
+                    SourceCapabilityEvidence.owner_id == owner_id,
+                    SourceCapabilityEvidence.operation_id == command.operation_id,
                 )
-            else:
-                existing = self._session.scalar(
-                    select(SourceCapabilityEvidence).where(
-                        SourceCapabilityEvidence.owner_id == owner_id,
-                        SourceCapabilityEvidence.operation_id == command.operation_id,
-                    )
-                )
-                if existing is None:
-                    raise RuntimeError("conflicting capability evidence is not visible")
-                if not self._matches(
-                    existing,
-                    connection_version=connection.current_version,
-                    command=command,
-                    kind=kind,
-                    stop_reason=stop_reason,
-                    resource_ref=resource_ref,
-                ):
-                    raise ApplicationError("idempotency_conflict")
-                evidence = existing
-            view = self._view(evidence)
-        return view
+            )
+            if existing is None:
+                raise RuntimeError("conflicting capability evidence is not visible")
+            if not self._matches(
+                existing,
+                connection_version=connection.current_version,
+                command=command,
+                kind=kind,
+                stop_reason=stop_reason,
+                resource_ref=resource_ref,
+            ):
+                raise ApplicationError("idempotency_conflict")
+            evidence = existing
+        return self._view(evidence)
 
     @staticmethod
     def _matches(

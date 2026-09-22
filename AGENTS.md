@@ -59,7 +59,7 @@
 - 最外层业务用例提交或回滚事务；依赖注入只管理 Session 创建与释放。跨领域原子写共用 Session，内层函数不自行提交。HTTP 和 Worker 各自装配服务，业务服务不依赖 HTTP 上下文。
 - 后端工程及 Compose HTTP 服务均为 `backend`，作为普通应用运行，不构建独立安装包；禁止恢复 `server/` 别名。部署入口为 `main:create_app`。
 - 应用代码统一放在 `backend/app/`；禁止在 app 下增加 hotkey 或 app 包装层；`main.py` 只做应用工厂和 lifespan 装配；`api/router.py` 汇总路由，`api/routers/*.py` 按资源组织，依赖和 HTTP 横切逻辑分别在 dependencies.py、middleware.py、exception_handlers.py。
-- 已登记的 `identity/`、`monitors/`、`jobs/` 领域在对应切片落地时拥有各自 models.py、schemas.py、services.py。models 定义 SQLAlchemy 持久结构，schemas 定义 Pydantic 契约，services 拥有事务和业务行为。禁止预先创建空领域包；也禁止用通用 Workspace/BaseService 聚合无关领域或为每个简单查询增加无意义仓储层。
+- 已登记的 `identity/`、`monitors/`、`jobs/`、`connections/`、`content/` 领域在对应切片落地时拥有各自 models.py、schemas.py、services.py。models 定义 SQLAlchemy 持久结构，schemas 定义 Pydantic 契约，services 拥有事务和业务行为。禁止预先创建空领域包；也禁止用通用 Workspace/BaseService 聚合无关领域或为每个简单查询增加无意义仓储层。
 - `core/` 只放配置、通用错误、输入输出基类和时间函数，不反向依赖业务模块。`db/` 拥有 DeclarativeBase、连接池及元数据注册；`audit/` 承载跨领域审计。`jobs/execution.py` 维护执行状态机，`worker/messaging.py` 对接 Kafka；`worker/app.py` 装配消费者生命周期，`cli/commands.py` 实现管理命令，`cli/__main__.py` 为命令入口。运行目录为 backend/app，拟定 Worker 入口为 `python -m worker`（由 `worker/__main__.py` 承接）；不得沿用 Celery 启动命令。
 - 路由禁止导入 SQLAlchemy、业务 models、services 实现、执行器或消息组件；只能通过 `api/dependencies.py` 注入服务。禁止经 request.app.state 在路由中绕过业务服务读写数据库或发布任务。服务、模型、Schema 不导入 FastAPI/Starlette/HTTP 路由；Schema 不导入 ORM 或数据库资源。
 - 每个HTTP操作必须有唯一人工`operation_id`、tag、成功状态和Pydantic响应模型；错误响应按操作显式声明，不在应用级虚报所有状态码。输入继承严格Input并给集合、字符串、页大小和正文设置上限。游标不得泄漏内部数据，应有明确的校验和分页边界。
@@ -178,6 +178,8 @@ backend/
 | `identity/` | 身份、账号及授权规则 |
 | `monitors/` | 监控配置与规则 |
 | `jobs/` | 任务、Outbox、执行状态机、取消与恢复 |
+| `connections/` | 平台连接版本、能力证据与可用状态投影 |
+| `content/` | 作品身份、发现关系、内容版本与观察投影 |
 | `sources/` | 来源契约、来源适配器与采集能力 |
 | `evidence/` | 证据元数据、文件与 MinIO 适配器 |
 | `ai/` | 模型调用契约及 SDK 适配器 |

@@ -129,6 +129,57 @@ class OutboxEnvelope:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class ContentJobContext:
+    job_id: UUID
+    configuration_ref: str
+    configuration_version: int
+    source_key: str
+    source_capability: SourceCapability
+
+
+def load_content_job_context(
+    session: Session,
+    *,
+    owner_id: UUID,
+    job_id: UUID,
+) -> ContentJobContext | None:
+    """Read the source job context without owning the caller's transaction."""
+    job = session.scalar(select(Job).where(Job.owner_id == owner_id, Job.id == job_id))
+    if job is None or job.source_key is None or job.source_capability is None:
+        return None
+    return ContentJobContext(
+        job_id=job.id,
+        configuration_ref=job.configuration_ref,
+        configuration_version=job.configuration_version,
+        source_key=job.source_key,
+        source_capability=SourceCapability(job.source_capability),
+    )
+
+
+def load_content_job_contexts(
+    session: Session,
+    *,
+    owner_id: UUID,
+    job_ids: set[UUID],
+) -> dict[UUID, ContentJobContext]:
+    """Batch-read source job context for content projections."""
+    if not job_ids:
+        return {}
+    jobs = session.scalars(select(Job).where(Job.owner_id == owner_id, Job.id.in_(job_ids))).all()
+    return {
+        job.id: ContentJobContext(
+            job_id=job.id,
+            configuration_ref=job.configuration_ref,
+            configuration_version=job.configuration_version,
+            source_key=job.source_key,
+            source_capability=SourceCapability(job.source_capability),
+        )
+        for job in jobs
+        if job.source_key is not None and job.source_capability is not None
+    }
+
+
 def fingerprint_request(command: JobAcceptanceInput) -> bytes:
     canonical = json.dumps(
         {

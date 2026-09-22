@@ -115,6 +115,35 @@ def load_source_access_readiness(
     }
 
 
+def load_readable_resource_ids(
+    session: Session,
+    *,
+    owner_id: UUID,
+    resource_type: str,
+    resource_ids: set[UUID],
+    now: datetime,
+) -> set[UUID]:
+    """Return readable business resource IDs without owning the caller's transaction."""
+    if not resource_ids:
+        return set()
+    deletion_exists = (
+        select(DeletionDirective.id)
+        .where(DeletionDirective.resource_record_id == EvidenceResource.id)
+        .exists()
+    )
+    return set(
+        session.scalars(
+            select(EvidenceResource.resource_id).where(
+                EvidenceResource.owner_id == owner_id,
+                EvidenceResource.resource_type == resource_type,
+                EvidenceResource.resource_id.in_(resource_ids),
+                EvidenceResource.expires_at > now,
+                ~deletion_exists,
+            )
+        ).all()
+    )
+
+
 def _is_admitted_scalar(value: object) -> TypeGuard[AdmittedScalar]:
     return value is None or isinstance(value, (str, int, float, bool))
 
@@ -444,6 +473,26 @@ class LifecycleService:
         admission: AdmittedSourcePayload,
         cleanup_targets: list[CleanupTargetSpec],
     ) -> EvidenceResourceView:
+        self._session.rollback()
+        with self._session.begin():
+            return self.track_resource_in_transaction(
+                owner_id=owner_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                admission=admission,
+                cleanup_targets=cleanup_targets,
+            )
+
+    def track_resource_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        resource_type: str,
+        resource_id: UUID,
+        admission: AdmittedSourcePayload,
+        cleanup_targets: list[CleanupTargetSpec],
+    ) -> EvidenceResourceView:
+        """Track a resource inside an existing outer transaction."""
         self._validate_resource_type(resource_type)
         target_keys = {(target.kind, target.reference) for target in cleanup_targets}
         if len(target_keys) != len(cleanup_targets):
@@ -455,80 +504,77 @@ class LifecycleService:
             target.model_dump(mode="json")
             for target in sorted(cleanup_targets, key=lambda item: (item.kind, item.reference))
         ]
-        self._session.rollback()
-        with self._session.begin():
-            source_policy = self._session.scalar(
-                select(SourceAccessPolicy).where(
-                    SourceAccessPolicy.owner_id == owner_id,
-                    SourceAccessPolicy.id == admission.policy_id,
-                )
+        source_policy = self._session.scalar(
+            select(SourceAccessPolicy).where(
+                SourceAccessPolicy.owner_id == owner_id,
+                SourceAccessPolicy.id == admission.policy_id,
             )
-            retention = self._session.scalar(
-                select(RetentionPolicy).where(
-                    RetentionPolicy.owner_id == owner_id,
-                    RetentionPolicy.id == admission.retention_policy_id,
-                )
+        )
+        retention = self._session.scalar(
+            select(RetentionPolicy).where(
+                RetentionPolicy.owner_id == owner_id,
+                RetentionPolicy.id == admission.retention_policy_id,
             )
+        )
+        if (
+            source_policy is None
+            or source_policy.policy_version != admission.policy_version
+            or source_policy.status != AccessPolicyStatus.APPROVED.value
+            or not source_policy.enabled
+            or (
+                source_policy.review_expires_at is not None
+                and source_policy.review_expires_at <= now
+            )
+            or retention is None
+            or retention.policy_version != admission.retention_policy_version
+            or retention.source_policy_id != admission.policy_id
+            or retention.source_policy_version != source_policy.policy_version
+            or retention.data_class != admission.data_class.value
+            or retention.effective_days == 0
+            or admission.expires_at
+            != admission.collected_at + timedelta(days=retention.effective_days)
+        ):
+            raise ResourceUnavailableError("resource admission is stale")
+        model = self._session.scalar(
+            select(EvidenceResource)
+            .where(
+                EvidenceResource.owner_id == owner_id,
+                EvidenceResource.resource_type == resource_type,
+                EvidenceResource.resource_id == resource_id,
+            )
+            .with_for_update()
+        )
+        if model is not None:
             if (
-                source_policy is None
-                or source_policy.policy_version != admission.policy_version
-                or source_policy.status != AccessPolicyStatus.APPROVED.value
-                or not source_policy.enabled
-                or (
-                    source_policy.review_expires_at is not None
-                    and source_policy.review_expires_at <= now
-                )
-                or retention is None
-                or retention.policy_version != admission.retention_policy_version
-                or retention.source_policy_id != admission.policy_id
-                or retention.source_policy_version != source_policy.policy_version
-                or retention.data_class != admission.data_class.value
-                or retention.effective_days == 0
-                or admission.expires_at
-                != admission.collected_at + timedelta(days=retention.effective_days)
+                model.source_policy_id != admission.policy_id
+                or model.source_policy_version != admission.policy_version
+                or model.retention_policy_id != admission.retention_policy_id
+                or model.retention_policy_version != admission.retention_policy_version
+                or model.data_class != admission.data_class.value
+                or model.collected_at != admission.collected_at
+                or model.expires_at != admission.expires_at
+                or model.cleanup_targets != serialized_targets
             ):
-                raise ResourceUnavailableError("resource admission is stale")
-            model = self._session.scalar(
-                select(EvidenceResource)
-                .where(
-                    EvidenceResource.owner_id == owner_id,
-                    EvidenceResource.resource_type == resource_type,
-                    EvidenceResource.resource_id == resource_id,
-                )
-                .with_for_update()
-            )
-            if model is not None:
-                if (
-                    model.source_policy_id != admission.policy_id
-                    or model.source_policy_version != admission.policy_version
-                    or model.retention_policy_id != admission.retention_policy_id
-                    or model.retention_policy_version != admission.retention_policy_version
-                    or model.data_class != admission.data_class.value
-                    or model.collected_at != admission.collected_at
-                    or model.expires_at != admission.expires_at
-                    or model.cleanup_targets != serialized_targets
-                ):
-                    raise LifecycleConflictError("resource identity is already tracked differently")
-                return self._resource_view(model)
-            model = EvidenceResource(
-                id=uuid4(),
-                owner_id=owner_id,
-                resource_type=resource_type,
-                resource_id=resource_id,
-                source_policy_id=admission.policy_id,
-                source_policy_version=admission.policy_version,
-                retention_policy_id=admission.retention_policy_id,
-                retention_policy_version=admission.retention_policy_version,
-                data_class=admission.data_class.value,
-                collected_at=admission.collected_at,
-                expires_at=admission.expires_at,
-                cleanup_targets=serialized_targets,
-                created_at=now,
-            )
-            self._session.add(model)
-            self._session.flush()
-            view = self._resource_view(model)
-        return view
+                raise LifecycleConflictError("resource identity is already tracked differently")
+            return self._resource_view(model)
+        model = EvidenceResource(
+            id=uuid4(),
+            owner_id=owner_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            source_policy_id=admission.policy_id,
+            source_policy_version=admission.policy_version,
+            retention_policy_id=admission.retention_policy_id,
+            retention_policy_version=admission.retention_policy_version,
+            data_class=admission.data_class.value,
+            collected_at=admission.collected_at,
+            expires_at=admission.expires_at,
+            cleanup_targets=serialized_targets,
+            created_at=now,
+        )
+        self._session.add(model)
+        self._session.flush()
+        return self._resource_view(model)
 
     def assert_readable(
         self,

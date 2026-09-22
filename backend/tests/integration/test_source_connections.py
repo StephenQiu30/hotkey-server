@@ -25,7 +25,8 @@ from sources.contracts import SourceCapability
 _BOOTSTRAP_TOKEN = "source-connection-bootstrap-token"
 _PASSWORD = "correct horse battery staple"
 _TRUNCATE = (
-    "TRUNCATE source_capability_evidence, source_connection_versions, source_connections, "
+    "TRUNCATE content_discoveries, content_observations, content_records, "
+    "source_capability_evidence, source_connection_versions, source_connections, "
     "provenance_manifest_inputs, provenance_manifests, evidence_cleanup_targets, "
     "evidence_deletions, evidence_resources, evidence_retention_policies, "
     "source_access_policies, resource_budget_reservations, resource_budget_windows, "

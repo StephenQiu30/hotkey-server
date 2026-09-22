@@ -144,6 +144,9 @@ export function EventsWorkspace() {
         </Link>
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="navigation">
+            <Link href="/content">作品资料</Link>
+          </Button>
+          <Button asChild variant="ghost" size="navigation">
             <Link href="/sources">来源状态</Link>
           </Button>
           <span className="text-muted-foreground hidden text-sm sm:inline">

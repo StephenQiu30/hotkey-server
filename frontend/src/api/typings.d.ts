@@ -34,6 +34,82 @@ declare namespace HotKeyAPI {
     source_capability?: SourceCapability | null;
   };
 
+  type ContentDiscoveryView = {
+    /** Job Id */
+    job_id: string;
+    /** Configuration Ref */
+    configuration_ref: string;
+    /** Configuration Version */
+    configuration_version: number;
+    /** First Observed At */
+    first_observed_at: string;
+  };
+
+  type ContentMetricView = {
+    /** Like Count */
+    like_count: number | null;
+    /** Comment Count */
+    comment_count: number | null;
+    /** Repost Count */
+    repost_count: number | null;
+    /** View Count */
+    view_count: number | null;
+    /** Play Count */
+    play_count: number | null;
+    /** Danmaku Count */
+    danmaku_count: number | null;
+  };
+
+  type ContentObservationView = {
+    /** Id */
+    id: string;
+    /** Observed At */
+    observed_at: string;
+    /** Received At */
+    received_at: string;
+    /** Published At */
+    published_at: string | null;
+    /** Canonical Url */
+    canonical_url: string | null;
+    /** Author External Id */
+    author_external_id: string | null;
+    metrics: ContentMetricView;
+  };
+
+  type ContentRecordDetailView = {
+    /** Id */
+    id: string;
+    /** Source Key */
+    source_key: string;
+    /** Object Type */
+    object_type: "post" | "comment";
+    /** Native Scope */
+    native_scope: string | null;
+    /** External Id */
+    external_id: string;
+    latest_observation: ContentObservationView;
+    /** Discovery Count */
+    discovery_count: number;
+    /** Discoveries */
+    discoveries: ContentDiscoveryView[];
+  };
+
+  type ContentRecordSummaryView = {
+    /** Id */
+    id: string;
+    /** Source Key */
+    source_key: string;
+    /** Object Type */
+    object_type: "post" | "comment";
+    /** Native Scope */
+    native_scope: string | null;
+    /** External Id */
+    external_id: string;
+    latest_observation: ContentObservationView;
+    /** Discovery Count */
+    discovery_count: number;
+  };
+
   type ErrorView = {
     /** Code */
     code: string;
@@ -47,6 +123,10 @@ declare namespace HotKeyAPI {
 
   type getCollectionJobParams = {
     job_id: string;
+  };
+
+  type getContentRecordParams = {
+    content_id: string;
   };
 
   type getMonitorTopicParams = {
@@ -182,6 +262,11 @@ declare namespace HotKeyAPI {
 
   type KeywordInput = string;
 
+  type listContentRecordsParams = {
+    cursor?: string | null;
+    limit?: number;
+  };
+
   type listMonitorTopicsParams = {
     include_archived?: boolean;
     cursor?: string | null;
@@ -280,6 +365,13 @@ declare namespace HotKeyAPI {
     created_at: string;
     /** Updated At */
     updated_at: string;
+  };
+
+  type PageViewContentRecordSummaryView_ = {
+    /** Items */
+    items: ContentRecordSummaryView[];
+    /** Next Cursor */
+    next_cursor: string | null;
   };
 
   type PageViewMonitorTopicView_ = {

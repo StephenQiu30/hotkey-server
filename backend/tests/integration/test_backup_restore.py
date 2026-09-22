@@ -49,7 +49,8 @@ def backup_environment() -> Iterator[tuple[str, Minio, str, str]]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE source_capability_evidence, source_connection_versions, "
+                "TRUNCATE content_discoveries, content_observations, content_records, "
+                "source_capability_evidence, source_connection_versions, "
                 "source_connections, provenance_manifest_inputs, provenance_manifests, "
                 "evidence_cleanup_targets, evidence_deletions, evidence_resources, "
                 "evidence_retention_policies, source_access_policies, "
@@ -130,7 +131,8 @@ def backup_environment() -> Iterator[tuple[str, Minio, str, str]]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE source_capability_evidence, source_connection_versions, "
+                    "TRUNCATE content_discoveries, content_observations, content_records, "
+                    "source_capability_evidence, source_connection_versions, "
                     "source_connections, provenance_manifest_inputs, provenance_manifests, "
                     "evidence_cleanup_targets, evidence_deletions, evidence_resources, "
                     "evidence_retention_policies, source_access_policies, "
@@ -172,7 +174,35 @@ def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
     assert manifest.evidence_mode is EvidenceBackupMode.INVENTORY_ONLY
     assert manifest.restore_verified is False
     assert manifest.secrets_included is False
-    assert len(manifest.database.tables) == 21
+    assert set(table_counts) == {
+        "content_discoveries",
+        "content_observations",
+        "content_records",
+        "evidence_cleanup_targets",
+        "evidence_deletions",
+        "evidence_resources",
+        "evidence_retention_policies",
+        "identity_sessions",
+        "identity_users",
+        "job_attempts",
+        "job_stage_attempts",
+        "jobs",
+        "monitor_topic_versions",
+        "monitor_topics",
+        "outbox_messages",
+        "processed_messages",
+        "provenance_manifest_inputs",
+        "provenance_manifests",
+        "resource_budget_policies",
+        "resource_budget_reservations",
+        "resource_budget_windows",
+        "resource_component_policies",
+        "resource_usage_attempts",
+        "source_access_policies",
+        "source_capability_evidence",
+        "source_connection_versions",
+        "source_connections",
+    }
     assert table_counts["identity_users"] == 1
     assert table_counts["evidence_resources"] == 1
     assert len(manifest.evidence_objects) == 1

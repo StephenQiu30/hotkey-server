@@ -3,6 +3,7 @@ from connections.models import (
     SourceConnection,
     SourceConnectionVersion,
 )
+from content.models import ContentDiscovery, ContentObservation, ContentRecord
 from db.base import Base
 from evidence.models import (
     CleanupTarget,
@@ -34,6 +35,9 @@ metadata = Base.metadata
 
 __all__ = [
     "CleanupTarget",
+    "ContentDiscovery",
+    "ContentObservation",
+    "ContentRecord",
     "DeletionDirective",
     "EvidenceResource",
     "IdentitySession",

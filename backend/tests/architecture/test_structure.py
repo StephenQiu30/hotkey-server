@@ -72,6 +72,15 @@ def test_schema_modules_do_not_depend_on_http_or_orm() -> None:
         assert not any(name.startswith(("fastapi", "starlette", "sqlalchemy")) for name in imports)
 
 
+def test_content_service_uses_cross_domain_contracts_not_models() -> None:
+    imports = _imports(APP / "content" / "services.py")
+    foreign_models = {
+        name for name in imports if name.endswith(".models") and name != "content.models"
+    }
+
+    assert foreign_models == set()
+
+
 def test_source_contracts_do_not_depend_on_runtime_or_business_domains() -> None:
     imports = _imports(APP / "sources" / "contracts.py")
     forbidden = (

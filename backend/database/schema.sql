@@ -672,6 +672,89 @@ CREATE INDEX job_stage_attempts_owner_started_idx
 CREATE INDEX job_stage_attempts_job_stage_idx
     ON job_stage_attempts (job_id, stage, attempt_sequence);
 
+CREATE TABLE content_records (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    source_key VARCHAR(64) NOT NULL CHECK (
+        source_key ~ '^[a-z][a-z0-9_-]{0,63}$'
+    ),
+    object_type VARCHAR(16) NOT NULL CHECK (object_type IN ('post', 'comment')),
+    native_scope VARCHAR(512) CHECK (native_scope IS NULL OR native_scope <> ''),
+    external_id VARCHAR(512) NOT NULL CHECK (external_id <> ''),
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT content_records_owner_id_key UNIQUE (owner_id, id),
+    CONSTRAINT content_records_source_identity_key
+        UNIQUE NULLS NOT DISTINCT (
+            owner_id,
+            source_key,
+            object_type,
+            native_scope,
+            external_id
+        )
+);
+
+CREATE INDEX content_records_owner_id_idx ON content_records (owner_id, id);
+
+CREATE TABLE content_discoveries (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    content_id UUID NOT NULL,
+    job_id UUID NOT NULL,
+    first_observed_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT content_discoveries_owner_content_job_key
+        UNIQUE (owner_id, content_id, job_id),
+    CONSTRAINT content_discoveries_owner_content_fkey
+        FOREIGN KEY (owner_id, content_id)
+        REFERENCES content_records (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT content_discoveries_owner_job_fkey
+        FOREIGN KEY (owner_id, job_id)
+        REFERENCES jobs (owner_id, id) ON DELETE RESTRICT
+);
+
+CREATE INDEX content_discoveries_content_idx
+    ON content_discoveries (owner_id, content_id);
+
+CREATE TABLE content_observations (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    content_id UUID NOT NULL,
+    job_id UUID NOT NULL,
+    source_operation_id UUID NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL,
+    received_at TIMESTAMPTZ NOT NULL CHECK (received_at >= observed_at),
+    published_at TIMESTAMPTZ,
+    canonical_url VARCHAR(2048) CHECK (
+        canonical_url IS NULL OR canonical_url ~ '^https?://'
+    ),
+    author_external_id VARCHAR(512) CHECK (
+        author_external_id IS NULL OR author_external_id <> ''
+    ),
+    like_count BIGINT CHECK (like_count IS NULL OR like_count >= 0),
+    comment_count BIGINT CHECK (comment_count IS NULL OR comment_count >= 0),
+    repost_count BIGINT CHECK (repost_count IS NULL OR repost_count >= 0),
+    view_count BIGINT CHECK (view_count IS NULL OR view_count >= 0),
+    play_count BIGINT CHECK (play_count IS NULL OR play_count >= 0),
+    danmaku_count BIGINT CHECK (danmaku_count IS NULL OR danmaku_count >= 0),
+    CONSTRAINT content_observations_owner_content_operation_key
+        UNIQUE (owner_id, content_id, source_operation_id),
+    CONSTRAINT content_observations_owner_content_fkey
+        FOREIGN KEY (owner_id, content_id)
+        REFERENCES content_records (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT content_observations_owner_job_fkey
+        FOREIGN KEY (owner_id, job_id)
+        REFERENCES jobs (owner_id, id) ON DELETE RESTRICT
+);
+
+CREATE INDEX content_observations_latest_idx
+    ON content_observations (
+        owner_id,
+        content_id,
+        observed_at,
+        received_at,
+        id
+    );
+
 CREATE TABLE provenance_manifests (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
