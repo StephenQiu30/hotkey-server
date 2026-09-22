@@ -17,6 +17,11 @@ class SourceCapability(StrEnum):
     REPLIES = "replies"
 
 
+class SourceSort(StrEnum):
+    LATEST = "latest"
+    TOP = "top"
+
+
 class SourcePageState(StrEnum):
     MORE = "more"
     COMPLETE = "complete"
@@ -77,6 +82,7 @@ class _PageRequest(_ContractModel):
 class SearchRequest(_PageRequest):
     capability: Literal[SourceCapability.SEARCH] = SourceCapability.SEARCH
     query: str = Field(min_length=1, max_length=512)
+    sort: SourceSort = SourceSort.LATEST
 
     @field_validator("query")
     @classmethod
@@ -115,13 +121,12 @@ class CommentsRequest(_PageRequest):
 class RepliesRequest(_PageRequest):
     capability: Literal[SourceCapability.REPLIES] = SourceCapability.REPLIES
     comment_external_id: str = Field(min_length=1, max_length=512)
+    post_external_id: str | None = Field(default=None, min_length=1, max_length=512)
 
-    @field_validator("comment_external_id")
+    @field_validator("comment_external_id", "post_external_id")
     @classmethod
-    def validate_comment_external_id(cls, value: str) -> str:
-        validated = _validate_identifier(value)
-        assert validated is not None
-        return validated
+    def validate_comment_external_id(cls, value: str | None) -> str | None:
+        return _validate_identifier(value)
 
 
 type SourceRequest = Annotated[
@@ -144,8 +149,21 @@ class SourcePost(_ContractModel):
     like_count: int | None = Field(ge=0)
     comment_count: int | None = Field(ge=0)
     repost_count: int | None = Field(ge=0)
+    canonical_url: str | None = Field(default=None, max_length=2048)
+    conversation_external_id: str | None = Field(default=None, min_length=1, max_length=512)
+    parent_external_id: str | None = Field(default=None, min_length=1, max_length=512)
+    quote_external_id: str | None = Field(default=None, min_length=1, max_length=512)
+    repost_external_id: str | None = Field(default=None, min_length=1, max_length=512)
+    text_scope: Literal["full", "truncated", "media_only"] | None = None
 
-    @field_validator("external_id", "author_external_id")
+    @field_validator(
+        "external_id",
+        "author_external_id",
+        "conversation_external_id",
+        "parent_external_id",
+        "quote_external_id",
+        "repost_external_id",
+    )
     @classmethod
     def validate_identifiers(cls, value: str | None) -> str | None:
         return _validate_identifier(value)
@@ -215,6 +233,16 @@ class SourcePage(_ContractModel):
     )
     stop_reason: SourceStopReason | None
     observed_at: datetime
+    request_count: int = Field(default=0, ge=0)
+    adapter_version: str | None = Field(default=None, max_length=64)
+    retry_at: datetime | None = None
+
+    @field_validator("retry_at")
+    @classmethod
+    def validate_retry_at(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("retry_at must be timezone-aware")
+        return value
 
     @field_validator("observed_at")
     @classmethod

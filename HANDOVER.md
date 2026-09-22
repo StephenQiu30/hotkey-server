@@ -25,7 +25,7 @@
 - `app/api/` 统一管理路由、依赖、中间件、异常与文档；提供 `/api/health`、数据库 `/api/ready`、`/openapi.json`、`/docs` 和 `/scalar`。
 - `app/core/` 管理 `HOTKEY_` 配置、结构化日志、公共错误和 Pydantic 基类；`app/db/` 管理唯一 DeclarativeBase、Engine、Session 和运行时模型元数据。
 - `database/schema.sql` 是唯一数据库结构事实源，仅用于全新空库。项目没有 Alembic、revision 目录或应用启动建表逻辑。
-- 业务领域目录不提前创建空包；当前实际领域为 `identity`、`jobs`、`sources`、`evidence`、`backups`、`monitors`、`connections`，其余 `ai`、`audit` 等候选主责遵循 `PROJECT.md`，具体切片落地时再创建实际文件。
+- 业务领域目录不提前创建空包；当前实际领域为 `identity`、`jobs`、`sources`、`evidence`、`backups`、`monitors`、`connections`、`content`，其余 `ai`、`audit` 等候选主责遵循 `PROJECT.md`，具体切片落地时再创建实际文件。
 - `python -m worker` 是 Kafka Worker 入口。已有 outbox 发布、手动 offset、inbox、租约/检查点恢复的运行装配；尚无具体业务消息处理器时安全退出，不订阅或提交任何消息。处理器只能在对应任务设计完成后注册。
 - `python -m cli` 是 Typer 管理入口。`tests/unit`、`tests/integration`、`tests/architecture` 分别承载规则、HTTP 契约和依赖边界验证。
 - `app/identity/` 已实现单 owner 初始化、Argon2 密码散列、服务端不透明会话、CSRF、注销和维护恢复；`python -m cli identity reset-password` 从隐藏交互输入读取新密码并撤销全部旧会话。
@@ -77,11 +77,13 @@
 
 **[004 计划](docs/plans/004-平台与连接管理计划.md) S00—S02 已完成，Plan 保持 in_progress。** `connections` 已实现 X/抖音静态目录、连接/不可变版本/追加式能力证据三表、当前准入政策与当前连接版本投影、按 `manual`/`scheduled` 分开的状态、会话保护的 `GET /api/source-capabilities`、生成客户端和 `/sources`。S02 复用 Typer 增加显式 `connections record-probe`，采集用例通过领域 Service 登记 persisted read；两者自动绑定 owner 当前版本，等价 operation 幂等、异义冲突拒绝、入口不串扰。专用 17 tests、后端全量 166 passed/4 skipped、前端 16 tests、静态门禁、OpenAPI 漂移和生产构建通过；真实 Web 验证显示 probe 不放行、persisted read 仅放行 manual，390×844 无溢出且 axe WCAG A/AA 0 violation。QA 清理后开发/测试库均 24 表 0 行，普通 API/Web 已恢复。没有真实连接、来源适配器、真实探测/采集、写 API、Worker 或外部请求，产品 AC 仍为 0/6，未建立 Acceptance。
 
-**[007 计划](docs/plans/007-作品资料与上下文计划.md) S00—S02 已完成，Plan 保持 in_progress。** `content` 领域在唯一作品、发现关系和不可变指标观察之上，新增不可变正文版本、`full/summary/truncated/media_only` 完整度、来源原文/机器提取依据、quote/repost 目标及 RFC 3339 小数秒精度；等价版本复用，新 operation 保留独立观察，目标仅在同 owner 且当前可读时解析。现有只读 API、生成客户端及 `/content` 列表/详情扩展已闭环，外来 HTML 仅作纯文本显示。后端 189 tests、前端 20 tests 和全部静态/构建门禁通过；桌面 1280 与 390×844 的正常/摘要/截断/仅媒体/机器提取/关系/空/网络错误/未登录状态无横向溢出，axe 五次均 0 violation/0 incomplete。复用现有 env 及已运行 PostgreSQL/Redis/Kafka/MinIO，未启动第二套依赖，未新增依赖、脚本或 `.sh`；QA 后开发/测试库均 29 表 0 行。没有稳定原生 ID 的链接仍只作线索；S03/S04、真实来源、编辑/可见性历史及产品 0/6 AC 仍待执行，未建立 Acceptance。
+**[007 计划](docs/plans/007-作品资料与上下文计划.md) S00—S03 已完成，Plan 保持 in_progress。** `content` 已交付唯一作品、发现、不可变指标/正文版本、完整度与来源标签、quote/repost、追加式可见性、编辑历史、乱序稳定投影和 PostgreSQL 生命周期清理；只读 API、生成客户端和列表/详情已闭环。S03 提交 `f3d704ad`，技术验证记录见 Plan；QA 后开发/测试库均 30 表 0 行。没有稳定原生 ID 的链接仍只作线索；S04、真实来源及产品 0/6 AC 仍待执行，未建立 Acceptance。
+
+**[002 计划](docs/plans/002-X免费采集与热点监控计划.md) S01 受控技术切片已完成，Plan 为 in_progress。** `sources/adapters/x_twscrape.py` 固定 twscrape 0.20.1，复用 SDK 常量/解析/签名，由有界 HTTPX 统一管理初始化、分页、全部尝试计量、取消和故障停止；不调用默认账号池、隐式重试/轮换及解析落盘。27 项专用测试、后端全量 226 tests、Ruff/format/mypy 通过；应用关闭传输层敏感诊断，CDN 不带会话。复用既有 env 和 PostgreSQL/Redis/Kafka/MinIO；无新 HTTP、DDL、页面、脚本、服务或实际 X 请求。S00 真实准入、S02 的持久预算/连接租约/业务装配及 S03/S04 尚未完成，X 仍未就绪，产品 AC 为 0/10，未建立 Acceptance。
 
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 按 B03 顺序进入 007 S03 Red；Design v1.2 已冻结追加式可见性状态/依据矩阵、编辑与乱序投影、版本历史和 PostgreSQL 内容观察清理，以正文变化、来源短暂失败、404/明确删除和生命周期清理样本证明缺口。004 S03 属于 B04，等 B03 内容与来源前置就绪后再进入。003 的真实上游扩词、调度/主题任务留待 S04 联验，009 S04 等待真实处理器和来源样本。
+1. 按 B03 顺序进入 035 S02，核对已接入主题、任务、连接和作品资源的权限边界；004 S03 属于 B04。002 的真实采集仍需准入和显式样本条件，003 的真实上游扩词、调度/主题任务留待 S04 联验，009 S04 等待真实处理器和来源样本。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
@@ -94,4 +96,4 @@
 
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 
-本轮已交付 009 S00—S03、003 S00—S03、004 S00—S02 与 007 S00—S02：前者覆盖持久任务受理/读取/取消、分类失败、有限重试与任务页；003 覆盖本地主题规则、不可变版本、创建/编辑、列表、独立复制、启停/归档和零写入预览；004 覆盖连接领域、事实表、状态投影、只读 API/页面与分立证据登记；007 建立唯一作品、多入口发现、不可变指标观察/正文版本、完整度/来源标签、quote/repost 关系、生命周期/能力证据及列表/详情。验证复用当前 PostgreSQL/Redis/Kafka/MinIO 与 env，未启动第二套依赖；007 S02 结束时后端 189 tests、前端 20 tests、OpenAPI 生成、生产构建、桌面/390×844 真实浏览器及 axe 通过。尚未执行真实业务处理器/来源、真实连接探测/采集、上游扩词、SDK 内部计量、编辑/可见性历史、真实评分/模型记录、独立对象备份/真实恢复、最后成功/缺口/陈旧传播、003 S04、004 S03/S04、007 S03/S04、009 S04、完整 B0 或产品 Acceptance。
+本轮已交付 009/003/007 S00—S03、004 S00—S02 和 002 S01，技术证据见上文与各 Plan。验证复用当前 PostgreSQL/Redis/Kafka/MinIO 与 env，未启动第二套依赖；002 S01 收尾后后端 226 tests、前端 22 tests、静态检查、OpenAPI/客户端无漂移及隔离生产构建通过。构建另发现既有路由辅助函数非法导出，已以独立修复提交保留内部函数并新增导出集合断言。尚未执行真实业务处理器/来源、真实连接探测/采集、上游扩词、跨任务来源预算/租约装配、真实评分/模型记录、独立对象备份/真实恢复、完整 B0 或产品 Acceptance。

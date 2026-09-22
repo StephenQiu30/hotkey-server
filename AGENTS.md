@@ -69,6 +69,7 @@
 - 不因“异步更先进”将同步psycopg调用放进`async def`路由。只有整条调用链非阻塞且有独立并发/连接池验证时才引入AsyncSession，并保证每个并发task独立Session。
 
 - `sources/` 的适配器不依赖 API、ORM、Worker 或 CLI；业务来源契约不导入 HTTP 客户端。来源探测只经独立 CLI 显式执行，查询预览不发送网络请求。未通过持久化采集验收前，来源连接状态保持 not_connected。
+- `sources/adapters/x_twscrape.py` 拥有固定 SDK 的只读映射与有界单会话传输；初始化与失败请求纳入计量，禁止 SDK 默认账号轮换、隐式重试和解析失败落盘。业务预算/连接执行权由调用方装配，不由适配器直接操作 ORM。
 
 ### 固定技术与运行入口
 
