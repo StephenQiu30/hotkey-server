@@ -122,3 +122,18 @@ export async function resumeMonitorTopic(
     ...(options || {}),
   });
 }
+
+/** 预览监控主题规则 只在本地规范化规则并检查标题样本; 不保存主题、不创建任务、不调用来源。 POST /api/topics/preview */
+export async function previewMonitorTopic(
+  body: HotKeyAPI.MonitorTopicPreviewInput,
+  options?: import("@/request").RequestOptions,
+) {
+  return request<HotKeyAPI.MonitorTopicPreviewView>("/api/topics/preview", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    data: body,
+    ...(options || {}),
+  });
+}

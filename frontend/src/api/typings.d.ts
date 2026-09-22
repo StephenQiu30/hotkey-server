@@ -188,6 +188,28 @@ declare namespace HotKeyAPI {
     limit?: number;
   };
 
+  type MonitorExpansionPreviewView = {
+    /** Local Alias External Queries */
+    local_alias_external_queries: number;
+    /** Local Alias Budget Units */
+    local_alias_budget_units: number;
+    /** Upstream Status */
+    upstream_status: string;
+    /** Upstream External Queries */
+    upstream_external_queries: null;
+    /** Upstream Budget Units */
+    upstream_budget_units: null;
+  };
+
+  type MonitorRulePreviewSampleView = {
+    /** Sample Index */
+    sample_index: number;
+    /** Matched */
+    matched: boolean;
+    /** Excluded By */
+    excluded_by: string[];
+  };
+
   type MonitorRuleSetView = {
     /** Match Any */
     match_any: string[];
@@ -206,6 +228,24 @@ declare namespace HotKeyAPI {
     exclude: KeywordInput[];
     /** Name */
     name: string;
+  };
+
+  type MonitorTopicPreviewInput = {
+    /** Match Any */
+    match_any: KeywordInput[];
+    /** Match All */
+    match_all: KeywordInput[];
+    /** Exclude */
+    exclude: KeywordInput[];
+    /** Sample Titles */
+    sample_titles: PreviewSampleInput[];
+  };
+
+  type MonitorTopicPreviewView = {
+    rules: MonitorRuleSetView;
+    /** Samples */
+    samples: MonitorRulePreviewSampleView[];
+    expansion: MonitorExpansionPreviewView;
   };
 
   type MonitorTopicReadinessStatus =
@@ -252,6 +292,8 @@ declare namespace HotKeyAPI {
   type pauseMonitorTopicParams = {
     topic_id: string;
   };
+
+  type PreviewSampleInput = string;
 
   type resumeMonitorTopicParams = {
     topic_id: string;

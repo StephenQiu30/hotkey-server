@@ -380,3 +380,65 @@ def test_topic_lifecycle_is_idempotent_and_resume_requires_ready_source(
     assert archived_again.json()["status"] == "archived"
     assert edit_archived.status_code == 409
     assert edit_archived.json()["code"] == "topic_archived"
+
+
+def test_topic_preview_is_local_explainable_and_side_effect_free(
+    monitor_topic_client: TestClient,
+) -> None:
+    payload = {
+        "match_any": [" Brand ", "\uff22\uff32\uff21\uff2e\uff24"],
+        "match_all": ["召回"],
+        "exclude": ["招聘"],
+        "sample_titles": ["brand 召回招聘", "BRAND 召回公告"],
+    }
+    missing_session = monitor_topic_client.post(
+        "/api/topics/preview",
+        headers={"X-HotKey-CSRF": "1"},
+        json=payload,
+    )
+    assert missing_session.status_code == 401
+    _initialize(monitor_topic_client)
+
+    preview = monitor_topic_client.post(
+        "/api/topics/preview",
+        headers=_csrf_headers(monitor_topic_client),
+        json=payload,
+    )
+
+    assert preview.status_code == 200
+    assert preview.headers["cache-control"] == "no-store"
+    assert preview.json() == {
+        "rules": {
+            "match_any": ["Brand"],
+            "match_all": ["召回"],
+            "exclude": ["招聘"],
+        },
+        "samples": [
+            {"sample_index": 0, "matched": False, "excluded_by": ["招聘"]},
+            {"sample_index": 1, "matched": True, "excluded_by": []},
+        ],
+        "expansion": {
+            "local_alias_external_queries": 0,
+            "local_alias_budget_units": 0,
+            "upstream_status": "pending_source_selection",
+            "upstream_external_queries": None,
+            "upstream_budget_units": None,
+        },
+    }
+    without_csrf = monitor_topic_client.post(
+        "/api/topics/preview",
+        json={
+            "match_any": ["品牌"],
+            "match_all": [],
+            "exclude": [],
+            "sample_titles": ["品牌公告"],
+        },
+    )
+    assert without_csrf.status_code == 403
+    factory = monitor_topic_client.app.state.session_factory
+    with factory() as session:
+        assert session.execute(text("SELECT count(*) FROM monitor_topics")).scalar_one() == 0
+        assert (
+            session.execute(text("SELECT count(*) FROM monitor_topic_versions")).scalar_one() == 0
+        )
+        assert session.execute(text("SELECT count(*) FROM jobs")).scalar_one() == 0

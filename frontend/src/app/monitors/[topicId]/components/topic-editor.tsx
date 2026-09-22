@@ -28,6 +28,7 @@ import {
   KeywordGroupField,
   parseKeywordLines,
 } from "@/components/monitors/keyword-group-field";
+import { TopicRulePreview } from "@/components/monitors/topic-rule-preview";
 import { PageState } from "@/components/system/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -437,6 +438,15 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                   ) : null}
                 </div>
               ) : null}
+
+              <div className="mt-5">
+                <TopicRulePreview
+                  matchAny={matchAny}
+                  matchAll={matchAll}
+                  exclude={exclude}
+                  disabled={isBusy}
+                />
+              </div>
 
               <Button
                 className="mt-5 w-full"

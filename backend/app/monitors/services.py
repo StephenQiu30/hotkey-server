@@ -12,8 +12,12 @@ from sqlalchemy.orm import Session
 from core.errors import ApplicationError
 from monitors.models import MonitorTopic, MonitorTopicVersion
 from monitors.schemas import (
+    MonitorExpansionPreviewView,
+    MonitorRulePreviewSampleView,
     MonitorRuleSetView,
     MonitorTopicCreateInput,
+    MonitorTopicPreviewInput,
+    MonitorTopicPreviewView,
     MonitorTopicReadinessStatus,
     MonitorTopicStatus,
     MonitorTopicUpdateInput,
@@ -145,6 +149,34 @@ class MonitorTopicService:
             self._session.add(version)
             view = self._view(topic, version)
         return view
+
+    def preview_topic(self, *, command: MonitorTopicPreviewInput) -> MonitorTopicPreviewView:
+        rules = self._normalize_command_rules(command)
+        samples = []
+        for index, title in enumerate(command.sample_titles):
+            result = evaluate_monitor_rules(rules, title)
+            samples.append(
+                MonitorRulePreviewSampleView(
+                    sample_index=index,
+                    matched=result.matched,
+                    excluded_by=list(result.excluded_by),
+                )
+            )
+        return MonitorTopicPreviewView(
+            rules=MonitorRuleSetView(
+                match_any=list(rules.match_any),
+                match_all=list(rules.match_all),
+                exclude=list(rules.exclude),
+            ),
+            samples=samples,
+            expansion=MonitorExpansionPreviewView(
+                local_alias_external_queries=0,
+                local_alias_budget_units=0,
+                upstream_status="pending_source_selection",
+                upstream_external_queries=None,
+                upstream_budget_units=None,
+            ),
+        )
 
     def get_topic(self, *, owner_id: UUID, topic_id: UUID) -> MonitorTopicView:
         self._session.rollback()
@@ -356,7 +388,7 @@ class MonitorTopicService:
 
     @staticmethod
     def _normalize_command_rules(
-        command: MonitorTopicCreateInput | MonitorTopicUpdateInput,
+        command: MonitorTopicCreateInput | MonitorTopicPreviewInput | MonitorTopicUpdateInput,
     ) -> NormalizedMonitorRules:
         return normalize_monitor_rules(
             match_any=command.match_any,

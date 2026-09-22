@@ -11,7 +11,13 @@ from api.dependencies import (
     MonitorTopicServiceDependency,
 )
 from core.schemas import ErrorView, PageView
-from monitors.schemas import MonitorTopicCreateInput, MonitorTopicUpdateInput, MonitorTopicView
+from monitors.schemas import (
+    MonitorTopicCreateInput,
+    MonitorTopicPreviewInput,
+    MonitorTopicPreviewView,
+    MonitorTopicUpdateInput,
+    MonitorTopicView,
+)
 
 router = APIRouter(prefix="/topics", tags=["监控主题"])
 
@@ -78,6 +84,26 @@ def create_monitor_topic(
     response.headers["location"] = f"/api/topics/{topic.id}"
     response.headers["cache-control"] = "no-store"
     return topic
+
+
+@router.post(
+    "/preview",
+    operation_id="previewMonitorTopic",
+    response_model=MonitorTopicPreviewView,
+    status_code=status.HTTP_200_OK,
+    summary="预览监控主题规则",
+    description="只在本地规范化规则并检查标题样本; 不保存主题、不创建任务、不调用来源。",
+    responses=_WRITE_RESPONSES,
+)
+def preview_monitor_topic(
+    payload: MonitorTopicPreviewInput,
+    response: Response,
+    service: MonitorTopicServiceDependency,
+    _: CsrfProtectedIdentityDependency,
+) -> MonitorTopicPreviewView:
+    preview = service.preview_topic(command=payload)
+    response.headers["cache-control"] = "no-store"
+    return preview
 
 
 @router.get(
