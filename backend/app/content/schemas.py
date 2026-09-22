@@ -9,7 +9,8 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from connections.schemas import SourceEntryPoint
 from core.schemas import InputModel, OutputModel
-from evidence.schemas import AdmittedSourcePayload
+from evidence.schemas import AdmittedSourcePayload, DataClass
+from sources.contracts import SourceCapability
 
 
 def _validate_opaque_identifier(value: str | None, *, field_name: str) -> str | None:
@@ -56,6 +57,41 @@ class PersistContentPostInput(InputModel):
         if not isinstance(external_id, str):
             raise ValueError("external_id must be admitted as a string")
         _validate_opaque_identifier(external_id, field_name="external_id")
+        if self.admission.collected_at.utcoffset() is None:
+            raise ValueError("collected_at must be timezone-aware")
+        if self.admission.expires_at.utcoffset() is None:
+            raise ValueError("expires_at must be timezone-aware")
+        return self
+
+
+class PersistContentDocumentInput(InputModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
+
+    job_id: UUID
+    source_operation_id: UUID
+    connection_id: UUID
+    connection_version: int = Field(ge=1)
+    entry_point: SourceEntryPoint
+    component_name: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+    )
+    component_version: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._+:-]{0,63}$",
+    )
+    admission: AdmittedSourcePayload
+
+    @model_validator(mode="after")
+    def validate_document_admission(self) -> Self:
+        if (
+            self.admission.source_key != "web"
+            or self.admission.capability is not SourceCapability.PAGE_CONTENT
+            or self.admission.data_class is not DataClass.STRUCTURED
+        ):
+            raise ValueError("document admission must describe structured web page content")
         if self.admission.collected_at.utcoffset() is None:
             raise ValueError("collected_at must be timezone-aware")
         if self.admission.expires_at.utcoffset() is None:
@@ -199,6 +235,7 @@ class ContentObservationView(OutputModel):
     published_at: datetime | None
     published_at_fractional_digits: int | None = Field(ge=0, le=6)
     canonical_url: str | None
+    final_url: str | None
     author_external_id: str | None
     metrics: ContentMetricView
     content_version: ContentVersionView | None
@@ -214,7 +251,7 @@ class ContentDiscoveryView(OutputModel):
 class ContentRecordSummaryView(OutputModel):
     id: UUID
     source_key: str
-    object_type: Literal["post", "comment"]
+    object_type: Literal["post", "comment", "webpage"]
     native_scope: str | None
     external_id: str
     latest_observation: ContentObservationView

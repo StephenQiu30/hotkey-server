@@ -38,7 +38,7 @@ class ContentRecord(Base):
             name="content_records_source_key_check",
         ),
         CheckConstraint(
-            "object_type IN ('post', 'comment')",
+            "object_type IN ('post', 'comment', 'webpage')",
             name="content_records_object_type_check",
         ),
         CheckConstraint(
@@ -248,6 +248,10 @@ class ContentObservation(Base):
             name="content_observations_canonical_url_check",
         ),
         CheckConstraint(
+            "final_url IS NULL OR final_url ~ '^https?://'",
+            name="content_observations_final_url_check",
+        ),
+        CheckConstraint(
             "author_external_id IS NULL OR author_external_id <> ''",
             name="content_observations_author_check",
         ),
@@ -286,6 +290,7 @@ class ContentObservation(Base):
     published_at: Mapped[datetime | None]
     published_at_fractional_digits: Mapped[int | None] = mapped_column(SmallInteger)
     canonical_url: Mapped[str | None] = mapped_column(String(2048))
+    final_url: Mapped[str | None] = mapped_column(String(2048))
     author_external_id: Mapped[str | None] = mapped_column(String(512))
     like_count: Mapped[int | None] = mapped_column(BigInteger)
     comment_count: Mapped[int | None] = mapped_column(BigInteger)

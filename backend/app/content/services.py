@@ -43,6 +43,7 @@ from content.schemas import (
     ContentVisibilityBasis,
     ContentVisibilityStatus,
     ContentVisibilityView,
+    PersistContentDocumentInput,
     PersistContentPostInput,
     RecordContentVisibilityInput,
 )
@@ -54,6 +55,7 @@ from jobs.services import (
     load_content_job_context,
     load_content_job_contexts,
 )
+from sources.adapters.web_targets import normalize_web_url
 
 type Clock = Callable[[], datetime]
 
@@ -83,6 +85,20 @@ _ALLOWED_FIELDS = frozenset(
         "repost_target_external_id",
         "repost_target_native_scope",
         "repost_target_author_external_id",
+    }
+)
+_DOCUMENT_ALLOWED_FIELDS = frozenset(
+    {
+        "object_type",
+        "request_url",
+        "final_url",
+        "published_at",
+        "text_scope",
+        "text_origin",
+        "text_origin_ref",
+        "title",
+        "body",
+        "truncation_reason",
     }
 )
 _METRIC_FIELDS = (
@@ -159,14 +175,14 @@ def _optional_identifier(fields: Mapping[str, object], name: str) -> str | None:
     return value
 
 
-def _optional_url(fields: Mapping[str, object]) -> str | None:
-    value = fields.get("canonical_url")
+def _optional_url(fields: Mapping[str, object], name: str = "canonical_url") -> str | None:
+    value = fields.get(name)
     if value is None:
         return None
     if not isinstance(value, str) or not value or value != value.strip() or len(value) > 2048:
-        raise ValueError("canonical_url must be a bounded URL")
+        raise ValueError(f"{name} must be a bounded URL")
     if any(ord(character) < 32 or ord(character) == 127 for character in value):
-        raise ValueError("canonical_url cannot contain controls")
+        raise ValueError(f"{name} cannot contain controls")
     parsed = urlsplit(value)
     if (
         parsed.scheme not in {"http", "https"}
@@ -174,8 +190,23 @@ def _optional_url(fields: Mapping[str, object]) -> str | None:
         or parsed.username is not None
         or parsed.password is not None
     ):
-        raise ValueError("canonical_url must be an http or https URL without credentials")
+        raise ValueError(f"{name} must be an http or https URL without credentials")
     return value
+
+
+def _normalized_web_url(fields: Mapping[str, object], name: str) -> str:
+    value = _optional_url(fields, name)
+    if value is None:
+        raise ValueError(f"{name} is required")
+    hostname = urlsplit(value).hostname
+    assert hostname is not None
+    try:
+        normalized = normalize_web_url(value, allowed_hosts=frozenset({hostname}))
+    except ValueError as error:
+        raise ValueError(f"{name} must be a normalized public web URL") from error
+    if normalized != value:
+        raise ValueError(f"{name} must be normalized")
+    return normalized
 
 
 def _optional_datetime_with_precision(
@@ -372,112 +403,194 @@ class ContentService:
 
         self._session.rollback()
         with self._session.begin():
-            job = load_content_job_context(
-                self._session,
+            return self._persist_admitted_content_in_transaction(
                 owner_id=owner_id,
-                job_id=command.job_id,
-            )
-            if (
-                job is None
-                or job.source_key != command.admission.source_key
-                or job.source_capability != command.admission.capability
-            ):
-                raise ApplicationError("resource_not_found")
-            content = self._find_or_create_content(
-                owner_id=owner_id,
-                source_key=command.admission.source_key,
+                command=command,
+                object_type="post",
                 native_scope=command.native_scope,
                 external_id=external_id,
-                created_at=now,
-            )
-            content_version = self._find_or_create_content_version(
-                owner_id=owner_id,
-                content_id=content.id,
-                values=version_values,
-                created_at=now,
-            )
-            values["content_version_id"] = content_version.id if content_version else None
-            observation = self._find_or_create_observation(
-                owner_id=owner_id,
-                content_id=content.id,
-                job_id=job.job_id,
-                source_operation_id=command.source_operation_id,
-                observed_at=command.admission.collected_at,
-                received_at=now,
-                values=values,
-            )
-            self._find_or_create_visibility_observation(
-                owner_id=owner_id,
-                content_id=content.id,
-                job_id=job.job_id,
-                source_operation_id=command.source_operation_id,
-                observed_at=observation.observed_at,
-                received_at=observation.received_at,
-                status=ContentVisibilityStatus.VISIBLE,
-                basis=ContentVisibilityBasis.CONTENT_RETURNED,
-            )
-            self._find_or_create_discovery(
-                owner_id=owner_id,
-                content_id=content.id,
-                job_id=job.job_id,
-                first_observed_at=observation.observed_at,
-                created_at=now,
-            )
-            LifecycleService(self._session, clock=self._clock).track_resource_in_transaction(
-                owner_id=owner_id,
-                resource_type=_RESOURCE_TYPE,
-                resource_id=observation.id,
-                admission=command.admission,
-                cleanup_targets=[
-                    CleanupTargetSpec(
-                        kind=CleanupTargetKind.POSTGRES_CONTENT_OBSERVATION,
-                        reference=str(observation.id),
-                    )
-                ],
-            )
-            SourceCapabilityEvidenceService(
-                self._session,
-                clock=self._clock,
-            ).record_persisted_read_in_transaction(
-                owner_id=owner_id,
-                command=PersistedReadEvidenceInput(
-                    operation_id=command.source_operation_id,
-                    connection_id=command.connection_id,
-                    connection_version=command.connection_version,
-                    capability=command.admission.capability,
-                    entry_point=command.entry_point,
-                    outcome=ConnectionEvidenceOutcome.SUCCEEDED,
-                    stop_reason=None,
-                    resource_ref=f"content_observation:{observation.id}",
-                    component_name=command.component_name,
-                    component_version=command.component_version,
-                ),
-            )
-            readable_observations = self._readable_observation_history(
-                owner_id=owner_id,
-                content_id=content.id,
+                observation_values=values,
+                version_values=version_values,
                 now=now,
             )
-            version_views = self._content_version_views(
-                owner_id=owner_id,
-                content_observations=[(content, item) for item in readable_observations],
-                now=now,
-            )
-            visibility_history = self._visibility_history(
-                owner_id=owner_id,
-                content_id=content.id,
-            )
-            view = self._detail_view(
-                content=content,
-                observation=observation,
-                content_version=self._selected_version_view(observation, version_views),
-                current_visibility=(visibility_history[0] if visibility_history else None),
-                discoveries=self._discoveries(owner_id, content.id, {job.job_id}),
-                job_contexts={job.job_id: job},
-                version_history=self._version_history(readable_observations, version_views),
-                visibility_history=visibility_history,
-            )
-        return view
+
+    def persist_document_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: PersistContentDocumentInput,
+    ) -> ContentRecordDetailView:
+        """Persist one normalized document inside an existing outer transaction."""
+        now = self._clock()
+        if now.utcoffset() is None:
+            raise ValueError("clock must return a timezone-aware datetime")
+        if command.admission.owner_id != owner_id:
+            raise ApplicationError("resource_not_found")
+        if command.admission.collected_at > now:
+            raise ValueError("collected_at cannot be in the future")
+        fields = dict(command.admission.fields)
+        if set(fields) - _DOCUMENT_ALLOWED_FIELDS:
+            raise ValueError("admitted payload contains fields outside the webpage contract")
+        if fields.get("object_type") != "webpage":
+            raise ValueError("document persistence only accepts webpage objects")
+        if fields.get("text_origin") != ContentTextOrigin.MACHINE_EXTRACTED.value:
+            raise ValueError("webpage text must be machine-extracted")
+        text_scope = fields.get("text_scope")
+        if text_scope not in {ContentTextScope.FULL.value, ContentTextScope.TRUNCATED.value}:
+            raise ValueError("webpage text_scope must be full or truncated")
+        if not isinstance(fields.get("body"), str):
+            raise ValueError("webpage body is required")
+        if (
+            text_scope == ContentTextScope.TRUNCATED.value
+            and fields.get("truncation_reason") != ContentTruncationReason.COLLECTOR_LIMIT.value
+        ):
+            raise ValueError("truncated webpage text requires collector_limit")
+
+        request_url = _normalized_web_url(fields, "request_url")
+        final_url = _normalized_web_url(fields, "final_url")
+        native_scope = urlsplit(request_url).hostname
+        assert native_scope is not None
+        external_id = hashlib.sha256(request_url.encode()).hexdigest()
+        persistence_fields = {
+            name: value
+            for name, value in fields.items()
+            if name not in {"object_type", "request_url", "final_url"}
+        }
+        persistence_fields["canonical_url"] = request_url
+        persistence_fields["final_url"] = final_url
+        observation_values = self._observation_values(persistence_fields)
+        version_values = _content_version_values(persistence_fields)
+        if version_values is None:
+            raise ValueError("webpage content version is required")
+        return self._persist_admitted_content_in_transaction(
+            owner_id=owner_id,
+            command=command,
+            object_type="webpage",
+            native_scope=native_scope,
+            external_id=external_id,
+            observation_values=observation_values,
+            version_values=version_values,
+            now=now,
+        )
+
+    def _persist_admitted_content_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: PersistContentPostInput | PersistContentDocumentInput,
+        object_type: str,
+        native_scope: str | None,
+        external_id: str,
+        observation_values: dict[str, object],
+        version_values: _ContentVersionValues | None,
+        now: datetime,
+    ) -> ContentRecordDetailView:
+        job = load_content_job_context(
+            self._session,
+            owner_id=owner_id,
+            job_id=command.job_id,
+        )
+        if (
+            job is None
+            or job.source_key != command.admission.source_key
+            or job.source_capability != command.admission.capability
+        ):
+            raise ApplicationError("resource_not_found")
+        content = self._find_or_create_content(
+            owner_id=owner_id,
+            source_key=command.admission.source_key,
+            object_type=object_type,
+            native_scope=native_scope,
+            external_id=external_id,
+            created_at=now,
+        )
+        content_version = self._find_or_create_content_version(
+            owner_id=owner_id,
+            content_id=content.id,
+            values=version_values,
+            created_at=now,
+        )
+        observation_values["content_version_id"] = content_version.id if content_version else None
+        observation = self._find_or_create_observation(
+            owner_id=owner_id,
+            content_id=content.id,
+            job_id=job.job_id,
+            source_operation_id=command.source_operation_id,
+            observed_at=command.admission.collected_at,
+            received_at=now,
+            values=observation_values,
+        )
+        self._find_or_create_visibility_observation(
+            owner_id=owner_id,
+            content_id=content.id,
+            job_id=job.job_id,
+            source_operation_id=command.source_operation_id,
+            observed_at=observation.observed_at,
+            received_at=observation.received_at,
+            status=ContentVisibilityStatus.VISIBLE,
+            basis=ContentVisibilityBasis.CONTENT_RETURNED,
+        )
+        self._find_or_create_discovery(
+            owner_id=owner_id,
+            content_id=content.id,
+            job_id=job.job_id,
+            first_observed_at=observation.observed_at,
+            created_at=now,
+        )
+        LifecycleService(self._session, clock=self._clock).track_resource_in_transaction(
+            owner_id=owner_id,
+            resource_type=_RESOURCE_TYPE,
+            resource_id=observation.id,
+            admission=command.admission,
+            cleanup_targets=[
+                CleanupTargetSpec(
+                    kind=CleanupTargetKind.POSTGRES_CONTENT_OBSERVATION,
+                    reference=str(observation.id),
+                )
+            ],
+        )
+        SourceCapabilityEvidenceService(
+            self._session,
+            clock=self._clock,
+        ).record_persisted_read_in_transaction(
+            owner_id=owner_id,
+            command=PersistedReadEvidenceInput(
+                operation_id=command.source_operation_id,
+                connection_id=command.connection_id,
+                connection_version=command.connection_version,
+                capability=command.admission.capability,
+                entry_point=command.entry_point,
+                outcome=ConnectionEvidenceOutcome.SUCCEEDED,
+                stop_reason=None,
+                resource_ref=f"content_observation:{observation.id}",
+                component_name=command.component_name,
+                component_version=command.component_version,
+            ),
+        )
+        readable_observations = self._readable_observation_history(
+            owner_id=owner_id,
+            content_id=content.id,
+            now=now,
+        )
+        version_views = self._content_version_views(
+            owner_id=owner_id,
+            content_observations=[(content, item) for item in readable_observations],
+            now=now,
+        )
+        visibility_history = self._visibility_history(
+            owner_id=owner_id,
+            content_id=content.id,
+        )
+        return self._detail_view(
+            content=content,
+            observation=observation,
+            content_version=self._selected_version_view(observation, version_views),
+            current_visibility=(visibility_history[0] if visibility_history else None),
+            discoveries=self._discoveries(owner_id, content.id, {job.job_id}),
+            job_contexts={job.job_id: job},
+            version_history=self._version_history(readable_observations, version_views),
+            visibility_history=visibility_history,
+        )
 
     def record_visibility(
         self,
@@ -645,6 +758,7 @@ class ContentService:
         )
         return {
             "canonical_url": _optional_url(fields),
+            "final_url": _optional_url(fields, "final_url"),
             "author_external_id": _optional_identifier(fields, "author_external_id"),
             "published_at": published_at,
             "published_at_fractional_digits": published_at_fractional_digits,
@@ -656,6 +770,7 @@ class ContentService:
         *,
         owner_id: UUID,
         source_key: str,
+        object_type: str,
         native_scope: str | None,
         external_id: str,
         created_at: datetime,
@@ -667,7 +782,7 @@ class ContentService:
                 id=content_id,
                 owner_id=owner_id,
                 source_key=source_key,
-                object_type="post",
+                object_type=object_type,
                 native_scope=native_scope,
                 external_id=external_id,
                 created_at=created_at,
@@ -680,7 +795,7 @@ class ContentService:
                 id=inserted_id,
                 owner_id=owner_id,
                 source_key=source_key,
-                object_type="post",
+                object_type=object_type,
                 native_scope=native_scope,
                 external_id=external_id,
                 created_at=created_at,
@@ -688,7 +803,7 @@ class ContentService:
         conditions = [
             ContentRecord.owner_id == owner_id,
             ContentRecord.source_key == source_key,
-            ContentRecord.object_type == "post",
+            ContentRecord.object_type == object_type,
             ContentRecord.external_id == external_id,
         ]
         conditions.append(
@@ -1245,6 +1360,7 @@ class ContentService:
             published_at=observation.published_at,
             published_at_fractional_digits=observation.published_at_fractional_digits,
             canonical_url=observation.canonical_url,
+            final_url=observation.final_url,
             author_external_id=observation.author_external_id,
             metrics=ContentMetricView(
                 **{name: getattr(observation, name) for name in _METRIC_FIELDS}

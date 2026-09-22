@@ -701,7 +701,9 @@ CREATE TABLE content_records (
     source_key VARCHAR(64) NOT NULL CHECK (
         source_key ~ '^[a-z][a-z0-9_-]{0,63}$'
     ),
-    object_type VARCHAR(16) NOT NULL CHECK (object_type IN ('post', 'comment')),
+    object_type VARCHAR(16) NOT NULL CHECK (
+        object_type IN ('post', 'comment', 'webpage')
+    ),
     native_scope VARCHAR(512) CHECK (native_scope IS NULL OR native_scope <> ''),
     external_id VARCHAR(512) NOT NULL CHECK (external_id <> ''),
     created_at TIMESTAMPTZ NOT NULL,
@@ -848,6 +850,9 @@ CREATE TABLE content_observations (
     published_at_fractional_digits SMALLINT,
     canonical_url VARCHAR(2048) CHECK (
         canonical_url IS NULL OR canonical_url ~ '^https?://'
+    ),
+    final_url VARCHAR(2048) CHECK (
+        final_url IS NULL OR final_url ~ '^https?://'
     ),
     author_external_id VARCHAR(512) CHECK (
         author_external_id IS NULL OR author_external_id <> ''

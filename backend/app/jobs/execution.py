@@ -271,48 +271,72 @@ class JobExecutionService:
         checkpoint: Mapping[str, CheckpointValue],
         progress: JobProgress | None = None,
     ) -> ExecutionLease:
+        self._session.rollback()
+        with self._session.begin():
+            return self.save_checkpoint_in_transaction(
+                lease,
+                sequence=sequence,
+                checkpoint=checkpoint,
+                progress=progress,
+            )
+
+    def require_current_lease_in_transaction(self, lease: ExecutionLease) -> ExecutionLease:
+        """Lock and verify a live, non-cancelled lease in the caller's transaction."""
+        now = self._clock()
+        model = self._lock_job(lease.job_id)
+        self._require_current_lease(model, lease, now)
+        if model.cancel_requested_at is not None:
+            raise JobLeaseUnavailableError("job cancellation has been requested")
+        return self._lease(model)
+
+    def save_checkpoint_in_transaction(
+        self,
+        lease: ExecutionLease,
+        *,
+        sequence: int,
+        checkpoint: Mapping[str, CheckpointValue],
+        progress: JobProgress | None = None,
+    ) -> ExecutionLease:
+        """Persist one fenced checkpoint inside an existing outer transaction."""
         stored_checkpoint = _validate_checkpoint(checkpoint)
         now = self._clock()
         expires_at = now + self._lease_duration
-        self._session.rollback()
-        with self._session.begin():
-            model = self._lock_job(lease.job_id)
-            self._require_current_lease(model, lease, now)
-            if sequence == model.checkpoint_sequence:
-                if model.checkpoint != stored_checkpoint:
-                    raise CheckpointConflictError("checkpoint sequence already has other data")
-                if progress is not None and (
-                    model.progress_stage != progress.stage.value
-                    or model.items_saved != progress.items_saved
-                ):
-                    raise CheckpointConflictError("checkpoint sequence already has other progress")
-            elif sequence == model.checkpoint_sequence + 1:
-                if progress is not None and progress.items_saved < model.items_saved:
-                    raise CheckpointConflictError("saved item count cannot decrease")
-                model.checkpoint_sequence = sequence
-                model.checkpoint = stored_checkpoint
-                if progress is not None:
-                    model.progress_stage = progress.stage.value
-                    model.items_saved = progress.items_saved
-                    model.progress_updated_at = now
-            else:
-                raise CheckpointConflictError("checkpoint sequence must advance by one")
+        model = self._lock_job(lease.job_id)
+        self._require_current_lease(model, lease, now)
+        if sequence == model.checkpoint_sequence:
+            if model.checkpoint != stored_checkpoint:
+                raise CheckpointConflictError("checkpoint sequence already has other data")
+            if progress is not None and (
+                model.progress_stage != progress.stage.value
+                or model.items_saved != progress.items_saved
+            ):
+                raise CheckpointConflictError("checkpoint sequence already has other progress")
+        elif sequence == model.checkpoint_sequence + 1:
+            if progress is not None and progress.items_saved < model.items_saved:
+                raise CheckpointConflictError("saved item count cannot decrease")
+            model.checkpoint_sequence = sequence
+            model.checkpoint = stored_checkpoint
+            if progress is not None:
+                model.progress_stage = progress.stage.value
+                model.items_saved = progress.items_saved
+                model.progress_updated_at = now
+        else:
+            raise CheckpointConflictError("checkpoint sequence must advance by one")
 
-            if model.cancel_deadline_at is not None:
-                expires_at = min(expires_at, model.cancel_deadline_at)
-            model.lease_expires_at = expires_at
-            model.updated_at = now
-            self._session.execute(
-                update(JobAttempt)
-                .where(
-                    JobAttempt.job_id == model.id,
-                    JobAttempt.lease_epoch == model.lease_epoch,
-                    JobAttempt.finished_at.is_(None),
-                )
-                .values(lease_expires_at=expires_at)
+        if model.cancel_deadline_at is not None:
+            expires_at = min(expires_at, model.cancel_deadline_at)
+        model.lease_expires_at = expires_at
+        model.updated_at = now
+        self._session.execute(
+            update(JobAttempt)
+            .where(
+                JobAttempt.job_id == model.id,
+                JobAttempt.lease_epoch == model.lease_epoch,
+                JobAttempt.finished_at.is_(None),
             )
-            renewed = self._lease(model)
-        return renewed
+            .values(lease_expires_at=expires_at)
+        )
+        return self._lease(model)
 
     def begin_request(self, lease: ExecutionLease) -> tuple[ExecutionLease, bool]:
         now = self._clock()

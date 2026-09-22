@@ -498,43 +498,15 @@ class LifecycleService:
         if len(target_keys) != len(cleanup_targets):
             raise ValueError("cleanup targets must be unique")
         now = self._clock()
-        if admission.owner_id != owner_id or admission.expires_at <= now:
-            raise ResourceUnavailableError("resource admission is unavailable or expired")
+        self._require_admission_in_transaction(
+            owner_id=owner_id,
+            admission=admission,
+            now=now,
+        )
         serialized_targets = [
             target.model_dump(mode="json")
             for target in sorted(cleanup_targets, key=lambda item: (item.kind, item.reference))
         ]
-        source_policy = self._session.scalar(
-            select(SourceAccessPolicy).where(
-                SourceAccessPolicy.owner_id == owner_id,
-                SourceAccessPolicy.id == admission.policy_id,
-            )
-        )
-        retention = self._session.scalar(
-            select(RetentionPolicy).where(
-                RetentionPolicy.owner_id == owner_id,
-                RetentionPolicy.id == admission.retention_policy_id,
-            )
-        )
-        if (
-            source_policy is None
-            or source_policy.policy_version != admission.policy_version
-            or source_policy.status != AccessPolicyStatus.APPROVED.value
-            or not source_policy.enabled
-            or (
-                source_policy.review_expires_at is not None
-                and source_policy.review_expires_at <= now
-            )
-            or retention is None
-            or retention.policy_version != admission.retention_policy_version
-            or retention.source_policy_id != admission.policy_id
-            or retention.source_policy_version != source_policy.policy_version
-            or retention.data_class != admission.data_class.value
-            or retention.effective_days == 0
-            or admission.expires_at
-            != admission.collected_at + timedelta(days=retention.effective_days)
-        ):
-            raise ResourceUnavailableError("resource admission is stale")
         model = self._session.scalar(
             select(EvidenceResource)
             .where(
@@ -575,6 +547,68 @@ class LifecycleService:
         self._session.add(model)
         self._session.flush()
         return self._resource_view(model)
+
+    def require_admission_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        admission: AdmittedSourcePayload,
+    ) -> None:
+        """Lock and verify current source and retention policy versions."""
+        self._require_admission_in_transaction(
+            owner_id=owner_id,
+            admission=admission,
+            now=self._clock(),
+        )
+
+    def _require_admission_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        admission: AdmittedSourcePayload,
+        now: datetime,
+    ) -> None:
+        if admission.owner_id != owner_id or admission.expires_at <= now:
+            raise ResourceUnavailableError("resource admission is unavailable or expired")
+        source_policy = self._session.scalar(
+            select(SourceAccessPolicy)
+            .where(
+                SourceAccessPolicy.owner_id == owner_id,
+                SourceAccessPolicy.id == admission.policy_id,
+            )
+            .with_for_update()
+        )
+        retention = self._session.scalar(
+            select(RetentionPolicy)
+            .where(
+                RetentionPolicy.owner_id == owner_id,
+                RetentionPolicy.id == admission.retention_policy_id,
+            )
+            .with_for_update()
+        )
+        if (
+            source_policy is None
+            or source_policy.policy_version != admission.policy_version
+            or source_policy.source_key != admission.source_key
+            or source_policy.capability != admission.capability.value
+            or source_policy.status != AccessPolicyStatus.APPROVED.value
+            or not source_policy.enabled
+            or not admission.fields
+            or not set(admission.fields).issubset(source_policy.field_purposes)
+            or (
+                source_policy.review_expires_at is not None
+                and source_policy.review_expires_at <= now
+            )
+            or retention is None
+            or retention.policy_version != admission.retention_policy_version
+            or retention.source_policy_id != admission.policy_id
+            or retention.source_policy_version != source_policy.policy_version
+            or retention.data_class != admission.data_class.value
+            or retention.effective_days == 0
+            or admission.expires_at
+            != admission.collected_at + timedelta(days=retention.effective_days)
+        ):
+            raise ResourceUnavailableError("resource admission is stale")
 
     def assert_readable(
         self,

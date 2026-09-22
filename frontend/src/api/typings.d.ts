@@ -73,6 +73,8 @@ declare namespace HotKeyAPI {
     published_at_fractional_digits: number | null;
     /** Canonical Url */
     canonical_url: string | null;
+    /** Final Url */
+    final_url: string | null;
     /** Author External Id */
     author_external_id: string | null;
     metrics: ContentMetricView;
@@ -85,7 +87,7 @@ declare namespace HotKeyAPI {
     /** Source Key */
     source_key: string;
     /** Object Type */
-    object_type: "post" | "comment";
+    object_type: "post" | "comment" | "webpage";
     /** Native Scope */
     native_scope: string | null;
     /** External Id */
@@ -108,7 +110,7 @@ declare namespace HotKeyAPI {
     /** Source Key */
     source_key: string;
     /** Object Type */
-    object_type: "post" | "comment";
+    object_type: "post" | "comment" | "webpage";
     /** Native Scope */
     native_scope: string | null;
     /** External Id */
