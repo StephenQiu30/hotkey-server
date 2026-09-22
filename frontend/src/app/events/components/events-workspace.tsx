@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { LogOutIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
 
 import { deleteIdentitySession, getIdentityWorkspace } from "@/api/identity";
+import { TopicList } from "@/components/monitors/topic-list";
 import { PageState } from "@/components/system/page-state";
 import { Button } from "@/components/ui/button";
 import { ApiRequestError } from "@/request";
@@ -178,6 +179,7 @@ export function EventsWorkspace() {
             完成监控配置后，发现的热点事件会汇总到这里。
           </p>
         </section>
+        <TopicList />
         {signOutError ? (
           <p role="alert" className="text-destructive mt-4 text-sm">
             {signOutError}

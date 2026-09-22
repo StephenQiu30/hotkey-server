@@ -32,6 +32,8 @@ ERROR_CATEGORIES: Mapping[str, ErrorCategory] = MappingProxyType(
         "invalid_monitor_rules": ErrorCategory.INVALID_INPUT,
         "keyword_group_conflict": ErrorCategory.INVALID_INPUT,
         "resource_not_found": ErrorCategory.NOT_FOUND,
+        "topic_archived": ErrorCategory.CONFLICT,
+        "topic_not_ready": ErrorCategory.CONFLICT,
         "topic_version_conflict": ErrorCategory.CONFLICT,
     }
 )

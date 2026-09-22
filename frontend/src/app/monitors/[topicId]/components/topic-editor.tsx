@@ -5,14 +5,25 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import {
   ArrowLeftIcon,
+  ArchiveIcon,
   CheckCircle2Icon,
+  CopyIcon,
   LoaderCircleIcon,
+  PauseIcon,
+  PlayIcon,
   RefreshCwIcon,
   RotateCcwIcon,
   SaveIcon,
 } from "lucide-react";
 
-import { getMonitorTopic, updateMonitorTopic } from "@/api/jiankongzhuti";
+import {
+  archiveMonitorTopic,
+  cloneMonitorTopic,
+  getMonitorTopic,
+  pauseMonitorTopic,
+  resumeMonitorTopic,
+  updateMonitorTopic,
+} from "@/api/jiankongzhuti";
 import {
   KeywordGroupField,
   parseKeywordLines,
@@ -38,6 +49,8 @@ type ActionFeedback = {
   requestId?: string;
 };
 
+type PendingAction = "archive" | "clone" | "pause" | "resume" | "save";
+
 function isInvalidSession(error: unknown): boolean {
   return error instanceof ApiRequestError && error.code === "invalid_session";
 }
@@ -62,7 +75,7 @@ function toActionFeedback(error: unknown): ActionFeedback {
       requestId: error.requestId,
     };
   }
-  return { kind: "error", message: "主题保存失败，请稍后重试。" };
+  return { kind: "error", message: "主题操作失败，请稍后重试。" };
 }
 
 export function TopicEditor({ topicId }: TopicEditorProps) {
@@ -72,8 +85,11 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
   const [matchAny, setMatchAny] = useState("");
   const [matchAll, setMatchAll] = useState("");
   const [exclude, setExclude] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(
+    null,
+  );
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
+  const isBusy = pendingAction !== null;
 
   const applyTopic = useCallback((topic: HotKeyAPI.MonitorTopicView) => {
     setState({ status: "ready", topic });
@@ -146,7 +162,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (state.status !== "ready" || isSaving) {
+    if (state.status !== "ready" || isBusy) {
       return;
     }
     const any = parseKeywordLines(matchAny);
@@ -159,7 +175,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
       return;
     }
 
-    setIsSaving(true);
+    setPendingAction("save");
     setFeedback(null);
     try {
       const topic = await updateMonitorTopic(
@@ -184,7 +200,49 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
         setFeedback(toActionFeedback(error));
       }
     } finally {
-      setIsSaving(false);
+      setPendingAction(null);
+    }
+  }
+
+  async function runLifecycleAction(
+    action: "archive" | "clone" | "pause" | "resume",
+  ) {
+    if (state.status !== "ready" || isBusy) {
+      return;
+    }
+    setPendingAction(action);
+    setFeedback(null);
+    try {
+      if (action === "clone") {
+        const clone = await cloneMonitorTopic({ topic_id: topicId });
+        router.push(`/monitors/${clone.id}`);
+        return;
+      }
+      const operation =
+        action === "archive"
+          ? archiveMonitorTopic
+          : action === "pause"
+            ? pauseMonitorTopic
+            : resumeMonitorTopic;
+      const topic = await operation({ topic_id: topicId });
+      applyTopic(topic);
+      setFeedback({
+        kind: "success",
+        message:
+          action === "archive"
+            ? "主题已归档，规则历史仍会保留。"
+            : action === "pause"
+              ? "主题已暂停；正在运行的任务需在任务详情单独取消。"
+              : "主题已恢复。",
+      });
+    } catch (error) {
+      if (isInvalidSession(error)) {
+        router.replace("/login");
+      } else {
+        setFeedback(toActionFeedback(error));
+      }
+    } finally {
+      setPendingAction(null);
     }
   }
 
@@ -248,8 +306,18 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
 
       <main className="mx-auto max-w-5xl px-5 py-10 sm:px-8 sm:py-14 xl:px-0">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">已暂停</Badge>
-          <Badge variant="outline">待选择来源</Badge>
+          <Badge
+            variant={topic.status === "archived" ? "outline" : "secondary"}
+          >
+            {topic.status === "archived"
+              ? "已归档"
+              : topic.status === "active"
+                ? "运行中"
+                : "已暂停"}
+          </Badge>
+          <Badge variant="outline">
+            {topic.readiness_status === "ready" ? "来源已就绪" : "待选择来源"}
+          </Badge>
           <span className="text-muted-foreground text-sm">
             规则版本 v{topic.current_version}
           </span>
@@ -273,7 +341,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                   id="topic-name"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  disabled={isSaving}
+                  disabled={isBusy || topic.status === "archived"}
                   minLength={1}
                   maxLength={80}
                   required
@@ -288,7 +356,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                 description="其中任意一个关键词出现即可；与“全部包含”同时填写时，两组条件都要满足。"
                 value={matchAny}
                 onChange={setMatchAny}
-                disabled={isSaving}
+                disabled={isBusy || topic.status === "archived"}
               />
               <KeywordGroupField
                 id="match-all"
@@ -296,7 +364,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                 description="这里的每个关键词都必须出现。该组为空时不会额外限制。"
                 value={matchAll}
                 onChange={setMatchAll}
-                disabled={isSaving}
+                disabled={isBusy || topic.status === "archived"}
               />
               <KeywordGroupField
                 id="exclude"
@@ -304,7 +372,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                 description="任一排除词命中都会优先剔除结果。不要与包含组填写相同关键词。"
                 value={exclude}
                 onChange={setExclude}
-                disabled={isSaving}
+                disabled={isBusy || topic.status === "archived"}
               />
             </section>
           </div>
@@ -315,11 +383,19 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
               <dl className="text-muted-foreground mt-4 space-y-3 text-sm">
                 <div className="flex justify-between gap-4">
                   <dt>运行状态</dt>
-                  <dd className="text-foreground">已暂停</dd>
+                  <dd className="text-foreground">
+                    {topic.status === "archived"
+                      ? "已归档"
+                      : topic.status === "active"
+                        ? "运行中"
+                        : "已暂停"}
+                  </dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt>来源</dt>
-                  <dd className="text-foreground">待选择</dd>
+                  <dd className="text-foreground">
+                    {topic.readiness_status === "ready" ? "已就绪" : "待选择"}
+                  </dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt>当前版本</dt>
@@ -362,8 +438,12 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                 </div>
               ) : null}
 
-              <Button className="mt-5 w-full" size="lg" disabled={isSaving}>
-                {isSaving ? (
+              <Button
+                className="mt-5 w-full"
+                size="lg"
+                disabled={isBusy || topic.status === "archived"}
+              >
+                {pendingAction === "save" ? (
                   <LoaderCircleIcon
                     className="animate-spin"
                     aria-hidden="true"
@@ -371,8 +451,57 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                 ) : (
                   <SaveIcon data-icon="inline-start" />
                 )}
-                {isSaving ? "正在保存" : "保存修改"}
+                {pendingAction === "save" ? "正在保存" : "保存修改"}
               </Button>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={isBusy}
+                  onClick={() => void runLifecycleAction("clone")}
+                >
+                  <CopyIcon data-icon="inline-start" />
+                  复制
+                </Button>
+                {topic.status === "active" ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={isBusy}
+                    onClick={() => void runLifecycleAction("pause")}
+                  >
+                    <PauseIcon data-icon="inline-start" />
+                    暂停
+                  </Button>
+                ) : topic.status === "paused" ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={isBusy}
+                    onClick={() => void runLifecycleAction("resume")}
+                  >
+                    <PlayIcon data-icon="inline-start" />
+                    恢复
+                  </Button>
+                ) : null}
+              </div>
+              {topic.status !== "archived" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2 w-full"
+                  disabled={isBusy}
+                  onClick={() => void runLifecycleAction("archive")}
+                >
+                  <ArchiveIcon data-icon="inline-start" />
+                  归档主题
+                </Button>
+              ) : null}
             </div>
           </aside>
         </form>

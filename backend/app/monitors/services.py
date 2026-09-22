@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from core.errors import ApplicationError
@@ -154,6 +154,94 @@ class MonitorTopicService:
             view = self._view(topic, version)
         return view
 
+    def list_topics(
+        self,
+        *,
+        owner_id: UUID,
+        include_archived: bool,
+        cursor: UUID | None,
+        limit: int,
+    ) -> tuple[list[MonitorTopicView], str | None]:
+        self._session.rollback()
+        with self._session.begin():
+            statement = (
+                select(MonitorTopic, MonitorTopicVersion)
+                .join(
+                    MonitorTopicVersion,
+                    and_(
+                        MonitorTopicVersion.topic_id == MonitorTopic.id,
+                        MonitorTopicVersion.version == MonitorTopic.current_version,
+                    ),
+                )
+                .where(MonitorTopic.owner_id == owner_id)
+                .order_by(MonitorTopic.id)
+                .limit(limit + 1)
+            )
+            if not include_archived:
+                statement = statement.where(
+                    MonitorTopic.status != MonitorTopicStatus.ARCHIVED.value
+                )
+            if cursor is not None:
+                statement = statement.where(MonitorTopic.id > cursor)
+            rows = list(self._session.execute(statement).all())
+            has_more = len(rows) > limit
+            page_rows = rows[:limit]
+            items = [self._view(topic, version) for topic, version in page_rows]
+            next_cursor = str(page_rows[-1][0].id) if has_more else None
+        return items, next_cursor
+
+    def clone_topic(self, *, owner_id: UUID, topic_id: UUID) -> MonitorTopicView:
+        now = self._clock()
+        self._session.rollback()
+        with self._session.begin():
+            source = self._find_topic(owner_id=owner_id, topic_id=topic_id)
+            source_version = self._find_version(source)
+            clone = MonitorTopic(
+                id=uuid4(),
+                owner_id=owner_id,
+                name=source.name,
+                status=MonitorTopicStatus.PAUSED.value,
+                readiness_status=MonitorTopicReadinessStatus.PENDING_SOURCE_SELECTION.value,
+                current_version=1,
+                created_at=now,
+                updated_at=now,
+            )
+            clone_version = MonitorTopicVersion(
+                topic_id=clone.id,
+                version=1,
+                created_by=owner_id,
+                match_any=list(source_version.match_any),
+                match_all=list(source_version.match_all),
+                exclude=list(source_version.exclude),
+                created_at=now,
+            )
+            self._session.add(clone)
+            self._session.flush()
+            self._session.add(clone_version)
+            view = self._view(clone, clone_version)
+        return view
+
+    def pause_topic(self, *, owner_id: UUID, topic_id: UUID) -> MonitorTopicView:
+        return self._transition_topic(
+            owner_id=owner_id,
+            topic_id=topic_id,
+            target=MonitorTopicStatus.PAUSED,
+        )
+
+    def resume_topic(self, *, owner_id: UUID, topic_id: UUID) -> MonitorTopicView:
+        return self._transition_topic(
+            owner_id=owner_id,
+            topic_id=topic_id,
+            target=MonitorTopicStatus.ACTIVE,
+        )
+
+    def archive_topic(self, *, owner_id: UUID, topic_id: UUID) -> MonitorTopicView:
+        return self._transition_topic(
+            owner_id=owner_id,
+            topic_id=topic_id,
+            target=MonitorTopicStatus.ARCHIVED,
+        )
+
     def update_topic(
         self,
         *,
@@ -171,6 +259,8 @@ class MonitorTopicService:
                 topic_id=topic_id,
                 for_update=True,
             )
+            if topic.status == MonitorTopicStatus.ARCHIVED.value:
+                raise ApplicationError("topic_archived")
             if topic.current_version != command.expected_version:
                 raise ApplicationError("topic_version_conflict")
             current = self._find_version(topic)
@@ -197,6 +287,37 @@ class MonitorTopicService:
                 topic.name = name
                 topic.updated_at = now
             view = self._view(topic, current)
+        return view
+
+    def _transition_topic(
+        self,
+        *,
+        owner_id: UUID,
+        topic_id: UUID,
+        target: MonitorTopicStatus,
+    ) -> MonitorTopicView:
+        now = self._clock()
+        self._session.rollback()
+        with self._session.begin():
+            topic = self._find_topic(
+                owner_id=owner_id,
+                topic_id=topic_id,
+                for_update=True,
+            )
+            if topic.status == MonitorTopicStatus.ARCHIVED.value:
+                if target != MonitorTopicStatus.ARCHIVED:
+                    raise ApplicationError("topic_archived")
+            elif target == MonitorTopicStatus.ACTIVE:
+                if topic.readiness_status != MonitorTopicReadinessStatus.READY.value:
+                    raise ApplicationError("topic_not_ready")
+                if topic.status != target.value:
+                    topic.status = target.value
+                    topic.updated_at = now
+            elif topic.status != target.value:
+                topic.status = target.value
+                topic.updated_at = now
+            version = self._find_version(topic)
+            view = self._view(topic, version)
         return view
 
     def _find_topic(

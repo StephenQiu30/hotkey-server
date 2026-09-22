@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Query, Response, status
 
 from api.dependencies import (
     AuthenticatedIdentityDependency,
     CsrfProtectedIdentityDependency,
     MonitorTopicServiceDependency,
 )
-from core.schemas import ErrorView
+from core.schemas import ErrorView, PageView
 from monitors.schemas import MonitorTopicCreateInput, MonitorTopicUpdateInput, MonitorTopicView
 
 router = APIRouter(prefix="/topics", tags=["监控主题"])
@@ -26,10 +26,37 @@ _WRITE_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorView, "description": "会话无效或已过期"},
     403: {"model": ErrorView, "description": "请求安全校验失败"},
     404: {"model": ErrorView, "description": "主题不存在或不可访问"},
-    409: {"model": ErrorView, "description": "主题版本已变更"},
+    409: {"model": ErrorView, "description": "主题状态或版本不允许当前操作"},
     422: {"model": ErrorView, "description": "请求参数校验失败"},
     500: {"model": ErrorView, "description": "服务内部异常"},
 }
+
+
+@router.get(
+    "",
+    operation_id="listMonitorTopics",
+    response_model=PageView[MonitorTopicView],
+    status_code=status.HTTP_200_OK,
+    summary="列出监控主题",
+    description="按当前 owner 列出主题; 默认隐藏已归档主题。",
+    responses=_READ_RESPONSES,
+)
+def list_monitor_topics(
+    response: Response,
+    service: MonitorTopicServiceDependency,
+    identity: AuthenticatedIdentityDependency,
+    include_archived: bool = False,
+    cursor: UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> PageView[MonitorTopicView]:
+    items, next_cursor = service.list_topics(
+        owner_id=identity.view.user.id,
+        include_archived=include_archived,
+        cursor=cursor,
+        limit=limit,
+    )
+    response.headers["cache-control"] = "no-store"
+    return PageView(items=items, next_cursor=next_cursor)
 
 
 @router.post(
@@ -94,5 +121,86 @@ def update_monitor_topic(
         topic_id=topic_id,
         command=payload,
     )
+    response.headers["cache-control"] = "no-store"
+    return topic
+
+
+@router.post(
+    "/{topic_id}/clone",
+    operation_id="cloneMonitorTopic",
+    response_model=MonitorTopicView,
+    status_code=status.HTTP_201_CREATED,
+    summary="复制监控主题",
+    description="复制当前规则为新主题版本 1; 新主题固定暂停且不复制旧任务。",
+    responses=_WRITE_RESPONSES,
+)
+def clone_monitor_topic(
+    topic_id: UUID,
+    response: Response,
+    service: MonitorTopicServiceDependency,
+    identity: CsrfProtectedIdentityDependency,
+) -> MonitorTopicView:
+    topic = service.clone_topic(owner_id=identity.view.user.id, topic_id=topic_id)
+    response.headers["location"] = f"/api/topics/{topic.id}"
+    response.headers["cache-control"] = "no-store"
+    return topic
+
+
+@router.post(
+    "/{topic_id}/pause",
+    operation_id="pauseMonitorTopic",
+    response_model=MonitorTopicView,
+    status_code=status.HTTP_200_OK,
+    summary="暂停监控主题",
+    description="暂停后不允许后续调度; 已运行任务仍需在任务详情单独取消。",
+    responses=_WRITE_RESPONSES,
+)
+def pause_monitor_topic(
+    topic_id: UUID,
+    response: Response,
+    service: MonitorTopicServiceDependency,
+    identity: CsrfProtectedIdentityDependency,
+) -> MonitorTopicView:
+    topic = service.pause_topic(owner_id=identity.view.user.id, topic_id=topic_id)
+    response.headers["cache-control"] = "no-store"
+    return topic
+
+
+@router.post(
+    "/{topic_id}/resume",
+    operation_id="resumeMonitorTopic",
+    response_model=MonitorTopicView,
+    status_code=status.HTTP_200_OK,
+    summary="恢复监控主题",
+    description="仅来源已就绪的暂停主题可恢复; 保存主题本身不启动采集。",
+    responses=_WRITE_RESPONSES,
+)
+def resume_monitor_topic(
+    topic_id: UUID,
+    response: Response,
+    service: MonitorTopicServiceDependency,
+    identity: CsrfProtectedIdentityDependency,
+) -> MonitorTopicView:
+    topic = service.resume_topic(owner_id=identity.view.user.id, topic_id=topic_id)
+    response.headers["cache-control"] = "no-store"
+    return topic
+
+
+@router.post(
+    "/{topic_id}/archive",
+    operation_id="archiveMonitorTopic",
+    response_model=MonitorTopicView,
+    status_code=status.HTTP_200_OK,
+    summary="归档监控主题",
+    description="归档主题并保留规则历史; 不删除资料; 不假报在途任务已取消。",
+    responses=_WRITE_RESPONSES,
+)
+def archive_monitor_topic(
+    topic_id: UUID,
+    response: Response,
+    service: MonitorTopicServiceDependency,
+    identity: CsrfProtectedIdentityDependency,
+) -> MonitorTopicView:
+    topic = service.archive_topic(owner_id=identity.view.user.id, topic_id=topic_id)
     response.headers["cache-control"] = "no-store"
     return topic

@@ -85,7 +85,6 @@ def test_topic_create_edit_and_reopen_preserve_immutable_versions(
         headers=_csrf_headers(monitor_topic_client),
         json=_topic_payload(),
     )
-
     assert created.status_code == 201, created.json()
     assert created.headers["location"] == f"/api/topics/{created.json()['id']}"
     assert created.headers["cache-control"] == "no-store"
@@ -230,6 +229,154 @@ def test_topic_routes_enforce_session_csrf_and_hidden_missing_boundary(
     _initialize(monitor_topic_client)
     missing_csrf = monitor_topic_client.post("/api/topics", json=_topic_payload())
     assert missing_csrf.status_code == 403
+    created = monitor_topic_client.post(
+        "/api/topics",
+        headers=_csrf_headers(monitor_topic_client),
+        json=_topic_payload(),
+    )
+    clone_without_csrf = monitor_topic_client.post(f"{created.headers['location']}/clone")
+    assert clone_without_csrf.status_code == 403
     missing = monitor_topic_client.get(f"/api/topics/{uuid4()}")
     assert missing.status_code == 404
     assert missing.json()["code"] == "resource_not_found"
+
+
+def test_topic_list_clone_and_archive_keep_independent_history(
+    monitor_topic_client: TestClient,
+) -> None:
+    _initialize(monitor_topic_client)
+    created = monitor_topic_client.post(
+        "/api/topics",
+        headers=_csrf_headers(monitor_topic_client),
+        json=_topic_payload(),
+    )
+    accepted_job = monitor_topic_client.post(
+        "/api/jobs",
+        headers=_csrf_headers(monitor_topic_client),
+        json={
+            "operation_id": str(uuid4()),
+            "kind": "monitor.collect",
+            "observation": {
+                "configuration_ref": f"topic:{created.json()['id']}",
+                "configuration_version": 1,
+                "source_key": "x",
+                "source_capability": "search",
+            },
+            "scheduled_for_at": None,
+            "scope": {"query": "brand"},
+        },
+    )
+    assert accepted_job.status_code == 202
+
+    listed = monitor_topic_client.get("/api/topics")
+    cloned = monitor_topic_client.post(
+        f"{created.headers['location']}/clone",
+        headers=_csrf_headers(monitor_topic_client),
+    )
+
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()["items"]] == [created.json()["id"]]
+    assert cloned.status_code == 201
+    assert cloned.json()["id"] != created.json()["id"]
+    assert cloned.json()["status"] == "paused"
+    assert cloned.json()["current_version"] == 1
+    assert cloned.json()["rules"] == created.json()["rules"]
+    first_page = monitor_topic_client.get("/api/topics?limit=1")
+    assert first_page.status_code == 200
+    assert len(first_page.json()["items"]) == 1
+    assert first_page.json()["next_cursor"] is not None
+    second_page = monitor_topic_client.get(
+        "/api/topics",
+        params={"limit": 1, "cursor": first_page.json()["next_cursor"]},
+    )
+    assert second_page.status_code == 200
+    assert second_page.json()["next_cursor"] is None
+    assert {
+        first_page.json()["items"][0]["id"],
+        second_page.json()["items"][0]["id"],
+    } == {created.json()["id"], cloned.json()["id"]}
+    factory = monitor_topic_client.app.state.session_factory
+    with factory() as session:
+        jobs = session.execute(text("SELECT configuration_ref FROM jobs")).scalars().all()
+    assert jobs == [f"topic:{created.json()['id']}"]
+
+    archived = monitor_topic_client.post(
+        f"{created.headers['location']}/archive",
+        headers=_csrf_headers(monitor_topic_client),
+    )
+    assert archived.status_code == 200
+    assert archived.json()["status"] == "archived"
+    visible = monitor_topic_client.get("/api/topics")
+    assert [item["id"] for item in visible.json()["items"]] == [cloned.json()["id"]]
+    with_archived = monitor_topic_client.get("/api/topics?include_archived=true")
+    assert {item["id"] for item in with_archived.json()["items"]} == {
+        created.json()["id"],
+        cloned.json()["id"],
+    }
+
+
+def test_topic_lifecycle_is_idempotent_and_resume_requires_ready_source(
+    monitor_topic_client: TestClient,
+) -> None:
+    _initialize(monitor_topic_client)
+    created = monitor_topic_client.post(
+        "/api/topics",
+        headers=_csrf_headers(monitor_topic_client),
+        json=_topic_payload(),
+    )
+    location = created.headers["location"]
+
+    paused = monitor_topic_client.post(
+        f"{location}/pause",
+        headers=_csrf_headers(monitor_topic_client),
+    )
+    resumed = monitor_topic_client.post(
+        f"{location}/resume",
+        headers=_csrf_headers(monitor_topic_client),
+    )
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
+    assert resumed.status_code == 409
+    assert resumed.json()["code"] == "topic_not_ready"
+    factory = monitor_topic_client.app.state.session_factory
+    with factory.begin() as session:
+        session.execute(
+            text("UPDATE monitor_topics SET readiness_status = 'ready' WHERE id = :topic_id"),
+            {"topic_id": created.json()["id"]},
+        )
+    resumed_ready = monitor_topic_client.post(
+        f"{location}/resume",
+        headers=_csrf_headers(monitor_topic_client),
+    )
+    resumed_again = monitor_topic_client.post(
+        f"{location}/resume",
+        headers=_csrf_headers(monitor_topic_client),
+    )
+    paused_again = monitor_topic_client.post(
+        f"{location}/pause",
+        headers=_csrf_headers(monitor_topic_client),
+    )
+    assert resumed_ready.status_code == 200
+    assert resumed_ready.json()["status"] == "active"
+    assert resumed_again.status_code == 200
+    assert resumed_again.json()["updated_at"] == resumed_ready.json()["updated_at"]
+    assert paused_again.status_code == 200
+    assert paused_again.json()["status"] == "paused"
+    archived = monitor_topic_client.post(
+        f"{location}/archive",
+        headers=_csrf_headers(monitor_topic_client),
+    )
+    archived_again = monitor_topic_client.post(
+        f"{location}/archive",
+        headers=_csrf_headers(monitor_topic_client),
+    )
+    edit_archived = monitor_topic_client.patch(
+        location,
+        headers=_csrf_headers(monitor_topic_client),
+        json={**_topic_payload(), "expected_version": 1},
+    )
+    assert archived.status_code == 200
+    assert archived_again.status_code == 200
+    assert archived_again.json()["status"] == "archived"
+    assert edit_archived.status_code == 409
+    assert edit_archived.json()["code"] == "topic_archived"

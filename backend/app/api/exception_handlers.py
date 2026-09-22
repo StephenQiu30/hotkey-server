@@ -65,6 +65,8 @@ APPLICATION_ERRORS: Mapping[str, PublicError] = {
         "同一关键词不能同时出现在冲突分组",
     ),
     "resource_not_found": PublicError(404, "resource_not_found", "请求资源不存在"),
+    "topic_archived": PublicError(409, "topic_archived", "已归档主题不能再修改"),
+    "topic_not_ready": PublicError(409, "topic_not_ready", "主题来源尚未就绪"),
     "topic_version_conflict": PublicError(409, "topic_version_conflict", "主题已被其他修改更新"),
 }
 

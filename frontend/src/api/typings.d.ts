@@ -1,6 +1,14 @@
 declare namespace HotKeyAPI {
+  type archiveMonitorTopicParams = {
+    topic_id: string;
+  };
+
   type cancelCollectionJobParams = {
     job_id: string;
+  };
+
+  type cloneMonitorTopicParams = {
+    topic_id: string;
   };
 
   type CollectionJobInput = {
@@ -174,6 +182,12 @@ declare namespace HotKeyAPI {
 
   type KeywordInput = string;
 
+  type listMonitorTopicsParams = {
+    include_archived?: boolean;
+    cursor?: string | null;
+    limit?: number;
+  };
+
   type MonitorRuleSetView = {
     /** Match Any */
     match_any: string[];
@@ -195,9 +209,7 @@ declare namespace HotKeyAPI {
   };
 
   type MonitorTopicReadinessStatus =
-    | "pending_source_selection"
-    | "pending_source_readiness"
-    | "ready";
+    "pending_source_selection" | "pending_source_readiness" | "ready";
 
   type MonitorTopicStatus = "paused" | "active" | "archived";
 
@@ -228,6 +240,21 @@ declare namespace HotKeyAPI {
     created_at: string;
     /** Updated At */
     updated_at: string;
+  };
+
+  type PageViewMonitorTopicView_ = {
+    /** Items */
+    items: MonitorTopicView[];
+    /** Next Cursor */
+    next_cursor: string | null;
+  };
+
+  type pauseMonitorTopicParams = {
+    topic_id: string;
+  };
+
+  type resumeMonitorTopicParams = {
+    topic_id: string;
   };
 
   type retryCollectionJobParams = {
