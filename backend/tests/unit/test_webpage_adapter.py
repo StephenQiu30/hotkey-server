@@ -3,15 +3,25 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import httpx
 import pytest
 from pydantic import ValidationError
+from typer.testing import CliRunner
 
+import cli.commands as cli_commands
+from cli.commands import app as cli_app
 from jobs.schemas import CollectionJobInput
 from sources.adapters.firecrawl import FirecrawlAdapter
 from sources.adapters.web_targets import normalize_web_url
-from sources.contracts import SourceCapability, SourceStopReason, WebPageRequest, WebPageResult
+from sources.contracts import (
+    SourceCapability,
+    SourceDocument,
+    SourceStopReason,
+    WebPageRequest,
+    WebPageResult,
+)
 
 
 def _response(
@@ -244,3 +254,133 @@ def test_disabled_firecrawl_fails_closed_without_a_collector_call() -> None:
     assert result.stop_reason is SourceStopReason.UNSUPPORTED
     assert result.collector_call_count == 0
     assert not called
+
+
+def test_webpage_probe_cli_runs_explicit_probe_without_echoing_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: dict[str, object] = {}
+
+    class ProbeAdapter:
+        def __init__(self, **kwargs: object) -> None:
+            observed["adapter"] = kwargs
+
+        def __enter__(self) -> ProbeAdapter:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def fetch_document(self, request: WebPageRequest) -> WebPageResult:
+            observed["request"] = request
+            return WebPageResult(
+                document=SourceDocument(
+                    request_url="https://example.com/private?token=secret",
+                    final_url="https://example.com/final?token=secret",
+                    title="Private title",
+                    text="Private body",
+                    text_scope="full",
+                    observed_at=datetime(2026, 9, 22, 8, 0, tzinfo=UTC),
+                    published_at=None,
+                    content_fingerprint=hashlib.sha256(b"Private body").hexdigest(),
+                    extractor_version="firecrawl/2.11.162",
+                ),
+                stop_reason=None,
+                target_status_code=200,
+                collector_call_count=1,
+                target_request_count=None,
+            )
+
+    monkeypatch.setattr(cli_commands, "FirecrawlAdapter", ProbeAdapter)
+    monkeypatch.setattr(
+        cli_commands,
+        "get_settings",
+        lambda: SimpleNamespace(
+            firecrawl_base_url="http://127.0.0.1:3002",
+            firecrawl_enabled=True,
+            firecrawl_timeout_seconds=20,
+            firecrawl_max_response_bytes=2 * 1024 * 1024,
+        ),
+    )
+
+    result = CliRunner().invoke(
+        cli_app,
+        [
+            "sources",
+            "probe-webpage",
+            "--url",
+            "https://example.com/private?token=secret",
+            "--allowed-host",
+            "example.com",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "status: succeeded" in result.output
+    assert "characters: 12" in result.output
+    assert "target requests: unknown" in result.output
+    assert "example.com" not in result.output
+    assert "secret" not in result.output
+    assert "Private" not in result.output
+    assert observed["request"] == WebPageRequest(
+        url="https://example.com/private?token=secret",
+        timeout_seconds=20,
+    )
+    assert observed["adapter"] == {
+        "base_url": "http://127.0.0.1:3002",
+        "enabled": True,
+        "allowed_hosts": frozenset({"example.com"}),
+        "max_response_bytes": 2 * 1024 * 1024,
+    }
+
+
+def test_webpage_probe_cli_returns_stable_failure_without_echoing_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RejectedProbeAdapter:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> RejectedProbeAdapter:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def fetch_document(self, request: WebPageRequest) -> WebPageResult:
+            return WebPageResult(
+                document=None,
+                stop_reason=SourceStopReason.ACCESS_DENIED,
+                target_status_code=403,
+                collector_call_count=1,
+                target_request_count=None,
+            )
+
+    monkeypatch.setattr(cli_commands, "FirecrawlAdapter", RejectedProbeAdapter)
+    monkeypatch.setattr(
+        cli_commands,
+        "get_settings",
+        lambda: SimpleNamespace(
+            firecrawl_base_url="http://127.0.0.1:3002",
+            firecrawl_enabled=True,
+            firecrawl_timeout_seconds=20,
+            firecrawl_max_response_bytes=2 * 1024 * 1024,
+        ),
+    )
+
+    result = CliRunner().invoke(
+        cli_app,
+        [
+            "sources",
+            "probe-webpage",
+            "--url",
+            "https://blocked.example/private?token=secret",
+            "--allowed-host",
+            "blocked.example",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "status: failed; reason: access_denied" in result.output
+    assert "blocked.example" not in result.output
+    assert "secret" not in result.output

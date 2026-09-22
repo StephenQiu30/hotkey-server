@@ -25,17 +25,20 @@ from evidence.adapters.minio import MinioObjectCleanup
 from evidence.schemas import CleanupTargetKind
 from evidence.services import CleanupProcessor, LifecycleService
 from identity.services import IdentityService
-from sources.contracts import SourceCapability, SourceStopReason
+from sources.adapters.firecrawl import FirecrawlAdapter
+from sources.contracts import SourceCapability, SourceStopReason, WebPageRequest
 
 app = typer.Typer(no_args_is_help=True)
 identity_app = typer.Typer(no_args_is_help=True)
 lifecycle_app = typer.Typer(no_args_is_help=True)
 backup_app = typer.Typer(no_args_is_help=True)
 connections_app = typer.Typer(no_args_is_help=True)
+sources_app = typer.Typer(no_args_is_help=True)
 app.add_typer(identity_app, name="identity")
 app.add_typer(lifecycle_app, name="lifecycle")
 app.add_typer(backup_app, name="backup")
 app.add_typer(connections_app, name="connections")
+app.add_typer(sources_app, name="sources")
 
 
 @app.callback()
@@ -47,6 +50,68 @@ def main() -> None:
 def version() -> None:
     """Print the backend version."""
     typer.echo(get_settings().app_version)
+
+
+@sources_app.command("probe-webpage")
+def probe_webpage(
+    url: Annotated[str, typer.Option(help="HTTP page to probe once.")],
+    allowed_host: Annotated[
+        str,
+        typer.Option(help="Exact target host allowed for this probe."),
+    ],
+) -> None:
+    """Run one explicit web-page probe without persisting target content."""
+    settings = get_settings()
+    try:
+        request = WebPageRequest(
+            url=url,
+            timeout_seconds=settings.firecrawl_timeout_seconds,
+        )
+        adapter = FirecrawlAdapter(
+            base_url=settings.firecrawl_base_url,
+            enabled=settings.firecrawl_enabled,
+            allowed_hosts=frozenset({allowed_host}),
+            max_response_bytes=settings.firecrawl_max_response_bytes,
+        )
+    except (ValidationError, ValueError) as error:
+        typer.echo(
+            "Web page probe complete; status: failed; reason: invalid_request",
+            err=True,
+        )
+        raise typer.Exit(code=1) from error
+
+    with adapter:
+        result = adapter.fetch_document(request)
+
+    target_status = (
+        "unknown" if result.target_status_code is None else str(result.target_status_code)
+    )
+    target_requests = (
+        "unknown" if result.target_request_count is None else str(result.target_request_count)
+    )
+    if result.document is None:
+        reason = (
+            result.stop_reason.value
+            if result.stop_reason is not None
+            else SourceStopReason.PROTOCOL_ERROR.value
+        )
+        typer.echo(
+            f"Web page probe complete; status: failed; reason: {reason}; "
+            f"target status: {target_status}; "
+            f"collector calls: {result.collector_call_count}; "
+            f"target requests: {target_requests}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    document = result.document
+    typer.echo(
+        "Web page probe complete; status: succeeded; "
+        f"target status: {target_status}; characters: {len(document.text)}; "
+        f"text scope: {document.text_scope}; extractor: {document.extractor_version}; "
+        f"collector calls: {result.collector_call_count}; "
+        f"target requests: {target_requests}"
+    )
 
 
 @connections_app.command("record-probe")

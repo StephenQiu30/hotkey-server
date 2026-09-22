@@ -2,11 +2,11 @@
 
 更新日期：2026-09-22。
 
-## 本地网页与浏览器采集 S01 基础
+## 本地网页与浏览器采集 S01
 
-已建立 [047 Research](docs/research/047-本地网页与浏览器采集调研.md)、[047 Design](docs/design/047-本地网页与浏览器采集设计.md) 与 [047 Plan](docs/plans/047-本地网页与浏览器采集计划.md)。Design 已接受 S00 与 S01 网页契约/适配器基础，Plan 为 in_progress，AC 0/8。GitHub 固定源码与 Firecrawl 文档研究已完成；用户明确 B站、小红书、抖音、微博评论均必需，并新增 [008 评论 Design](docs/design/008-评论与回复采集设计.md) proposed，008 仍 planned、0/6 AC。首片为公开 URL 的共享业务基础，随后按四平台独立完成作品定位、评论/楼中楼分页、覆盖记录和二次采集，不等待 X 搜索先通过。
+已建立 [047 Research](docs/research/047-本地网页与浏览器采集调研.md)、[047 Design](docs/design/047-本地网页与浏览器采集设计.md) 与 [047 Plan](docs/plans/047-本地网页与浏览器采集计划.md)。Design 已接受 S00/S01，Plan 为 in_progress，G1/G2 已关闭，产品 AC 仍为 0/8。用户明确 B站、小红书、抖音、微博评论均必需，并新增 [008 评论 Design](docs/design/008-评论与回复采集设计.md) proposed，008 仍 planned、0/6 AC。首片为公开 URL 的共享业务基础，随后按四平台独立完成作品定位、评论/楼中楼分页、覆盖记录和二次采集，不等待 X 搜索先通过。
 
-调研发现小红书 0 值配置文档与源码不一致、微博候选缺楼中楼继续分页、opencli B站评论仅单页；MediaCrawler 的置顶漏采已修复但许可证限制仍需遵循，Nemo2011/bilibili-api 已关停。Scrapling 0.4.15 的临时环境实验验证动态展开/会话机制，也复现动作失败仍返回 200、自适应误匹配与断点损坏后重新开始，列为待验证组件候选。S01 已增加独立 `page_content` 文档契约、精确域名/默认端口目标约束、固定 `firecrawl/2.11.162` HTTPX 适配器、默认关闭配置及 DDL 能力同步；X/抖音目录仍只显示四类社交能力。既有本机 Firecrawl 两个容器保持停止，独立仓库已有非本任务改动且浏览器源码仍记录 URL/headers，因此没有启动服务或执行真实平台采集；CLI 探针、业务处理器、真实来源证据与 Acceptance 均待后续。
+调研发现小红书 0 值配置文档与源码不一致、微博候选缺楼中楼继续分页、opencli B站评论仅单页；MediaCrawler 的置顶漏采已修复但许可证限制仍需遵循，Nemo2011/bilibili-api 已关停。Scrapling 0.4.15 的临时环境实验验证动态展开/会话机制，也复现动作失败仍返回 200、自适应误匹配与断点损坏后重新开始，列为待验证组件候选。S01 已增加独立 `page_content` 文档契约、精确域名/默认端口目标约束、固定 `firecrawl/2.11.162` HTTPX 适配器、配置及 DDL 能力同步；`python -m cli sources probe-webpage` 只做显式、无持久化诊断，不输出目标和正文。独立 Firecrawl `main` 的 `6d9fb16` 完成中央日志脱敏、Playwright 原始请求日志移除和出站目标加固，只原位恢复既有两个容器并复用宿主依赖。HotKey CLI 的普通页 180 字符、动态页 1574 字符、私网拒绝和日志 query 标记 0 命中通过；业务处理器、持久资料/UI、真实平台证据与 Acceptance 仍待后续。
 
 ## 当前结构
 
@@ -38,7 +38,7 @@
 - 身份 HTTP 契约为 `/api/identity/initialize`、`/api/identity/sessions` 与 `/api/identity/session`；Web 请求层自动为写请求补 CSRF，请求凭据和 Cookie 不进入生成客户端参数。
 - `GET /api/identity/workspace` 从有效会话派生当前 owner，不接受客户端归属标识；`require_resource_owner` 为后续业务资源提供默认拒绝规则。Web 已有 `/login` 与受保护 `/events` 空工作台，尚未接入事件业务资源。
 - `app/jobs/` 已实现内部持久受理与恢复：任务与 `job.accepted.v2` outbox 同事务写入，owner/kind/operation ID 唯一，绑定非敏感配置版本与来源能力，等价重试返回原任务，异范围重用拒绝；outbox 收到 Kafka 回执后才标记，消费者在数据库事务后手动提交 offset，inbox、lease epoch、attempt 和连续 checkpoint 防止重投与旧执行者覆盖，调度追赶默认最多 3 个窗口。阶段尝试与任务/Worker/资源尝试汇总可按 operation 核对；尚无 HTTP、具体业务处理器、有限重试/死信、错误/陈旧问题或 72 小时度量。
-- `app/evidence/` 已实现内部来源访问与在线生命周期控制：owner/source/capability 唯一政策、原子换版、入库前白名单投影；结构化/原始/媒体保留取用户请求与来源上限的更严值，缩期立即作用于已追踪资源；删除或到期后默认拒绝读取，`python -m cli lifecycle cleanup-once` 以 PostgreSQL lease 和有限重试清理 Redis/MinIO 在线副本。`app/backups/` 复用证据 DTO 生成同快照数据库候选归档和 MinIO 引用清单；已有 X 受控适配器和默认关闭的 Firecrawl 网页适配器基础，但尚无真实来源业务处理器、MinIO 内容备份、真实恢复/回补或平台授权证据。
+- `app/evidence/` 已实现内部来源访问与在线生命周期控制：owner/source/capability 唯一政策、原子换版、入库前白名单投影；结构化/原始/媒体保留取用户请求与来源上限的更严值，缩期立即作用于已追踪资源；删除或到期后默认拒绝读取，`python -m cli lifecycle cleanup-once` 以 PostgreSQL lease 和有限重试清理 Redis/MinIO 在线副本。`app/backups/` 复用证据 DTO 生成同快照数据库候选归档和 MinIO 引用清单；已有 X 受控适配器和 Firecrawl 网页适配器/显式 CLI，当前本地 env 已启用既有 Firecrawl，但尚无真实来源业务处理器、MinIO 内容备份、真实恢复/回补或平台授权证据。
 - 本机既有 PostgreSQL 数据库包含旧系统历史表，不符合当前完整 schema。不得对这些旧库执行 `database/schema.sql`；需要保留数据时先备份，再用新库完整建表并校验导入。
 
 ## 运行基线
@@ -89,7 +89,7 @@
 
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 035 S02 当前资源先行输出已验证，完整切片随 008/011/018 等业务继续接入。004 S03 内部技术闭环已完成：固定服务端凭据映射、owner/CAS 配置/替换/启停 API/UI、执行版本屏障与停用/认证失效的新任务及人工重试阻断；历史读取/同事实重放保留。后端 266 tests、前端 25 tests、静态/契约/隔离构建通过；浏览器配置、停用、启用、替换、取消与 409 刷新闭环、390×844 无溢出及页面 axe 0 violation/0 incomplete 通过。精确清理 QA 数据并恢复现有 env 的 API，无新增依赖服务、脚本、DDL 或真实平台请求。实际处理器每次外采门禁及 S04 仍待联验。002 的真实采集仍需准入和显式样本条件，003 的真实上游扩词、调度/主题任务留待 S04 联验，009 S04 等待真实处理器和来源样本。
+1. 047 下一步进入 S02：增加匿名 web 连接/版本绑定、`webpage.collect` 处理器、带 fencing 的页级原子提交、持久任务结果与资料读取，再接 URL 表单和状态；不得把 S01 CLI 探针或 Firecrawl readiness 当作产品闭环。035 S02 当前资源先行输出与 004 S03 连接版本屏障已经具备，实际处理器仍需逐次执行准入、预算和换版校验。002 的真实采集仍需准入和显式样本条件，003 的真实上游扩词、调度/主题任务留待 S04 联验，009 S04 等待真实处理器和来源样本。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。
