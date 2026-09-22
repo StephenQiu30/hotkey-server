@@ -7,7 +7,13 @@ import pytest
 from pydantic import ValidationError
 
 from connections.schemas import SourceEntryPoint
-from content.schemas import ContentMetricView, PersistContentPostInput
+from content.schemas import (
+    ContentMetricView,
+    ContentVisibilityBasis,
+    ContentVisibilityStatus,
+    PersistContentPostInput,
+    RecordContentVisibilityInput,
+)
 from evidence.schemas import AdmittedSourcePayload, DataClass
 from sources.contracts import SourceCapability
 
@@ -90,4 +96,41 @@ def test_persist_input_rejects_naive_source_times() -> None:
     with pytest.raises(ValidationError, match="collected_at"):
         PersistContentPostInput.model_validate(
             {**_command(fields={"external_id": "post-001"}), "admission": admission}
+        )
+
+
+@pytest.mark.parametrize(
+    ("status", "basis"),
+    [
+        (ContentVisibilityStatus.VISIBLE, ContentVisibilityBasis.NOT_FOUND),
+        (ContentVisibilityStatus.DELETED, ContentVisibilityBasis.TIMEOUT),
+        (ContentVisibilityStatus.RESTRICTED, ContentVisibilityBasis.HTTP_GONE),
+        (ContentVisibilityStatus.TRANSIENT_FAILURE, ContentVisibilityBasis.ACCESS_DENIED),
+        (ContentVisibilityStatus.UNKNOWN, ContentVisibilityBasis.SOURCE_TOMBSTONE),
+    ],
+)
+def test_visibility_input_rejects_status_without_matching_evidence(
+    status: ContentVisibilityStatus,
+    basis: ContentVisibilityBasis,
+) -> None:
+    with pytest.raises(ValidationError, match="basis"):
+        RecordContentVisibilityInput(
+            content_id=uuid4(),
+            job_id=uuid4(),
+            source_operation_id=uuid4(),
+            observed_at=datetime(2026, 9, 22, 8, 0, tzinfo=UTC),
+            status=status,
+            basis=basis,
+        )
+
+
+def test_visibility_input_requires_source_time_with_timezone() -> None:
+    with pytest.raises(ValidationError, match="observed_at"):
+        RecordContentVisibilityInput(
+            content_id=uuid4(),
+            job_id=uuid4(),
+            source_operation_id=uuid4(),
+            observed_at=datetime(2026, 9, 22, 8, 0),
+            status=ContentVisibilityStatus.TRANSIENT_FAILURE,
+            basis=ContentVisibilityBasis.TIMEOUT,
         )

@@ -323,7 +323,11 @@ CREATE TABLE evidence_cleanup_targets (
     id UUID PRIMARY KEY,
     deletion_id UUID NOT NULL REFERENCES evidence_deletions (id) ON DELETE CASCADE,
     target_kind VARCHAR(32) NOT NULL CHECK (
-        target_kind IN ('redis_cache', 'minio_object')
+        target_kind IN (
+            'redis_cache',
+            'minio_object',
+            'postgres_content_observation'
+        )
     ),
     target_reference VARCHAR(1024) NOT NULL,
     status VARCHAR(16) NOT NULL CHECK (
@@ -339,6 +343,10 @@ CREATE TABLE evidence_cleanup_targets (
     updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
     CONSTRAINT evidence_cleanup_targets_deletion_kind_reference_key
         UNIQUE (deletion_id, target_kind, target_reference),
+    CHECK (
+        target_kind <> 'postgres_content_observation'
+        OR target_reference ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    ),
     CHECK (
         (status = 'processing') = (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)
     ),
@@ -857,6 +865,54 @@ CREATE TABLE content_observations (
 
 CREATE INDEX content_observations_latest_idx
     ON content_observations (
+        owner_id,
+        content_id,
+        observed_at,
+        received_at,
+        id
+    );
+
+CREATE TABLE content_visibility_observations (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    content_id UUID NOT NULL,
+    job_id UUID NOT NULL,
+    source_operation_id UUID NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL,
+    received_at TIMESTAMPTZ NOT NULL CHECK (received_at >= observed_at),
+    status VARCHAR(32) NOT NULL,
+    basis VARCHAR(32) NOT NULL,
+    CONSTRAINT content_visibility_observations_owner_content_operation_key
+        UNIQUE (owner_id, content_id, source_operation_id),
+    CONSTRAINT content_visibility_observations_owner_content_fkey
+        FOREIGN KEY (owner_id, content_id)
+        REFERENCES content_records (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT content_visibility_observations_owner_job_fkey
+        FOREIGN KEY (owner_id, job_id)
+        REFERENCES jobs (owner_id, id) ON DELETE RESTRICT,
+    CONSTRAINT content_visibility_observations_status_basis_check CHECK (
+        (status = 'visible' AND basis = 'content_returned')
+        OR (
+            status = 'deleted'
+            AND basis IN ('source_tombstone', 'http_gone')
+        )
+        OR (
+            status = 'restricted'
+            AND basis IN ('access_denied', 'authentication_required')
+        )
+        OR (
+            status = 'transient_failure'
+            AND basis IN ('timeout', 'rate_limited', 'upstream_error')
+        )
+        OR (
+            status = 'unknown'
+            AND basis IN ('not_found', 'protocol_error')
+        )
+    )
+);
+
+CREATE INDEX content_visibility_observations_latest_idx
+    ON content_visibility_observations (
         owner_id,
         content_id,
         observed_at,

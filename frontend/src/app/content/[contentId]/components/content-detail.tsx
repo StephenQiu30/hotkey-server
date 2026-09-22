@@ -16,6 +16,9 @@ import {
   METRIC_LABELS,
   relationTypeLabel,
   truncationReasonLabel,
+  visibilityBasisLabel,
+  visibilityStatusLabel,
+  visibilityStatusNotice,
 } from "@/app/content/components/content-presenters";
 import { PageState } from "@/components/system/page-state";
 import { Badge } from "@/components/ui/badge";
@@ -139,6 +142,132 @@ function ContentVersionSection({
           ))}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function visibilityBadgeVariant(
+  status: HotKeyAPI.ContentVisibilityStatus,
+): "secondary" | "destructive" | "outline" {
+  if (status === "visible") {
+    return "secondary";
+  }
+  return status === "deleted" || status === "restricted"
+    ? "destructive"
+    : "outline";
+}
+
+function VisibilitySummary({
+  visibility,
+}: {
+  visibility: HotKeyAPI.ContentVisibilityView | null;
+}) {
+  return (
+    <section aria-labelledby="visibility-heading" className="mt-8">
+      <h2 id="visibility-heading" className="text-xl font-medium">
+        当前来源状态
+      </h2>
+      <div className="bg-muted mt-4 rounded-2xl p-6">
+        {visibility ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={visibilityBadgeVariant(visibility.status)}>
+                {visibilityStatusLabel(visibility.status)}
+              </Badge>
+              <span className="text-muted-foreground text-xs">
+                观察于 {formatTime(visibility.observed_at)}
+              </span>
+            </div>
+            <p className="mt-3 text-sm leading-6">
+              {visibilityStatusNotice(visibility.status)}
+            </p>
+          </>
+        ) : (
+          <p className="text-muted-foreground text-sm leading-6">
+            尚无独立来源状态观察，不能据此判断作品当前是否可见。
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function VersionHistory({
+  history,
+}: {
+  history: HotKeyAPI.ContentVersionHistoryView[];
+}) {
+  return (
+    <section aria-labelledby="version-history-heading" className="mt-10">
+      <h2 id="version-history-heading" className="text-xl font-medium">
+        正文版本历史
+      </h2>
+      <p className="text-muted-foreground mt-2 text-sm leading-6">
+        按来源观察时间排序；稳定版本 ID 可供后续分析引用。
+      </p>
+      <div className="mt-4 grid gap-3">
+        {history.map((entry) => (
+          <article
+            key={entry.content_version.id}
+            className="bg-muted rounded-2xl p-5"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">
+                {contentScopeLabel(entry.content_version.text_scope)}
+              </Badge>
+              <Badge variant="outline">
+                {contentOriginLabel(entry.content_version.text_origin)}
+              </Badge>
+              <span className="text-muted-foreground text-xs">
+                {entry.observation_count} 次观察
+              </span>
+            </div>
+            <p className="mt-3 font-mono text-xs break-all">
+              {entry.content_version.id}
+            </p>
+            <p className="text-muted-foreground mt-2 text-xs leading-5">
+              首次 {formatTime(entry.first_observed_at)} · 最近{" "}
+              {formatTime(entry.last_observed_at)}
+            </p>
+            {(entry.content_version.title ?? entry.content_version.body) ? (
+              <p className="mt-3 line-clamp-3 text-sm break-words whitespace-pre-wrap">
+                {entry.content_version.title ?? entry.content_version.body}
+              </p>
+            ) : (
+              <p className="text-muted-foreground mt-3 text-sm">
+                仅媒体，无文本
+              </p>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function VisibilityHistory({
+  history,
+}: {
+  history: HotKeyAPI.ContentVisibilityView[];
+}) {
+  return (
+    <section aria-labelledby="visibility-history-heading" className="mt-10">
+      <h2 id="visibility-history-heading" className="text-xl font-medium">
+        来源状态历史
+      </h2>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {history.map((entry) => (
+          <article key={entry.id} className="bg-muted rounded-2xl p-5">
+            <Badge variant={visibilityBadgeVariant(entry.status)}>
+              {visibilityStatusLabel(entry.status)}
+            </Badge>
+            <p className="mt-3 text-sm">{visibilityBasisLabel(entry.basis)}</p>
+            <p className="text-muted-foreground mt-2 text-xs">
+              观察于 {formatTime(entry.observed_at)}
+            </p>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
@@ -269,6 +398,8 @@ export function ContentDetail({ contentId }: ContentDetailProps) {
           填补未知值。
         </p>
 
+        <VisibilitySummary visibility={content.current_visibility} />
+
         <section aria-labelledby="identity-heading" className="mt-10">
           <h2 id="identity-heading" className="text-xl font-medium">
             作品身份
@@ -310,6 +441,10 @@ export function ContentDetail({ contentId }: ContentDetailProps) {
         </section>
 
         <ContentVersionSection version={observation.content_version ?? null} />
+
+        <VersionHistory history={content.version_history} />
+
+        <VisibilityHistory history={content.visibility_history} />
 
         <section aria-labelledby="metrics-heading" className="mt-10">
           <h2 id="metrics-heading" className="text-xl font-medium">

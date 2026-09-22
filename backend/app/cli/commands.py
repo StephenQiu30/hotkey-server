@@ -16,6 +16,7 @@ from connections.schemas import (
     SourceEntryPoint,
 )
 from connections.services import SourceCapabilityEvidenceService
+from content.services import ContentObservationCleanup
 from core.config import get_settings
 from core.errors import ApplicationError
 from db.session import create_db_engine, create_session_factory
@@ -192,6 +193,7 @@ def cleanup_once(
                     minio,
                     settings.minio_bucket,
                 ),
+                CleanupTargetKind.POSTGRES_CONTENT_OBSERVATION: ContentObservationCleanup(sessions),
             },
         ).process_due(limit=limit)
     finally:

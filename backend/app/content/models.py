@@ -293,3 +293,59 @@ class ContentObservation(Base):
     view_count: Mapped[int | None] = mapped_column(BigInteger)
     play_count: Mapped[int | None] = mapped_column(BigInteger)
     danmaku_count: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class ContentVisibilityObservation(Base):
+    __tablename__ = "content_visibility_observations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "content_id"],
+            ["content_records.owner_id", "content_records.id"],
+            ondelete="CASCADE",
+            name="content_visibility_observations_owner_content_fkey",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "job_id"],
+            ["jobs.owner_id", "jobs.id"],
+            ondelete="RESTRICT",
+            name="content_visibility_observations_owner_job_fkey",
+        ),
+        UniqueConstraint(
+            "owner_id",
+            "content_id",
+            "source_operation_id",
+            name="content_visibility_observations_owner_content_operation_key",
+        ),
+        CheckConstraint(
+            "received_at >= observed_at",
+            name="content_visibility_observations_received_at_check",
+        ),
+        CheckConstraint(
+            "(status = 'visible' AND basis = 'content_returned') OR "
+            "(status = 'deleted' AND basis IN ('source_tombstone', 'http_gone')) OR "
+            "(status = 'restricted' AND basis IN "
+            "('access_denied', 'authentication_required')) OR "
+            "(status = 'transient_failure' AND basis IN "
+            "('timeout', 'rate_limited', 'upstream_error')) OR "
+            "(status = 'unknown' AND basis IN ('not_found', 'protocol_error'))",
+            name="content_visibility_observations_status_basis_check",
+        ),
+        Index(
+            "content_visibility_observations_latest_idx",
+            "owner_id",
+            "content_id",
+            "observed_at",
+            "received_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID]
+    content_id: Mapped[UUID]
+    job_id: Mapped[UUID]
+    source_operation_id: Mapped[UUID]
+    observed_at: Mapped[datetime]
+    received_at: Mapped[datetime]
+    status: Mapped[str] = mapped_column(String(32))
+    basis: Mapped[str] = mapped_column(String(32))

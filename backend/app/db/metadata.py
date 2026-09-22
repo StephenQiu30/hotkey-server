@@ -9,6 +9,7 @@ from content.models import (
     ContentRecord,
     ContentVersion,
     ContentVersionRelation,
+    ContentVisibilityObservation,
 )
 from db.base import Base
 from evidence.models import (
@@ -46,6 +47,7 @@ __all__ = [
     "ContentRecord",
     "ContentVersion",
     "ContentVersionRelation",
+    "ContentVisibilityObservation",
     "DeletionDirective",
     "EvidenceResource",
     "IdentitySession",

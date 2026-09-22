@@ -6,6 +6,8 @@ import {
   formatMetric,
   formatTime,
   hasUnknownMetrics,
+  visibilityStatusLabel,
+  visibilityStatusNotice,
 } from "./content-presenters";
 
 const completeMetrics: HotKeyAPI.ContentMetricView = {
@@ -41,5 +43,15 @@ describe("content presenters", () => {
     expect(contentScopeLabel("media_only")).toBe("仅媒体");
     expect(contentScopeNotice("summary")).toContain("不代表完整原文");
     expect(contentScopeNotice("media_only")).toContain("未保存或理解媒体内容");
+  });
+
+  it("keeps source deletion distinct from temporary and unknown failures", () => {
+    expect(visibilityStatusLabel("deleted")).toBe("来源已删除");
+    expect(visibilityStatusLabel("transient_failure")).toBe("来源暂时不可达");
+    expect(visibilityStatusLabel("unknown")).toBe("来源状态未知");
+    expect(visibilityStatusNotice("transient_failure")).toContain(
+      "保留最后成功资料",
+    );
+    expect(visibilityStatusNotice("unknown")).toContain("不能据此认定删除");
   });
 });

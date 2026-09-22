@@ -12,19 +12,31 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 from connections.schemas import SourceEntryPoint
-from content.schemas import PersistContentPostInput
-from content.services import ContentService
+from content.schemas import (
+    ContentVisibilityBasis,
+    ContentVisibilityStatus,
+    PersistContentPostInput,
+    RecordContentVisibilityInput,
+)
+from content.services import ContentObservationCleanup, ContentService
 from core.config import Settings
 from core.errors import ApplicationError
-from evidence.schemas import AdmittedSourcePayload, DataClass, DeletionReason
-from evidence.services import LifecycleService
+from evidence.schemas import (
+    AdmittedSourcePayload,
+    CleanupTargetKind,
+    DataClass,
+    DeletionReason,
+    DeletionStatus,
+)
+from evidence.services import CleanupProcessor, LifecycleService
 from main import create_app
 from sources.contracts import SourceCapability
 
 _BOOTSTRAP_TOKEN = "content-records-isolated-bootstrap-token"
 _PASSWORD = "correct horse battery staple"
 _TRUNCATE = (
-    "TRUNCATE content_version_relations, content_observations, content_versions, "
+    "TRUNCATE content_version_relations, content_visibility_observations, "
+    "content_observations, content_versions, "
     "content_discoveries, content_records, "
     "source_capability_evidence, source_connection_versions, source_connections, "
     "provenance_manifest_inputs, provenance_manifests, evidence_cleanup_targets, "
@@ -345,6 +357,188 @@ def test_content_versions_preserve_scope_provenance_relations_and_snapshot_time(
             )
         ).one()
     assert tuple(counts) == (2, 2, 2, 3)
+
+
+def test_edit_and_visibility_history_keep_last_success_across_failures_and_late_data(
+    content_client: TestClient,
+) -> None:
+    owner_id = _initialize(content_client)
+    connection_id, policy_id, retention_id, job_id, _ = _seed_context(content_client, owner_id)
+    base_time = datetime.now(UTC) - timedelta(minutes=10)
+    factory = content_client.app.state.session_factory
+    first = _command(
+        owner_id=owner_id,
+        connection_id=connection_id,
+        policy_id=policy_id,
+        retention_id=retention_id,
+        job_id=job_id,
+        operation_id=uuid4(),
+        observed_at=base_time,
+        extra_fields={
+            "text_scope": "full",
+            "text_origin": "source",
+            "body": "第一版正文",
+        },
+    )
+    second = _command(
+        owner_id=owner_id,
+        connection_id=connection_id,
+        policy_id=policy_id,
+        retention_id=retention_id,
+        job_id=job_id,
+        operation_id=uuid4(),
+        observed_at=base_time + timedelta(minutes=2),
+        extra_fields={
+            "text_scope": "full",
+            "text_origin": "source",
+            "body": "第二版正文",
+        },
+    )
+
+    with factory() as session:
+        created = ContentService(
+            session, clock=lambda: base_time + timedelta(seconds=30)
+        ).persist_post(owner_id=owner_id, command=first)
+        updated = ContentService(
+            session, clock=lambda: base_time + timedelta(minutes=2, seconds=30)
+        ).persist_post(owner_id=owner_id, command=second)
+        service = ContentService(session, clock=lambda: base_time + timedelta(minutes=6))
+        service.record_visibility(
+            owner_id=owner_id,
+            command=RecordContentVisibilityInput(
+                content_id=created.id,
+                job_id=job_id,
+                source_operation_id=uuid4(),
+                observed_at=base_time + timedelta(minutes=1),
+                status=ContentVisibilityStatus.DELETED,
+                basis=ContentVisibilityBasis.HTTP_GONE,
+            ),
+        )
+        after_late_delete = service.get_content(owner_id=owner_id, content_id=created.id)
+        service.record_visibility(
+            owner_id=owner_id,
+            command=RecordContentVisibilityInput(
+                content_id=created.id,
+                job_id=job_id,
+                source_operation_id=uuid4(),
+                observed_at=base_time + timedelta(minutes=3),
+                status=ContentVisibilityStatus.TRANSIENT_FAILURE,
+                basis=ContentVisibilityBasis.TIMEOUT,
+            ),
+        )
+        after_timeout = service.get_content(owner_id=owner_id, content_id=created.id)
+        service.record_visibility(
+            owner_id=owner_id,
+            command=RecordContentVisibilityInput(
+                content_id=created.id,
+                job_id=job_id,
+                source_operation_id=uuid4(),
+                observed_at=base_time + timedelta(minutes=4),
+                status=ContentVisibilityStatus.UNKNOWN,
+                basis=ContentVisibilityBasis.NOT_FOUND,
+            ),
+        )
+        service.record_visibility(
+            owner_id=owner_id,
+            command=RecordContentVisibilityInput(
+                content_id=created.id,
+                job_id=job_id,
+                source_operation_id=uuid4(),
+                observed_at=base_time + timedelta(minutes=5),
+                status=ContentVisibilityStatus.DELETED,
+                basis=ContentVisibilityBasis.SOURCE_TOMBSTONE,
+            ),
+        )
+
+    assert created.id == updated.id
+    assert after_late_delete.current_visibility is not None
+    assert after_late_delete.current_visibility.status is ContentVisibilityStatus.VISIBLE
+    assert after_timeout.current_visibility is not None
+    assert after_timeout.current_visibility.status is ContentVisibilityStatus.TRANSIENT_FAILURE
+    assert after_timeout.latest_observation.content_version is not None
+    assert after_timeout.latest_observation.content_version.body == "第二版正文"
+
+    response = content_client.get(f"/api/contents/{created.id}")
+    assert response.status_code == 200, response.json()
+    detail = response.json()
+    assert detail["current_visibility"]["status"] == "deleted"
+    assert detail["current_visibility"]["basis"] == "source_tombstone"
+    assert detail["latest_observation"]["content_version"]["body"] == "第二版正文"
+    assert [item["content_version"]["body"] for item in detail["version_history"]] == [
+        "第二版正文",
+        "第一版正文",
+    ]
+    assert [item["status"] for item in detail["visibility_history"]] == [
+        "deleted",
+        "unknown",
+        "transient_failure",
+        "visible",
+        "deleted",
+        "visible",
+    ]
+
+
+def test_lifecycle_cleanup_removes_postgres_content_and_blocks_exact_replay(
+    content_client: TestClient,
+) -> None:
+    owner_id = _initialize(content_client)
+    connection_id, policy_id, retention_id, job_id, _ = _seed_context(content_client, owner_id)
+    observed_at = datetime.now(UTC) - timedelta(minutes=1)
+    command = _command(
+        owner_id=owner_id,
+        connection_id=connection_id,
+        policy_id=policy_id,
+        retention_id=retention_id,
+        job_id=job_id,
+        operation_id=uuid4(),
+        observed_at=observed_at,
+        extra_fields={
+            "text_scope": "full",
+            "text_origin": "source",
+            "body": "待清理正文",
+        },
+    )
+    factory = content_client.app.state.session_factory
+    with factory() as session:
+        created = ContentService(session).persist_post(owner_id=owner_id, command=command)
+        deletion = LifecycleService(session).request_deletion(
+            owner_id=owner_id,
+            operation_id=uuid4(),
+            resource_type="content_observation",
+            resource_id=created.latest_observation.id,
+            reason=DeletionReason.USER_REQUEST,
+        )
+
+    assert deletion.status is DeletionStatus.PENDING
+    assert deletion.target_count == 1
+    result = CleanupProcessor(
+        factory,
+        handlers={
+            CleanupTargetKind.POSTGRES_CONTENT_OBSERVATION: ContentObservationCleanup(factory)
+        },
+    ).process_due(limit=1)
+    assert result.succeeded == 1
+    assert result.failed == 0
+
+    with factory() as session:
+        completed = LifecycleService(session).get_deletion(
+            owner_id=owner_id, deletion_id=deletion.id
+        )
+        counts = session.execute(
+            text(
+                "SELECT (SELECT count(*) FROM content_records), "
+                "(SELECT count(*) FROM content_discoveries), "
+                "(SELECT count(*) FROM content_versions), "
+                "(SELECT count(*) FROM content_observations), "
+                "(SELECT count(*) FROM content_visibility_observations)"
+            )
+        ).one()
+        with pytest.raises(ApplicationError, match="idempotency_conflict"):
+            ContentService(session).persist_post(owner_id=owner_id, command=command)
+
+    assert completed.status is DeletionStatus.COMPLETED
+    assert tuple(counts) == (0, 0, 0, 0, 0)
+    assert content_client.get(f"/api/contents/{created.id}").status_code == 404
 
 
 @pytest.mark.parametrize(

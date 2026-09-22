@@ -93,6 +93,70 @@ class ContentRelationType(StrEnum):
     REPOST = "repost"
 
 
+class ContentVisibilityStatus(StrEnum):
+    VISIBLE = "visible"
+    DELETED = "deleted"
+    RESTRICTED = "restricted"
+    TRANSIENT_FAILURE = "transient_failure"
+    UNKNOWN = "unknown"
+
+
+class ContentVisibilityBasis(StrEnum):
+    CONTENT_RETURNED = "content_returned"
+    SOURCE_TOMBSTONE = "source_tombstone"
+    HTTP_GONE = "http_gone"
+    ACCESS_DENIED = "access_denied"
+    AUTHENTICATION_REQUIRED = "authentication_required"
+    NOT_FOUND = "not_found"
+    TIMEOUT = "timeout"
+    RATE_LIMITED = "rate_limited"
+    UPSTREAM_ERROR = "upstream_error"
+    PROTOCOL_ERROR = "protocol_error"
+
+
+_VISIBILITY_BASES = {
+    ContentVisibilityStatus.VISIBLE: frozenset({ContentVisibilityBasis.CONTENT_RETURNED}),
+    ContentVisibilityStatus.DELETED: frozenset(
+        {ContentVisibilityBasis.SOURCE_TOMBSTONE, ContentVisibilityBasis.HTTP_GONE}
+    ),
+    ContentVisibilityStatus.RESTRICTED: frozenset(
+        {ContentVisibilityBasis.ACCESS_DENIED, ContentVisibilityBasis.AUTHENTICATION_REQUIRED}
+    ),
+    ContentVisibilityStatus.TRANSIENT_FAILURE: frozenset(
+        {
+            ContentVisibilityBasis.TIMEOUT,
+            ContentVisibilityBasis.RATE_LIMITED,
+            ContentVisibilityBasis.UPSTREAM_ERROR,
+        }
+    ),
+    ContentVisibilityStatus.UNKNOWN: frozenset(
+        {ContentVisibilityBasis.NOT_FOUND, ContentVisibilityBasis.PROTOCOL_ERROR}
+    ),
+}
+
+
+class RecordContentVisibilityInput(InputModel):
+    content_id: UUID
+    job_id: UUID
+    source_operation_id: UUID
+    observed_at: datetime
+    status: ContentVisibilityStatus
+    basis: ContentVisibilityBasis
+
+    @field_validator("observed_at")
+    @classmethod
+    def validate_observed_at(cls, value: datetime) -> datetime:
+        if value.utcoffset() is None:
+            raise ValueError("observed_at must be timezone-aware")
+        return value
+
+    @model_validator(mode="after")
+    def validate_status_basis(self) -> Self:
+        if self.basis not in _VISIBILITY_BASES[self.status]:
+            raise ValueError("basis does not match visibility status")
+        return self
+
+
 class ContentVersionRelationView(OutputModel):
     relation_type: ContentRelationType
     target_native_scope: str | None
@@ -110,6 +174,21 @@ class ContentVersionView(OutputModel):
     body: str | None
     truncation_reason: ContentTruncationReason | None
     relations: list[ContentVersionRelationView]
+
+
+class ContentVisibilityView(OutputModel):
+    id: UUID
+    observed_at: datetime
+    received_at: datetime
+    status: ContentVisibilityStatus
+    basis: ContentVisibilityBasis
+
+
+class ContentVersionHistoryView(OutputModel):
+    content_version: ContentVersionView
+    first_observed_at: datetime
+    last_observed_at: datetime
+    observation_count: int = Field(ge=1)
 
 
 class ContentObservationView(OutputModel):
@@ -138,8 +217,11 @@ class ContentRecordSummaryView(OutputModel):
     native_scope: str | None
     external_id: str
     latest_observation: ContentObservationView
+    current_visibility: ContentVisibilityView | None
     discovery_count: int = Field(ge=1)
 
 
 class ContentRecordDetailView(ContentRecordSummaryView):
     discoveries: list[ContentDiscoveryView]
+    version_history: list[ContentVersionHistoryView]
+    visibility_history: list[ContentVisibilityView]

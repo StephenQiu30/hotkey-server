@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from connections.schemas import (
     ConnectionEvidenceOutcome,
@@ -25,6 +25,7 @@ from content.models import (
     ContentRecord,
     ContentVersion,
     ContentVersionRelation,
+    ContentVisibilityObservation,
 )
 from content.schemas import (
     ContentDiscoveryView,
@@ -36,11 +37,17 @@ from content.schemas import (
     ContentTextOrigin,
     ContentTextScope,
     ContentTruncationReason,
+    ContentVersionHistoryView,
     ContentVersionRelationView,
     ContentVersionView,
+    ContentVisibilityBasis,
+    ContentVisibilityStatus,
+    ContentVisibilityView,
     PersistContentPostInput,
+    RecordContentVisibilityInput,
 )
 from core.errors import ApplicationError
+from evidence.schemas import CleanupTargetKind, CleanupTargetSpec
 from evidence.services import LifecycleService, load_readable_resource_ids
 from jobs.services import (
     ContentJobContext,
@@ -399,6 +406,16 @@ class ContentService:
                 received_at=now,
                 values=values,
             )
+            self._find_or_create_visibility_observation(
+                owner_id=owner_id,
+                content_id=content.id,
+                job_id=job.job_id,
+                source_operation_id=command.source_operation_id,
+                observed_at=observation.observed_at,
+                received_at=observation.received_at,
+                status=ContentVisibilityStatus.VISIBLE,
+                basis=ContentVisibilityBasis.CONTENT_RETURNED,
+            )
             self._find_or_create_discovery(
                 owner_id=owner_id,
                 content_id=content.id,
@@ -411,7 +428,12 @@ class ContentService:
                 resource_type=_RESOURCE_TYPE,
                 resource_id=observation.id,
                 admission=command.admission,
-                cleanup_targets=[],
+                cleanup_targets=[
+                    CleanupTargetSpec(
+                        kind=CleanupTargetKind.POSTGRES_CONTENT_OBSERVATION,
+                        reference=str(observation.id),
+                    )
+                ],
             )
             SourceCapabilityEvidenceService(
                 self._session,
@@ -430,19 +452,71 @@ class ContentService:
                     component_version=command.component_version,
                 ),
             )
+            readable_observations = self._readable_observation_history(
+                owner_id=owner_id,
+                content_id=content.id,
+                now=now,
+            )
             version_views = self._content_version_views(
                 owner_id=owner_id,
-                content_observations=[(content, observation)],
+                content_observations=[(content, item) for item in readable_observations],
                 now=now,
+            )
+            visibility_history = self._visibility_history(
+                owner_id=owner_id,
+                content_id=content.id,
             )
             view = self._detail_view(
                 content=content,
                 observation=observation,
                 content_version=self._selected_version_view(observation, version_views),
+                current_visibility=(visibility_history[0] if visibility_history else None),
                 discoveries=self._discoveries(owner_id, content.id, {job.job_id}),
                 job_contexts={job.job_id: job},
+                version_history=self._version_history(readable_observations, version_views),
+                visibility_history=visibility_history,
             )
         return view
+
+    def record_visibility(
+        self,
+        *,
+        owner_id: UUID,
+        command: RecordContentVisibilityInput,
+    ) -> ContentVisibilityView:
+        now = self._clock()
+        if now.utcoffset() is None:
+            raise ValueError("clock must return a timezone-aware datetime")
+        if command.observed_at > now:
+            raise ValueError("observed_at cannot be in the future")
+        self._session.rollback()
+        with self._session.begin():
+            content = self._session.scalar(
+                select(ContentRecord)
+                .where(
+                    ContentRecord.owner_id == owner_id,
+                    ContentRecord.id == command.content_id,
+                )
+                .with_for_update()
+            )
+            job = load_content_job_context(
+                self._session,
+                owner_id=owner_id,
+                job_id=command.job_id,
+            )
+            if content is None or job is None or job.source_key != content.source_key:
+                raise ApplicationError("resource_not_found")
+            visibility = self._find_or_create_visibility_observation(
+                owner_id=owner_id,
+                content_id=content.id,
+                job_id=job.job_id,
+                source_operation_id=command.source_operation_id,
+                observed_at=command.observed_at,
+                received_at=now,
+                status=command.status,
+                basis=command.basis,
+            )
+            return self._visibility_view(visibility)
 
     def get_content(self, *, owner_id: UUID, content_id: UUID) -> ContentRecordDetailView:
         now = self._clock()
@@ -470,17 +544,29 @@ class ContentService:
                 owner_id=owner_id,
                 job_ids={item.job_id for item in discoveries},
             )
+            readable_observations = self._readable_observation_history(
+                owner_id=owner_id,
+                content_id=content.id,
+                now=now,
+            )
             version_views = self._content_version_views(
                 owner_id=owner_id,
-                content_observations=[(content, observation)],
+                content_observations=[(content, item) for item in readable_observations],
                 now=now,
+            )
+            visibility_history = self._visibility_history(
+                owner_id=owner_id,
+                content_id=content.id,
             )
             return self._detail_view(
                 content=content,
                 observation=observation,
                 content_version=self._selected_version_view(observation, version_views),
+                current_visibility=(visibility_history[0] if visibility_history else None),
                 discoveries=discoveries,
                 job_contexts=contexts,
+                version_history=self._version_history(readable_observations, version_views),
+                visibility_history=visibility_history,
             )
 
     def list_contents(
@@ -534,11 +620,16 @@ class ContentService:
                 content_observations=[(content, observation) for content, observation, _ in page],
                 now=now,
             )
+            current_visibility = self._current_visibility_views(
+                owner_id=owner_id,
+                content_ids={content.id for content, _, _ in page},
+            )
             items = [
                 self._summary_view(
                     content=content,
                     observation=observation,
                     content_version=self._selected_version_view(observation, version_views),
+                    current_visibility=current_visibility.get(content.id),
                     discovery_count=discovery_counts.get(content.id, 0),
                 )
                 for content, observation, _ in page
@@ -741,6 +832,69 @@ class ContentService:
             raise ApplicationError("idempotency_conflict")
         return existing
 
+    def _find_or_create_visibility_observation(
+        self,
+        *,
+        owner_id: UUID,
+        content_id: UUID,
+        job_id: UUID,
+        source_operation_id: UUID,
+        observed_at: datetime,
+        received_at: datetime,
+        status: ContentVisibilityStatus,
+        basis: ContentVisibilityBasis,
+    ) -> ContentVisibilityObservation:
+        visibility_id = uuid4()
+        inserted_id = self._session.scalar(
+            insert(ContentVisibilityObservation)
+            .values(
+                id=visibility_id,
+                owner_id=owner_id,
+                content_id=content_id,
+                job_id=job_id,
+                source_operation_id=source_operation_id,
+                observed_at=observed_at,
+                received_at=received_at,
+                status=status.value,
+                basis=basis.value,
+            )
+            .on_conflict_do_nothing(
+                constraint="content_visibility_observations_owner_content_operation_key"
+            )
+            .returning(ContentVisibilityObservation.id)
+        )
+        if inserted_id is not None:
+            return ContentVisibilityObservation(
+                id=inserted_id,
+                owner_id=owner_id,
+                content_id=content_id,
+                job_id=job_id,
+                source_operation_id=source_operation_id,
+                observed_at=observed_at,
+                received_at=received_at,
+                status=status.value,
+                basis=basis.value,
+            )
+        existing = self._session.scalar(
+            select(ContentVisibilityObservation)
+            .where(
+                ContentVisibilityObservation.owner_id == owner_id,
+                ContentVisibilityObservation.content_id == content_id,
+                ContentVisibilityObservation.source_operation_id == source_operation_id,
+            )
+            .with_for_update()
+        )
+        if existing is None:
+            raise RuntimeError("conflicting content visibility observation is not visible")
+        if (
+            existing.job_id != job_id
+            or existing.observed_at != observed_at
+            or existing.status != status.value
+            or existing.basis != basis.value
+        ):
+            raise ApplicationError("idempotency_conflict")
+        return existing
+
     def _find_or_create_discovery(
         self,
         *,
@@ -812,6 +966,83 @@ class ContentService:
             )
             for content_id, items in grouped.items()
         }
+
+    def _readable_observation_history(
+        self,
+        *,
+        owner_id: UUID,
+        content_id: UUID,
+        now: datetime,
+    ) -> list[ContentObservation]:
+        observations = list(
+            self._session.scalars(
+                select(ContentObservation).where(
+                    ContentObservation.owner_id == owner_id,
+                    ContentObservation.content_id == content_id,
+                )
+            ).all()
+        )
+        readable_ids = load_readable_resource_ids(
+            self._session,
+            owner_id=owner_id,
+            resource_type=_RESOURCE_TYPE,
+            resource_ids={item.id for item in observations},
+            now=now,
+        )
+        return sorted(
+            (item for item in observations if item.id in readable_ids),
+            key=lambda item: (item.observed_at, item.received_at, item.id),
+            reverse=True,
+        )
+
+    def _visibility_history(
+        self,
+        *,
+        owner_id: UUID,
+        content_id: UUID,
+    ) -> list[ContentVisibilityView]:
+        observations = self._session.scalars(
+            select(ContentVisibilityObservation)
+            .where(
+                ContentVisibilityObservation.owner_id == owner_id,
+                ContentVisibilityObservation.content_id == content_id,
+            )
+            .order_by(
+                ContentVisibilityObservation.observed_at.desc(),
+                ContentVisibilityObservation.received_at.desc(),
+                ContentVisibilityObservation.id.desc(),
+            )
+        ).all()
+        return [self._visibility_view(item) for item in observations]
+
+    def _current_visibility_views(
+        self,
+        *,
+        owner_id: UUID,
+        content_ids: set[UUID],
+    ) -> dict[UUID, ContentVisibilityView]:
+        if not content_ids:
+            return {}
+        observations = self._session.scalars(
+            select(ContentVisibilityObservation).where(
+                ContentVisibilityObservation.owner_id == owner_id,
+                ContentVisibilityObservation.content_id.in_(content_ids),
+            )
+        ).all()
+        current: dict[UUID, ContentVisibilityObservation] = {}
+        for item in observations:
+            previous = current.get(item.content_id)
+            if previous is None or (
+                item.observed_at,
+                item.received_at,
+                item.id,
+            ) > (
+                previous.observed_at,
+                previous.received_at,
+                previous.id,
+            ):
+                current[item.content_id] = item
+        return {content_id: self._visibility_view(item) for content_id, item in current.items()}
 
     def _discoveries(
         self,
@@ -966,6 +1197,42 @@ class ContentService:
         }
 
     @staticmethod
+    def _version_history(
+        observations: list[ContentObservation],
+        version_views: Mapping[UUID, ContentVersionView],
+    ) -> list[ContentVersionHistoryView]:
+        grouped: dict[UUID, list[datetime]] = {}
+        for observation in observations:
+            version_id = observation.content_version_id
+            if version_id is not None and version_id in version_views:
+                grouped.setdefault(version_id, []).append(observation.observed_at)
+        return sorted(
+            (
+                ContentVersionHistoryView(
+                    content_version=version_views[version_id],
+                    first_observed_at=min(observed_at),
+                    last_observed_at=max(observed_at),
+                    observation_count=len(observed_at),
+                )
+                for version_id, observed_at in grouped.items()
+            ),
+            key=lambda item: (item.last_observed_at, item.content_version.id),
+            reverse=True,
+        )
+
+    @staticmethod
+    def _visibility_view(
+        observation: ContentVisibilityObservation,
+    ) -> ContentVisibilityView:
+        return ContentVisibilityView(
+            id=observation.id,
+            observed_at=observation.observed_at,
+            received_at=observation.received_at,
+            status=ContentVisibilityStatus(observation.status),
+            basis=ContentVisibilityBasis(observation.basis),
+        )
+
+    @staticmethod
     def _observation_view(
         observation: ContentObservation,
         content_version: ContentVersionView | None,
@@ -991,6 +1258,7 @@ class ContentService:
         content: ContentRecord,
         observation: ContentObservation,
         content_version: ContentVersionView | None,
+        current_visibility: ContentVisibilityView | None,
         discovery_count: int,
     ) -> ContentRecordSummaryView:
         return ContentRecordSummaryView(
@@ -1000,6 +1268,7 @@ class ContentService:
             native_scope=content.native_scope,
             external_id=content.external_id,
             latest_observation=cls._observation_view(observation, content_version),
+            current_visibility=current_visibility,
             discovery_count=discovery_count,
         )
 
@@ -1010,8 +1279,11 @@ class ContentService:
         content: ContentRecord,
         observation: ContentObservation,
         content_version: ContentVersionView | None,
+        current_visibility: ContentVisibilityView | None,
         discoveries: list[ContentDiscovery],
         job_contexts: dict[UUID, ContentJobContext],
+        version_history: list[ContentVersionHistoryView],
+        visibility_history: list[ContentVisibilityView],
     ) -> ContentRecordDetailView:
         discovery_views = [
             ContentDiscoveryView(
@@ -1027,9 +1299,56 @@ class ContentService:
             content=content,
             observation=observation,
             content_version=content_version,
+            current_visibility=current_visibility,
             discovery_count=len(discovery_views),
         )
         return ContentRecordDetailView(
             **summary.model_dump(),
             discoveries=discovery_views,
+            version_history=version_history,
+            visibility_history=visibility_history,
         )
+
+
+class ContentObservationCleanup:
+    def __init__(self, sessions: sessionmaker[Session]) -> None:
+        self._sessions = sessions
+
+    def __call__(self, reference: str) -> None:
+        try:
+            observation_id = UUID(reference)
+        except ValueError as error:
+            raise ValueError("content observation cleanup reference must be a UUID") from error
+        with self._sessions() as session, session.begin():
+            observation = session.scalar(
+                select(ContentObservation)
+                .where(ContentObservation.id == observation_id)
+                .with_for_update()
+            )
+            if observation is None:
+                return
+            content_id = observation.content_id
+            version_id = observation.content_version_id
+            session.delete(observation)
+            session.flush()
+            remaining_count = session.scalar(
+                select(func.count(ContentObservation.id)).where(
+                    ContentObservation.content_id == content_id
+                )
+            )
+            if not remaining_count:
+                content = session.get(ContentRecord, content_id)
+                if content is not None:
+                    session.delete(content)
+                return
+            if version_id is None:
+                return
+            version_reference_count = session.scalar(
+                select(func.count(ContentObservation.id)).where(
+                    ContentObservation.content_version_id == version_id
+                )
+            )
+            if not version_reference_count:
+                version = session.get(ContentVersion, version_id)
+                if version is not None:
+                    session.delete(version)

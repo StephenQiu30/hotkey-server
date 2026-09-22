@@ -32,7 +32,8 @@ def identity_client() -> Iterator[TestClient]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE content_version_relations, content_observations, content_versions, "
+                "TRUNCATE content_version_relations, content_visibility_observations, "
+                "content_observations, content_versions, "
                 "content_discoveries, content_records, "
                 "source_capability_evidence, source_connection_versions, "
                 "source_connections, provenance_manifest_inputs, provenance_manifests, "
@@ -52,7 +53,8 @@ def identity_client() -> Iterator[TestClient]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE content_version_relations, content_observations, content_versions, "
+                    "TRUNCATE content_version_relations, content_visibility_observations, "
+                    "content_observations, content_versions, "
                     "content_discoveries, content_records, "
                     "source_capability_evidence, source_connection_versions, "
                     "source_connections, provenance_manifest_inputs, provenance_manifests, "

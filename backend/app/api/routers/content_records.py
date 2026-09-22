@@ -24,7 +24,7 @@ _COMMON_READ_RESPONSES: dict[int | str, dict[str, Any]] = {
     response_model=PageView[ContentRecordSummaryView],
     status_code=status.HTTP_200_OK,
     summary="列出作品资料",
-    description="按当前 owner 列出具有可读观察的作品; 读取不会触发来源请求。",
+    description="按当前 owner 列出具有可读观察的作品及当前来源状态; 读取不会触发来源请求。",
     responses=_COMMON_READ_RESPONSES,
 )
 def list_content_records(
@@ -49,7 +49,7 @@ def list_content_records(
     response_model=ContentRecordDetailView,
     status_code=status.HTTP_200_OK,
     summary="读取作品资料",
-    description="读取当前 owner 的作品身份、最新可读观察与发现依据; 不隐式刷新。",
+    description="读取当前 owner 的作品身份、最新可读观察、版本/可见性历史与发现依据; 不隐式刷新。",
     responses={
         404: {"model": ErrorView, "description": "作品不存在或不可访问"},
         **_COMMON_READ_RESPONSES,

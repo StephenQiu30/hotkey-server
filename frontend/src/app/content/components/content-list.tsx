@@ -12,6 +12,8 @@ import {
   formatMetric,
   formatTime,
   hasUnknownMetrics,
+  visibilityStatusLabel,
+  visibilityStatusNotice,
 } from "@/app/content/components/content-presenters";
 import { PageState } from "@/components/system/page-state";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +59,40 @@ function ContentStatus({
     <Badge variant="outline">部分指标未知</Badge>
   ) : (
     <Badge variant="secondary">指标已记录</Badge>
+  );
+}
+
+function VisibilityStatus({
+  visibility,
+}: {
+  visibility: HotKeyAPI.ContentVisibilityView | null;
+}) {
+  if (visibility === null) {
+    return <Badge variant="outline">来源状态未观察</Badge>;
+  }
+  const variant =
+    visibility.status === "visible"
+      ? "secondary"
+      : visibility.status === "deleted" || visibility.status === "restricted"
+        ? "destructive"
+        : "outline";
+  return (
+    <Badge variant={variant}>{visibilityStatusLabel(visibility.status)}</Badge>
+  );
+}
+
+function VisibilityNotice({
+  visibility,
+}: {
+  visibility: HotKeyAPI.ContentVisibilityView | null;
+}) {
+  if (visibility === null || visibility.status === "visible") {
+    return null;
+  }
+  return (
+    <p className="text-muted-foreground mt-2 text-xs leading-5">
+      {visibilityStatusNotice(visibility.status)}
+    </p>
   );
 }
 
@@ -269,6 +305,9 @@ export function ContentList() {
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant="outline">{content.source_key}</Badge>
                           <ContentStatus content={content} />
+                          <VisibilityStatus
+                            visibility={content.current_visibility}
+                          />
                         </div>
                         <p className="mt-2 font-mono text-xs break-all">
                           {content.external_id}
@@ -277,6 +316,9 @@ export function ContentList() {
                           version={
                             content.latest_observation.content_version ?? null
                           }
+                        />
+                        <VisibilityNotice
+                          visibility={content.current_visibility}
                         />
                         <p className="text-muted-foreground mt-1 text-xs">
                           作者：
@@ -319,6 +361,7 @@ export function ContentList() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{content.source_key}</Badge>
                     <ContentStatus content={content} />
+                    <VisibilityStatus visibility={content.current_visibility} />
                   </div>
                   <h2 className="mt-4 font-mono text-sm font-medium break-all">
                     {content.external_id}
@@ -326,6 +369,7 @@ export function ContentList() {
                   <ContentVersionSummary
                     version={content.latest_observation.content_version ?? null}
                   />
+                  <VisibilityNotice visibility={content.current_visibility} />
                   <p className="text-muted-foreground mt-2 text-xs">
                     作者：
                     {content.latest_observation.author_external_id ?? "未知"}

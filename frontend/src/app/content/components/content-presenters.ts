@@ -70,3 +70,59 @@ export function relationTypeLabel(
 ): string {
   return relationType === "quote" ? "引用" : "转帖";
 }
+
+const VISIBILITY_STATUS_LABELS: Record<
+  HotKeyAPI.ContentVisibilityStatus,
+  string
+> = {
+  visible: "来源可见",
+  deleted: "来源已删除",
+  restricted: "来源访问受限",
+  transient_failure: "来源暂时不可达",
+  unknown: "来源状态未知",
+};
+
+const VISIBILITY_STATUS_NOTICES: Record<
+  HotKeyAPI.ContentVisibilityStatus,
+  string
+> = {
+  visible: "最近一次来源观察取得了可保存的作品资料。",
+  deleted: "来源明确表明作品已删除；页面仅保留仍在本地保留期内的最后成功资料。",
+  restricted: "当前权限或认证不足，不能据此判断作品是否仍公开可见。",
+  transient_failure: "来源暂时不可达，保留最后成功资料；这不表示作品已删除。",
+  unknown: "来源状态无法确认，不能据此认定删除。",
+};
+
+const VISIBILITY_BASIS_LABELS: Record<
+  HotKeyAPI.ContentVisibilityBasis,
+  string
+> = {
+  content_returned: "取得作品资料",
+  source_tombstone: "来源删除标识",
+  http_gone: "来源明确永久不可用",
+  access_denied: "访问被拒绝",
+  authentication_required: "需要重新认证",
+  not_found: "未找到当前表示",
+  timeout: "来源响应超时",
+  rate_limited: "来源限流",
+  upstream_error: "来源服务失败",
+  protocol_error: "来源响应无法判定",
+};
+
+export function visibilityStatusLabel(
+  status: HotKeyAPI.ContentVisibilityStatus,
+): string {
+  return VISIBILITY_STATUS_LABELS[status];
+}
+
+export function visibilityStatusNotice(
+  status: HotKeyAPI.ContentVisibilityStatus,
+): string {
+  return VISIBILITY_STATUS_NOTICES[status];
+}
+
+export function visibilityBasisLabel(
+  basis: HotKeyAPI.ContentVisibilityBasis,
+): string {
+  return VISIBILITY_BASIS_LABELS[basis];
+}

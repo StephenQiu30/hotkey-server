@@ -91,10 +91,15 @@ declare namespace HotKeyAPI {
     /** External Id */
     external_id: string;
     latest_observation: ContentObservationView;
+    current_visibility: ContentVisibilityView | null;
     /** Discovery Count */
     discovery_count: number;
     /** Discoveries */
     discoveries: ContentDiscoveryView[];
+    /** Version History */
+    version_history: ContentVersionHistoryView[];
+    /** Visibility History */
+    visibility_history: ContentVisibilityView[];
   };
 
   type ContentRecordSummaryView = {
@@ -109,6 +114,7 @@ declare namespace HotKeyAPI {
     /** External Id */
     external_id: string;
     latest_observation: ContentObservationView;
+    current_visibility: ContentVisibilityView | null;
     /** Discovery Count */
     discovery_count: number;
   };
@@ -120,6 +126,16 @@ declare namespace HotKeyAPI {
   type ContentTextScope = "full" | "summary" | "truncated" | "media_only";
 
   type ContentTruncationReason = "source_limit" | "collector_limit";
+
+  type ContentVersionHistoryView = {
+    content_version: ContentVersionView;
+    /** First Observed At */
+    first_observed_at: string;
+    /** Last Observed At */
+    last_observed_at: string;
+    /** Observation Count */
+    observation_count: number;
+  };
 
   type ContentVersionRelationView = {
     relation_type: ContentRelationType;
@@ -147,6 +163,32 @@ declare namespace HotKeyAPI {
     truncation_reason: ContentTruncationReason | null;
     /** Relations */
     relations: ContentVersionRelationView[];
+  };
+
+  type ContentVisibilityBasis =
+    | "content_returned"
+    | "source_tombstone"
+    | "http_gone"
+    | "access_denied"
+    | "authentication_required"
+    | "not_found"
+    | "timeout"
+    | "rate_limited"
+    | "upstream_error"
+    | "protocol_error";
+
+  type ContentVisibilityStatus =
+    "visible" | "deleted" | "restricted" | "transient_failure" | "unknown";
+
+  type ContentVisibilityView = {
+    /** Id */
+    id: string;
+    /** Observed At */
+    observed_at: string;
+    /** Received At */
+    received_at: string;
+    status: ContentVisibilityStatus;
+    basis: ContentVisibilityBasis;
   };
 
   type ErrorView = {
