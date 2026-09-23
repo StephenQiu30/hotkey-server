@@ -57,6 +57,30 @@ _ENDLESS_PAGE = """
     "requires the explicitly enabled isolated browser server",
 )
 class BrowserCollectionLiveTests(unittest.TestCase):
+    @unittest.skipUnless(
+        os.environ.get("HOTKEY_BROWSER_EGRESS_LIVE_TEST") == "1",
+        "requires the dedicated browser egress proxy and a public canary",
+    )
+    def test_dedicated_proxy_allows_only_the_canary_and_blocks_loopback(self) -> None:
+        async def verify() -> None:
+            runtime = BrowserRuntime(
+                ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", "ws://browser:3000/"),
+                enabled=True,
+            )
+            async with runtime.context() as context:
+                page = await context.new_page()
+                allowed = await page.goto("https://example.com/", timeout=10_000)
+                self.assertIsNotNone(allowed)
+                self.assertEqual(allowed.status, 200)
+
+                for blocked_url in ("http://example.org/", "http://127.0.0.1:3000/"):
+                    blocked = await page.goto(blocked_url, timeout=10_000)
+                    self.assertIsNotNone(blocked)
+                    self.assertEqual(blocked.status, 403)
+                    self.assertIn("ERR_ACCESS_DENIED", blocked.headers["x-squid-error"])
+
+        asyncio.run(verify())
+
     def test_dynamic_actions_have_a_bounded_end_and_contexts_are_isolated(self) -> None:
         async def verify() -> None:
             runtime = BrowserRuntime(

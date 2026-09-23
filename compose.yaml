@@ -193,8 +193,12 @@ services:
     security_opt:
       - no-new-privileges:true
       - seccomp:./backend/browser/seccomp.json
+    depends_on:
+      browser-egress:
+        condition: service_healthy
     networks:
       - browser-internal
+      - browser-egress-internal
     profiles: ["browser"]
     healthcheck:
       test:
@@ -216,6 +220,44 @@ services:
           memory: 2G
           pids: 256
 
+  browser-egress:
+    image: ubuntu/squid:6.6-24.04_edge@sha256:8a3baed477e2c282ab8aa5edad442f69873246964f225c5c2ae8364b6610963c
+    user: "13:13"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+      - /var/log/squid:rw,nosuid,size=4m,uid=13,gid=13,mode=0700
+      - /var/spool/squid:rw,nosuid,size=4m,uid=13,gid=13,mode=0700
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    entrypoint: ["squid"]
+    command: ["-N", "-f", "/etc/squid/squid.conf"]
+    volumes:
+      - type: bind
+        source: ./backend/browser/squid.conf
+        target: /etc/squid/squid.conf
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - browser-egress-internal
+      - browser-uplink
+    profiles: ["browser"]
+    healthcheck:
+      test: ["CMD", "squid", "-k", "check", "-f", "/etc/squid/squid.conf"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+          pids: 64
+
   cli:
     <<: *backend-service
     entrypoint: ["/srv/backend/.venv/bin/python", "-m", "cli"]
@@ -230,6 +272,9 @@ services:
 networks:
   browser-internal:
     internal: true
+  browser-egress-internal:
+    internal: true
+  browser-uplink:
 
 volumes:
   kafka-data:
