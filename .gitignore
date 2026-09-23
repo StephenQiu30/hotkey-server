@@ -45,6 +45,7 @@ temp/
 .playwright-mcp/
 .product-design/
 .codex-design/
+.firecrawl/
 dogfood-output/
 product-design-output/
 *.log

@@ -13,7 +13,7 @@
 | 编号 | 主题 | Research | PRD | Design | Plan / Acceptance |
 |---|---|---|---|---|---|
 | 001 | 热点事件监控平台 | [鱼皮项目功能对照调研](research/001-热点事件监控平台调研.md) · draft | [功能与非功能需求](prd/001-热点事件监控平台功能与非功能需求.md) · draft | [总体设计](design/001-热点事件监控平台总体设计.md) · proposed | [总计划](plans/001-热点事件监控平台总计划.md) · in_progress；Acceptance 未建立 |
-| 002 | X 免费采集与热点监控专项 | 一手资料包含在专项设计 | 尚未建立独立专项 PRD；受 001 总体需求约束 | [专项设计](design/002-X免费采集与热点监控设计.md) · proposed，S01 范围已冻结 | [专项计划](plans/002-X免费采集与热点监控计划.md) · in_progress；S01 受控通过，0/10 AC；Acceptance 未建立 |
+| 002 | X 官方 API 采集与热点监控专项（路径沿用旧名） | 一手资料包含在专项设计 | 尚未建立独立专项 PRD；受 001 总体需求约束 | [专项设计](design/002-X免费采集与热点监控设计.md) · proposed，S01a 离线范围已冻结 | [专项计划](plans/002-X免费采集与热点监控计划.md) · in_progress；S01a 离线通过，0/10 AC；Acceptance 未建立 |
 | 043 | 模型服务接入与模型配置 | [OpenRouter / Vercel / 本地模型调研](research/043-模型服务接入与模型配置调研.md) · draft | [模型配置 PRD](prd/043-模型服务接入与模型配置.md) · draft | [模型服务设计](design/043-模型服务接入与模型配置设计.md) · proposed | [执行计划](plans/043-模型服务接入与模型配置计划.md) · planned；Acceptance 未建立 |
 | 044 | 模型平台信息采集与变更监控 | [调研](research/044-模型平台信息采集与变更监控调研.md) · draft | [PRD](prd/044-模型平台信息采集与变更监控.md) · draft | [设计](design/044-模型平台信息采集与变更监控设计.md) · proposed | [计划](plans/044-模型平台信息采集与变更监控计划.md) · planned；Acceptance 未建立 |
 | 045 | 模型联网检索与线索采集 | [调研](research/045-模型联网检索与线索采集调研.md) · draft | [PRD](prd/045-模型联网检索与线索采集.md) · draft | [设计](design/045-模型联网检索与线索采集设计.md) · proposed | [计划](plans/045-模型联网检索与线索采集计划.md) · planned；Acceptance 未建立 |
