@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
@@ -26,22 +27,23 @@ class BrowserRuntime:
         connect_timeout_ms: int = 5_000,
         execution_timeout_seconds: float = 45,
     ) -> None:
-        try:
-            parsed = urlsplit(ws_url)
-            port = parsed.port
-        except ValueError as error:
-            raise ValueError("invalid browser WS URL") from error
-        if (
-            parsed.scheme not in {"ws", "wss"}
-            or parsed.hostname is None
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.path not in {"", "/"}
-            or parsed.query
-            or parsed.fragment
-            or port is None
-        ):
-            raise ValueError("invalid browser WS URL")
+        if ws_url or enabled:
+            try:
+                parsed = urlsplit(ws_url)
+                port = parsed.port
+            except ValueError as error:
+                raise ValueError("invalid browser WS URL") from error
+            if (
+                parsed.scheme not in {"ws", "wss"}
+                or parsed.hostname is None
+                or parsed.username is not None
+                or parsed.password is not None
+                or re.fullmatch(r"/ws/[0-9a-f]{48}", parsed.path) is None
+                or parsed.query
+                or parsed.fragment
+                or port is None
+            ):
+                raise ValueError("invalid browser WS URL")
         if not 1 <= connect_timeout_ms <= 10_000:
             raise ValueError("invalid browser connect timeout")
         if not math.isfinite(execution_timeout_seconds) or not 0 < execution_timeout_seconds <= 45:

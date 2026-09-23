@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -58,7 +59,7 @@ class Settings(BaseSettings):
     firecrawl_max_response_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=2 * 1024 * 1024)
 
     browser_enabled: bool = False
-    browser_ws_url: str = "ws://browser:3000/"
+    browser_ws_url: SecretStr = SecretStr("")
     browser_connect_timeout_seconds: int = Field(default=5, ge=1, le=10)
     browser_state_dir: Path | None = None
 
@@ -91,9 +92,12 @@ class Settings(BaseSettings):
 
     @field_validator("browser_ws_url")
     @classmethod
-    def validate_browser_ws_url(cls, value: str) -> str:
+    def validate_browser_ws_url(cls, value: SecretStr, info: ValidationInfo) -> SecretStr:
+        endpoint = value.get_secret_value()
+        if not endpoint and not info.data.get("browser_enabled", False):
+            return value
         try:
-            parsed = urlsplit(value)
+            parsed = urlsplit(endpoint)
             port = parsed.port
         except ValueError as error:
             raise ValueError("invalid browser WS URL") from error
@@ -102,7 +106,7 @@ class Settings(BaseSettings):
             or parsed.hostname is None
             or parsed.username is not None
             or parsed.password is not None
-            or parsed.path not in {"", "/"}
+            or re.fullmatch(r"/ws/[0-9a-f]{48}", parsed.path) is None
             or parsed.query
             or parsed.fragment
             or port is None

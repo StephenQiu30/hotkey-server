@@ -41,8 +41,20 @@ def test_firecrawl_is_disabled_and_bounded_by_default(monkeypatch) -> None:
 def test_browser_runtime_is_disabled_and_uses_fixed_internal_endpoint(monkeypatch) -> None:
     settings = Settings(database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test")
     assert not settings.browser_enabled
-    assert settings.browser_ws_url == "ws://browser:3000/"
+    assert settings.browser_ws_url.get_secret_value() == ""
     assert settings.browser_connect_timeout_seconds == 5
+
+    monkeypatch.setenv("HOTKEY_BROWSER_ENABLED", "true")
+    monkeypatch.setenv("HOTKEY_BROWSER_WS_URL", "ws://browser:3000/")
+    with pytest.raises(ValidationError):
+        Settings(database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test")
+
+    monkeypatch.setenv("HOTKEY_BROWSER_WS_URL", "ws://browser:3000/ws/" + "a" * 48)
+    settings = Settings(database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test")
+    assert settings.browser_enabled
+    assert settings.browser_ws_url.get_secret_value().endswith("a" * 48)
+    assert "a" * 48 not in repr(settings)
+    assert "a" * 48 not in settings.model_dump_json()
 
     monkeypatch.setenv("HOTKEY_BROWSER_WS_URL", "ws://user:password@browser:3000/")
     with pytest.raises(ValidationError):

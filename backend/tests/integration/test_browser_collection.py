@@ -7,6 +7,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import async_playwright
+
 from connections.adapters.local_secrets import BrowserStateStore
 from sources.adapters.browser_runtime import BrowserRuntime
 
@@ -57,6 +60,14 @@ _ENDLESS_PAGE = """
     "requires the explicitly enabled isolated browser server",
 )
 class BrowserCollectionLiveTests(unittest.TestCase):
+    def test_public_root_ws_path_is_rejected(self) -> None:
+        async def verify() -> None:
+            async with async_playwright() as playwright:
+                with self.assertRaises(PlaywrightError):
+                    await playwright.chromium.connect("ws://browser:3000/", timeout=1_500)
+
+        asyncio.run(verify())
+
     @unittest.skipUnless(
         os.environ.get("HOTKEY_BROWSER_EGRESS_LIVE_TEST") == "1",
         "requires the dedicated browser egress proxy and a public canary",
@@ -64,7 +75,7 @@ class BrowserCollectionLiveTests(unittest.TestCase):
     def test_dedicated_proxy_allows_only_the_canary_and_blocks_loopback(self) -> None:
         async def verify() -> None:
             runtime = BrowserRuntime(
-                ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", "ws://browser:3000/"),
+                ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", ""),
                 enabled=True,
             )
             async with runtime.context() as context:
@@ -84,7 +95,7 @@ class BrowserCollectionLiveTests(unittest.TestCase):
     def test_dynamic_actions_have_a_bounded_end_and_contexts_are_isolated(self) -> None:
         async def verify() -> None:
             runtime = BrowserRuntime(
-                ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", "ws://browser:3000/"),
+                ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", ""),
                 enabled=True,
             )
 
@@ -166,7 +177,7 @@ class BrowserCollectionLiveTests(unittest.TestCase):
     def test_endless_pagination_stops_at_the_explicit_limit(self) -> None:
         async def verify() -> None:
             runtime = BrowserRuntime(
-                ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", "ws://browser:3000/"),
+                ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", ""),
                 enabled=True,
             )
             async with runtime.context() as context:
@@ -193,7 +204,7 @@ class BrowserCollectionLiveTests(unittest.TestCase):
     def test_timeout_and_cancellation_close_remote_contexts(self) -> None:
         async def verify() -> None:
             runtime = BrowserRuntime(
-                ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", "ws://browser:3000/"),
+                ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", ""),
                 enabled=True,
                 execution_timeout_seconds=1,
             )

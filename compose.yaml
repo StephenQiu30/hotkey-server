@@ -6,7 +6,7 @@ x-backend-environment: &backend-environment
   HOTKEY_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
   HOTKEY_SOURCE_CREDENTIALS: '${HOTKEY_SOURCE_CREDENTIALS:-{}}'
   HOTKEY_BROWSER_ENABLED: ${HOTKEY_BROWSER_ENABLED:-false}
-  HOTKEY_BROWSER_WS_URL: ${HOTKEY_BROWSER_WS_URL:-ws://browser:3000/}
+  HOTKEY_BROWSER_WS_URL: ${HOTKEY_BROWSER_WS_URL:-}
 
 x-backend-service: &backend-service
   build:
@@ -181,6 +181,8 @@ services:
       context: ./backend
       target: browser
     image: ${HOTKEY_BROWSER_IMAGE:-hotkey-browser:local}
+    environment:
+      HOTKEY_BROWSER_WS_URL: ${HOTKEY_BROWSER_WS_URL:-}
     init: true
     user: pwuser
     read_only: true

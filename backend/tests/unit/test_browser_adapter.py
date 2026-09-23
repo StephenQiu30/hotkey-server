@@ -8,6 +8,8 @@ import pytest
 from sources.adapters import browser_runtime
 from sources.adapters.browser_runtime import BrowserRuntime, BrowserRuntimeDisabledError
 
+_WS_URL = "ws://browser:3000/ws/" + "a" * 48
+
 
 def _playwright(monkeypatch: pytest.MonkeyPatch) -> tuple[MagicMock, AsyncMock, AsyncMock]:
     context = AsyncMock()
@@ -24,9 +26,11 @@ def _playwright(monkeypatch: pytest.MonkeyPatch) -> tuple[MagicMock, AsyncMock, 
 
 def test_browser_runtime_rejects_unsafe_ws_urls() -> None:
     for url in (
+        "ws://browser:3000/",
         "https://browser:3000/",
         "ws://user:password@browser:3000/",
         "ws://browser:3000/other",
+        "ws://browser:3000/ws/short",
         "ws://browser:3000/?token=value",
         "ws://browser:3000/#fragment",
         "ws://browser/",
@@ -37,7 +41,7 @@ def test_browser_runtime_rejects_unsafe_ws_urls() -> None:
 
 def test_browser_runtime_is_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     _playwright(monkeypatch)
-    runtime = BrowserRuntime(ws_url="ws://browser:3000/", enabled=False)
+    runtime = BrowserRuntime(ws_url="", enabled=False)
 
     async def run() -> None:
         with pytest.raises(BrowserRuntimeDisabledError):
@@ -51,7 +55,7 @@ def test_browser_runtime_closes_context_and_connection_on_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     playwright, browser, context = _playwright(monkeypatch)
-    runtime = BrowserRuntime(ws_url="ws://browser:3000/", enabled=True, connect_timeout_ms=1500)
+    runtime = BrowserRuntime(ws_url=_WS_URL, enabled=True, connect_timeout_ms=1500)
 
     async def run() -> None:
         with pytest.raises(RuntimeError, match="fixture failure"):
@@ -61,7 +65,7 @@ def test_browser_runtime_closes_context_and_connection_on_failure(
 
     asyncio.run(run())
 
-    playwright.chromium.connect.assert_awaited_once_with("ws://browser:3000/", timeout=1500)
+    playwright.chromium.connect.assert_awaited_once_with(_WS_URL, timeout=1500)
     browser.new_context.assert_awaited_once_with(accept_downloads=False, service_workers="block")
     context.close.assert_awaited_once()
     browser.close.assert_awaited_once()
@@ -69,7 +73,7 @@ def test_browser_runtime_closes_context_and_connection_on_failure(
 
 def test_browser_runtime_closes_after_cancel(monkeypatch: pytest.MonkeyPatch) -> None:
     _, browser, context = _playwright(monkeypatch)
-    runtime = BrowserRuntime(ws_url="ws://browser:3000/", enabled=True)
+    runtime = BrowserRuntime(ws_url=_WS_URL, enabled=True)
     entered = asyncio.Event()
 
     async def hold_context() -> None:
@@ -94,7 +98,7 @@ def test_browser_runtime_loads_only_an_explicit_state_object(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, browser, _ = _playwright(monkeypatch)
-    runtime = BrowserRuntime(ws_url="ws://browser:3000/", enabled=True)
+    runtime = BrowserRuntime(ws_url=_WS_URL, enabled=True)
     state = {"cookies": [], "origins": []}
 
     async def run() -> None:
@@ -112,7 +116,7 @@ def test_browser_runtime_enforces_interaction_deadline_and_closes(
 ) -> None:
     _, browser, context = _playwright(monkeypatch)
     runtime = BrowserRuntime(
-        ws_url="ws://browser:3000/",
+        ws_url=_WS_URL,
         enabled=True,
         execution_timeout_seconds=0.01,
     )
@@ -138,7 +142,7 @@ def test_browser_runtime_deadline_includes_context_creation(
 
     browser.new_context.side_effect = slow_context
     runtime = BrowserRuntime(
-        ws_url="ws://browser:3000/",
+        ws_url=_WS_URL,
         enabled=True,
         execution_timeout_seconds=0.01,
     )
@@ -164,7 +168,7 @@ def test_browser_runtime_deadline_includes_ws_connection(
 
     playwright.chromium.connect.side_effect = slow_connect
     runtime = BrowserRuntime(
-        ws_url="ws://browser:3000/",
+        ws_url=_WS_URL,
         enabled=True,
         execution_timeout_seconds=0.01,
     )
@@ -189,7 +193,7 @@ def test_browser_runtime_attempts_disconnect_after_slow_context_close(
 
     context.close.side_effect = slow_close
     monkeypatch.setattr(browser_runtime, "_CLOSE_TIMEOUT_SECONDS", 0.01, raising=False)
-    runtime = BrowserRuntime(ws_url="ws://browser:3000/", enabled=True)
+    runtime = BrowserRuntime(ws_url=_WS_URL, enabled=True)
 
     async def run() -> None:
         with pytest.raises(TimeoutError):
@@ -209,7 +213,7 @@ def test_browser_runtime_bounds_slow_disconnect(monkeypatch: pytest.MonkeyPatch)
 
     browser.close.side_effect = slow_close
     monkeypatch.setattr(browser_runtime, "_CLOSE_TIMEOUT_SECONDS", 0.01)
-    runtime = BrowserRuntime(ws_url="ws://browser:3000/", enabled=True)
+    runtime = BrowserRuntime(ws_url=_WS_URL, enabled=True)
 
     async def run() -> None:
         with pytest.raises(TimeoutError):
@@ -225,7 +229,7 @@ def test_browser_runtime_rejects_unbounded_interaction_deadline() -> None:
     for duration in (0, -1, 46, float("nan"), float("inf")):
         with pytest.raises(ValueError, match="execution timeout"):
             BrowserRuntime(
-                ws_url="ws://browser:3000/",
+                ws_url=_WS_URL,
                 enabled=True,
                 execution_timeout_seconds=duration,
             )

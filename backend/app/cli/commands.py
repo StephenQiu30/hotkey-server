@@ -123,7 +123,7 @@ def probe_browser() -> None:
     """Verify the managed browser connection without visiting a target website."""
     settings = get_settings()
     runtime = BrowserRuntime(
-        ws_url=settings.browser_ws_url,
+        ws_url=settings.browser_ws_url.get_secret_value(),
         enabled=settings.browser_enabled,
         connect_timeout_ms=settings.browser_connect_timeout_seconds * 1_000,
     )
