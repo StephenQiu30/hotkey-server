@@ -59,29 +59,35 @@ class BrowserRuntime:
     ) -> AsyncIterator[BrowserContext]:
         if not self._enabled:
             raise BrowserRuntimeDisabledError
-        async with async_playwright() as playwright:
-            browser: Browser | None = None
-            context: BrowserContext | None = None
-            try:
-                async with asyncio.timeout(self._execution_timeout_seconds):
-                    browser = await playwright.chromium.connect(
-                        self._ws_url, timeout=self._connect_timeout_ms
+        manager = async_playwright()
+        browser: Browser | None = None
+        context: BrowserContext | None = None
+        try:
+            async with asyncio.timeout(self._execution_timeout_seconds):
+                playwright = await manager.__aenter__()
+                browser = await playwright.chromium.connect(
+                    self._ws_url, timeout=self._connect_timeout_ms
+                )
+                if storage_state is None:
+                    context = await browser.new_context(
+                        accept_downloads=False, service_workers="block"
                     )
-                    if storage_state is None:
-                        context = await browser.new_context(
-                            accept_downloads=False, service_workers="block"
-                        )
-                    else:
-                        context = await browser.new_context(
-                            accept_downloads=False,
-                            service_workers="block",
-                            storage_state=storage_state,
-                        )
-                    yield context
-            finally:
+                else:
+                    context = await browser.new_context(
+                        accept_downloads=False,
+                        service_workers="block",
+                        storage_state=storage_state,
+                    )
+                yield context
+        finally:
+            try:
                 try:
                     if context is not None:
                         await asyncio.wait_for(context.close(), timeout=_CLOSE_TIMEOUT_SECONDS)
                 finally:
                     if browser is not None:
                         await asyncio.wait_for(browser.close(), timeout=_CLOSE_TIMEOUT_SECONDS)
+            finally:
+                await asyncio.wait_for(
+                    manager.__aexit__(None, None, None), timeout=_CLOSE_TIMEOUT_SECONDS
+                )

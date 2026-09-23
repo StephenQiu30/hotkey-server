@@ -202,6 +202,8 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 
 S03 browser 使用 `backend/Dockerfile` 的独立构建 target、`backend/browser/server.js` 和固定官方 seccomp；现有 API/Worker target 不安装浏览器二进制。根 Compose 的 browser 仅接入内部控制/出口网络，不发布端口、不挂业务卷、不连接数据库网络；专用 Squid 代理独占公网桥接网络，browser 不直接接入该网络。Playwright 控制面使用由本机环境提供的 48 个随机十六进制字符组成的 `/ws/` 路径；browser 与调用方读取同一 `HOTKEY_BROWSER_WS_URL`，未配置或仍为根路径时拒绝启用，不将路径写入日志或版本库。代理首片仅放行 `example.com` 受控测试目标；真实平台域名及子资源仍须经适配器准入、请求计量和安全验证逐项开放，不以通用 Docker bridge 直通替代 SSRF 边界。
 
+浏览器适配器把 Playwright 管理器启动、WS 建连、context 创建与交互纳入同一次默认/最大 45 秒协作式截止；context、连接和管理器按序各有 5 秒关闭等待预算，前一步失败仍尝试后一步。此限制不是进程级硬回收，也不是业务任务总截止；平台任务的持久恢复仍随 047 S03/S04 验证。
+
 - 复用现有 MinIO；内容来源采用免费或自建方案，只采集公开或获授权数据。X 为首版必需来源；2026-09-22 用户明确 B站、小红书、抖音、微博的评论与回复都需要，四个平台分别验收。已知作品 URL 评论路径可先于各平台全站搜索，不能以首个国内来源成功关闭四平台需求。契约见 [008 Design](docs/design/008-评论与回复采集设计.md)，候选与证据见 [047 Research](docs/research/047-本地网页与浏览器采集调研.md)。
 - twscrape 仍为 [002](docs/design/002-X免费采集与热点监控设计.md) 的验证候选；模型供应商、SDK、模型与设备仍按 [043](docs/design/043-模型服务接入与模型配置设计.md) 等专项处理，不能写成已接入。
 - 002 S01 的受控适配器归 `backend/app/sources/adapters/x_twscrape.py`：复用固定 SDK 解析与协议常量，有界 HTTPX 负责单会话请求、初始化计量与资源释放。依赖方向只允许标准库、外部 SDK、所属来源契约；不直接操作业务表或启动采集任务。真实来源能力仍需 S02 验证。

@@ -183,6 +183,55 @@ def test_browser_runtime_deadline_includes_ws_connection(
     browser.close.assert_not_awaited()
 
 
+def test_browser_runtime_deadline_includes_manager_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = MagicMock()
+
+    async def slow_startup() -> MagicMock:
+        await asyncio.sleep(0.05)
+        playwright = MagicMock()
+        playwright.chromium.connect = AsyncMock()
+        return playwright
+
+    manager.__aenter__ = AsyncMock(side_effect=slow_startup)
+    manager.__aexit__ = AsyncMock(return_value=None)
+    monkeypatch.setattr(browser_runtime, "async_playwright", lambda: manager)
+    runtime = BrowserRuntime(ws_url=_WS_URL, enabled=True, execution_timeout_seconds=0.01)
+
+    async def run() -> None:
+        with pytest.raises(TimeoutError):
+            async with runtime.context():
+                pass
+
+    asyncio.run(run())
+    manager.__aexit__.assert_awaited_once()
+
+
+def test_browser_runtime_bounds_manager_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
+    playwright, browser, context = _playwright(monkeypatch)
+    manager = MagicMock()
+    manager.__aenter__ = AsyncMock(return_value=playwright)
+
+    async def slow_shutdown(*_args: object) -> None:
+        await asyncio.sleep(0.05)
+
+    manager.__aexit__ = AsyncMock(side_effect=slow_shutdown)
+    monkeypatch.setattr(browser_runtime, "async_playwright", lambda: manager)
+    monkeypatch.setattr(browser_runtime, "_CLOSE_TIMEOUT_SECONDS", 0.01)
+    runtime = BrowserRuntime(ws_url=_WS_URL, enabled=True)
+
+    async def run() -> None:
+        with pytest.raises(TimeoutError):
+            async with runtime.context():
+                pass
+
+    asyncio.run(run())
+    context.close.assert_awaited_once()
+    browser.close.assert_awaited_once()
+    manager.__aexit__.assert_awaited_once()
+
+
 def test_browser_runtime_attempts_disconnect_after_slow_context_close(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -71,7 +71,7 @@
 - `sources/` 的适配器不依赖 API、ORM、Worker 或 CLI；业务来源契约不导入 HTTP 客户端。来源探测只经独立 CLI 显式执行，查询预览不发送网络请求。未通过持久化采集验收前，来源连接状态保持 not_connected。
 - `sources/adapters/x_twscrape.py` 拥有固定 SDK 的只读映射与有界单会话传输；初始化与失败请求纳入计量，禁止 SDK 默认账号轮换、隐式重试和解析失败落盘。业务预算/连接执行权由调用方装配，不由适配器直接操作 ORM。
 - 本地网页/浏览器采集按 [047 Design](docs/design/047-本地网页与浏览器采集设计.md) 与 [047 Plan](docs/plans/047-本地网页与浏览器采集计划.md) 分片推进；S00/S01 与 S02 公开网页业务闭环已接受，下一步从 S03 隔离浏览器运行时与会话继续。不得把公开网页闭环当作平台接入成功，或把 Firecrawl 内置渲染器当作完整交互服务。`connections/adapters/local_secrets.py` 只管理受控浏览器状态文件，运行时不得接收不可信文件路径；本地 CLI 捕获文件也需拒绝符号链接、宽权限及超限内容。`browser_state` 引用必须与版本行身份一致，执行前由 `connections` 服务判定当前版本、停用及认证失效，不由文件存在性代替；无适配器时不在目录新增假来源。外采适配器保持无 ORM，业务编排归 content，执行权和预算归 jobs；不新增第二套队列或任务数据库。跨仓库 Firecrawl 修复单独检查差异，不混入 HotKey 提交。
-- S03 浏览器固定 Playwright Python/Server `1.63.0` 原生 WS；browser 构建 target、必要的 `server.js` 入口与 seccomp 置于 `backend/`。browser 只接 Worker 共享的 WS 内网及专用代理内网，只有 HotKey 自有 Squid 代理接公网桥接网；初始代理仅放行 `example.com` 探针，不放行真实平台。控制面 WS 路径使用本机私有配置的不可猜测 `/ws/` 令牌，browser 与调用方必须一致，禁用公开根路径及日志回显。CLI 的无网络探针和代理通路仅证明运行基础，不得据此声明平台能力；真实平台出口/请求计量须经后续专门验证。不得安装 Scrapling、CDP 服务、第二套依赖栈或把浏览器二进制加入 API 镜像。
+- S03 浏览器固定 Playwright Python/Server `1.63.0` 原生 WS；browser 构建 target、必要的 `server.js` 入口与 seccomp 置于 `backend/`。browser 只接 Worker 共享的 WS 内网及专用代理内网，只有 HotKey 自有 Squid 代理接公网桥接网；初始代理仅放行 `example.com` 探针，不放行真实平台。控制面 WS 路径使用本机私有配置的不可猜测 `/ws/` 令牌，browser 与调用方必须一致，禁用公开根路径及日志回显。适配器管理器启动、建连、context 与交互共用协作式截止；各关闭步骤有界请求清理，但不能冒充业务任务硬截止。CLI 的无网络探针和代理通路仅证明运行基础，不得据此声明平台能力；真实平台出口/请求计量须经后续专门验证。不得安装 Scrapling、CDP 服务、第二套依赖栈或把浏览器二进制加入 API 镜像。
 - B站、小红书、抖音、微博评论/回复均为已确认范围，按 [008 Design](docs/design/008-评论与回复采集设计.md) 分平台验证作品定位、线程关系、一级/楼中楼分页、采样缺口和旧帖新回复。候选爬虫先核对固定源码/许可/运行边界，不能照 README 的“全量”或单页结果声明完整；四平台评论不依赖 X 先就绪。
 
 ### 固定技术与运行入口
