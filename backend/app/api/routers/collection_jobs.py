@@ -13,8 +13,6 @@ from api.dependencies import (
 )
 from core.schemas import ErrorView, JobAcceptedView, PageView
 from jobs.schemas import (
-    CollectionJobInput,
-    CollectionJobRequest,
     JobContinuousFailureIssueView,
     JobHistoryItemView,
     JobStatusView,
@@ -47,24 +45,16 @@ _READ_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     },
 )
 def create_collection_job(
-    payload: CollectionJobRequest,
+    payload: WebPageCollectionJobInput,
     response: Response,
-    service: JobServiceDependency,
     webpage_service: WebPageCollectionServiceDependency,
     identity: CsrfProtectedIdentityDependency,
 ) -> JobAcceptedView:
-    if isinstance(payload, WebPageCollectionJobInput):
-        job = webpage_service.accept_job(
-            owner_id=identity.view.user.id,
-            operation_id=payload.operation_id,
-            target_url=payload.url,
-        )
-    else:
-        assert isinstance(payload, CollectionJobInput)
-        job = service.accept(
-            owner_id=identity.view.user.id,
-            command=payload.to_acceptance(),
-        )
+    job = webpage_service.accept_job(
+        owner_id=identity.view.user.id,
+        operation_id=payload.operation_id,
+        target_url=payload.url,
+    )
     response.headers["location"] = f"/api/jobs/{job.id}"
     response.headers["cache-control"] = "no-store"
     return JobAcceptedView(job_id=job.id, status="queued")

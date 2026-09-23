@@ -1,6 +1,6 @@
 # HotKey BACKLOG
 
-更新时间：2026-09-23。这是**总体进度与实施顺序的唯一台账**。正式执行依据是 [平台总计划](docs/plans/001-热点事件监控平台总计划.md)、[逐项 Plan](docs/plans/README.md) 和 [PRD](docs/prd/README.md)。
+更新时间：2026-09-24。这是**总体进度与实施顺序的唯一台账**。正式执行依据是 [平台总计划](docs/plans/001-热点事件监控平台总计划.md)、[逐项 Plan](docs/plans/README.md) 和 [PRD](docs/prd/README.md)。
 
 技术基线见 [PROJECT.md](PROJECT.md)，交接见 [HANDOVER.md](HANDOVER.md)。2026-09-18 已固定 Redis/Kafka、server 内 Web 与独立 Flutter App；2026-09-23 X 改用官方 API，先交付离线适配器。以上规范调整不推进产品验收进度。
 
@@ -106,7 +106,7 @@ M0 的外部准入结论可能仍为“未就绪”。这不阻止 M1 和受控�
 |---|---|---|---|---|---|---|---|---|
 | BL-003 | [监控主题管理](docs/plans/003-监控主题管理计划.md) | P0 | M2 | 后端＋前端 | 042 S01、034 S01、035 S01、009 S01 | in_progress | 0/6 | S00—S03、G0—G4 已完成；本地规则/版本、owner 列表、独立复制、启停/归档、零写入规则预览、生成客户端与桌面/390×844 页面闭环已验证；S04、真实上游扩词/来源/调度及全部产品 AC 待执行 |
 | BL-004 | [平台与连接管理](docs/plans/004-平台与连接管理计划.md) | P0 | M2 | 后端＋来源接入＋前端 | 034 S01、035 S01、038 S01 | in_progress | 0/6 | S00—S03 内部技术闭环通过；配置/替换/启停 API/UI、版本屏障与停用/认证失效受理阻断已验证；S04 实际外采执行和真实 AC 待执行 |
-| BL-005 | [关键词主动发现](docs/plans/005-关键词主动发现计划.md) | P0 | M2 | 来源接入＋后端＋前端 | 003 S03、004 S02、007 S01、009 S02、037 X 付费门禁、002 S02 搜索 | in_progress | 0/6 | S00 G0—G2 与 S01 来源无关内部子片通过，受控执行器已逐页透传显式时间窗；X 官方 API 仍仅离线适配器，需 App/Token、费用上限及 037 付费门禁；真实来源、Worker/HTTP/结果入口与全部产品 AC 待执行 |
+| BL-005 | [关键词主动发现](docs/plans/005-关键词主动发现计划.md) | P0 | M2 | 来源接入＋后端＋前端 | 003 S03、004 S02、007 S01、009 S02、037 X 付费门禁、002 S02 搜索 | in_progress | 0/6 | S00 G0—G2 与 S01 来源无关内部子片通过，受控执行器逐页透传显式时间窗；公开任务契约只接受已注册的 webpage.collect，阻断 monitor.collect 假受理；X 官方 API 仍仅离线适配器，需 App/Token、费用上限及 037 付费门禁；关键词 Worker/HTTP/结果入口、真实来源与全部产品 AC 待执行 |
 | BL-006 | [指定用户作品追踪](docs/plans/006-指定用户作品追踪计划.md) | P0 | M2 | 来源接入＋后端＋前端 | 004 S02、007 S01、009 S02、037 X 付费门禁、002 S02 作者 | in_progress | 0/6 | S00 G0—G2 与 X 官方用户名/稳定 ID Lookup 离线子片通过；同名显式确认、关注持久化、真实费用/连接/作者链路及全部 AC 待执行 |
 | BL-007 | [作品资料与上下文](docs/plans/007-作品资料与上下文计划.md) | P0 | M2 | 后端＋前端 | 042 S01、034 S01、035 S01、036 S01、027 S00、028 S00 | in_progress | 0/6 | S00—S03 已交付唯一作品、发现、不可变指标观察/正文版本、quote/repost、追加式可见性与乱序稳定投影、生命周期清理、只读 API 与列表/详情；S04、真实来源及全部产品 AC 待执行 |
 | BL-008 | [评论与回复采集](docs/plans/008-评论与回复采集计划.md) | P0 | M3 | 来源接入＋后端＋前端 | 007 S03、009 S02、010 S02、037 X 付费门禁、002 S02 回复 | planned | 0/6 | 无；全部待执行 |
@@ -403,3 +403,4 @@ B09、B10、B11 互不强制串行；B10 中模型服务先行，后续三项按
 | 2026-09-24 | 完成 039 S02a 连续失败摘要技术子片 | 复用 jobs 事实新增 owner-scoped `/api/jobs/issues` 与任务历史提示/失败详情链接；隔离 PostgreSQL 专用 28 passed、后端全量 498 passed/13 skipped，Ruff/format/mypy、前端 42 tests/lint/typecheck/format/build、`pnpm openapi:check` 及 1440×900/390×844 浏览器交互通过。只用合成任务，不新增 DDL/依赖/服务，不代表真实来源；039 保持 in_progress、产品 AC 0/6 |
 | 2026-09-24 | 038 S02 前置核验发现 Firecrawl 运行态阻塞 | 官方 `v2.11.162` tag/AGPL-3.0-or-later 已核对；本地补丁提交以该 tag 为父提交，但运行镜像摘要无版本元数据且创建时间早于提交，无法证明对应关系。现有服务探针返回 HTTP 500；Compose 未带运行时 env 会解析出未设置变量，因此未重建或重启。未建立样本回归、未关闭 G3/G4 或产品 AC |
 | 2026-09-24 | 038 S02 原位重建复验 | 确认 `.env` 权限 0600 且 API/Playwright 的 46/46、8/8 Compose 环境项与运行容器完全一致；从干净 `6d9fb16` 重建并仅 `--no-deps` 替换现有两容器，未启动依赖。重建后受限探针仍 `upstream_error`；未建立固定样本、未关闭 G3/G4 或产品 AC |
+| 2026-09-24 | 005 S01 公开任务契约收紧 | `POST /api/jobs` 仅接受已注册的 `webpage.collect`，monitor.collect 不再被公开接口假受理；运行时 OpenAPI 与实际路由验证通过。后端 331 passed/181 skipped、Ruff/format/mypy，前端 42 tests/lint/typecheck/format/build 与 `pnpm openapi:check` 通过；集成测试因未配置专用 `HOTKEY_TEST_DATABASE_URL` 跳过。005 仍为 0/6 AC，关键词处理器和合法真实来源未就绪 |

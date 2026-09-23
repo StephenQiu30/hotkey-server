@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -478,11 +478,6 @@ class JobObservationContext(BaseModel):
         return self
 
 
-class CollectionJobObservationInput(JobObservationContext):
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=False)
-    source_capability: SocialSourceCapability | None = None
-
-
 class StageAttemptInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
@@ -696,16 +691,6 @@ class JobAcceptanceInput(BaseModel):
         return value
 
 
-class CollectionJobInput(JobAcceptanceInput):
-    kind: Literal[CollectionJobKind.MONITOR_COLLECT] = Field(
-        json_schema_extra={"enum": [CollectionJobKind.MONITOR_COLLECT.value]}
-    )
-    observation: CollectionJobObservationInput
-
-    def to_acceptance(self) -> JobAcceptanceInput:
-        return JobAcceptanceInput.model_validate(self.model_dump())
-
-
 class WebPageCollectionJobInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -719,12 +704,6 @@ class WebPageCollectionJobInput(BaseModel):
     @classmethod
     def validate_url(cls, value: str) -> str:
         return WebPageRequest(url=value).url
-
-
-type CollectionJobRequest = Annotated[
-    CollectionJobInput | WebPageCollectionJobInput,
-    Field(discriminator="kind"),
-]
 
 
 class JobProgressView(BaseModel):

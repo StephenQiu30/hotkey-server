@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 
 import cli.commands as cli_commands
 from cli.commands import app as cli_app
-from jobs.schemas import CollectionJobInput
+from jobs.schemas import WebPageCollectionJobInput
 from sources.adapters.firecrawl import FirecrawlAdapter
 from sources.adapters.web_targets import normalize_web_url
 from sources.contracts import (
@@ -79,9 +79,9 @@ def test_webpage_contract_and_target_normalization_reject_unsafe_urls() -> None:
             normalize_web_url(url, allowed_hosts=frozenset({"example.com", "127.0.0.1"}))
 
 
-def test_page_content_does_not_open_the_existing_monitor_job_api() -> None:
+def test_public_collection_job_contract_rejects_unregistered_monitor_jobs() -> None:
     with pytest.raises(ValidationError):
-        CollectionJobInput.model_validate(
+        WebPageCollectionJobInput.model_validate(
             {
                 "operation_id": "00000000-0000-0000-0000-000000000047",
                 "kind": "monitor.collect",
@@ -96,6 +96,8 @@ def test_page_content_does_not_open_the_existing_monitor_job_api() -> None:
             }
         )
 
+
+def test_webpage_result_requires_a_collector_attempt_for_access_denied() -> None:
     with pytest.raises(ValidationError):
         WebPageResult(
             document=None,

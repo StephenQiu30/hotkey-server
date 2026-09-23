@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 from core.config import Settings
+from jobs.schemas import JobAcceptanceInput
+from jobs.services import JobService
 from main import create_app
 
 _BOOTSTRAP_TOKEN = "bootstrap-token-used-only-by-the-isolated-test"
@@ -86,31 +88,32 @@ def _csrf_headers(client: TestClient) -> dict[str, str]:
     return {"X-HotKey-CSRF": client.cookies["hotkey_csrf"]}
 
 
-def test_submitted_job_is_persisted_and_readable_after_refresh(
+def _accept_internal_job(client: TestClient, payload: dict[str, object]) -> UUID:
+    factory = client.app.state.session_factory
+    with factory() as session:
+        owner_id = session.execute(
+            text("SELECT id FROM identity_users WHERE username = 'owner'")
+        ).scalar_one()
+        job = JobService(session).accept(
+            owner_id=owner_id,
+            command=JobAcceptanceInput.model_validate(payload),
+        )
+    return job.id
+
+
+def test_internal_job_status_is_readable_after_refresh(
     collection_job_client: TestClient,
 ) -> None:
     _initialize(collection_job_client)
     payload = _payload()
+    job_id = _accept_internal_job(collection_job_client, payload)
 
-    accepted = collection_job_client.post(
-        "/api/jobs",
-        headers=_csrf_headers(collection_job_client),
-        json=payload,
-    )
-
-    assert accepted.status_code == 202, accepted.json()
-    assert accepted.json()["status"] == "queued"
-    assert set(accepted.json()) == {"job_id", "status"}
-    location = accepted.headers["location"]
-    assert location == f"/api/jobs/{accepted.json()['job_id']}"
-    assert accepted.headers["cache-control"] == "no-store"
-
-    refreshed = collection_job_client.get(location)
+    refreshed = collection_job_client.get(f"/api/jobs/{job_id}")
 
     assert refreshed.status_code == 200
     assert refreshed.headers["cache-control"] == "no-store"
     assert refreshed.json() == {
-        "id": accepted.json()["job_id"],
+        "id": str(job_id),
         "operation_id": payload["operation_id"],
         "kind": "monitor.collect",
         "observation": payload["observation"],
@@ -141,13 +144,7 @@ def test_job_history_uses_owner_scoped_stable_cursor_and_safe_summary(
     _initialize(collection_job_client)
     job_ids: list[str] = []
     for window in (1, 2, 3):
-        accepted = collection_job_client.post(
-            "/api/jobs",
-            headers=_csrf_headers(collection_job_client),
-            json=_payload(window=window),
-        )
-        assert accepted.status_code == 202, accepted.json()
-        job_ids.append(accepted.json()["job_id"])
+        job_ids.append(str(_accept_internal_job(collection_job_client, _payload(window=window))))
 
     created_at = datetime(2026, 9, 23, 8, tzinfo=UTC)
     factory = collection_job_client.app.state.session_factory
@@ -230,13 +227,7 @@ def test_continuous_failure_issue_endpoint_is_authenticated_and_redacted(
             **payload["observation"],
             "configuration_version": window,
         }
-        accepted = collection_job_client.post(
-            "/api/jobs",
-            headers=_csrf_headers(collection_job_client),
-            json=payload,
-        )
-        assert accepted.status_code == 202, accepted.json()
-        job_ids.append(accepted.json()["job_id"])
+        job_ids.append(str(_accept_internal_job(collection_job_client, payload)))
 
     now = datetime.now(UTC)
     factory = collection_job_client.app.state.session_factory
@@ -440,12 +431,7 @@ def test_running_job_cancel_request_is_persisted_for_inflight_boundary(
     collection_job_client: TestClient,
 ) -> None:
     _initialize(collection_job_client)
-    accepted = collection_job_client.post(
-        "/api/jobs",
-        headers=_csrf_headers(collection_job_client),
-        json=_payload(),
-    )
-    job_id = accepted.json()["job_id"]
+    job_id = str(_accept_internal_job(collection_job_client, _payload()))
     factory = collection_job_client.app.state.session_factory
     with factory.begin() as session:
         session.execute(
@@ -476,12 +462,8 @@ def test_queued_job_cancel_is_immediate_idempotent_and_terminal_conflicts(
     collection_job_client: TestClient,
 ) -> None:
     _initialize(collection_job_client)
-    accepted = collection_job_client.post(
-        "/api/jobs",
-        headers=_csrf_headers(collection_job_client),
-        json=_payload(),
-    )
-    location = accepted.headers["location"]
+    job_id = _accept_internal_job(collection_job_client, _payload())
+    location = f"/api/jobs/{job_id}"
     cancel_location = f"{location}/cancel"
 
     first = collection_job_client.post(
@@ -507,7 +489,7 @@ def test_queued_job_cancel_is_immediate_idempotent_and_terminal_conflicts(
                 "cancel_requested_at = NULL, cancel_deadline_at = NULL, "
                 "updated_at = now() WHERE id = :job_id"
             ),
-            {"job_id": accepted.json()["job_id"]},
+            {"job_id": job_id},
         )
     conflict = collection_job_client.post(
         cancel_location,
@@ -517,62 +499,14 @@ def test_queued_job_cancel_is_immediate_idempotent_and_terminal_conflicts(
     assert conflict.json()["code"] == "job_not_cancellable"
 
 
-def test_repeated_submission_returns_one_persisted_job_and_outbox(
-    collection_job_client: TestClient,
-) -> None:
-    _initialize(collection_job_client)
-    payload = _payload()
-
-    responses = [
-        collection_job_client.post(
-            "/api/jobs",
-            headers=_csrf_headers(collection_job_client),
-            json=payload,
-        )
-        for _ in range(3)
-    ]
-
-    assert [response.status_code for response in responses] == [202, 202, 202], [
-        response.json() for response in responses
-    ]
-    assert len({response.json()["job_id"] for response in responses}) == 1
-    factory = collection_job_client.app.state.session_factory
-    with factory() as session:
-        assert session.execute(text("SELECT count(*) FROM jobs")).scalar_one() == 1
-        assert session.execute(text("SELECT count(*) FROM outbox_messages")).scalar_one() == 1
-
-
-def test_conflicting_reuse_of_operation_id_preserves_original_job(
-    collection_job_client: TestClient,
-) -> None:
-    _initialize(collection_job_client)
-    operation_id = uuid4()
-    original = collection_job_client.post(
-        "/api/jobs",
-        headers=_csrf_headers(collection_job_client),
-        json=_payload(operation_id=operation_id, window=7),
-    )
-    conflicting = collection_job_client.post(
-        "/api/jobs",
-        headers=_csrf_headers(collection_job_client),
-        json=_payload(operation_id=operation_id, window=8),
-    )
-
-    assert original.status_code == 202, original.json()
-    assert conflicting.status_code == 409
-    assert conflicting.json()["code"] == "idempotency_conflict"
-    factory = collection_job_client.app.state.session_factory
-    with factory() as session:
-        row = session.execute(text("SELECT id, scope FROM jobs")).one()
-        assert str(row.id) == original.json()["job_id"]
-        assert row.scope["window"] == 7
-        assert session.execute(text("SELECT count(*) FROM outbox_messages")).scalar_one() == 1
-
-
 def test_job_routes_enforce_session_csrf_and_missing_resource_boundaries(
     collection_job_client: TestClient,
 ) -> None:
-    payload = _payload()
+    payload = {
+        "operation_id": str(uuid4()),
+        "kind": "webpage.collect",
+        "url": "https://example.com/article",
+    }
     missing_session = collection_job_client.post(
         "/api/jobs",
         headers={"X-HotKey-CSRF": "1"},
@@ -623,15 +557,10 @@ def test_retry_rejects_non_failed_job_without_duplicate_dispatch(
     collection_job_client: TestClient,
 ) -> None:
     _initialize(collection_job_client)
-    accepted = collection_job_client.post(
-        "/api/jobs",
-        headers=_csrf_headers(collection_job_client),
-        json=_payload(),
-    )
-    assert accepted.status_code == 202
+    job_id = _accept_internal_job(collection_job_client, _payload())
 
     retried = collection_job_client.post(
-        f"/api/jobs/{accepted.json()['job_id']}/retry",
+        f"/api/jobs/{job_id}/retry",
         headers=_csrf_headers(collection_job_client),
     )
 
@@ -647,12 +576,7 @@ def test_manual_retry_reuses_failed_job_and_is_idempotent(
     collection_job_client: TestClient,
 ) -> None:
     _initialize(collection_job_client)
-    accepted = collection_job_client.post(
-        "/api/jobs",
-        headers=_csrf_headers(collection_job_client),
-        json=_payload(),
-    )
-    job_id = accepted.json()["job_id"]
+    job_id = str(_accept_internal_job(collection_job_client, _payload()))
     factory = collection_job_client.app.state.session_factory
     with factory.begin() as session:
         session.execute(
@@ -742,6 +666,25 @@ def test_public_submission_rejects_unregistered_job_kinds(
         assert session.execute(text("SELECT count(*) FROM outbox_messages")).scalar_one() == 0
 
 
+def test_public_submission_rejects_job_kind_without_worker_handler(
+    collection_job_client: TestClient,
+) -> None:
+    _initialize(collection_job_client)
+
+    response = collection_job_client.post(
+        "/api/jobs",
+        headers=_csrf_headers(collection_job_client),
+        json=_payload(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    factory = collection_job_client.app.state.session_factory
+    with factory() as session:
+        assert session.execute(text("SELECT count(*) FROM jobs")).scalar_one() == 0
+        assert session.execute(text("SELECT count(*) FROM outbox_messages")).scalar_one() == 0
+
+
 def test_job_openapi_contract_is_generated_from_runtime_routes(
     collection_job_client: TestClient,
 ) -> None:
@@ -756,6 +699,10 @@ def test_job_openapi_contract_is_generated_from_runtime_routes(
     assert create_operation["responses"]["202"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/JobAcceptedView"
     }
+    assert create_operation["requestBody"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/WebPageCollectionJobInput"
+    }
+    assert "CollectionJobInput" not in schema["components"]["schemas"]
     assert get_operation["operationId"] == "getCollectionJob"
     assert get_operation["responses"]["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/JobStatusView"

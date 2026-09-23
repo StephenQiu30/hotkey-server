@@ -11,28 +11,6 @@ declare namespace HotKeyAPI {
     topic_id: string;
   };
 
-  type CollectionJobInput = {
-    /** Operation Id */
-    operation_id: string;
-    /** Kind */
-    kind: "monitor.collect";
-    observation: CollectionJobObservationInput;
-    /** Scheduled For At */
-    scheduled_for_at?: string | null;
-    /** Scope */
-    scope: Record<string, any>;
-  };
-
-  type CollectionJobObservationInput = {
-    /** Configuration Ref */
-    configuration_ref: string;
-    /** Configuration Version */
-    configuration_version: number;
-    /** Source Key */
-    source_key?: string | null;
-    source_capability?: SocialSourceCapability | null;
-  };
-
   type CollectionScanKind = "new_scan" | "refresh" | "backfill";
 
   type ContentDiscoveryView = {
@@ -353,8 +331,6 @@ declare namespace HotKeyAPI {
     updated_at: string | null;
   };
 
-  type JobScopeValue = Record<string, any>;
-
   type JobStage = "request" | "parse" | "save" | "analysis";
 
   type JobStatusView = {
@@ -538,9 +514,6 @@ declare namespace HotKeyAPI {
   type retryCollectionJobParams = {
     job_id: string;
   };
-
-  type SocialSourceCapability =
-    "search" | "author_posts" | "comments" | "replies";
 
   type SourceCapability =
     "search" | "author_posts" | "comments" | "replies" | "page_content";

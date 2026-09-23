@@ -10,6 +10,8 @@ from sqlalchemy import create_engine, text
 
 from core.config import Settings
 from core.errors import ApplicationError
+from jobs.schemas import JobAcceptanceInput
+from jobs.services import JobService
 from main import create_app
 from monitors.services import MonitorTopicService
 
@@ -256,23 +258,25 @@ def test_topic_list_clone_and_archive_keep_independent_history(
         headers=_csrf_headers(monitor_topic_client),
         json=_topic_payload(),
     )
-    accepted_job = monitor_topic_client.post(
-        "/api/jobs",
-        headers=_csrf_headers(monitor_topic_client),
-        json={
-            "operation_id": str(uuid4()),
-            "kind": "monitor.collect",
-            "observation": {
-                "configuration_ref": f"topic:{created.json()['id']}",
-                "configuration_version": 1,
-                "source_key": "x",
-                "source_capability": "search",
-            },
-            "scheduled_for_at": None,
-            "scope": {"query": "brand"},
-        },
-    )
-    assert accepted_job.status_code == 202
+    factory = monitor_topic_client.app.state.session_factory
+    with factory() as session:
+        owner_id = session.execute(
+            text("SELECT id FROM identity_users WHERE username = 'topic-owner'")
+        ).scalar_one()
+        JobService(session).accept(
+            owner_id=owner_id,
+            command=JobAcceptanceInput(
+                operation_id=uuid4(),
+                kind="monitor.collect",
+                observation={
+                    "configuration_ref": f"topic:{created.json()['id']}",
+                    "configuration_version": 1,
+                    "source_key": "x",
+                    "source_capability": "search",
+                },
+                scope={"query": "brand"},
+            ),
+        )
 
     listed = monitor_topic_client.get("/api/topics")
     cloned = monitor_topic_client.post(
@@ -301,7 +305,6 @@ def test_topic_list_clone_and_archive_keep_independent_history(
         first_page.json()["items"][0]["id"],
         second_page.json()["items"][0]["id"],
     } == {created.json()["id"], cloned.json()["id"]}
-    factory = monitor_topic_client.app.state.session_factory
     with factory() as session:
         jobs = session.execute(text("SELECT configuration_ref FROM jobs")).scalars().all()
     assert jobs == [f"topic:{created.json()['id']}"]
