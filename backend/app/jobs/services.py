@@ -13,6 +13,12 @@ from sqlalchemy.orm import Session
 
 from connections.services import require_source_connection_enabled
 from core.errors import ApplicationError
+from jobs.cursor import (
+    CursorPageProgress,
+    CursorPageRequest,
+    advance_cursor_page,
+    plan_cursor_request,
+)
 from jobs.execution import (
     ExecutionLease,
     JobExecutionService,
@@ -207,6 +213,50 @@ class CoverageWindowService:
         model.page_count += 1
         model.updated_at = self._clock()
         return self._view(model)
+
+    def record_cursor_page_in_transaction(
+        self,
+        *,
+        lease: ExecutionLease,
+        window: CoverageWindowInput,
+        request: CursorPageRequest,
+        page_state: SourcePageState,
+        next_token: str | None = None,
+        stop_reason: SourceStopReason | None = None,
+        evidence: CoverageTerminalEvidence | None = None,
+    ) -> tuple[ExecutionLease, CoverageWindowView, CursorPageProgress]:
+        """Commit a bounded cursor page and range progress in the caller's transaction."""
+        expected = plan_cursor_request(
+            window=window,
+            checkpoint=lease.checkpoint,
+            live_token=request.token,
+            max_pages=request.max_pages,
+            max_rescans=request.max_rescans,
+        )
+        if request != expected:
+            raise CoverageWindowConflictError("cursor request does not match the job checkpoint")
+        progress = advance_cursor_page(
+            request,
+            state=page_state,
+            next_token=next_token,
+            stop_reason=stop_reason,
+        )
+        opened = self.begin_in_transaction(lease=lease, window=window)
+        if opened.status == "confirmed":
+            raise CoverageWindowConflictError("confirmed window cannot accept another page")
+        updated = self._execution.save_checkpoint_in_transaction(
+            lease,
+            sequence=lease.checkpoint_sequence + 1,
+            checkpoint=progress.checkpoint,
+        )
+        view = self.record_page_in_transaction(
+            lease=updated,
+            window=window,
+            page_state=progress.state,
+            stop_reason=progress.stop_reason,
+            evidence=evidence,
+        )
+        return updated, view, progress
 
     def confirmed_through(self, *, window: CoverageWindowInput, from_at: datetime) -> datetime:
         if from_at.utcoffset() != timedelta(0):

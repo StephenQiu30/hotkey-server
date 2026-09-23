@@ -666,3 +666,98 @@ def test_overlapping_windows_reuse_post_and_preserve_two_observations(
                 ),
                 {"owner_id": owner_id},
             ).one() == (1, 2, 2)
+
+
+def test_cursor_cycle_rescans_same_window_and_only_confirmed_terminal_advances_watermark(
+    window_context: tuple[sessionmaker[Session], UUID, UUID, datetime],
+) -> None:
+    from jobs.cursor import plan_cursor_request
+    from jobs.schemas import CoverageTerminalEvidence, CoverageWindowInput
+    from jobs.services import CoverageWindowService
+
+    sessions, owner_id, job_id, now = window_context
+    window = CoverageWindowInput(
+        owner_id=owner_id,
+        source_key="x",
+        capability=SourceCapability.SEARCH,
+        target_hash=_TARGET_HASH,
+        sort_key=SourceSort.LATEST,
+        rule_version=1,
+        starts_at=now - timedelta(hours=1),
+        ends_at=now,
+    )
+    with sessions() as session:
+        execution = JobExecutionService(session, lease_seconds=30, clock=lambda: now)
+        lease = execution.acquire(job_id=job_id, worker_id="cursor-test")
+        windows = CoverageWindowService(session, execution=execution, clock=lambda: now)
+        token: str | None = None
+        for next_token in ("sensitive-A", "sensitive-B", "sensitive-A"):
+            request = plan_cursor_request(
+                window=window,
+                checkpoint=lease.checkpoint,
+                live_token=token,
+                max_pages=6,
+                max_rescans=1,
+            )
+            with session.begin():
+                lease, view, progress = windows.record_cursor_page_in_transaction(
+                    lease=lease,
+                    window=window,
+                    request=request,
+                    page_state=SourcePageState.MORE,
+                    next_token=next_token,
+                )
+            token = progress.next_token
+        assert view.status == "partial" and view.stop_reason == "cursor_loop"
+        assert token is None
+        with session.begin():
+            assert (
+                windows.confirmed_through(window=window, from_at=window.starts_at)
+                == window.starts_at
+            )
+            stored = session.scalar(
+                text("SELECT checkpoint::text FROM jobs WHERE id = :job_id"),
+                {"job_id": job_id},
+            )
+            assert stored is not None and "sensitive-" not in stored
+
+        request = plan_cursor_request(
+            window=window,
+            checkpoint=lease.checkpoint,
+            live_token=None,
+            max_pages=6,
+            max_rescans=1,
+        )
+        assert request.restarted
+        with session.begin():
+            lease, view, progress = windows.record_cursor_page_in_transaction(
+                lease=lease,
+                window=window,
+                request=request,
+                page_state=SourcePageState.MORE,
+                next_token="sensitive-C",
+            )
+        request = plan_cursor_request(
+            window=window,
+            checkpoint=lease.checkpoint,
+            live_token=progress.next_token,
+            max_pages=6,
+            max_rescans=1,
+        )
+        with session.begin():
+            lease, view, _ = windows.record_cursor_page_in_transaction(
+                lease=lease,
+                window=window,
+                request=request,
+                page_state=SourcePageState.COMPLETE,
+                evidence=CoverageTerminalEvidence(
+                    starts_at=window.starts_at,
+                    ends_at=window.ends_at,
+                    sort_key=window.sort_key,
+                    query_bounded=True,
+                    sort_applied=True,
+                    terminal_verified=True,
+                ),
+            )
+            assert windows.confirmed_through(window=window, from_at=window.starts_at) == now
+        assert view.status == "confirmed" and view.page_count == 5

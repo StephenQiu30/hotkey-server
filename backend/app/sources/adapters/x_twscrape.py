@@ -391,7 +391,7 @@ class XTwscrapeAdapter:
         if request.page_token is not None:
             self._seen_cursors.add(request.page_token)
         if cursor is not None and cursor in self._seen_cursors:
-            return self._page(request, tuple(items), None, SourceStopReason.PROTOCOL_ERROR)
+            return self._page(request, tuple(items), None, SourceStopReason.CURSOR_LOOP)
         self._empty_pages = self._empty_pages + 1 if not items else 0
         if cursor is not None and self._empty_pages >= self._max_empty_pages:
             return self._page(request, (), None, SourceStopReason.PROTOCOL_ERROR)

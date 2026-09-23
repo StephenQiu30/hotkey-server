@@ -209,7 +209,7 @@ def test_cycle_across_pages_is_not_reported_complete() -> None:
     adapter.fetch_page(_search())
     adapter.fetch_page(_search(page_token="A"))
     page = adapter.fetch_page(_search(page_token="B"))
-    assert page.stop_reason is SourceStopReason.PROTOCOL_ERROR
+    assert page.stop_reason is SourceStopReason.CURSOR_LOOP
     assert page.watermark is None
 
 

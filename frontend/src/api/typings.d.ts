@@ -592,7 +592,9 @@ declare namespace HotKeyAPI {
     | "cancelled"
     | "budget_exhausted"
     | "upstream_error"
-    | "protocol_error";
+    | "protocol_error"
+    | "cursor_expired"
+    | "cursor_loop";
 
   type updateMonitorTopicParams = {
     topic_id: string;

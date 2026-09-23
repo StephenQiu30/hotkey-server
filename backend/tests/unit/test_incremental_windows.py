@@ -46,3 +46,116 @@ def test_window_accepts_explicit_utc_half_open_range() -> None:
 
     assert window.starts_at < window.ends_at
     assert window.starts_at.utcoffset() == timedelta(0)
+
+
+def test_cursor_cycle_restarts_from_window_without_persisting_raw_tokens() -> None:
+    from jobs.cursor import advance_cursor_page, plan_cursor_request
+    from sources.contracts import SourcePageState, SourceStopReason
+
+    window = CoverageWindowInput.model_validate(_window())
+    checkpoint: dict[str, str | int | bool | None] = {}
+    token: str | None = None
+    for next_token in ("secret-A", "secret-B", "secret-A"):
+        request = plan_cursor_request(
+            window=window,
+            checkpoint=checkpoint,
+            live_token=token,
+            max_pages=8,
+            max_rescans=1,
+        )
+        page = advance_cursor_page(request, state=SourcePageState.MORE, next_token=next_token)
+        checkpoint, token = page.checkpoint, page.next_token
+
+    assert page.state is SourcePageState.PARTIAL
+    assert page.stop_reason is SourceStopReason.CURSOR_LOOP
+    assert page.next_token is None
+    assert "secret-" not in str(checkpoint)
+    restart = plan_cursor_request(
+        window=window,
+        checkpoint=checkpoint,
+        live_token=None,
+        max_pages=8,
+        max_rescans=1,
+    )
+    assert restart.restarted is True
+    assert restart.token is None
+
+
+def test_expired_cursor_and_crash_rescan_are_bounded() -> None:
+    from jobs.cursor import CursorBudgetExhaustedError, advance_cursor_page, plan_cursor_request
+    from sources.contracts import SourcePageState, SourceStopReason
+
+    window = CoverageWindowInput.model_validate(_window())
+    first = plan_cursor_request(
+        window=window, checkpoint={}, live_token=None, max_pages=3, max_rescans=1
+    )
+    page = advance_cursor_page(first, state=SourcePageState.MORE, next_token="private-cursor")
+    assert "private-cursor" not in repr(page)
+    with pytest.raises(ValueError, match="limits cannot change"):
+        plan_cursor_request(
+            window=window,
+            checkpoint=page.checkpoint,
+            live_token="private-cursor",
+            max_pages=32,
+            max_rescans=1,
+        )
+    continued = plan_cursor_request(
+        window=window,
+        checkpoint=page.checkpoint,
+        live_token="private-cursor",
+        max_pages=3,
+        max_rescans=1,
+    )
+    assert "private-cursor" not in repr(continued)
+    recovered = plan_cursor_request(
+        window=window,
+        checkpoint=page.checkpoint,
+        live_token=None,
+        max_pages=3,
+        max_rescans=1,
+    )
+    assert recovered.restarted is True
+    assert "private-cursor" not in repr(recovered)
+    expired = advance_cursor_page(
+        recovered,
+        state=SourcePageState.PARTIAL,
+        stop_reason=SourceStopReason.CURSOR_EXPIRED,
+    )
+    assert expired.stop_reason is SourceStopReason.CURSOR_EXPIRED
+    with pytest.raises(CursorBudgetExhaustedError):
+        plan_cursor_request(
+            window=window,
+            checkpoint=expired.checkpoint,
+            live_token=None,
+            max_pages=3,
+            max_rescans=1,
+        )
+    assert "private-cursor" not in str(expired.checkpoint)
+
+
+def test_cursor_page_budget_stops_before_an_unknown_tail() -> None:
+    from jobs.cursor import CursorBudgetExhaustedError, advance_cursor_page, plan_cursor_request
+    from sources.contracts import SourcePageState, SourceStopReason
+
+    window = CoverageWindowInput.model_validate(_window())
+    request = plan_cursor_request(
+        window=window, checkpoint={}, live_token=None, max_pages=1, max_rescans=0
+    )
+    page = advance_cursor_page(request, state=SourcePageState.MORE, next_token="secret-tail")
+    assert page.state is SourcePageState.PARTIAL
+    assert page.stop_reason is SourceStopReason.BUDGET_EXHAUSTED
+    with pytest.raises(CursorBudgetExhaustedError):
+        plan_cursor_request(
+            window=window,
+            checkpoint=page.checkpoint,
+            live_token=None,
+            max_pages=1,
+            max_rescans=0,
+        )
+
+    terminal = advance_cursor_page(
+        request,
+        state=SourcePageState.COMPLETE,
+        stop_reason=SourceStopReason.END_OF_RESULTS,
+    )
+    assert terminal.stop_reason is None

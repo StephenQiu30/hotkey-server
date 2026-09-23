@@ -60,6 +60,8 @@ class SourceStopReason(StrEnum):
     BUDGET_EXHAUSTED = "budget_exhausted"
     UPSTREAM_ERROR = "upstream_error"
     PROTOCOL_ERROR = "protocol_error"
+    CURSOR_EXPIRED = "cursor_expired"
+    CURSOR_LOOP = "cursor_loop"
 
 
 class _ContractModel(BaseModel):
@@ -352,6 +354,8 @@ class SourcePage(_ContractModel):
             SourceStopReason.BUDGET_EXHAUSTED,
             SourceStopReason.UPSTREAM_ERROR,
             SourceStopReason.PROTOCOL_ERROR,
+            SourceStopReason.CURSOR_EXPIRED,
+            SourceStopReason.CURSOR_LOOP,
         }
         stopped_reasons = partial_reasons | {
             SourceStopReason.AUTHENTICATION_REQUIRED,
