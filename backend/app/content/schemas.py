@@ -28,6 +28,8 @@ class KeywordDiscoveryRunInput(InputModel):
     )
     configuration_version: int = Field(ge=1)
     source_key: str = Field(min_length=1, max_length=64)
+    connection_id: UUID
+    connection_version: int = Field(ge=1)
     primary_query: str
     upstream_aliases: tuple[str, ...] = Field(default=(), max_length=9)
     starts_at: datetime

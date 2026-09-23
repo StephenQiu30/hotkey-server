@@ -896,6 +896,34 @@ def require_source_connection_enabled(
         raise ApplicationError("connection_authentication_required")
 
 
+def require_source_connection_version(
+    session: Session,
+    *,
+    owner_id: UUID,
+    source_key: str,
+    connection_id: UUID,
+    connection_version: int,
+) -> None:
+    """Fence a social page against connection replacement, disable, or auth failure."""
+    connection = session.scalar(
+        select(SourceConnection)
+        .where(
+            SourceConnection.owner_id == owner_id,
+            SourceConnection.id == connection_id,
+            SourceConnection.source_key == source_key,
+        )
+        .with_for_update()
+    )
+    if connection is None:
+        raise ApplicationError("resource_not_found")
+    if connection.status == SourceConnectionStatus.DISABLED.value:
+        raise ApplicationError("connection_disabled")
+    if connection.current_version != connection_version:
+        raise ApplicationError("connection_version_conflict")
+    if _authentication_failed(session, connection):
+        raise ApplicationError("connection_authentication_required")
+
+
 def require_browser_state_execution(
     session: Session,
     *,

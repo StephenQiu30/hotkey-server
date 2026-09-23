@@ -14,6 +14,8 @@ def _run(**changes: object) -> KeywordDiscoveryRunInput:
         "configuration_ref": "topic:fixture",
         "configuration_version": 3,
         "source_key": "x",
+        "connection_id": uuid4(),
+        "connection_version": 1,
         "primary_query": "product fault",
         "upstream_aliases": ("product issue",),
         "starts_at": datetime(2026, 9, 22, tzinfo=UTC),
@@ -36,6 +38,7 @@ def test_plan_freezes_only_explicit_upstream_queries_with_independent_channels()
     assert len({job.operation_id for job in planned}) == 4
     assert {job.scope["run_id"] for job in planned} == {str(run.run_id)}
     assert {job.scope["query"] for job in planned} == {"product fault", "product issue"}
+    assert {job.scope["rule_version"] for job in planned} == {3}
     assert {job.scope["sort_key"] for job in planned} == {"latest", "top"}
     assert {job.scope["max_pages"] for job in planned if job.scope["sort_key"] == "latest"} == {3}
     assert {job.scope["max_pages"] for job in planned if job.scope["sort_key"] == "top"} == {2}
@@ -49,6 +52,12 @@ def test_plan_freezes_only_explicit_upstream_queries_with_independent_channels()
         "product fault"
     }
     assert plan_keyword_discovery(run) == planned
+
+
+def test_same_query_under_different_topics_has_distinct_coverage_target() -> None:
+    first = plan_keyword_discovery(_run(configuration_ref="topic:first"))
+    second = plan_keyword_discovery(_run(configuration_ref="topic:second"))
+    assert first[0].scope["target_hash"] != second[0].scope["target_hash"]
 
 
 @pytest.mark.parametrize(

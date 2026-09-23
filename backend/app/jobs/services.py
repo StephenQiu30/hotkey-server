@@ -22,6 +22,7 @@ from jobs.cursor import (
 from jobs.execution import (
     ExecutionLease,
     JobExecutionService,
+    JobProgress,
     ScheduleWindow,
     scheduled_operation_id,
 )
@@ -224,6 +225,7 @@ class CoverageWindowService:
         next_token: str | None = None,
         stop_reason: SourceStopReason | None = None,
         evidence: CoverageTerminalEvidence | None = None,
+        job_progress: JobProgress | None = None,
     ) -> tuple[ExecutionLease, CoverageWindowView, CursorPageProgress]:
         """Commit a bounded cursor page and range progress in the caller's transaction."""
         expected = plan_cursor_request(
@@ -248,6 +250,7 @@ class CoverageWindowService:
             lease,
             sequence=lease.checkpoint_sequence + 1,
             checkpoint=progress.checkpoint,
+            progress=job_progress,
         )
         view = self.record_page_in_transaction(
             lease=updated,

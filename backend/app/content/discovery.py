@@ -1,10 +1,51 @@
 from __future__ import annotations
 
-from uuid import uuid5
+import hashlib
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from uuid import UUID, uuid5
 
-from content.schemas import KeywordDiscoveryRunInput
-from jobs.schemas import CollectionScanKind, JobAcceptanceInput, JobObservationContext
-from sources.contracts import SourceCapability, SourceSort
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from connections.schemas import SourceEntryPoint
+from connections.services import require_source_connection_version
+from content.models import ContentDiscovery
+from content.schemas import (
+    ContentTruncationReason,
+    KeywordDiscoveryRunInput,
+    PersistContentPostInput,
+)
+from content.services import ContentService
+from evidence.schemas import AdmittedSourcePayload, DataClass
+from evidence.services import SourceAccessPolicyService
+from jobs.cursor import CursorPageProgress, CursorPageRequest
+from jobs.execution import (
+    CheckpointConflictError,
+    ExecutionLease,
+    JobExecutionService,
+    JobProgress,
+)
+from jobs.schemas import (
+    CollectionScanKind,
+    CoverageWindowInput,
+    CoverageWindowView,
+    JobAcceptanceInput,
+    JobObservationContext,
+    JobStage,
+)
+from jobs.services import CoverageWindowService, load_job_execution_configuration
+from sources.contracts import (
+    SourceCapability,
+    SourcePage,
+    SourcePost,
+    SourceSort,
+)
+
+
+def _target_hash(configuration_ref: str, query: str) -> bytes:
+    return hashlib.sha256(f"{configuration_ref}\0{query}".encode()).digest()
 
 
 def plan_keyword_discovery(run: KeywordDiscoveryRunInput) -> tuple[JobAcceptanceInput, ...]:
@@ -28,9 +69,13 @@ def plan_keyword_discovery(run: KeywordDiscoveryRunInput) -> tuple[JobAcceptance
                     observation=observation,
                     scope={
                         "run_id": str(run.run_id),
+                        "connection_id": str(run.connection_id),
+                        "connection_version": run.connection_version,
                         "query": query,
                         "query_role": "primary" if index == 0 else "upstream_alias",
                         "sort_key": sort.value,
+                        "target_hash": _target_hash(run.configuration_ref, query).hex(),
+                        "rule_version": run.configuration_version,
                         "starts_at": run.starts_at.isoformat(),
                         "ends_at": run.ends_at.isoformat(),
                         "page_size": run.page_size,
@@ -41,3 +86,199 @@ def plan_keyword_discovery(run: KeywordDiscoveryRunInput) -> tuple[JobAcceptance
                 )
             )
     return tuple(jobs)
+
+
+@dataclass(frozen=True, slots=True)
+class KeywordPageCommitResult:
+    lease: ExecutionLease
+    coverage: CoverageWindowView
+    saved_items: int
+    filtered_items: int
+    progress: CursorPageProgress = field(repr=False)
+
+
+class KeywordDiscoveryPageCommitService:
+    """Commit one admitted social search page and its cursor in one transaction."""
+
+    def __init__(
+        self,
+        session: Session,
+        *,
+        lease_seconds: int,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._session = session
+        self._lease_seconds = lease_seconds
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def commit_page(
+        self,
+        *,
+        owner_id: UUID,
+        lease: ExecutionLease,
+        window: CoverageWindowInput,
+        request: CursorPageRequest,
+        page_operation_id: UUID,
+        connection_id: UUID,
+        connection_version: int,
+        page: SourcePage,
+    ) -> KeywordPageCommitResult:
+        configuration = load_job_execution_configuration(self._session, job_id=lease.job_id)
+        if (
+            configuration is None
+            or configuration.owner_id != owner_id
+            or configuration.kind != "keyword.search"
+            or configuration.observation.source_key != window.source_key
+            or configuration.observation.source_capability is not SourceCapability.SEARCH
+            or configuration.observation.configuration_version != window.rule_version
+            or configuration.scope.get("connection_id") != str(connection_id)
+            or configuration.scope.get("connection_version") != connection_version
+            or configuration.scope.get("target_hash") != window.target_hash.hex()
+            or configuration.scope.get("rule_version") != window.rule_version
+            or configuration.scope.get("sort_key") != window.sort_key.value
+            or configuration.scope.get("starts_at") != window.starts_at.isoformat()
+            or configuration.scope.get("ends_at") != window.ends_at.isoformat()
+            or configuration.scope.get("max_pages") != request.max_pages
+            or window.owner_id != owner_id
+            or window.capability is not SourceCapability.SEARCH
+            or page.source_key != window.source_key
+            or page.capability is not SourceCapability.SEARCH
+        ):
+            self._session.rollback()
+            raise ValueError("keyword page does not match the accepted search scope")
+        query = configuration.scope.get("query")
+        if (
+            not isinstance(query, str)
+            or _target_hash(configuration.observation.configuration_ref, query)
+            != window.target_hash
+        ):
+            self._session.rollback()
+            raise ValueError("keyword query hash does not match the accepted scope")
+
+        policy = SourceAccessPolicyService(self._session, clock=self._clock)
+        admitted: list[tuple[SourcePost, AdmittedSourcePayload]] = []
+        seen: set[str] = set()
+        filtered_items = 0
+        for item in page.items:
+            if not isinstance(item, SourcePost):
+                self._session.rollback()
+                raise ValueError("keyword search page can contain only posts")
+            if (
+                item.published_at is None
+                or not window.starts_at <= item.published_at < window.ends_at
+                or item.external_id in seen
+            ):
+                filtered_items += 1
+                continue
+            seen.add(item.external_id)
+            admitted.append(
+                (
+                    item,
+                    policy.admit_payload(
+                        owner_id=owner_id,
+                        source_key=window.source_key,
+                        capability=SourceCapability.SEARCH,
+                        data_class=DataClass.STRUCTURED,
+                        collected_at=page.observed_at,
+                        payload=self._payload(item),
+                    ),
+                )
+            )
+
+        self._session.rollback()
+        execution = JobExecutionService(
+            self._session, lease_seconds=self._lease_seconds, clock=self._clock
+        )
+        with self._session.begin():
+            current = execution.require_current_operation_in_transaction(
+                lease,
+                owner_id=owner_id,
+                operation_id=configuration.operation_id,
+            )
+            if (
+                current.checkpoint_sequence != lease.checkpoint_sequence
+                or current.checkpoint != lease.checkpoint
+            ):
+                raise CheckpointConflictError("keyword page belongs to an older checkpoint")
+            require_source_connection_version(
+                self._session,
+                owner_id=owner_id,
+                source_key=window.source_key,
+                connection_id=connection_id,
+                connection_version=connection_version,
+            )
+            policy.require_admission_ready_in_transaction(
+                owner_id=owner_id,
+                source_key=window.source_key,
+                capability=SourceCapability.SEARCH,
+                data_class=DataClass.STRUCTURED,
+            )
+            content = ContentService(self._session, clock=self._clock)
+            for item, admission in admitted:
+                content.persist_post_in_transaction(
+                    owner_id=owner_id,
+                    command=PersistContentPostInput(
+                        job_id=lease.job_id,
+                        source_operation_id=uuid5(page_operation_id, item.external_id),
+                        connection_id=connection_id,
+                        connection_version=connection_version,
+                        entry_point=SourceEntryPoint.MANUAL,
+                        component_name=f"{window.source_key}.search",
+                        component_version=page.adapter_version or "unknown",
+                        admission=admission,
+                    ),
+                )
+            saved_items = self._session.scalar(
+                select(func.count(ContentDiscovery.id)).where(
+                    ContentDiscovery.owner_id == owner_id,
+                    ContentDiscovery.job_id == lease.job_id,
+                )
+            )
+            assert saved_items is not None
+            renewed, coverage, progress = CoverageWindowService(
+                self._session, execution=execution, clock=self._clock
+            ).record_cursor_page_in_transaction(
+                lease=lease,
+                window=window,
+                request=request,
+                page_state=page.state,
+                next_token=page.next_page_token,
+                stop_reason=page.stop_reason,
+                job_progress=JobProgress(stage=JobStage.SAVE, items_saved=saved_items),
+            )
+        return KeywordPageCommitResult(
+            lease=renewed,
+            coverage=coverage,
+            saved_items=saved_items,
+            filtered_items=filtered_items,
+            progress=progress,
+        )
+
+    @staticmethod
+    def _payload(post: SourcePost) -> dict[str, object]:
+        fields: dict[str, object] = {
+            "object_type": "post",
+            "external_id": post.external_id,
+            "published_at": post.published_at.isoformat() if post.published_at else None,
+            "like_count": post.like_count,
+            "comment_count": post.comment_count,
+            "repost_count": post.repost_count,
+        }
+        if post.canonical_url is not None:
+            fields["canonical_url"] = post.canonical_url
+        if post.author_external_id is not None:
+            fields["author_external_id"] = post.author_external_id
+        if post.text is not None:
+            fields["body"] = post.text
+            fields["text_scope"] = post.text_scope or "full"
+            fields["text_origin"] = "source"
+            if post.text_scope == "truncated":
+                fields["truncation_reason"] = ContentTruncationReason.SOURCE_LIMIT.value
+        elif post.text_scope is not None:
+            fields["text_scope"] = post.text_scope
+            fields["text_origin"] = "source"
+        if post.quote_external_id is not None:
+            fields["quote_target_external_id"] = post.quote_external_id
+        if post.repost_external_id is not None:
+            fields["repost_target_external_id"] = post.repost_external_id
+        return fields
