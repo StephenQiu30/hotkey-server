@@ -23,7 +23,7 @@ from sources.contracts import (
 )
 
 _SEARCH_URL = "https://api.x.com/2/tweets/search/recent"
-_POST_FIELDS = "id,text,created_at,lang,conversation_id,public_metrics,referenced_posts"
+_POST_FIELDS = "id,text,created_at,lang,conversation_id,public_metrics"
 _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
 

@@ -82,6 +82,34 @@ def test_recent_search_maps_sort_fields_and_page_token() -> None:
     assert calls[0].headers["authorization"] == "Bearer test-secret-token"
 
 
+def test_recent_search_uses_only_endpoint_declared_post_fields() -> None:
+    endpoint_fields = {
+        "id",
+        "text",
+        "created_at",
+        "lang",
+        "conversation_id",
+        "public_metrics",
+    }
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requested = set(request.url.params["post.fields"].split(","))
+        if not requested <= endpoint_fields:
+            return httpx.Response(400, json={"errors": [{"title": "invalid field"}]})
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"id": "1", "author_id": "42", "text": "post"}],
+                "meta": {"result_count": 1},
+            },
+        )
+
+    page = _adapter(respond).fetch_page(_request())
+
+    assert page.state is SourcePageState.COMPLETE
+    assert page.items[0].author_external_id == "42"
+
+
 def test_recent_search_valid_empty_is_not_a_failure() -> None:
     calls: list[httpx.Request] = []
     settlements: list[tuple[int, int | None]] = []
@@ -224,6 +252,21 @@ def test_malformed_response_keeps_unknown_billable_count() -> None:
     ).fetch_page(_request())
 
     assert page.stop_reason is SourceStopReason.PROTOCOL_ERROR
+    assert settlements == [(1, None)]
+
+
+def test_missing_author_identity_stops_without_releasing_unknown_cost() -> None:
+    settlements: list[tuple[int, int | None]] = []
+    page = _adapter(
+        lambda _: httpx.Response(
+            200,
+            json={"data": [{"id": "1", "text": "post"}], "meta": {"result_count": 1}},
+        ),
+        settle_request=lambda attempt, posts: settlements.append((attempt, posts)),
+    ).fetch_page(_request())
+
+    assert page.stop_reason is SourceStopReason.PROTOCOL_ERROR
+    assert page.items == ()
     assert settlements == [(1, None)]
 
 
