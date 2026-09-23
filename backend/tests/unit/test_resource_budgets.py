@@ -178,3 +178,33 @@ def test_x_api_spend_budget_requires_x_source() -> None:
             window_anchor_at=datetime.now(UTC),
             enabled=True,
         )
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [None, XApiPostReadCost(max_posts=5, unit_price_usd_micros=5000)],
+)
+def test_x_api_spend_budget_requires_matching_quote(
+    quote: XApiPostReadCost | None,
+) -> None:
+    with pytest.raises(ValidationError, match="matching cost quote"):
+        BudgetReservationInput(
+            reservation_id=uuid4(),
+            operation_id=uuid4(),
+            metric=BudgetMetric.X_API_USD_MICROS,
+            requested_units=50_000,
+            context=BudgetContext(source_ref="x"),
+            cost_quote=quote,
+        )
+
+
+def test_non_x_budget_rejects_cost_quote() -> None:
+    with pytest.raises(ValidationError, match="cost quote requires"):
+        BudgetReservationInput(
+            reservation_id=uuid4(),
+            operation_id=uuid4(),
+            metric=BudgetMetric.NETWORK_REQUEST,
+            requested_units=1,
+            context=BudgetContext(source_ref="x"),
+            cost_quote=XApiPostReadCost(max_posts=10, unit_price_usd_micros=5000),
+        )

@@ -975,8 +975,16 @@ class ResourceBudgetService:
         command: BudgetReservationInput,
     ) -> BudgetReservationDecision:
         """Reserve all applicable budgets inside an existing outer transaction."""
-        if command.metric == BudgetMetric.X_API_USD_MICROS and command.context.source_ref != "x":
-            raise ValueError("x api spend budget requires x source")
+        if command.metric == BudgetMetric.X_API_USD_MICROS:
+            if command.context.source_ref != "x":
+                raise ValueError("x api spend budget requires x source")
+            if (
+                not isinstance(command.cost_quote, XApiPostReadCost)
+                or command.requested_units != command.cost_quote.reservation_units
+            ):
+                raise ValueError("x api spend budget requires a matching cost quote")
+        elif command.cost_quote is not None:
+            raise ValueError("cost quote requires x api spend budget")
         now = self._clock()
         self._require_aware_clock(now)
         fingerprint = self._budget_context_fingerprint(command)
@@ -1092,6 +1100,7 @@ class ResourceBudgetService:
             metric=BudgetMetric.X_API_USD_MICROS,
             requested_units=quote.reservation_units,
             context=context,
+            cost_quote=quote,
         )
         network_existing = self._locked_reservations(owner_id, network_reservation_id)
         spend_existing = self._locked_reservations(owner_id, spend_reservation_id)
@@ -1328,8 +1337,14 @@ class ResourceBudgetService:
 
     @staticmethod
     def _budget_context_fingerprint(command: BudgetReservationInput) -> bytes:
+        payload = command.context.model_dump(mode="json")
+        if command.cost_quote is not None:
+            payload = {
+                "context": payload,
+                "cost_quote": command.cost_quote.model_dump(mode="json"),
+            }
         canonical = json.dumps(
-            command.context.model_dump(mode="json"),
+            payload,
             ensure_ascii=True,
             separators=(",", ":"),
             sort_keys=True,

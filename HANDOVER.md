@@ -111,6 +111,8 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 2026-09-23 X 双预算离线子片：`jobs` 在同一事务原子预留 `network_request` 与最坏 Post 金额；金额延期/缺策略回滚请求预留与窗口，两个 ID 必须成对，已结算 ID 不再可作为新请求授权。隔离 PostgreSQL 的并发最后额度与 `MockTransport` 两页联验通过；预算集成 23 项、后端全量 405 passed/5 skipped，Ruff/format/mypy 通过。未改 DDL、HTTP、UI、Worker 或代理，未触达 X；付费尝试账本/账期硬上限/费率快照/凭据仍缺，037 S03/S04 和产品 0/6 AC 保持未完成。
 
+同日 X 报价幂等补片：隔离 PostgreSQL 中，10×5,000 与 5×10,000 微美元的同额报价曾错误复用同一预留；失败优先用例确认后，金额预留强制携带匹配报价并纳入既有指纹，非 X 指纹不变。预算目标 41 passed、后端全量 426 passed/5 skipped，Ruff check/format 与 mypy 通过；5 项跳过需显式启用隔离浏览器服务器。没有 DDL、HTTP、UI、Worker、真实 X 请求或第二套依赖；仅清理本次一次性 QA 库。X App/Token、账期硬上限、费率快照、付费尝试账本原子装配仍缺，037 产品 AC 保持 0/6。
+
 **[038 计划](docs/plans/038-可维护与可替换计划.md) S00/S01 已完成，Plan 保持 in_progress。** `sources` 领域已增加四类纯能力请求、统一作品/评论、显式缺失值与父链、不透明分页/水位、页状态/停止原因及结构化适配器端口；新增 5 tests、相关 23 tests、后端全量 92 tests 及静态门禁通过。本切片复用现有 `.env` 与已启动服务，未新增真实适配器、固定版本/许可、样本/探针、HTTP/UI/Worker 或 SDK；S02—S04 及 038 产品 AC 仍为 0/6，未建立 Acceptance。
 
 **[039 计划](docs/plans/039-可观测与可运维计划.md) S00/S01 已完成，Plan 保持 in_progress。** `jobs` 领域已增加配置/来源运行上下文、四类阶段尝试与七类显示状态互斥汇总，Worker 临时绑定安全关联字段，`job.accepted.v2` 跨进程传递相同上下文；新增 5 tests、相关 43 tests、后端全量 97 tests 及静态门禁通过。本切片复用现有 `.env` 与 PostgreSQL 18.4，将 0 行 `hotkey_dev` 按完整 schema 重建为 17 表；未新增服务、依赖、HTTP/UI 或具体业务处理器，不证明错误动作、陈旧问题、维护审计或运维闭环，S02—S04 及 039 产品 AC 仍为 0/6，未建立 Acceptance。

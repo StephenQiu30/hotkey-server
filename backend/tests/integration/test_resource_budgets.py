@@ -178,12 +178,14 @@ def _reservation(
     source_ref: str | None = "source-a",
     connection_ref: str | None = "connection-a",
     job_ref: str | None = "job-a",
+    cost_quote: XApiPostReadCost | None = None,
 ) -> BudgetReservationInput:
     return BudgetReservationInput(
         reservation_id=uuid4(),
         operation_id=uuid4(),
         metric=metric,
         requested_units=requested_units,
+        cost_quote=cost_quote,
         context=BudgetContext(
             source_ref=source_ref,
             connection_ref=connection_ref,
@@ -448,12 +450,14 @@ def test_x_api_spend_last_page_is_reserved_by_one_transaction(
             metric=BudgetMetric.X_API_USD_MICROS,
             requested_units=quote.reservation_units,
             source_ref="x",
+            cost_quote=quote,
         ),
         _reservation(
             metric=BudgetMetric.X_API_USD_MICROS,
             requested_units=quote.reservation_units,
             source_ref="x",
             job_ref="job-b",
+            cost_quote=quote,
         ),
     )
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -591,6 +595,51 @@ def test_x_api_request_missing_spend_policy_rolls_back_network(
         )
 
 
+def test_x_api_request_replay_rejects_a_different_quote_with_the_same_total(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime(2026, 9, 23, 12, 0, 10, tzinfo=UTC))
+    original = XApiPostReadCost(max_posts=10, unit_price_usd_micros=5000)
+    changed = XApiPostReadCost(max_posts=5, unit_price_usd_micros=10_000)
+    operation_id, network_id, spend_id = uuid4(), uuid4(), uuid4()
+    with resource_budget_context.sessions() as session:
+        service = ResourceBudgetService(session, clock=clock)
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(clock=clock, limit_units=1),
+        )
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(
+                clock=clock,
+                budget_key="global.x.spend",
+                metric=BudgetMetric.X_API_USD_MICROS,
+                limit_units=original.reservation_units,
+            ),
+        )
+        with session.begin():
+            first = service.reserve_x_api_request_budgets_in_transaction(
+                owner_id=resource_budget_context.owner_id,
+                operation_id=operation_id,
+                network_reservation_id=network_id,
+                spend_reservation_id=spend_id,
+                context=BudgetContext(source_ref="x"),
+                quote=original,
+            )
+        assert first.status is BudgetDecisionStatus.RESERVED
+        with session.begin(), pytest.raises(BudgetReservationConflictError):
+            service.reserve_x_api_request_budgets_in_transaction(
+                owner_id=resource_budget_context.owner_id,
+                operation_id=operation_id,
+                network_reservation_id=network_id,
+                spend_reservation_id=spend_id,
+                context=BudgetContext(source_ref="x"),
+                quote=changed,
+            )
+
+        assert session.scalar(text("SELECT count(*) FROM resource_budget_reservations")) == 2
+
+
 def test_x_api_request_competing_for_last_spend_does_not_consume_extra_network(
     resource_budget_context: ResourceBudgetContext,
 ) -> None:
@@ -691,6 +740,7 @@ def test_x_api_spend_releases_only_verified_unused_resources(
         metric=BudgetMetric.X_API_USD_MICROS,
         requested_units=quote.reservation_units,
         source_ref="x",
+        cost_quote=quote,
     )
     with resource_budget_context.sessions() as session:
         service = ResourceBudgetService(session, clock=clock)
@@ -710,6 +760,7 @@ def test_x_api_spend_releases_only_verified_unused_resources(
             requested_units=quote.reservation_units,
             source_ref="x",
             job_ref="job-b",
+            cost_quote=quote,
         )
         delayed = service.reserve_budget(owner_id=resource_budget_context.owner_id, command=pending)
         settled = service.settle_budget_reservation(
@@ -737,6 +788,7 @@ def test_x_api_spend_releases_only_verified_unused_resources(
                 requested_units=quote.reservation_units,
                 source_ref="x",
                 job_ref="job-c",
+                cost_quote=quote,
             ),
         )
 
@@ -766,6 +818,7 @@ def test_x_api_spend_rejects_unvalidated_model_copies(
         metric=BudgetMetric.X_API_USD_MICROS,
         requested_units=50_000,
         source_ref="x",
+        cost_quote=XApiPostReadCost(max_posts=10, unit_price_usd_micros=5000),
     )
     with resource_budget_context.sessions() as session:
         service = ResourceBudgetService(session, clock=clock)

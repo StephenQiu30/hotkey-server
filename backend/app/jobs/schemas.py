@@ -303,11 +303,17 @@ class BudgetReservationInput(BaseModel):
     metric: BudgetMetric
     requested_units: int = Field(gt=0, le=_MAX_BUDGET_UNITS)
     context: BudgetContext
+    cost_quote: XApiPostReadCost | None = None
 
     @model_validator(mode="after")
     def validate_x_source(self) -> BudgetReservationInput:
-        if self.metric is BudgetMetric.X_API_USD_MICROS and self.context.source_ref != "x":
-            raise ValueError("x api spend budget requires x source")
+        if self.metric is BudgetMetric.X_API_USD_MICROS:
+            if self.context.source_ref != "x":
+                raise ValueError("x api spend budget requires x source")
+            if self.cost_quote is None or self.requested_units != self.cost_quote.reservation_units:
+                raise ValueError("x api spend budget requires a matching cost quote")
+        elif self.cost_quote is not None:
+            raise ValueError("cost quote requires x api spend budget")
         return self
 
 
