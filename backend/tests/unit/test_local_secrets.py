@@ -113,3 +113,31 @@ def test_browser_state_rejects_invalid_content_and_versions(tmp_path: Path) -> N
     state_file.write_bytes(b"x" * 1_048_577)
     with pytest.raises(BrowserStateError, match="state_invalid"):
         store.load(owner_id=owner_id, connection_id=connection_id, version=1, reference=reference)
+
+
+def test_operator_capture_requires_private_regular_file(tmp_path: Path) -> None:
+    directory = tmp_path / "capture"
+    directory.mkdir(mode=0o700)
+    capture = directory / "login.json"
+    state = {"cookies": [{"name": "fixture", "value": "private"}], "origins": []}
+    capture.write_text('{"cookies":[{"name":"fixture","value":"private"}],"origins":[]}')
+    os.chmod(capture, 0o600)
+    assert BrowserStateStore.read_capture(capture) == state
+
+    os.chmod(capture, 0o644)
+    with pytest.raises(BrowserStateError, match="file_invalid"):
+        BrowserStateStore.read_capture(capture)
+    os.chmod(capture, 0o600)
+    alias = directory / "alias.json"
+    alias.symlink_to(capture)
+    with pytest.raises(BrowserStateError, match="file_invalid"):
+        BrowserStateStore.read_capture(alias)
+    with pytest.raises(BrowserStateError, match="file_invalid"):
+        BrowserStateStore.read_capture(Path("login.json"))
+    fifo = directory / "pipe.json"
+    os.mkfifo(fifo, mode=0o600)
+    with pytest.raises(BrowserStateError, match="file_invalid"):
+        BrowserStateStore.read_capture(fifo)
+    os.chmod(directory, 0o755)
+    with pytest.raises(BrowserStateError, match="directory_invalid"):
+        BrowserStateStore.read_capture(capture)

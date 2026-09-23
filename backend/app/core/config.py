@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     browser_enabled: bool = False
     browser_ws_url: str = "ws://browser:3000/"
     browser_connect_timeout_seconds: int = Field(default=5, ge=1, le=10)
+    browser_state_dir: Path | None = None
 
     minio_endpoint: str = "127.0.0.1:9000"
     minio_secure: bool = False
@@ -112,6 +113,11 @@ class Settings(BaseSettings):
     @field_validator("bootstrap_token", mode="before")
     @classmethod
     def empty_bootstrap_token_is_unconfigured(cls, value: object) -> object:
+        return None if value == "" else value
+
+    @field_validator("browser_state_dir", mode="before")
+    @classmethod
+    def empty_browser_state_dir_is_unconfigured(cls, value: object) -> object:
         return None if value == "" else value
 
 

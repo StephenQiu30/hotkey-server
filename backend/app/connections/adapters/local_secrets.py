@@ -31,7 +31,7 @@ class BrowserStateStore:
         version: int,
         state: StorageState,
     ) -> str:
-        reference = self._reference(owner_id, connection_id, version)
+        reference = self.reference(owner_id, connection_id, version)
         payload = self._encode(state)
         directory = self._directory(owner_id, connection_id, create=True)
         target = directory / f"{version}.json"
@@ -65,12 +65,28 @@ class BrowserStateStore:
         version: int,
         reference: str,
     ) -> StorageState:
-        if reference != self._reference(owner_id, connection_id, version):
+        if reference != self.reference(owner_id, connection_id, version):
             raise BrowserStateError("browser_state_reference_invalid")
         directory = self._directory(owner_id, connection_id, create=False)
-        path = directory / f"{version}.json"
+        return self._read_file(directory / f"{version}.json")
+
+    @staticmethod
+    def read_capture(path: Path) -> StorageState:
+        """Read one private Playwright capture supplied by a local operator."""
+        if not path.is_absolute():
+            raise BrowserStateError("browser_state_file_invalid")
+        BrowserStateStore._verify_directory(path.parent)
         try:
-            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            if path.resolve(strict=True) != path:
+                raise BrowserStateError("browser_state_file_invalid")
+        except (OSError, RuntimeError) as error:
+            raise BrowserStateError("browser_state_file_invalid") from error
+        return BrowserStateStore._read_file(path)
+
+    @staticmethod
+    def _read_file(path: Path) -> StorageState:
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
             with os.fdopen(descriptor, "rb") as file:
                 info = os.fstat(file.fileno())
                 if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600:
@@ -78,7 +94,7 @@ class BrowserStateStore:
                 payload = file.read(_MAX_STATE_BYTES + 1)
         except OSError as error:
             raise BrowserStateError("browser_state_file_invalid") from error
-        return self._decode(payload)
+        return BrowserStateStore._decode(payload)
 
     def _directory(self, owner_id: UUID, connection_id: UUID, *, create: bool) -> Path:
         self._verify_directory(self._root)
@@ -111,7 +127,7 @@ class BrowserStateStore:
             raise BrowserStateError("browser_state_directory_invalid")
 
     @staticmethod
-    def _reference(owner_id: UUID, connection_id: UUID, version: int) -> str:
+    def reference(owner_id: UUID, connection_id: UUID, version: int) -> str:
         if version < 1 or version > 2_147_483_647:
             raise BrowserStateError("browser_state_version_invalid")
         return f"browser-state:{owner_id.hex}/{connection_id.hex}/{version}"

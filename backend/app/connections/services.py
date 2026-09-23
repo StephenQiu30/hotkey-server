@@ -467,6 +467,135 @@ class SourceConnectionService:
                 updated_at=connection.updated_at.astimezone(UTC),
             )
 
+    def rotate_browser_state(
+        self,
+        *,
+        owner_id: UUID,
+        connection_id: UUID,
+        expected_version: int,
+        state: StorageState,
+        store: BrowserStateStore,
+    ) -> SourceConnectionView:
+        """Activate one new immutable browser-state version from an operator capture."""
+        if not state.get("cookies") and not state.get("origins"):
+            raise ApplicationError("connection_credentials_missing")
+        now = self._browser_maintenance_time()
+        self._session.rollback()
+        with self._session.begin():
+            connection, previous = self._lock_browser_version(
+                owner_id, connection_id, expected_version
+            )
+            new_version = connection.current_version + 1
+            reference = store.reference(owner_id, connection_id, new_version)
+            try:
+                store.save(
+                    owner_id=owner_id,
+                    connection_id=connection_id,
+                    version=new_version,
+                    state=state,
+                )
+            except BrowserStateError as error:
+                if str(error) != "browser_state_already_exists":
+                    raise ApplicationError("connection_credentials_missing") from error
+                try:
+                    existing = store.load(
+                        owner_id=owner_id,
+                        connection_id=connection_id,
+                        version=new_version,
+                        reference=reference,
+                    )
+                except BrowserStateError as read_error:
+                    raise ApplicationError("connection_credentials_missing") from read_error
+                if existing != state:
+                    raise ApplicationError("idempotency_conflict") from error
+            connection.current_version = new_version
+            connection.status = SourceConnectionStatus.ACTIVE.value
+            connection.updated_at = now
+            self._session.add(
+                SourceConnectionVersion(
+                    connection_id=connection_id,
+                    owner_id=owner_id,
+                    version=new_version,
+                    auth_kind=SourceConnectionAuthKind.BROWSER_STATE.value,
+                    secret_ref=reference,
+                    configuration=dict(previous.configuration),
+                    created_by=owner_id,
+                    created_at=now,
+                )
+            )
+            return self._browser_view(connection, previous)
+
+    def disable_browser_state(
+        self,
+        *,
+        owner_id: UUID,
+        connection_id: UUID,
+        expected_version: int,
+    ) -> SourceConnectionView:
+        """Stop browser execution; reactivation requires another operator capture."""
+        now = self._browser_maintenance_time()
+        self._session.rollback()
+        with self._session.begin():
+            connection, previous = self._lock_browser_version(
+                owner_id, connection_id, expected_version
+            )
+            if connection.status == SourceConnectionStatus.DISABLED.value:
+                return self._browser_view(connection, previous)
+            new_version = connection.current_version + 1
+            connection.current_version = new_version
+            connection.status = SourceConnectionStatus.DISABLED.value
+            connection.updated_at = now
+            self._session.add(
+                SourceConnectionVersion(
+                    connection_id=connection_id,
+                    owner_id=owner_id,
+                    version=new_version,
+                    auth_kind=SourceConnectionAuthKind.BROWSER_STATE.value,
+                    secret_ref=BrowserStateStore.reference(owner_id, connection_id, new_version),
+                    configuration=dict(previous.configuration),
+                    created_by=owner_id,
+                    created_at=now,
+                )
+            )
+            return self._browser_view(connection, previous)
+
+    def _lock_browser_version(
+        self, owner_id: UUID, connection_id: UUID, expected_version: int
+    ) -> tuple[SourceConnection, SourceConnectionVersion]:
+        connection = self._session.scalar(
+            select(SourceConnection)
+            .where(SourceConnection.owner_id == owner_id, SourceConnection.id == connection_id)
+            .with_for_update()
+        )
+        if connection is None:
+            raise ApplicationError("resource_not_found")
+        if connection.current_version != expected_version:
+            raise ApplicationError("connection_version_conflict")
+        previous = self._session.get(
+            SourceConnectionVersion, (connection.id, connection.current_version)
+        )
+        if previous is None or previous.auth_kind != SourceConnectionAuthKind.BROWSER_STATE.value:
+            raise ApplicationError("invalid_connection_configuration")
+        return connection, previous
+
+    def _browser_maintenance_time(self) -> datetime:
+        now = self._clock()
+        if now.tzinfo is None:
+            raise ValueError("clock must return a timezone-aware datetime")
+        return now.astimezone(UTC)
+
+    def _browser_view(
+        self, connection: SourceConnection, version: SourceConnectionVersion
+    ) -> SourceConnectionView:
+        return SourceConnectionView(
+            id=connection.id,
+            source_key=connection.source_key,
+            status=SourceConnectionStatus(connection.status),
+            version=connection.current_version,
+            allowed_hosts=list(self._allowed_hosts(version.configuration)),
+            updated_at=connection.updated_at.astimezone(UTC),
+        )
+
     def list_platforms(self, *, owner_id: UUID) -> list[SourcePlatformView]:
         now = self._clock()
         self._session.rollback()

@@ -12,12 +12,13 @@ from redis import Redis
 from backups.adapters.minio import MinioObjectInventory, ObjectInventoryError
 from backups.adapters.postgres import BackupToolError, PostgresDumpAdapter
 from backups.services import BackupError, BackupService
+from connections.adapters.local_secrets import BrowserStateError, BrowserStateStore
 from connections.schemas import (
     ConnectionEvidenceOutcome,
     ProbeEvidenceInput,
     SourceEntryPoint,
 )
-from connections.services import SourceCapabilityEvidenceService
+from connections.services import SourceCapabilityEvidenceService, SourceConnectionService
 from content.services import ContentObservationCleanup
 from core.config import get_settings
 from core.errors import ApplicationError
@@ -193,6 +194,69 @@ def record_source_probe(
         f"Probe evidence recorded: {evidence.id}; outcome: {evidence.outcome.value}; "
         f"connection version: {evidence.connection_version}"
     )
+
+
+@connections_app.command("rotate-browser-state")
+def rotate_browser_state(
+    owner_id: Annotated[UUID, typer.Option(help="Owner of an existing browser connection.")],
+    connection_id: Annotated[UUID, typer.Option(help="Existing browser connection to rotate.")],
+    expected_version: Annotated[int, typer.Option(min=1, help="Current connection version.")],
+    capture_file: Annotated[Path, typer.Option(help="Absolute private Playwright state file.")],
+) -> None:
+    """Activate a captured state on an existing browser-state connection."""
+    settings = get_settings()
+    if settings.browser_state_dir is None:
+        typer.echo("Browser state update failed: state_directory_unconfigured", err=True)
+        raise typer.Exit(code=1)
+    try:
+        store = BrowserStateStore(settings.browser_state_dir)
+        state = store.read_capture(capture_file)
+    except BrowserStateError as error:
+        typer.echo("Browser state update failed: capture_invalid", err=True)
+        raise typer.Exit(code=1) from error
+
+    engine = create_db_engine(settings)
+    session = create_session_factory(engine)()
+    try:
+        connection = SourceConnectionService(session).rotate_browser_state(
+            owner_id=owner_id,
+            connection_id=connection_id,
+            expected_version=expected_version,
+            state=state,
+            store=store,
+        )
+    except ApplicationError as error:
+        typer.echo(f"Browser state update failed: {error.code}", err=True)
+        raise typer.Exit(code=1) from error
+    finally:
+        session.close()
+        engine.dispose()
+    typer.echo(f"Browser state updated: {connection.id}; version: {connection.version}")
+
+
+@connections_app.command("disable-browser-state")
+def disable_browser_state(
+    owner_id: Annotated[UUID, typer.Option(help="Owner of an existing browser connection.")],
+    connection_id: Annotated[UUID, typer.Option(help="Existing browser connection to stop.")],
+    expected_version: Annotated[int, typer.Option(min=1, help="Current connection version.")],
+) -> None:
+    """Stop browser execution without opening a captured state file."""
+    settings = get_settings()
+    engine = create_db_engine(settings)
+    session = create_session_factory(engine)()
+    try:
+        connection = SourceConnectionService(session).disable_browser_state(
+            owner_id=owner_id,
+            connection_id=connection_id,
+            expected_version=expected_version,
+        )
+    except ApplicationError as error:
+        typer.echo(f"Browser state disable failed: {error.code}", err=True)
+        raise typer.Exit(code=1) from error
+    finally:
+        session.close()
+        engine.dispose()
+    typer.echo(f"Browser state disabled: {connection.id}; version: {connection.version}")
 
 
 @backup_app.command("create-candidate")

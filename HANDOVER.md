@@ -14,7 +14,9 @@ S03-T02 的受控动态交互与离线状态子片已用现有断网 browser 内
 
 S03-T02 连接执行门禁又增加 `browser_state` DDL/ORM 精确引用约束与事务内当前版本、停用、认证失效、缺文件拒绝。在现有 PostgreSQL 的一次性空库应用完整 `schema.sql` 后，真实集成及后端全量 320 passed/2 skipped，Ruff/mypy 通过；库随验证删除并确认临时库 0 个，既有开发/测试库未改动。此实现仍无平台目录、人工登录/换版 CLI 或业务任务调用，不能当作真实会话可用。
 
-S03-T02 又为每次 BrowserContext 交互设置默认及最大 45 秒截止；现有 browser 内网 live 测试增至 3 项，超时、主动取消后页面关闭且可重新建 context。一次性 Worker 客户端持有页面时 browser 渲染进程为 1，`SIGKILL` 后回到 0，browser 保持 healthy，测试容器自动移除；这只证明本机渲染进程回收，不证明业务任务崩溃恢复。计时不包含连接/清理。人工登录导出拟复用 Playwright 官方 `codegen --save-storage`，仍未接入真实平台或维护 CLI。
+S03-T02 又为每次 BrowserContext 交互设置默认及最大 45 秒截止；现有 browser 内网 live 测试增至 3 项，超时、主动取消后页面关闭且可重新建 context。一次性 Worker 客户端持有页面时 browser 渲染进程为 1，`SIGKILL` 后回到 0，browser 保持 healthy，测试容器自动移除；这只证明本机渲染进程回收，不证明业务任务崩溃恢复。计时不包含连接/清理。人工登录导出拟复用 Playwright 官方 `codegen --save-storage`，仍未接入真实平台或人工登录采集命令。
+
+S03-T02 现有 `browser_state` 连接维护 CLI 已落地：可从 0600 捕获文件换版，或按当前版本停用；文件/父目录权限、符号链接、当前版本、重复停用、再启用及输出脱敏由受控测试覆盖。复用既有 PostgreSQL 的一次性空库执行后端全量 325 passed/3 skipped，Ruff/mypy 通过，临时库删除；未改现有开发/测试库或启动第二套依赖。CLI 不创建首个真实平台连接，未执行平台人工登录、业务 Worker 或产品验收；G4-002/EV-047-005、AC 0/8 不变。
 
 ## 当前结构
 
@@ -97,7 +99,7 @@ S03-T02 又为每次 BrowserContext 交互设置默认及最大 45 秒截止；�
 
 后端采用模块化单体与按业务领域分组的分层结构，完整目录、文件职责、API 契约、事务和依赖方向固定在根目录 [PROJECT.md](PROJECT.md)；执行入口、实现门禁和验证命令见 [AGENTS.md](AGENTS.md#fastapi-目录与命名必须执行)。
 
-1. 047 S02 网页业务闭环及 S03-T00/T01 浏览器基础已完成：固定 Playwright Python/Server 1.63.0 原生 WS，browser 默认断网且非 root/sandbox，暂不引入 Scrapling/Selector/CDP。S03-T02 受控动态动作、离线状态文件和连接执行门禁已局部验证；下一步仍需人工登录/换版 CLI、取消/崩溃资源回收及平台出站安全验证。不得把内部无网络探针当作四平台评论或产品 Acceptance，产品 AC 仍为 0/8。
+1. 047 S02 网页业务闭环及 S03-T00/T01 浏览器基础已完成：固定 Playwright Python/Server 1.63.0 原生 WS，browser 默认断网且非 root/sandbox，暂不引入 Scrapling/Selector/CDP。S03-T02 受控动态动作、离线状态文件、连接执行门禁和已有连接维护 CLI 已局部验证；下一步仍需真实平台登录/连接初始化、业务任务取消/崩溃恢复及平台出站安全验证。不得把内部无网络探针当作四平台评论或产品 Acceptance，产品 AC 仍为 0/8。
 2. 保持旧 PostgreSQL 数据库不变；当前 `hotkey_dev` 已按完整 schema 重建，后续存量变更继续采用新库建表与校验导入，不增加运行时迁移。
 3. 在业务表和任务接齐后执行 042 S02—S04 的完整 B0、高水位、共同负载、两环境恢复与回滚验证。
 4. 按业务切片实现页面并完成桌面、窄屏和端到端验收。

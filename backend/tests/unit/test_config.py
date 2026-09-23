@@ -47,3 +47,9 @@ def test_browser_runtime_is_disabled_and_uses_fixed_internal_endpoint(monkeypatc
     monkeypatch.setenv("HOTKEY_BROWSER_WS_URL", "ws://user:password@browser:3000/")
     with pytest.raises(ValidationError):
         Settings(database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test")
+
+
+def test_browser_state_directory_is_optional(monkeypatch) -> None:
+    monkeypatch.setenv("HOTKEY_BROWSER_STATE_DIR", "")
+    settings = Settings(database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test")
+    assert settings.browser_state_dir is None

@@ -16,6 +16,15 @@ uv run --locked python -m cli
 
 API、Worker 和 CLI 分别启动。应用启动不会创建或修改数据库结构。
 
+浏览器登录状态维护仅适用于数据库中已存在的 `browser_state` 连接；目前尚无真实平台连接创建入口。操作者在本机设置 `HOTKEY_BROWSER_STATE_DIR` 为已存在、权限 0700 的绝对目录，捕获文件必须位于 0700 目录、权限 0600，且不得是符号链接。CLI 不接收 Cookie 正文参数，不打印捕获内容或路径：
+
+```bash
+uv run --locked python -m cli connections rotate-browser-state --owner-id OWNER_UUID --connection-id CONNECTION_UUID --expected-version 1 --capture-file /absolute/private/storage-state.json
+uv run --locked python -m cli connections disable-browser-state --owner-id OWNER_UUID --connection-id CONNECTION_UUID --expected-version 2
+```
+
+停用后需导入新的人工登录状态才能重新启用；未接入平台适配器前，这些命令不代表平台采集可用。
+
 ## 数据库结构
 
 `database/schema.sql` 是唯一 DDL 事实源；SQLAlchemy Model 只负责运行时映射。每次数据结构变更必须在同一提交中更新 SQL、Model 与真实 PostgreSQL 验证。

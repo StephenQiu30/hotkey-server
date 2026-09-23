@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from typer.testing import CliRunner
 
 from cli.commands import app as cli_app
-from connections.adapters.local_secrets import BrowserStateStore
+from connections.adapters.local_secrets import BrowserStateError, BrowserStateStore
 from connections.schemas import (
     ConnectionEvidenceOutcome,
     PersistedReadEvidenceInput,
@@ -1049,3 +1049,191 @@ def test_browser_state_execution_requires_current_active_authenticated_version(
                     "now": now,
                 },
             )
+
+
+def test_browser_state_maintenance_rotates_disables_and_requires_new_capture(
+    source_connection_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = source_connection_client
+    owner_id = UUID(_initialize(client))
+    connection_id = uuid4()
+    root = tmp_path / "browser-states"
+    root.mkdir(mode=0o700)
+    store = BrowserStateStore(root)
+    original = {"cookies": [{"name": "fixture", "value": "one"}], "origins": []}
+    reference = store.save(
+        owner_id=owner_id, connection_id=connection_id, version=1, state=original
+    )
+    now = datetime.now(UTC)
+    factory = client.app.state.session_factory
+    with factory() as session, session.begin():
+        session.execute(
+            text(
+                "INSERT INTO source_connections "
+                "(id, owner_id, source_key, status, current_version, created_at, updated_at) "
+                "VALUES (:id, :owner_id, 'browser_fixture', 'active', 1, :now, :now)"
+            ),
+            {"id": connection_id, "owner_id": owner_id, "now": now},
+        )
+        session.execute(
+            text(
+                "INSERT INTO source_connection_versions "
+                "(connection_id, version, owner_id, auth_kind, secret_ref, created_by, "
+                "created_at) VALUES (:id, 1, :owner_id, 'browser_state', :reference, "
+                ":owner_id, :now)"
+            ),
+            {"id": connection_id, "owner_id": owner_id, "reference": reference, "now": now},
+        )
+
+    replacement = {"cookies": [{"name": "fixture", "value": "two"}], "origins": []}
+    with factory() as session:
+        rotated = SourceConnectionService(session).rotate_browser_state(
+            owner_id=owner_id,
+            connection_id=connection_id,
+            expected_version=1,
+            state=replacement,
+            store=store,
+        )
+    assert rotated.version == 2 and rotated.status is SourceConnectionStatus.ACTIVE
+    with factory() as session, session.begin():
+        with pytest.raises(ApplicationError, match="connection_version_conflict"):
+            require_browser_state_execution(
+                session,
+                owner_id=owner_id,
+                connection_id=connection_id,
+                connection_version=1,
+                store=store,
+            )
+        assert (
+            require_browser_state_execution(
+                session,
+                owner_id=owner_id,
+                connection_id=connection_id,
+                connection_version=2,
+                store=store,
+            )
+            == replacement
+        )
+
+    with factory() as session:
+        with pytest.raises(ApplicationError, match="connection_version_conflict"):
+            SourceConnectionService(session).rotate_browser_state(
+                owner_id=owner_id,
+                connection_id=connection_id,
+                expected_version=1,
+                state=replacement,
+                store=store,
+            )
+        disabled = SourceConnectionService(session).disable_browser_state(
+            owner_id=owner_id,
+            connection_id=connection_id,
+            expected_version=2,
+        )
+    assert disabled.version == 3 and disabled.status is SourceConnectionStatus.DISABLED
+    with pytest.raises(BrowserStateError, match="file_invalid"):
+        store.load(
+            owner_id=owner_id,
+            connection_id=connection_id,
+            version=3,
+            reference=store.reference(owner_id, connection_id, 3),
+        )
+    resumed_state = {"cookies": [{"name": "fixture", "value": "three"}], "origins": []}
+    store.save(owner_id=owner_id, connection_id=connection_id, version=4, state=resumed_state)
+    with factory() as session:
+        repeated = SourceConnectionService(session).disable_browser_state(
+            owner_id=owner_id,
+            connection_id=connection_id,
+            expected_version=3,
+        )
+        reenabled = SourceConnectionService(session).rotate_browser_state(
+            owner_id=owner_id,
+            connection_id=connection_id,
+            expected_version=3,
+            state=resumed_state,
+            store=store,
+        )
+    assert repeated.version == 3
+    assert reenabled.version == 4 and reenabled.status is SourceConnectionStatus.ACTIVE
+
+    capture_directory = tmp_path / "capture"
+    capture_directory.mkdir(mode=0o700)
+    capture = capture_directory / "storage-state.json"
+    capture.write_text(
+        '{"cookies":[{"name":"fixture","value":"CLI_SECRET_MARKER"}],"origins":[]}',
+        encoding="utf-8",
+    )
+    capture.chmod(0o600)
+    monkeypatch.setenv("HOTKEY_DATABASE_URL", os.environ["HOTKEY_TEST_DATABASE_URL"])
+    monkeypatch.setenv("HOTKEY_BROWSER_STATE_DIR", str(root))
+    monkeypatch.setenv("HOTKEY_ENVIRONMENT", "test")
+    get_settings.cache_clear()
+    try:
+        capture.chmod(0o644)
+        invalid_capture = CliRunner().invoke(
+            cli_app,
+            [
+                "connections",
+                "rotate-browser-state",
+                "--owner-id",
+                str(owner_id),
+                "--connection-id",
+                str(connection_id),
+                "--expected-version",
+                "4",
+                "--capture-file",
+                str(capture),
+            ],
+        )
+        capture.chmod(0o600)
+        rotate_result = CliRunner().invoke(
+            cli_app,
+            [
+                "connections",
+                "rotate-browser-state",
+                "--owner-id",
+                str(owner_id),
+                "--connection-id",
+                str(connection_id),
+                "--expected-version",
+                "4",
+                "--capture-file",
+                str(capture),
+            ],
+        )
+        disable_result = CliRunner().invoke(
+            cli_app,
+            [
+                "connections",
+                "disable-browser-state",
+                "--owner-id",
+                str(owner_id),
+                "--connection-id",
+                str(connection_id),
+                "--expected-version",
+                "5",
+            ],
+        )
+    finally:
+        get_settings.cache_clear()
+    assert invalid_capture.exit_code == 1
+    assert "capture_invalid" in invalid_capture.output
+    assert "CLI_SECRET_MARKER" not in invalid_capture.output
+    assert str(capture) not in invalid_capture.output
+    assert rotate_result.exit_code == 0, rotate_result.output
+    assert disable_result.exit_code == 0, disable_result.output
+    assert "CLI_SECRET_MARKER" not in rotate_result.output
+    assert str(capture) not in rotate_result.output
+    assert "version: 5" in rotate_result.output
+    assert "version: 6" in disable_result.output
+    with (
+        factory() as session,
+        session.begin(),
+        pytest.raises(ApplicationError, match="connection_disabled"),
+    ):
+        require_browser_state_execution(
+            session,
+            owner_id=owner_id,
+            connection_id=connection_id,
+            connection_version=6,
+            store=store,
+        )
