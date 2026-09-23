@@ -128,6 +128,8 @@ class KeywordDiscoveryExecutor:
                 query=query,
                 sort=sort,
                 page_size=page_size,
+                starts_at=window.starts_at,
+                ends_at=window.ends_at,
             )
         except (TypeError, ValueError) as error:
             raise self._failure(
@@ -214,6 +216,8 @@ class KeywordDiscoveryExecutor:
                     sort=sort,
                     page_size=page_size,
                     page_token=cursor.token,
+                    starts_at=window.starts_at,
+                    ends_at=window.ends_at,
                 )
                 try:
                     page = adapter.fetch_page(request)

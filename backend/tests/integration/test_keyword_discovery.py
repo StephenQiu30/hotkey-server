@@ -521,6 +521,10 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
             (SourceSort.LATEST, None),
             (SourceSort.LATEST, "cursor-1"),
         ]
+        assert [(request.starts_at, request.ends_at) for request in submitted_latest] == [
+            (start, end),
+            (start, end),
+        ]
         with Session(engine) as session:
             latest_coverage = session.scalar(
                 select(CoverageWindow).where(
@@ -667,6 +671,7 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
         assert [(request.query, request.sort, request.page_token) for request in submitted] == [
             ("product fault", SourceSort.TOP, None)
         ]
+        assert [(request.starts_at, request.ends_at) for request in submitted] == [(start, end)]
         with Session(engine) as session:
             records = session.scalars(
                 select(ContentRecord).where(ContentRecord.owner_id == owner_id)
