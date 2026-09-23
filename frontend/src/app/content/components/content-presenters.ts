@@ -22,6 +22,18 @@ export function formatTime(value: string | null): string {
   return value === null ? "未知" : DATE_TIME_FORMATTER.format(new Date(value));
 }
 
+const SCAN_KIND_LABELS: Record<HotKeyAPI.CollectionScanKind, string> = {
+  new_scan: "追新",
+  refresh: "旧作刷新",
+  backfill: "历史回补 · 非新发生",
+};
+
+export function scanKindLabel(
+  kind: HotKeyAPI.CollectionScanKind | null,
+): string {
+  return kind === null ? "采集类型未标注" : SCAN_KIND_LABELS[kind];
+}
+
 export function hasUnknownMetrics(
   metrics: HotKeyAPI.ContentMetricView,
 ): boolean {

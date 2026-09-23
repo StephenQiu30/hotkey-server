@@ -1450,6 +1450,7 @@ class ContentService:
                 configuration_ref=job_contexts[item.job_id].configuration_ref,
                 configuration_version=job_contexts[item.job_id].configuration_version,
                 first_observed_at=item.first_observed_at,
+                scan_kind=job_contexts[item.job_id].scan_kind,
             )
             for item in discoveries
             if item.job_id in job_contexts

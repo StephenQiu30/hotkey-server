@@ -33,6 +33,8 @@ declare namespace HotKeyAPI {
     source_capability?: SocialSourceCapability | null;
   };
 
+  type CollectionScanKind = "new_scan" | "refresh" | "backfill";
+
   type ContentDiscoveryView = {
     /** Job Id */
     job_id: string;
@@ -42,6 +44,7 @@ declare namespace HotKeyAPI {
     configuration_version: number;
     /** First Observed At */
     first_observed_at: string;
+    scan_kind: CollectionScanKind | null;
   };
 
   type ContentMetricView = {

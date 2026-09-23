@@ -15,6 +15,7 @@ import {
   hasUnknownMetrics,
   METRIC_LABELS,
   relationTypeLabel,
+  scanKindLabel,
   truncationReasonLabel,
   visibilityBasisLabel,
   visibilityStatusLabel,
@@ -482,6 +483,9 @@ export function ContentDetail({ contentId }: ContentDetailProps) {
                     </h3>
                     <p className="text-muted-foreground mt-1 text-xs">
                       配置版本 v{discovery.configuration_version}
+                    </p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {scanKindLabel(discovery.scan_kind)}
                     </p>
                   </div>
                   <Badge variant="outline">

@@ -6,6 +6,7 @@ import {
   formatMetric,
   formatTime,
   hasUnknownMetrics,
+  scanKindLabel,
   visibilityStatusLabel,
   visibilityStatusNotice,
 } from "./content-presenters";
@@ -34,6 +35,12 @@ describe("content presenters", () => {
 
   it("does not invent an unknown timestamp", () => {
     expect(formatTime(null)).toBe("未知");
+  });
+
+  it("marks historical discovery without presenting it as a new event", () => {
+    expect(scanKindLabel("backfill")).toBe("历史回补 · 非新发生");
+    expect(scanKindLabel("new_scan")).toBe("追新");
+    expect(scanKindLabel(null)).toBe("采集类型未标注");
   });
 
   it("labels partial and media-only content without promoting it to full text", () => {

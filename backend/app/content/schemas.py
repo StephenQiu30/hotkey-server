@@ -10,6 +10,7 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 from connections.schemas import SourceEntryPoint
 from core.schemas import InputModel, OutputModel
 from evidence.schemas import AdmittedSourcePayload, DataClass
+from jobs.schemas import CollectionScanKind
 from sources.contracts import SourceCapability
 
 
@@ -246,6 +247,7 @@ class ContentDiscoveryView(OutputModel):
     configuration_ref: str
     configuration_version: int = Field(ge=1)
     first_observed_at: datetime
+    scan_kind: CollectionScanKind | None
 
 
 class ContentRecordSummaryView(OutputModel):

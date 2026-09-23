@@ -55,7 +55,7 @@ def window_context() -> Iterator[tuple[sessionmaker[Session], UUID, UUID, dateti
                 "fingerprint": b"w" * 32,
                 "scope": '{"target_hash":"'
                 + _TARGET_HASH.hex()
-                + '","sort_key":"latest","rule_version":1}',
+                + '","sort_key":"latest","rule_version":1,"scan_kind":"new_scan"}',
                 "now": now,
             },
         )
@@ -443,6 +443,7 @@ def test_window_owner_and_job_lifecycle_are_isolated(
                             "target_hash": window.target_hash.hex(),
                             "sort_key": window.sort_key.value,
                             "rule_version": window.rule_version,
+                            "scan_kind": "refresh",
                         }
                     ),
                     "fingerprint": b"r" * 32,
@@ -456,6 +457,50 @@ def test_window_owner_and_job_lifecycle_are_isolated(
             assert (
                 windows.begin_in_transaction(lease=replacement_lease, window=window).status
                 == "running"
+            )
+
+
+def test_window_rejects_unmarked_job_without_inventing_new_scan(
+    window_context: tuple[sessionmaker[Session], UUID, UUID, datetime],
+) -> None:
+    from jobs.schemas import CoverageWindowInput
+    from jobs.services import (
+        CoverageWindowConflictError,
+        CoverageWindowService,
+        load_content_job_context,
+    )
+
+    sessions, owner_id, job_id, now = window_context
+    window = CoverageWindowInput(
+        owner_id=owner_id,
+        source_key="x",
+        capability=SourceCapability.SEARCH,
+        target_hash=_TARGET_HASH,
+        sort_key=SourceSort.LATEST,
+        rule_version=1,
+        starts_at=now - timedelta(hours=1),
+        ends_at=now,
+    )
+    with sessions() as session:
+        with session.begin():
+            session.execute(
+                text("UPDATE jobs SET scope = scope - 'scan_kind' WHERE id = :job_id"),
+                {"job_id": job_id},
+            )
+            context = load_content_job_context(session, owner_id=owner_id, job_id=job_id)
+            assert context is not None and context.scan_kind is None
+        execution = JobExecutionService(session, lease_seconds=30, clock=lambda: now)
+        lease = execution.acquire(job_id=job_id, worker_id="window-unmarked")
+        windows = CoverageWindowService(session, execution=execution, clock=lambda: now)
+        with pytest.raises(CoverageWindowConflictError, match="scan kind"), session.begin():
+            windows.begin_in_transaction(lease=lease, window=window)
+        with session.begin():
+            assert (
+                session.scalar(
+                    text("SELECT count(*) FROM coverage_windows WHERE owner_id = :owner_id"),
+                    {"owner_id": owner_id},
+                )
+                == 0
             )
 
 
@@ -502,6 +547,7 @@ def test_overlapping_windows_reuse_post_and_preserve_two_observations(
                             "target_hash": first.target_hash.hex(),
                             "sort_key": first.sort_key.value,
                             "rule_version": first.rule_version,
+                            "scan_kind": "backfill",
                         }
                     ),
                     "fingerprint": b"b" * 32,
@@ -573,6 +619,12 @@ def test_overlapping_windows_reuse_post_and_preserve_two_observations(
                 ),
             )
         assert created.id == updated.id
+        assert updated.latest_observation.published_at == datetime(2026, 9, 22, 7, tzinfo=UTC)
+        assert updated.latest_observation.observed_at == now - timedelta(minutes=5)
+        assert {
+            item.scan_kind
+            for item in content.get_content(owner_id=owner_id, content_id=created.id).discoveries
+        } == {"new_scan", "backfill"}
         with session.begin():
             assert session.execute(
                 text(

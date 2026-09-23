@@ -77,6 +77,12 @@ class CoverageWindowStatus(StrEnum):
     PARTIAL = "partial"
 
 
+class CollectionScanKind(StrEnum):
+    NEW_SCAN = "new_scan"
+    REFRESH = "refresh"
+    BACKFILL = "backfill"
+
+
 class CoverageWindowView(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

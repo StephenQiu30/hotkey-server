@@ -37,7 +37,7 @@
 | 007 | [作品资料与上下文](prd/007-作品资料与上下文.md) | FR-001-005 | P0 | accepted | [设计](design/007-作品资料与上下文设计.md) · accepted（S00—S03）；[计划](plans/007-作品资料与上下文计划.md) · in_progress（S00—S02，0/6 AC） |
 | 008 | [评论与回复采集](prd/008-评论与回复采集.md) | FR-001-006 | P0 | draft | [设计](design/008-评论与回复采集设计.md) · proposed；[计划](plans/008-评论与回复采集计划.md) · planned，0/6 AC |
 | 009 | [采集任务控制](prd/009-采集任务控制.md) | FR-001-007 | P0 | draft | [设计](design/009-采集任务控制设计.md) · accepted；[计划](plans/009-采集任务控制计划.md) · in_progress |
-| 010 | [增量更新与历史回补](prd/010-增量更新与历史回补.md) | FR-001-008 | P0 | draft | [设计](design/010-增量更新与历史回补设计.md) · accepted（内部 S01）；[计划](plans/010-增量更新与历史回补计划.md) · in_progress（S00/S01，0/6 AC） |
+| 010 | [增量更新与历史回补](prd/010-增量更新与历史回补.md) | FR-001-008 | P0 | draft | [设计](design/010-增量更新与历史回补设计.md) · accepted（内部 S01/S02 时间标记）；[计划](plans/010-增量更新与历史回补计划.md) · in_progress（S00/S01、S02 子片，0/6 AC） |
 | 011 | [事件识别与归并](prd/011-事件识别与归并.md) | FR-001-009 | P0 | draft | [计划](plans/011-事件识别与归并计划.md) · planned |
 | 012 | [事件详情与发展时间线](prd/012-事件详情与发展时间线.md) | FR-001-010 | P0 | draft | [计划](plans/012-事件详情与发展时间线计划.md) · planned |
 | 013 | [相关性与热度排序](prd/013-相关性与热度排序.md) | FR-001-011 | P0 | draft | [计划](plans/013-相关性与热度排序计划.md) · planned |

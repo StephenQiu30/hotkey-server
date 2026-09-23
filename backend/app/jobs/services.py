@@ -42,6 +42,7 @@ from jobs.schemas import (
     BudgetResumeCondition,
     BudgetScopeKind,
     BudgetSettlementView,
+    CollectionScanKind,
     ComponentPolicyInput,
     ComponentPolicyView,
     CostClass,
@@ -91,6 +92,16 @@ type OutboxValue = str | int | bool | None
 
 class CoverageWindowConflictError(RuntimeError):
     """The page cannot advance the selected durable source range."""
+
+
+def _scan_kind(scope: Mapping[str, OutboxValue]) -> CollectionScanKind | None:
+    value = scope.get("scan_kind")
+    if not isinstance(value, str):
+        return None
+    try:
+        return CollectionScanKind(value)
+    except ValueError:
+        return None
 
 
 class CoverageWindowService:
@@ -233,6 +244,8 @@ class CoverageWindowService:
             or job.scope.get("rule_version") != window.rule_version
         ):
             raise CoverageWindowConflictError("coverage window scope does not match the job")
+        if _scan_kind(job.scope) is None:
+            raise CoverageWindowConflictError("coverage window requires an explicit scan kind")
         return job
 
     def _lock_window(self, window: CoverageWindowInput) -> CoverageWindow:
@@ -335,6 +348,7 @@ class ContentJobContext:
     configuration_version: int
     source_key: str
     source_capability: SourceCapability
+    scan_kind: CollectionScanKind | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -411,6 +425,7 @@ def load_content_job_context(
         configuration_version=job.configuration_version,
         source_key=job.source_key,
         source_capability=SourceCapability(job.source_capability),
+        scan_kind=_scan_kind(job.scope),
     )
 
 
@@ -431,6 +446,7 @@ def load_content_job_contexts(
             configuration_version=job.configuration_version,
             source_key=job.source_key,
             source_capability=SourceCapability(job.source_capability),
+            scan_kind=_scan_kind(job.scope),
         )
         for job in jobs
         if job.source_key is not None and job.source_capability is not None
