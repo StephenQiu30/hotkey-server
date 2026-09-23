@@ -50,6 +50,7 @@ from jobs.schemas import (
     BudgetResumeCondition,
     BudgetScopeKind,
     BudgetSettlementView,
+    BudgetWindowUsageView,
     CollectionScanKind,
     ComponentPolicyInput,
     ComponentPolicyView,
@@ -959,6 +960,94 @@ class ResourceBudgetService:
             view = self._budget_policy_view(model)
         return view
 
+    def budget_usage_snapshot(self, *, owner_id: UUID) -> tuple[BudgetWindowUsageView, ...]:
+        """Project persisted budget usage without creating or changing budget rows."""
+        now = self._clock()
+        self._require_aware_clock(now)
+        with self._session.no_autoflush:
+            policies = list(
+                self._session.scalars(
+                    select(ResourceBudgetPolicy)
+                    .where(ResourceBudgetPolicy.owner_id == owner_id)
+                    .order_by(
+                        ResourceBudgetPolicy.metric,
+                        ResourceBudgetPolicy.scope_kind,
+                        ResourceBudgetPolicy.budget_key,
+                        ResourceBudgetPolicy.id,
+                    )
+                )
+            )
+            if not policies:
+                return ()
+
+            current_policies = [policy for policy in policies if policy.window_anchor_at <= now]
+            windows_by_policy: dict[UUID, ResourceBudgetWindow] = {}
+            if current_policies:
+                windows = self._session.scalars(
+                    select(ResourceBudgetWindow).where(
+                        ResourceBudgetWindow.owner_id == owner_id,
+                        ResourceBudgetWindow.budget_policy_id.in_(
+                            [policy.id for policy in current_policies]
+                        ),
+                        ResourceBudgetWindow.window_start <= now,
+                        ResourceBudgetWindow.window_end > now,
+                    )
+                )
+                windows_by_policy = {window.budget_policy_id: window for window in windows}
+
+            snapshot: list[BudgetWindowUsageView] = []
+            for policy in policies:
+                metric = BudgetMetric(policy.metric)
+                window: ResourceBudgetWindow | None = None
+                window_start: datetime | None = None
+                window_end: datetime | None = None
+                used_units = 0
+                reserved_units = 0
+                next_window_at = None
+                if policy.window_anchor_at <= now:
+                    window_start, window_end = self._budget_window_bounds(policy, now)
+                    window = windows_by_policy.get(policy.id)
+                    if window is not None:
+                        if (
+                            window.window_start != window_start
+                            or window.window_end != window_end
+                            or window.budget_mode != self._budget_mode(metric)
+                        ):
+                            raise RuntimeError("budget window does not match its policy")
+                        used_units = window.used_units
+                        reserved_units = window.reserved_units
+                else:
+                    next_window_at = policy.window_anchor_at
+
+                remaining_units = None
+                if policy.enabled and policy.window_anchor_at <= now:
+                    occupied_units = reserved_units
+                    if self._budget_mode(metric) == "cumulative":
+                        occupied_units += used_units
+                    remaining_units = max(0, policy.limit_units - occupied_units)
+
+                snapshot.append(
+                    BudgetWindowUsageView(
+                        budget_policy_id=policy.id,
+                        budget_key=policy.budget_key,
+                        metric=metric,
+                        scope_kind=BudgetScopeKind(policy.scope_kind),
+                        scope_reference=policy.scope_reference,
+                        limit_units=policy.limit_units,
+                        window_seconds=policy.window_seconds,
+                        window_anchor_at=policy.window_anchor_at,
+                        enabled=policy.enabled,
+                        policy_version=policy.policy_version,
+                        window_start=window_start,
+                        window_end=window_end,
+                        used_units=used_units,
+                        reserved_units=reserved_units,
+                        remaining_units=remaining_units,
+                        next_window_at=next_window_at,
+                    )
+                )
+            return tuple(snapshot)
+
     def reserve_budget(
         self,
         *,
@@ -1240,12 +1329,7 @@ class ResourceBudgetService:
         policy: ResourceBudgetPolicy,
         now: datetime,
     ) -> ResourceBudgetWindow:
-        elapsed_seconds = (now - policy.window_anchor_at).total_seconds()
-        window_index = int(elapsed_seconds // policy.window_seconds)
-        window_start = policy.window_anchor_at + timedelta(
-            seconds=window_index * policy.window_seconds
-        )
-        window_end = window_start + timedelta(seconds=policy.window_seconds)
+        window_start, window_end = self._budget_window_bounds(policy, now)
         window = self._session.scalar(
             select(ResourceBudgetWindow)
             .where(
@@ -1292,6 +1376,18 @@ class ResourceBudgetService:
         if window is None:
             raise RuntimeError("budget window is not visible")
         return window
+
+    @staticmethod
+    def _budget_window_bounds(
+        policy: ResourceBudgetPolicy,
+        now: datetime,
+    ) -> tuple[datetime, datetime]:
+        elapsed_seconds = (now - policy.window_anchor_at).total_seconds()
+        window_index = int(elapsed_seconds // policy.window_seconds)
+        window_start = policy.window_anchor_at + timedelta(
+            seconds=window_index * policy.window_seconds
+        )
+        return window_start, window_start + timedelta(seconds=policy.window_seconds)
 
     def _locked_reservations(
         self,

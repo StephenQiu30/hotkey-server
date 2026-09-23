@@ -119,7 +119,7 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 **[036 计划](docs/plans/036-数据访问与生命周期计划.md) S00—S02 已完成，Plan 保持 in_progress。** 来源政策、字段最小化、从严保留与缩期、即时读取屏障、幂等删除、Redis/MinIO 在线清理和有限重试已通过本机既有 PostgreSQL 18.4、Redis 与 MinIO；专用 12 tests、后端全量 63 tests 及静态门禁通过。受控样本不代表任何真实平台已授权；没有 HTTP/UI/Worker 变化或真实业务对象接入，S03 的备份/回补和来源状态、S04 及 036 产品 AC 仍为 0/6，未建立 Acceptance。
 
-**[037 计划](docs/plans/037-费用与资源约束计划.md) S00—S02 已完成，Plan 保持 in_progress。** `jobs` 领域已增加免费组件策略、副作用前尝试账本、分层持久窗口、原子预留、幂等结算/释放与耗尽延期；目标 23 tests、后端全量 86 tests 及静态门禁通过。本切片复用已启动的 PostgreSQL 18.4，未接入真实 SDK/HTTP/UI/Worker，不证明 SDK 内部重试、长时占用自动回收或免费业务闭环；S03/S04 及 037 产品 AC 仍为 0/6，未建立 Acceptance。
+**[037 计划](docs/plans/037-费用与资源约束计划.md) S00—S02 与 S03a 技术子片已通过，Plan 保持 in_progress。** `jobs` 领域已增加免费组件策略、副作用前尝试账本、分层持久窗口、原子预留、幂等结算/释放、耗尽延期及 owner 过滤的只读预算窗口快照；当前子片预算目标 42 passed、后端全量 501 passed/5 skipped，Ruff/format/mypy 通过。5 项跳过均需显式启用隔离浏览器服务；本片复用本地 PostgreSQL，仅用一次性 QA 库并已删除。未接入真实 SDK/HTTP/UI/Worker，不证明实耗成本、物理资源分摊、SDK 内部重试、长时占用自动回收或免费业务闭环；X paid 仍未放行，S03/S04 与 037 产品 AC 仍为 0/6，未建立 Acceptance。
 
 2026-09-23 X 离线金额账本子片：沿用同一预算窗口增加 `x_api_usd_micros` 度量、显式 Post 单价的最坏/实际/未知整数换算及 X 来源隔离；不预置费率或额度。新建的一次性空 QA 库按唯一 Schema 验证并发最后额度、缩额、结算、服务与数据库约束，`MockTransport` 两页查询与持久金额窗口联验通过；预算单元 14、集成 19、后端全量 401 passed/5 skipped，Ruff/format/mypy 通过。QA 库和既有测试库验后为空，一次性 QA 库已删除。`paid` 核心组件仍拒绝，控制台账期上限、费率快照、真实请求与产品 0/6 AC 未关闭。
 

@@ -295,6 +295,27 @@ class BudgetPolicyView(BudgetPolicyInput):
     updated_at: datetime
 
 
+class BudgetWindowUsageView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    budget_policy_id: UUID
+    budget_key: str
+    metric: BudgetMetric
+    scope_kind: BudgetScopeKind
+    scope_reference: str | None
+    limit_units: int = Field(gt=0)
+    window_seconds: int = Field(gt=0)
+    window_anchor_at: datetime
+    enabled: bool
+    policy_version: int = Field(ge=1)
+    window_start: datetime | None
+    window_end: datetime | None
+    used_units: int = Field(ge=0)
+    reserved_units: int = Field(ge=0)
+    remaining_units: int | None = Field(ge=0)
+    next_window_at: datetime | None
+
+
 class BudgetReservationInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

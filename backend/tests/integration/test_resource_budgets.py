@@ -1229,3 +1229,159 @@ def test_reservation_and_settlement_replays_reject_conflicting_data(
                 reservation_id=command.reservation_id,
                 actual_units=0,
             )
+
+
+def test_budget_usage_snapshot_is_owner_scoped_and_read_only(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime(2026, 9, 23, 12, 0, 10, tzinfo=UTC))
+    owner_id = resource_budget_context.owner_id
+    other_owner_id = resource_budget_context.other_owner_id
+
+    with resource_budget_context.sessions() as session:
+        service = ResourceBudgetService(session, clock=clock)
+        service.save_budget_policy(
+            owner_id=owner_id,
+            command=_budget_policy(clock=clock, budget_key="global.requests", limit_units=10),
+        )
+        service.save_budget_policy(
+            owner_id=owner_id,
+            command=_budget_policy(
+                clock=clock,
+                budget_key="global.concurrent",
+                metric=BudgetMetric.CONCURRENCY_SLOT,
+                limit_units=4,
+            ),
+        )
+        service.save_budget_policy(
+            owner_id=owner_id,
+            command=_budget_policy(
+                clock=clock,
+                budget_key="global.analysis",
+                metric=BudgetMetric.ANALYSIS_ATTEMPT,
+                limit_units=20,
+            ),
+        )
+        service.save_budget_policy(
+            owner_id=owner_id,
+            command=_budget_policy(
+                clock=clock,
+                budget_key="source.concurrent",
+                metric=BudgetMetric.CONCURRENCY_SLOT,
+                scope_kind=BudgetScopeKind.SOURCE,
+                scope_reference="source-a",
+                limit_units=3,
+            ),
+        )
+        lowering_policy = _budget_policy(
+            clock=clock,
+            budget_key="source.lowered",
+            metric=BudgetMetric.ANALYSIS_ATTEMPT,
+            scope_kind=BudgetScopeKind.SOURCE,
+            scope_reference="source-c",
+            limit_units=9,
+        )
+        service.save_budget_policy(owner_id=owner_id, command=lowering_policy)
+        future_policy = _budget_policy(
+            clock=clock,
+            budget_key="source.future",
+            metric=BudgetMetric.ANALYSIS_ATTEMPT,
+            scope_kind=BudgetScopeKind.SOURCE,
+            scope_reference="source-b",
+            limit_units=8,
+        ).model_copy(update={"window_anchor_at": clock.current + timedelta(minutes=5)})
+        service.save_budget_policy(owner_id=owner_id, command=future_policy)
+        service.save_budget_policy(
+            owner_id=owner_id,
+            command=_budget_policy(
+                clock=clock,
+                budget_key="global.disabled",
+                metric=BudgetMetric.COLLECTOR_CALL,
+                enabled=False,
+            ),
+        )
+        request = _reservation(requested_units=4)
+        service.reserve_budget(owner_id=owner_id, command=request)
+        service.settle_budget_reservation(
+            owner_id=owner_id,
+            reservation_id=request.reservation_id,
+            actual_units=2,
+        )
+        consumed = _reservation(
+            metric=BudgetMetric.ANALYSIS_ATTEMPT,
+            requested_units=5,
+            source_ref="source-c",
+            connection_ref=None,
+            job_ref=None,
+        )
+        service.reserve_budget(owner_id=owner_id, command=consumed)
+        service.settle_budget_reservation(
+            owner_id=owner_id,
+            reservation_id=consumed.reservation_id,
+            actual_units=4,
+        )
+        service.save_budget_policy(
+            owner_id=owner_id,
+            command=lowering_policy.model_copy(update={"limit_units": 3}),
+        )
+        service.reserve_budget(
+            owner_id=owner_id,
+            command=_reservation(
+                metric=BudgetMetric.CONCURRENCY_SLOT,
+                requested_units=2,
+                source_ref="source-a",
+                connection_ref=None,
+                job_ref=None,
+            ),
+        )
+
+    with resource_budget_context.engine.connect() as connection:
+        before = connection.execute(
+            text(
+                "SELECT "
+                "(SELECT count(*) FROM resource_budget_windows), "
+                "(SELECT count(*) FROM resource_budget_reservations)"
+            )
+        ).one()
+
+    with resource_budget_context.sessions() as session:
+        service = ResourceBudgetService(session, clock=clock)
+        snapshot = service.budget_usage_snapshot(owner_id=owner_id)
+        other_snapshot = service.budget_usage_snapshot(owner_id=other_owner_id)
+
+    with resource_budget_context.engine.connect() as connection:
+        after = connection.execute(
+            text(
+                "SELECT "
+                "(SELECT count(*) FROM resource_budget_windows), "
+                "(SELECT count(*) FROM resource_budget_reservations)"
+            )
+        ).one()
+
+    by_key = {row.budget_key: row for row in snapshot}
+    assert tuple(row.budget_key for row in snapshot) == (
+        "global.analysis",
+        "source.future",
+        "source.lowered",
+        "global.disabled",
+        "global.concurrent",
+        "source.concurrent",
+        "global.requests",
+    )
+    assert by_key["global.requests"].used_units == 2
+    assert by_key["global.requests"].reserved_units == 0
+    assert by_key["global.requests"].remaining_units == 8
+    assert by_key["source.concurrent"].used_units == 0
+    assert by_key["source.concurrent"].reserved_units == 2
+    assert by_key["source.concurrent"].remaining_units == 1
+    assert by_key["global.concurrent"].remaining_units == 2
+    assert by_key["source.future"].next_window_at == clock.current + timedelta(minutes=5)
+    assert by_key["source.future"].window_start is None
+    assert by_key["source.future"].remaining_units is None
+    assert by_key["source.lowered"].used_units == 4
+    assert by_key["source.lowered"].remaining_units == 0
+    assert by_key["source.lowered"].policy_version == 2
+    assert by_key["global.disabled"].enabled is False
+    assert by_key["global.disabled"].remaining_units is None
+    assert other_snapshot == ()
+    assert before == after
