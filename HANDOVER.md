@@ -14,6 +14,8 @@
 
 同日补齐离线总时限：模拟传输跨过适配器累计截止后即使返回有效 HTTP 200，也只能停止而不能产出完整页，已授权尝试按未知 Post 数结算。目标测试先红后绿，X 单测 32 项、当前未配置集成环境的后端全量 257 passed/170 skipped、Ruff/format/mypy 通过；未运行真实 X 或启动依赖。此修正不保证阻塞中的单次底层读取被硬中断，不改变 S01b 费用/凭据门禁和 0/10 产品 AC。
 
+同日按官方作者时间线端点补离线 `author_posts`：已有共享作者请求通过 `/2/users/{id}/tweets` 的 MockTransport 翻页，逐页沿用最大 Post 数授权和实际/未知结算；路径作者补足未返回的作者字段，明示错归属为协议失败。旧适配器对作者请求 `unsupported` 的目标用例及非校验复制的超长/字符串页长用例先红，最终 X 单测 41 passed、隔离 PostgreSQL 后端全量 435 passed/5 skipped，Ruff/format/mypy 通过。没有真实 X、Worker/HTTP/DDL/代理变更，未证明作者作品关系或产品验收；App/Token、账期上限及 037 付费门禁仍缺，002 AC 保持 0/10。
+
 005 S01 内部执行器原先从 Job 读取 UTC 范围，却向适配器发送无界 `SearchRequest`；隔离 PostgreSQL 用例先复现 Latest 续页 `(None, None)`，修复后 Latest/Top 均逐页携带冻结窗口。专用 2 项、一次性空库后端全量 420 passed/5 skipped 及 Ruff/format/mypy 通过；没有接 X 付费回调或注册 Worker/HTTP，不能据此确认真实来源终点或完成 005/010 产品验收。
 
 033 S00 已接受仅限内部状态分项的 Design：现有 039 运行快照按 owner、来源和能力分别汇总七态。同一 X 搜索能力一成一败、X 评论成功及另一来源部分成功可同时保留；无来源任务只进总数。隔离 PostgreSQL 用例先红后绿，专用 6 项、一次性空库后端全量 421 passed/5 skipped 与 Ruff/format/mypy 通过。当前 Worker 仍为单循环，未证明资源公平、熔断或真实局部故障恢复；033 S01 G3/G4 与全部产品 AC 未关闭。

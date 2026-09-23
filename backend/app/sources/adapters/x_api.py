@@ -12,6 +12,7 @@ import httpx
 from pydantic import SecretStr, ValidationError
 
 from sources.contracts import (
+    AuthorPostsRequest,
     SearchRequest,
     SourceCapability,
     SourcePage,
@@ -35,10 +36,10 @@ class _SourceFailureError(Exception):
 
 
 class XApiAdapter:
-    """Offline search; authorize max posts before each call, then settle count or unknown."""
+    """Offline post reads; authorize max posts before each call, then settle count or unknown."""
 
     source_key = "x"
-    capabilities = frozenset({SourceCapability.SEARCH})
+    capabilities = frozenset({SourceCapability.SEARCH, SourceCapability.AUTHOR_POSTS})
 
     def __init__(
         self,
@@ -82,7 +83,7 @@ class XApiAdapter:
         try:
             if self._deadline is None:
                 self._deadline = time.monotonic() + self._max_seconds
-            scope = request.model_dump(exclude={"page_token", "page_size"})
+            scope = request.model_dump(exclude={"page_token", "page_size"}, warnings=False)
             if self._request_scope is not None and scope != self._request_scope:
                 raise ValueError("a source adapter belongs to one collection scope")
             self._request_scope = scope
@@ -91,29 +92,47 @@ class XApiAdapter:
                     return self._completed.model_copy(update={"request_count": 0})
                 if self._terminal is not None:
                     raise _SourceFailureError(*self._terminal)
-                if not isinstance(request, SearchRequest) or request.source_key != "x":
+                if (
+                    not isinstance(request, (SearchRequest, AuthorPostsRequest))
+                    or request.source_key != "x"
+                ):
                     raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
-                if request.watermark is not None or request.page_size < 10:
+                if (
+                    request.watermark is not None
+                    or type(request.page_size) is not int
+                    or request.page_size > 100
+                ):
                     raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
-                if (request.starts_at is None) != (request.ends_at is None):
-                    raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
-                if request.starts_at is not None and request.ends_at is not None:
-                    if (
-                        request.starts_at.utcoffset() != timedelta(0)
-                        or request.ends_at.utcoffset() != timedelta(0)
-                        or request.starts_at >= request.ends_at
-                    ):
+                if isinstance(request, SearchRequest):
+                    if request.page_size < 10:
                         raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
-                    now = self._clock()
-                    if now.utcoffset() != timedelta(0):
-                        raise ValueError("source clock must be UTC")
-                    if request.starts_at < now - timedelta(days=7) or request.ends_at > now:
+                    if (request.starts_at is None) != (request.ends_at is None):
                         raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
+                    if request.starts_at is not None and request.ends_at is not None:
+                        if (
+                            request.starts_at.utcoffset() != timedelta(0)
+                            or request.ends_at.utcoffset() != timedelta(0)
+                            or request.starts_at >= request.ends_at
+                        ):
+                            raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
+                        now = self._clock()
+                        if now.utcoffset() != timedelta(0):
+                            raise ValueError("source clock must be UTC")
+                        if request.starts_at < now - timedelta(days=7) or request.ends_at > now:
+                            raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
+                elif (
+                    request.page_size < 5
+                    or not isinstance(request.author_external_id, str)
+                    or not request.author_external_id.isascii()
+                    or not request.author_external_id.isdigit()
+                    or len(request.author_external_id) > 19
+                ):
+                    raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
                 if request.page_token is not None:
                     if request.page_token in self._seen_tokens:
                         raise _SourceFailureError(SourceStopReason.CURSOR_LOOP)
                     self._seen_tokens.add(request.page_token)
-                page = self._fetch_search(request)
+                page = self._fetch_posts(request)
             except _SourceFailureError as error:
                 page = self._stopped(request, error.reason, error.retry_at)
             except (httpx.HTTPError, TimeoutError):
@@ -129,7 +148,7 @@ class XApiAdapter:
         finally:
             self._lock.release()
 
-    def _fetch_search(self, request: SearchRequest) -> SourcePage:
+    def _fetch_posts(self, request: SearchRequest | AuthorPostsRequest) -> SourcePage:
         if self._cancelled():
             raise _SourceFailureError(SourceStopReason.CANCELLED)
         assert self._deadline is not None
@@ -142,17 +161,22 @@ class XApiAdapter:
         self._request_count = next_attempt
         billable_posts: int | None = None
         try:
-            params = {
-                "query": request.query,
-                "sort_order": "recency" if request.sort is SourceSort.LATEST else "relevancy",
-                "max_results": str(request.page_size),
-                "post.fields": _POST_FIELDS,
-            }
-            if request.page_token is not None:
-                params["next_token"] = request.page_token
-            if request.starts_at is not None and request.ends_at is not None:
-                params["start_time"] = request.starts_at.isoformat().replace("+00:00", "Z")
-                params["end_time"] = request.ends_at.isoformat().replace("+00:00", "Z")
+            params = {"max_results": str(request.page_size), "post.fields": _POST_FIELDS}
+            if isinstance(request, SearchRequest):
+                url = _SEARCH_URL
+                params["query"] = request.query
+                params["sort_order"] = (
+                    "recency" if request.sort is SourceSort.LATEST else "relevancy"
+                )
+                if request.page_token is not None:
+                    params["next_token"] = request.page_token
+                if request.starts_at is not None and request.ends_at is not None:
+                    params["start_time"] = request.starts_at.isoformat().replace("+00:00", "Z")
+                    params["end_time"] = request.ends_at.isoformat().replace("+00:00", "Z")
+            else:
+                url = f"https://api.x.com/2/users/{request.author_external_id}/tweets"
+                if request.page_token is not None:
+                    params["pagination_token"] = request.page_token
             with (
                 httpx.Client(
                     transport=self._transport,
@@ -161,7 +185,7 @@ class XApiAdapter:
                 ) as client,
                 client.stream(
                     "GET",
-                    _SEARCH_URL,
+                    url,
                     params=params,
                     headers={"Authorization": f"Bearer {self._token.get_secret_value()}"},
                 ) as response,
@@ -204,7 +228,9 @@ class XApiAdapter:
         if response.status_code != 200:
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
 
-    def _parse_page(self, request: SearchRequest, payload: object) -> SourcePage:
+    def _parse_page(
+        self, request: SearchRequest | AuthorPostsRequest, payload: object
+    ) -> SourcePage:
         if not isinstance(payload, dict) or payload.get("errors") or "includes" in payload:
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
         meta = payload.get("meta")
@@ -218,7 +244,10 @@ class XApiAdapter:
         next_token = meta.get("next_token")
         if next_token is not None and (not isinstance(next_token, str) or not next_token):
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
-        posts = tuple(self._parse_post(item) for item in raw_items)
+        expected_author = (
+            request.author_external_id if isinstance(request, AuthorPostsRequest) else None
+        )
+        posts = tuple(self._parse_post(item, expected_author=expected_author) for item in raw_items)
         if next_token is not None and next_token == request.page_token:
             raise _SourceFailureError(SourceStopReason.CURSOR_LOOP)
         state = (
@@ -230,7 +259,7 @@ class XApiAdapter:
         )
         return SourcePage(
             source_key="x",
-            capability=SourceCapability.SEARCH,
+            capability=request.capability,
             state=state,
             items=posts,
             next_page_token=next_token,
@@ -243,18 +272,22 @@ class XApiAdapter:
                 else SourceStopReason.SOURCE_EMPTY
             ),
             observed_at=datetime.now(UTC),
-            adapter_version="x-api-v2/recent-search",
+            adapter_version=XApiAdapter._adapter_version(request),
         )
 
     @staticmethod
-    def _parse_post(value: object) -> SourcePost:
+    def _parse_post(value: object, *, expected_author: str | None = None) -> SourcePost:
         if not isinstance(value, dict):
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
         identifier = value.get("id")
         author_id = value.get("author_id")
+        if author_id is None:
+            author_id = expected_author
         if not isinstance(identifier, str) or not identifier.isascii() or not identifier.isdigit():
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
         if not isinstance(author_id, str) or not author_id.isascii() or not author_id.isdigit():
+            raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
+        if expected_author is not None and author_id != expected_author:
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
         metrics = value.get("public_metrics")
         if metrics is not None and not isinstance(metrics, dict):
@@ -308,6 +341,14 @@ class XApiAdapter:
             watermark=None,
             stop_reason=reason,
             observed_at=datetime.now(UTC),
-            adapter_version="x-api-v2/recent-search",
+            adapter_version=XApiAdapter._adapter_version(request),
             retry_at=retry_at,
+        )
+
+    @staticmethod
+    def _adapter_version(request: SourceRequest) -> str:
+        return (
+            "x-api-v2/user-posts"
+            if isinstance(request, AuthorPostsRequest)
+            else "x-api-v2/recent-search"
         )

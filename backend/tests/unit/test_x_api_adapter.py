@@ -11,12 +11,155 @@ from pydantic import SecretStr
 
 from sources.adapters import x_api
 from sources.adapters.x_api import XApiAdapter
-from sources.contracts import SearchRequest, SourcePageState, SourceSort, SourceStopReason
+from sources.contracts import (
+    AuthorPostsRequest,
+    SearchRequest,
+    SourceCapability,
+    SourcePageState,
+    SourceSort,
+    SourceStopReason,
+)
 
 
 def _request(**overrides: object) -> SearchRequest:
     values: dict[str, object] = {"source_key": "x", "query": "known topic", "page_size": 10}
     return SearchRequest(**(values | overrides))
+
+
+def _author_request(**overrides: object) -> AuthorPostsRequest:
+    values: dict[str, object] = {
+        "source_key": "x",
+        "author_external_id": "2244994945",
+        "page_size": 5,
+    }
+    return AuthorPostsRequest(**(values | overrides))
+
+
+def test_author_posts_uses_official_timeline_and_accounts_for_each_page() -> None:
+    calls: list[httpx.Request] = []
+    authorizations: list[tuple[int, int]] = []
+    settlements: list[tuple[int, int | None]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        post: dict[str, object] = {"id": str(len(calls)), "text": "authored post"}
+        if len(calls) == 2:
+            post["author_id"] = "2244994945"
+        return httpx.Response(
+            200,
+            json={
+                "data": [post],
+                "meta": {"result_count": 1, **({"next_token": "ABCD"} if len(calls) == 1 else {})},
+            },
+        )
+
+    adapter = _adapter(
+        respond,
+        authorize_request=lambda attempt, posts: authorizations.append((attempt, posts)) or True,
+        settle_request=lambda attempt, posts: settlements.append((attempt, posts)),
+    )
+    first = adapter.fetch_page(_author_request())
+    second = adapter.fetch_page(_author_request(page_token="ABCD"))
+
+    assert adapter.capabilities == frozenset(
+        {SourceCapability.SEARCH, SourceCapability.AUTHOR_POSTS}
+    )
+    assert first.state is SourcePageState.MORE
+    assert first.next_page_token == "ABCD"
+    assert first.adapter_version == "x-api-v2/user-posts"
+    assert first.items[0].author_external_id == "2244994945"
+    assert second.state is SourcePageState.COMPLETE
+    assert second.items[0].author_external_id == "2244994945"
+    assert all(call.url.path == "/2/users/2244994945/tweets" for call in calls)
+    assert calls[0].url.params["max_results"] == "5"
+    assert "expansions" not in calls[0].url.params
+    assert calls[1].url.params["pagination_token"] == "ABCD"
+    assert authorizations == [(1, 5), (2, 5)]
+    assert settlements == [(1, 1), (2, 1)]
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"author_external_id": "not-a-numeric-id"},
+        {"author_external_id": "12345678901234567890"},
+        {"page_size": 4},
+    ],
+)
+def test_author_posts_rejects_invalid_endpoint_input_before_authorization(
+    updates: dict[str, object],
+) -> None:
+    calls: list[httpx.Request] = []
+    authorizations: list[tuple[int, int]] = []
+    page = _adapter(
+        lambda request: calls.append(request) or httpx.Response(200),
+        authorize_request=lambda attempt, posts: authorizations.append((attempt, posts)) or True,
+    ).fetch_page(_author_request(**updates))
+
+    assert page.stop_reason is SourceStopReason.UNSUPPORTED
+    assert page.request_count == 0
+    assert calls == []
+    assert authorizations == []
+
+
+def test_author_posts_rejects_mismatched_response_author_and_keeps_cost_unknown() -> None:
+    settlements: list[tuple[int, int | None]] = []
+    page = _adapter(
+        lambda _request: httpx.Response(
+            200,
+            json={
+                "data": [{"id": "1", "author_id": "42", "text": "wrong"}],
+                "meta": {"result_count": 1},
+            },
+        ),
+        settle_request=lambda attempt, posts: settlements.append((attempt, posts)),
+    ).fetch_page(_author_request())
+
+    assert page.stop_reason is SourceStopReason.PROTOCOL_ERROR
+    assert page.items == ()
+    assert page.request_count == 1
+    assert settlements == [(1, None)]
+
+
+def test_author_posts_rejects_unvalidated_non_string_author_id() -> None:
+    calls: list[httpx.Request] = []
+    page = _adapter(lambda request: calls.append(request) or httpx.Response(200)).fetch_page(
+        _author_request().model_copy(update={"author_external_id": 42})
+    )
+
+    assert page.stop_reason is SourceStopReason.UNSUPPORTED
+    assert page.request_count == 0
+    assert calls == []
+
+
+@pytest.mark.parametrize("page_size", [101, "5"])
+def test_author_posts_rejects_unvalidated_page_size_before_authorization(
+    page_size: object,
+) -> None:
+    calls: list[httpx.Request] = []
+    authorizations: list[tuple[int, int]] = []
+    page = _adapter(
+        lambda request: calls.append(request) or httpx.Response(200),
+        authorize_request=lambda attempt, posts: authorizations.append((attempt, posts)) or True,
+    ).fetch_page(_author_request().model_copy(update={"page_size": page_size}))
+
+    assert page.stop_reason is SourceStopReason.UNSUPPORTED
+    assert page.request_count == 0
+    assert calls == []
+    assert authorizations == []
+
+
+def test_author_posts_valid_empty_page_settles_zero() -> None:
+    settlements: list[tuple[int, int | None]] = []
+    page = _adapter(
+        lambda _request: httpx.Response(200, json={"meta": {"result_count": 0}}),
+        settle_request=lambda attempt, posts: settlements.append((attempt, posts)),
+    ).fetch_page(_author_request())
+
+    assert page.capability is SourceCapability.AUTHOR_POSTS
+    assert page.state is SourcePageState.EMPTY
+    assert page.stop_reason is SourceStopReason.SOURCE_EMPTY
+    assert settlements == [(1, 0)]
 
 
 def _adapter(
