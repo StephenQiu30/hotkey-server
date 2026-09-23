@@ -1,4 +1,5 @@
 import asyncio
+import os
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -11,6 +12,7 @@ from redis import Redis
 
 from backups.adapters.minio import MinioObjectInventory, ObjectInventoryError
 from backups.adapters.postgres import BackupToolError, PostgresDumpAdapter
+from backups.restore import BackupRestoreError, BackupRestoreService
 from backups.services import BackupError, BackupService
 from connections.adapters.local_secrets import BrowserStateError, BrowserStateStore
 from connections.schemas import (
@@ -301,6 +303,44 @@ def create_backup_candidate(
         f"Backup candidate created: {result.manifest.backup_id}; "
         f"path: {result.directory}; missing evidence objects: {missing}; "
         "restore verified: false"
+    )
+
+
+@backup_app.command("verify-restore")
+def verify_backup_restore(
+    candidate: Annotated[
+        Path,
+        typer.Option("--candidate", exists=True, file_okay=False, resolve_path=True),
+    ],
+    isolation_url_env: Annotated[
+        str,
+        typer.Option(
+            "--isolation-url-env",
+            help="Environment variable with an isolated maintenance database URL.",
+        ),
+    ],
+) -> None:
+    """Restore a candidate into a temporary database and verify its contents."""
+    if not isolation_url_env.isidentifier() or isolation_url_env.upper() != isolation_url_env:
+        typer.echo("Restore verification failed: invalid environment variable name", err=True)
+        raise typer.Exit(code=1)
+    isolation_url = os.getenv(isolation_url_env)
+    if not isolation_url:
+        typer.echo("Restore verification failed: isolation database URL is missing", err=True)
+        raise typer.Exit(code=1)
+    try:
+        result = BackupRestoreService(
+            source_database_url=get_settings().database_url.get_secret_value(),
+            isolation_database_url=isolation_url,
+            schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
+        ).verify(candidate)
+    except BackupRestoreError as error:
+        typer.echo(f"Restore verification failed: {error}", err=True)
+        raise typer.Exit(code=1) from error
+    typer.echo(
+        f"Database restore verified: {result.backup_id}; tables: {result.table_count}; "
+        f"duration seconds: {result.duration_seconds:.3f}; "
+        "evidence objects: inventory only; complete backup verified: false"
     )
 
 

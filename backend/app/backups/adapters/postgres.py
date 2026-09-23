@@ -57,15 +57,37 @@ class PostgresDumpAdapter:
             if not target.is_file() or target.stat().st_size == 0:
                 raise BackupToolError("pg_dump did not create a non-empty archive")
             target.chmod(0o600)
-            self._run(
-                [self._pg_restore, "--list", str(target)],
-                tool_name="pg_restore",
-                environment=self._base_environment(),
-            )
+            self.check_archive(target)
             return version
         except Exception:
             target.unlink(missing_ok=True)
             raise
+
+    def check_archive(self, archive: Path) -> None:
+        self._run(
+            [self._pg_restore, "--list", str(archive)],
+            tool_name="pg_restore",
+            environment=self._base_environment(),
+        )
+
+    def restore_archive(self, archive: Path) -> None:
+        if not self._database_url.database:
+            raise BackupToolError("restore target database is required")
+        with tempfile.TemporaryDirectory(prefix="hotkey-pgpass-") as temporary:
+            passfile = Path(temporary) / "pgpass"
+            self._write_passfile(passfile)
+            self._run(
+                [
+                    self._pg_restore,
+                    f"--dbname={self._database_url.database}",
+                    "--single-transaction",
+                    "--no-owner",
+                    "--no-acl",
+                    str(archive),
+                ],
+                tool_name="pg_restore",
+                environment=self._libpq_environment(passfile),
+            )
 
     def _tool_version(self) -> str:
         completed = self._run(

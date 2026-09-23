@@ -211,3 +211,44 @@ def test_invalid_archive_is_removed_without_publishing(tmp_path: Path) -> None:
 
     assert not target.exists()
     assert not any(path.name.startswith("hotkey-pgpass-") for path in tmp_path.iterdir())
+
+
+def test_pg_restore_uses_isolated_database_and_temporary_password_file(tmp_path: Path) -> None:
+    password = "restore:secret"
+    database_url = URL.create(
+        "postgresql+psycopg",
+        username="owner",
+        password=password,
+        host="db.example",
+        port=5432,
+        database="hotkey_restore_1234",
+    ).render_as_string(hide_password=False)
+    observed: dict[str, Any] = {}
+
+    def runner(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        passfile = Path(environment["PGPASSFILE"])
+        observed["arguments"] = arguments
+        observed["passfile"] = passfile
+        observed["mode"] = stat.S_IMODE(passfile.stat().st_mode)
+        observed["content"] = passfile.read_text()
+        observed["environment"] = environment
+        return subprocess.CompletedProcess(arguments, 0, "", "")
+
+    PostgresDumpAdapter(
+        database_url,
+        pg_dump_path="pg_dump",
+        pg_restore_path="pg_restore",
+        runner=runner,
+    ).restore_archive(tmp_path / "database.dump")
+
+    assert "--dbname=hotkey_restore_1234" in observed["arguments"]
+    assert "--single-transaction" in observed["arguments"]
+    assert "--clean" not in observed["arguments"]
+    assert "--create" not in observed["arguments"]
+    assert password not in " ".join(observed["arguments"])
+    assert observed["mode"] == 0o600
+    assert "restore\\:secret" in observed["content"]
+    assert "PGPASSWORD" not in observed["environment"]
+    assert not observed["passfile"].exists()

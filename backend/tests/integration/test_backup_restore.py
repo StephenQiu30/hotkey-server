@@ -16,9 +16,10 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 from backups.adapters.minio import MinioObjectInventory
-from backups.adapters.postgres import PostgresDumpAdapter
+from backups.adapters.postgres import BackupToolError, PostgresDumpAdapter
+from backups.restore import BackupRestoreError, BackupRestoreService
 from backups.schemas import BackupManifest, EvidenceBackupMode, EvidenceObjectState
-from backups.services import BackupService
+from backups.services import BackupError, BackupService
 
 
 @pytest.fixture
@@ -234,3 +235,132 @@ def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
         os.environ["HOTKEY_TEST_MINIO_SECRET_KEY"],
     ]
     assert all(secret not in manifest_text for secret in secrets if secret)
+
+
+def test_restore_candidate_in_isolated_database_and_remove_it(
+    backup_environment: tuple[str, Minio, str, str],
+    tmp_path: Path,
+) -> None:
+    database_url, minio, bucket, _ = backup_environment
+    engine = create_engine(database_url)
+    try:
+        candidate = BackupService(
+            engine=engine,
+            archive_writer=PostgresDumpAdapter(database_url),
+            object_inspector=MinioObjectInventory(minio, bucket),
+            evidence_bucket=bucket,
+            schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
+        ).create_candidate(tmp_path)
+        with engine.connect() as connection:
+            before = {
+                row[0]
+                for row in connection.execute(
+                    text("SELECT datname FROM pg_database WHERE datname LIKE 'hotkey_restore_%'")
+                )
+            }
+        with pytest.raises(BackupRestoreError, match="another database"):
+            BackupRestoreService(
+                source_database_url=database_url,
+                isolation_database_url=database_url,
+                schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
+            ).verify(candidate.directory)
+        result = BackupRestoreService(
+            source_database_url=database_url,
+            isolation_database_url=make_url(database_url).set(database="postgres"),
+            schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
+        ).verify(candidate.directory)
+        assert result.backup_id == candidate.manifest.backup_id
+        assert result.table_count == len(candidate.manifest.database.tables)
+        assert result.duration_seconds > 0
+        assert result.database_restored is True
+        with engine.connect() as connection:
+            after = {
+                row[0]
+                for row in connection.execute(
+                    text("SELECT datname FROM pg_database WHERE datname LIKE 'hotkey_restore_%'")
+                )
+            }
+        assert after == before
+        assert candidate.directory.exists()
+        assert (
+            BackupManifest.model_validate_json(
+                (candidate.directory / "manifest.json").read_text()
+            ).restore_verified
+            is False
+        )
+    finally:
+        engine.dispose()
+
+
+def test_corrupt_candidate_rejected_without_changing_existing_backup(
+    backup_environment: tuple[str, Minio, str, str],
+    tmp_path: Path,
+) -> None:
+    database_url, minio, bucket, _ = backup_environment
+    engine = create_engine(database_url)
+    try:
+        candidate = BackupService(
+            engine=engine,
+            archive_writer=PostgresDumpAdapter(database_url),
+            object_inspector=MinioObjectInventory(minio, bucket),
+            evidence_bucket=bucket,
+            schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
+        ).create_candidate(tmp_path)
+        original = (candidate.directory / "database.dump").read_bytes()
+        damaged_root = tmp_path / "damaged"
+        damaged_root.mkdir(mode=0o700)
+        bad = damaged_root / candidate.directory.name
+        bad.mkdir(mode=0o700)
+        (bad / "manifest.json").write_bytes((candidate.directory / "manifest.json").read_bytes())
+        (bad / "database.dump").write_bytes(original[:-1])
+        (bad / "manifest.json").chmod(0o600)
+        (bad / "database.dump").chmod(0o600)
+        with pytest.raises(BackupRestoreError, match="candidate"):
+            BackupRestoreService(
+                source_database_url=database_url,
+                isolation_database_url=make_url(database_url).set(database="postgres"),
+                schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
+            ).verify(bad)
+        assert (candidate.directory / "database.dump").read_bytes() == original
+        assert (candidate.directory / "manifest.json").exists()
+    finally:
+        engine.dispose()
+
+
+def test_failed_new_candidate_preserves_previous_candidate(
+    backup_environment: tuple[str, Minio, str, str],
+    tmp_path: Path,
+) -> None:
+    database_url, minio, bucket, _ = backup_environment
+    engine = create_engine(database_url)
+    schema_path = Path(__file__).resolve().parents[2] / "database" / "schema.sql"
+    try:
+        previous = BackupService(
+            engine=engine,
+            archive_writer=PostgresDumpAdapter(database_url),
+            object_inspector=MinioObjectInventory(minio, bucket),
+            evidence_bucket=bucket,
+            schema_path=schema_path,
+        ).create_candidate(tmp_path)
+        old_digest = hashlib.sha256((previous.directory / "database.dump").read_bytes()).hexdigest()
+
+        class FailedWriter:
+            def create_archive(self, *, snapshot_id: str, target: Path) -> str:
+                target.write_bytes(b"damaged")
+                raise BackupToolError("pg_dump failed")
+
+        with pytest.raises(BackupError, match="candidate backup generation failed"):
+            BackupService(
+                engine=engine,
+                archive_writer=FailedWriter(),
+                object_inspector=MinioObjectInventory(minio, bucket),
+                evidence_bucket=bucket,
+                schema_path=schema_path,
+            ).create_candidate(tmp_path)
+        assert [item for item in tmp_path.iterdir()] == [previous.directory]
+        current_digest = hashlib.sha256(
+            (previous.directory / "database.dump").read_bytes()
+        ).hexdigest()
+        assert current_digest == old_digest
+    finally:
+        engine.dispose()
