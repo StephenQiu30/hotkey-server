@@ -26,7 +26,7 @@
 
 ### 逐项需求交付台账
 
-003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 与执行计划；003/004/005/007/009/010/027/028/029/031/032/034/035/036/037/038/039/042 为 in_progress，其中 005 Design 只接受 S00 与来源无关契约；其余为 planned，尚未建立对应产品 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
+003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 与执行计划；003/004/005/007/009/010/027/028/029/031/032/033/034/035/036/037/038/039/042 为 in_progress，其中 005 Design 只接受 S00 与来源无关契约、033 Design 只接受 S00 与内部状态分项；其余为 planned，尚未建立对应产品 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
 
 | 编号 | PRD 主题 | 来源需求 | 优先级 | PRD 状态 | Plan |
 |---|---|---|---|---|---|
@@ -60,7 +60,7 @@
 | 030 | [交互与检索性能](prd/030-交互与检索性能.md) | NFR-001-004 | P0 | draft | [计划](plans/030-交互与检索性能计划.md) · planned |
 | 031 | [可靠执行与幂等](prd/031-可靠执行与幂等.md) · [Design](design/031-可靠执行与幂等设计.md) accepted | NFR-001-005 | P0 | draft | [计划](plans/031-可靠执行与幂等计划.md) · in_progress（S00—S02 完成，0/6 AC） |
 | 032 | [备份与恢复](prd/032-备份与恢复.md) · [Design](design/032-备份与恢复设计.md) accepted | NFR-001-006 | P0 | draft | [计划](plans/032-备份与恢复计划.md) · in_progress（S00/S01 完成，0/6 AC） |
-| 033 | [故障隔离与降级](prd/033-故障隔离与降级.md) | NFR-001-007 | P0 | draft | [计划](plans/033-故障隔离与降级计划.md) · planned |
+| 033 | [故障隔离与降级](prd/033-故障隔离与降级.md) | NFR-001-007 | P0 | draft | [设计](design/033-故障隔离与降级设计.md) · accepted（S00/内部分项）；[计划](plans/033-故障隔离与降级计划.md) · in_progress（S00/内部分项，0/6 AC） |
 | 034 | [凭据与应用安全](prd/034-凭据与应用安全.md) · [Design](design/034-凭据与应用安全设计.md) accepted | NFR-001-008 | P0 | draft | [计划](plans/034-凭据与应用安全计划.md) · in_progress（S00/S01 完成，0/6 AC） |
 | 035 | [权限与数据隔离](prd/035-权限与数据隔离.md) · [Design](design/035-权限与数据隔离设计.md) accepted | NFR-001-009 | P0 | draft | [计划](plans/035-权限与数据隔离计划.md) · in_progress（S00/S01 完成，S02 当前资源通过，完整切片待接入，0/6 AC） |
 | 036 | [数据访问与生命周期](prd/036-数据访问与生命周期.md) · [Design](design/036-数据访问与生命周期设计.md) accepted | NFR-001-010 | P0 | draft | [计划](plans/036-数据访问与生命周期计划.md) · in_progress（S00—S02 完成，0/6 AC） |

@@ -478,3 +478,99 @@ def test_snapshot_is_owner_scoped_and_uses_a_half_open_window(
     assert empty.summary.stage_attempts == 0
     assert empty.summary.resource_attempts == 0
     assert other_owner.summary.total_tasks == 0
+
+
+def test_snapshot_keeps_source_capability_states_separate(
+    observation_context: ObservationTestContext,
+) -> None:
+    cases = (
+        ("x", SourceCapability.SEARCH, "failed"),
+        ("x", SourceCapability.SEARCH, "succeeded"),
+        ("x", SourceCapability.COMMENTS, "succeeded"),
+        ("bilibili", SourceCapability.SEARCH, "partially_succeeded"),
+        (None, None, "queued"),
+    )
+    with observation_context.sessions() as session:
+        service = JobService(session, clock=lambda: WINDOW_START)
+        jobs = [
+            service.accept(
+                owner_id=observation_context.owner_id,
+                command=JobAcceptanceInput(
+                    operation_id=uuid4(),
+                    kind="monitor.collect",
+                    observation=JobObservationContext(
+                        configuration_ref="monitor-config-1",
+                        configuration_version=1,
+                        source_key=source_key,
+                        source_capability=capability,
+                    ),
+                    scope={},
+                ),
+            )
+            for source_key, capability, _ in cases
+        ]
+    with observation_context.engine.begin() as connection:
+        for job, (_, _, status) in zip(jobs, cases, strict=True):
+            if status == "queued":
+                continue
+            connection.execute(
+                text(
+                    "UPDATE jobs SET status = :status, started_at = :started_at, "
+                    "completed_at = :completed_at, updated_at = :completed_at WHERE id = :job_id"
+                ),
+                {
+                    "status": status,
+                    "started_at": WINDOW_START + timedelta(seconds=1),
+                    "completed_at": WINDOW_START + timedelta(seconds=2),
+                    "job_id": job.id,
+                },
+            )
+
+    with observation_context.sessions() as session:
+        snapshot = JobObservationService(session).snapshot(
+            owner_id=observation_context.owner_id,
+            window_start=WINDOW_START,
+            window_end=WINDOW_START + timedelta(minutes=1),
+        )
+        other_owner = JobObservationService(session).snapshot(
+            owner_id=observation_context.other_owner_id,
+            window_start=WINDOW_START,
+            window_end=WINDOW_START + timedelta(minutes=1),
+        )
+
+    assert snapshot.summary.total_tasks == 5
+    assert [
+        (item.source_key, item.source_capability, item.total_tasks, item.task_counts)
+        for item in snapshot.capabilities
+    ] == [
+        (
+            "bilibili",
+            SourceCapability.SEARCH,
+            1,
+            {
+                status: int(status is OperationalTaskStatus.PARTIALLY_SUCCEEDED)
+                for status in OperationalTaskStatus
+            },
+        ),
+        (
+            "x",
+            SourceCapability.COMMENTS,
+            1,
+            {
+                status: int(status is OperationalTaskStatus.SUCCEEDED)
+                for status in OperationalTaskStatus
+            },
+        ),
+        (
+            "x",
+            SourceCapability.SEARCH,
+            2,
+            {
+                status: int(
+                    status in {OperationalTaskStatus.FAILED, OperationalTaskStatus.SUCCEEDED}
+                )
+                for status in OperationalTaskStatus
+            },
+        ),
+    ]
+    assert other_owner.capabilities == ()

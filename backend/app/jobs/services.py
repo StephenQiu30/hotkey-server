@@ -76,6 +76,7 @@ from jobs.schemas import (
     OperationalTaskRecord,
     OperationalTaskStatus,
     OperationAttemptCount,
+    SourceCapabilityTaskSummary,
     SourceTimeStatus,
     StageAttemptInput,
     StageAttemptView,
@@ -1602,16 +1603,24 @@ class JobObservationService:
                 )
             }
         task_counts = {status: 0 for status in OperationalTaskStatus}
+        capability_counts: dict[tuple[str, SourceCapability], dict[OperationalTaskStatus, int]] = {}
         records: list[OperationalTaskRecord] = []
         for job in jobs:
             status = self._operational_status(job)
             task_counts[status] += 1
+            observation = self._observation(job)
+            if observation.source_key is not None and observation.source_capability is not None:
+                group = capability_counts.setdefault(
+                    (observation.source_key, observation.source_capability),
+                    {item: 0 for item in OperationalTaskStatus},
+                )
+                group[status] += 1
             records.append(
                 OperationalTaskRecord(
                     job_id=job.id,
                     operation_id=job.operation_id,
                     kind=job.kind,
-                    observation=self._observation(job),
+                    observation=observation,
                     status=status,
                     scheduled_for_at=job.scheduled_for_at,
                     created_at=job.created_at,
@@ -1636,6 +1645,17 @@ class JobObservationService:
             stage_attempts=sum(stage_counts.values()),
             resource_attempts=sum(resource_counts.values()),
         )
+        capabilities = tuple(
+            SourceCapabilityTaskSummary(
+                source_key=source_key,
+                source_capability=capability,
+                total_tasks=sum(counts.values()),
+                task_counts=counts,
+            )
+            for (source_key, capability), counts in sorted(
+                capability_counts.items(), key=lambda item: (item[0][0], item[0][1].value)
+            )
+        )
         self._session.rollback()
         return OperationalSnapshot(
             owner_id=owner_id,
@@ -1644,6 +1664,7 @@ class JobObservationService:
             tasks=tuple(records),
             operations=operations,
             summary=summary,
+            capabilities=capabilities,
         )
 
     @staticmethod

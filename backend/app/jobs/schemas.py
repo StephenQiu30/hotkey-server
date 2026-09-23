@@ -503,6 +503,15 @@ class OperationAttemptCount(BaseModel):
     attempts: int = Field(ge=0)
 
 
+def _validate_operational_task_counts(counts: dict[OperationalTaskStatus, int], total: int) -> None:
+    if set(counts) != set(OperationalTaskStatus):
+        raise ValueError("task_counts must include every operational status")
+    if any(value < 0 for value in counts.values()):
+        raise ValueError("task counts cannot be negative")
+    if sum(counts.values()) != total:
+        raise ValueError("task counts must reconcile to total_tasks")
+
+
 class OperationalSummary(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -517,12 +526,21 @@ class OperationalSummary(BaseModel):
 
     @model_validator(mode="after")
     def validate_task_total(self) -> OperationalSummary:
-        if set(self.task_counts) != set(OperationalTaskStatus):
-            raise ValueError("task_counts must include every operational status")
-        if any(value < 0 for value in self.task_counts.values()):
-            raise ValueError("task counts cannot be negative")
-        if sum(self.task_counts.values()) != self.total_tasks:
-            raise ValueError("task counts must reconcile to total_tasks")
+        _validate_operational_task_counts(self.task_counts, self.total_tasks)
+        return self
+
+
+class SourceCapabilityTaskSummary(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source_key: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]{0,63}$")
+    source_capability: SourceCapability
+    total_tasks: int = Field(gt=0)
+    task_counts: dict[OperationalTaskStatus, int]
+
+    @model_validator(mode="after")
+    def validate_task_total(self) -> SourceCapabilityTaskSummary:
+        _validate_operational_task_counts(self.task_counts, self.total_tasks)
         return self
 
 
@@ -535,6 +553,7 @@ class OperationalSnapshot(BaseModel):
     tasks: tuple[OperationalTaskRecord, ...]
     operations: tuple[OperationAttemptCount, ...]
     summary: OperationalSummary
+    capabilities: tuple[SourceCapabilityTaskSummary, ...]
 
 
 class FreshnessTimelineInput(BaseModel):
