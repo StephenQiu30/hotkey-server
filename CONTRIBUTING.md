@@ -10,11 +10,11 @@ API 输入输出为 Pydantic 模型，业务服务拥有事务，持久化使用
 
 ## Git 提交规范
 
-提交标题统一使用 `type(scope): 中文描述`，冒号后恰好一个空格。`scope` 必填，使用稳定的小写英文模块名；`type` 仅使用 `feat`、`fix`、`test`、`refactor`、`docs`、`chore`、`perf`、`build`、`ci` 或 `revert`。描述使用具体的简体中文动宾短语，标题不超过 72 个字符。
+提交标题统一使用 `type(scope):中文描述`，冒号后不加空格。`scope` 必填，使用稳定的小写英文模块名；`type` 仅使用 `feat`、`fix`、`test`、`refactor`、`docs`、`chore`、`perf`、`build`、`ci` 或 `revert`。描述使用具体的简体中文动宾短语，标题不超过 72 个字符。
 
 ```text
-feat(api): 新增任务状态查询
-docs(repo): 补充提交规范
+feat(api):新增任务状态查询
+docs(repo):补充提交规范
 ```
 
 提交正文和脚注使用简体中文，并说明变更摘要、原因和实际验证结果。不兼容变更使用 `<type>(<scope>)!:`，并以 `BREAKING CHANGE:` 记录中文迁移说明。
