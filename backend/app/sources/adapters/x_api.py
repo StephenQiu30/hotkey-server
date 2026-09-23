@@ -35,7 +35,7 @@ class _SourceFailureError(Exception):
 
 
 class XApiAdapter:
-    """Offline-only Recent Search adapter; a transport must be explicitly injected."""
+    """Offline search; authorize max posts before each call, then settle count or unknown."""
 
     source_key = "x"
     capabilities = frozenset({SourceCapability.SEARCH})
@@ -45,7 +45,8 @@ class XApiAdapter:
         *,
         token: SecretStr,
         transport: httpx.MockTransport,
-        before_request: Callable[[int], bool],
+        authorize_request: Callable[[int, int], bool],
+        settle_request: Callable[[int, int | None], None],
         max_requests: int = 20,
         max_seconds: float = 90,
         cancelled: Callable[[], bool] = lambda: False,
@@ -59,7 +60,8 @@ class XApiAdapter:
             raise ValueError("invalid source request limits")
         self._token = token
         self._transport = transport
-        self._before_request = before_request
+        self._authorize_request = authorize_request
+        self._settle_request = settle_request
         self._max_requests = max_requests
         self._max_seconds = max_seconds
         self._cancelled = cancelled
@@ -119,41 +121,45 @@ class XApiAdapter:
         if remaining <= 0 or self._request_count >= self._max_requests:
             raise _SourceFailureError(SourceStopReason.BUDGET_EXHAUSTED)
         next_attempt = self._request_count + 1
-        if not self._before_request(next_attempt):
+        if not self._authorize_request(next_attempt, request.page_size):
             raise _SourceFailureError(SourceStopReason.BUDGET_EXHAUSTED)
         self._request_count = next_attempt
-        params = {
-            "query": request.query,
-            "sort_order": "recency" if request.sort is SourceSort.LATEST else "relevancy",
-            "max_results": str(request.page_size),
-            "post.fields": _POST_FIELDS,
-            "expansions": "author_id",
-        }
-        if request.page_token is not None:
-            params["next_token"] = request.page_token
-        with (
-            httpx.Client(
-                transport=self._transport,
-                follow_redirects=False,
-                timeout=min(10.0, remaining),
-            ) as client,
-            client.stream(
-                "GET",
-                _SEARCH_URL,
-                params=params,
-                headers={"Authorization": f"Bearer {self._token.get_secret_value()}"},
-            ) as response,
-        ):
-            self._classify_response(response)
-            content = bytearray()
-            for chunk in response.iter_bytes():
-                if self._cancelled():
-                    raise _SourceFailureError(SourceStopReason.CANCELLED)
-                content.extend(chunk)
-                if len(content) > _MAX_RESPONSE_BYTES:
-                    raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
-        payload = json.loads(content)
-        return self._parse_page(request, payload)
+        billable_posts: int | None = None
+        try:
+            params = {
+                "query": request.query,
+                "sort_order": "recency" if request.sort is SourceSort.LATEST else "relevancy",
+                "max_results": str(request.page_size),
+                "post.fields": _POST_FIELDS,
+            }
+            if request.page_token is not None:
+                params["next_token"] = request.page_token
+            with (
+                httpx.Client(
+                    transport=self._transport,
+                    follow_redirects=False,
+                    timeout=min(10.0, remaining),
+                ) as client,
+                client.stream(
+                    "GET",
+                    _SEARCH_URL,
+                    params=params,
+                    headers={"Authorization": f"Bearer {self._token.get_secret_value()}"},
+                ) as response,
+            ):
+                self._classify_response(response)
+                content = bytearray()
+                for chunk in response.iter_bytes():
+                    if self._cancelled():
+                        raise _SourceFailureError(SourceStopReason.CANCELLED)
+                    content.extend(chunk)
+                    if len(content) > _MAX_RESPONSE_BYTES:
+                        raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
+            page = self._parse_page(request, json.loads(content))
+            billable_posts = len(page.items)
+            return page
+        finally:
+            self._settle_request(next_attempt, billable_posts)
 
     @staticmethod
     def _classify_response(response: httpx.Response) -> None:
@@ -176,7 +182,7 @@ class XApiAdapter:
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
 
     def _parse_page(self, request: SearchRequest, payload: object) -> SourcePage:
-        if not isinstance(payload, dict) or payload.get("errors"):
+        if not isinstance(payload, dict) or payload.get("errors") or "includes" in payload:
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
         meta = payload.get("meta")
         if not isinstance(meta, dict) or type(meta.get("result_count")) is not int:
