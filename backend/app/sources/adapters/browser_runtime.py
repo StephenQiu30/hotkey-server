@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
-from playwright.async_api import BrowserContext, StorageState, async_playwright
+from playwright.async_api import Browser, BrowserContext, StorageState, async_playwright
 
 _CLOSE_TIMEOUT_SECONDS = 5
 
@@ -58,12 +58,13 @@ class BrowserRuntime:
         if not self._enabled:
             raise BrowserRuntimeDisabledError
         async with async_playwright() as playwright:
-            browser = await playwright.chromium.connect(
-                self._ws_url, timeout=self._connect_timeout_ms
-            )
+            browser: Browser | None = None
             context: BrowserContext | None = None
             try:
                 async with asyncio.timeout(self._execution_timeout_seconds):
+                    browser = await playwright.chromium.connect(
+                        self._ws_url, timeout=self._connect_timeout_ms
+                    )
                     if storage_state is None:
                         context = await browser.new_context(
                             accept_downloads=False, service_workers="block"
@@ -80,4 +81,5 @@ class BrowserRuntime:
                     if context is not None:
                         await asyncio.wait_for(context.close(), timeout=_CLOSE_TIMEOUT_SECONDS)
                 finally:
-                    await asyncio.wait_for(browser.close(), timeout=_CLOSE_TIMEOUT_SECONDS)
+                    if browser is not None:
+                        await asyncio.wait_for(browser.close(), timeout=_CLOSE_TIMEOUT_SECONDS)

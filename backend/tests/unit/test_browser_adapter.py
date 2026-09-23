@@ -153,6 +153,32 @@ def test_browser_runtime_deadline_includes_context_creation(
     browser.close.assert_awaited_once()
 
 
+def test_browser_runtime_deadline_includes_ws_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    playwright, browser, _ = _playwright(monkeypatch)
+
+    async def slow_connect(*_args: object, **_kwargs: object) -> AsyncMock:
+        await asyncio.sleep(1)
+        return browser
+
+    playwright.chromium.connect.side_effect = slow_connect
+    runtime = BrowserRuntime(
+        ws_url="ws://browser:3000/",
+        enabled=True,
+        execution_timeout_seconds=0.01,
+    )
+
+    async def run() -> None:
+        with pytest.raises(TimeoutError):
+            async with runtime.context():
+                pass
+
+    asyncio.run(run())
+    browser.new_context.assert_not_awaited()
+    browser.close.assert_not_awaited()
+
+
 def test_browser_runtime_attempts_disconnect_after_slow_context_close(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
