@@ -13,6 +13,8 @@ from sources.adapters import x_api
 from sources.adapters.x_api import XApiAdapter
 from sources.contracts import (
     AuthorPostsRequest,
+    CommentsRequest,
+    RepliesRequest,
     SearchRequest,
     SourceCapability,
     SourcePageState,
@@ -33,6 +35,178 @@ def _author_request(**overrides: object) -> AuthorPostsRequest:
         "page_size": 5,
     }
     return AuthorPostsRequest(**(values | overrides))
+
+
+def _comments_request(**overrides: object) -> CommentsRequest:
+    values: dict[str, object] = {"source_key": "x", "post_external_id": "100", "page_size": 10}
+    return CommentsRequest(**(values | overrides))
+
+
+def _replies_request(**overrides: object) -> RepliesRequest:
+    values: dict[str, object] = {
+        "source_key": "x",
+        "comment_external_id": "101",
+        "post_external_id": "100",
+        "page_size": 10,
+    }
+    return RepliesRequest(**(values | overrides))
+
+
+def test_direct_reply_search_maps_root_and_nested_parent() -> None:
+    calls: list[httpx.Request] = []
+    authorizations: list[tuple[int, int]] = []
+    settlements: list[tuple[int, int | None]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        parent, child = ("100", "101") if len(calls) == 1 else ("101", "102")
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": child,
+                        "author_id": "42",
+                        "conversation_id": "100",
+                        "referenced_posts": [{"type": "replied_to", "id": parent}],
+                        "text": "reply",
+                    }
+                ],
+                "meta": {"result_count": 1},
+            },
+        )
+
+    root = _adapter(
+        respond,
+        authorize_request=lambda attempt, posts: authorizations.append((attempt, posts)) or True,
+        settle_request=lambda attempt, posts: settlements.append((attempt, posts)),
+    ).fetch_page(_comments_request())
+    nested = _adapter(respond).fetch_page(_replies_request())
+
+    assert root.capability is SourceCapability.COMMENTS
+    assert root.state is SourcePageState.COMPLETE
+    assert root.items[0].external_id == "101"
+    assert root.items[0].post_external_id == "100"
+    assert root.items[0].parent_comment_external_id is None
+    assert nested.capability is SourceCapability.REPLIES
+    assert nested.items[0].external_id == "102"
+    assert nested.items[0].post_external_id == "100"
+    assert nested.items[0].parent_comment_external_id == "101"
+    assert [call.url.params["query"] for call in calls] == [
+        "in_reply_to_tweet_id:100",
+        "in_reply_to_tweet_id:101",
+    ]
+    assert all(call.url.path == "/2/tweets/search/recent" for call in calls)
+    assert authorizations == [(1, 10)]
+    assert settlements == [(1, 1)]
+
+
+def test_direct_replies_paginate_and_settle_valid_empty_page() -> None:
+    calls: list[httpx.Request] = []
+    settlements: list[tuple[int, int | None]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"id": "101", "author_id": "42", "conversation_id": "100"}],
+                    "meta": {"result_count": 1, "next_token": "ABCD"},
+                },
+            )
+        return httpx.Response(200, json={"meta": {"result_count": 0}})
+
+    adapter = _adapter(
+        respond,
+        settle_request=lambda attempt, posts: settlements.append((attempt, posts)),
+    )
+    first = adapter.fetch_page(_comments_request())
+    second = adapter.fetch_page(_comments_request(page_token="ABCD"))
+
+    assert first.state is SourcePageState.MORE
+    assert first.next_page_token == "ABCD"
+    assert second.state is SourcePageState.EMPTY
+    assert second.stop_reason is SourceStopReason.SOURCE_EMPTY
+    assert calls[1].url.params["next_token"] == "ABCD"
+    assert settlements == [(1, 1), (2, 0)]
+
+
+def test_nested_reply_can_use_verified_response_root_when_request_omits_it() -> None:
+    page = _adapter(
+        lambda _request: httpx.Response(
+            200,
+            json={
+                "data": [{"id": "102", "author_id": "42", "conversation_id": "100"}],
+                "meta": {"result_count": 1},
+            },
+        )
+    ).fetch_page(_replies_request(post_external_id=None))
+
+    assert page.state is SourcePageState.COMPLETE
+    assert page.items[0].post_external_id == "100"
+    assert page.items[0].parent_comment_external_id == "101"
+
+
+@pytest.mark.parametrize(
+    ("source_request", "response_post"),
+    [
+        (
+            _replies_request(post_external_id=None),
+            {"id": "102", "author_id": "42", "text": "unknown root"},
+        ),
+        (
+            _comments_request(),
+            {
+                "id": "101",
+                "author_id": "42",
+                "conversation_id": "100",
+                "referenced_posts": [{"type": "replied_to", "id": "999"}],
+            },
+        ),
+        (
+            _replies_request(),
+            {"id": "102", "author_id": "42", "conversation_id": "999"},
+        ),
+    ],
+)
+def test_direct_replies_reject_unknown_root_or_conflicting_relationship(
+    source_request: CommentsRequest | RepliesRequest,
+    response_post: dict[str, object],
+) -> None:
+    settlements: list[tuple[int, int | None]] = []
+    page = _adapter(
+        lambda _request: httpx.Response(
+            200,
+            json={"data": [response_post], "meta": {"result_count": 1}},
+        ),
+        settle_request=lambda attempt, posts: settlements.append((attempt, posts)),
+    ).fetch_page(source_request)
+
+    assert page.stop_reason is SourceStopReason.PROTOCOL_ERROR
+    assert page.items == ()
+    assert page.request_count == 1
+    assert settlements == [(1, None)]
+
+
+@pytest.mark.parametrize(
+    "source_request",
+    [_comments_request(post_external_id="bad/path"), _replies_request(comment_external_id="bad")],
+)
+def test_direct_replies_reject_invalid_id_before_authorization(
+    source_request: CommentsRequest | RepliesRequest,
+) -> None:
+    calls: list[httpx.Request] = []
+    authorizations: list[tuple[int, int]] = []
+    page = _adapter(
+        lambda sent: calls.append(sent) or httpx.Response(200),
+        authorize_request=lambda attempt, posts: authorizations.append((attempt, posts)) or True,
+    ).fetch_page(source_request)
+
+    assert page.stop_reason is SourceStopReason.UNSUPPORTED
+    assert page.request_count == 0
+    assert calls == []
+    assert authorizations == []
 
 
 def test_author_posts_uses_official_timeline_and_accounts_for_each_page() -> None:
@@ -62,7 +236,12 @@ def test_author_posts_uses_official_timeline_and_accounts_for_each_page() -> Non
     second = adapter.fetch_page(_author_request(page_token="ABCD"))
 
     assert adapter.capabilities == frozenset(
-        {SourceCapability.SEARCH, SourceCapability.AUTHOR_POSTS}
+        {
+            SourceCapability.SEARCH,
+            SourceCapability.AUTHOR_POSTS,
+            SourceCapability.COMMENTS,
+            SourceCapability.REPLIES,
+        }
     )
     assert first.state is SourcePageState.MORE
     assert first.next_page_token == "ABCD"

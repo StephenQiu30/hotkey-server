@@ -13,8 +13,11 @@ from pydantic import SecretStr, ValidationError
 
 from sources.contracts import (
     AuthorPostsRequest,
+    CommentsRequest,
+    RepliesRequest,
     SearchRequest,
     SourceCapability,
+    SourceComment,
     SourcePage,
     SourcePageState,
     SourcePost,
@@ -28,6 +31,10 @@ _POST_FIELDS = "id,text,created_at,lang,conversation_id,public_metrics"
 _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
 
+def _valid_x_id(value: object) -> bool:
+    return isinstance(value, str) and 1 <= len(value) <= 19 and value.isascii() and value.isdigit()
+
+
 class _SourceFailureError(Exception):
     def __init__(self, reason: SourceStopReason, retry_at: datetime | None = None) -> None:
         super().__init__(reason.value)
@@ -39,7 +46,14 @@ class XApiAdapter:
     """Offline post reads; authorize max posts before each call, then settle count or unknown."""
 
     source_key = "x"
-    capabilities = frozenset({SourceCapability.SEARCH, SourceCapability.AUTHOR_POSTS})
+    capabilities = frozenset(
+        {
+            SourceCapability.SEARCH,
+            SourceCapability.AUTHOR_POSTS,
+            SourceCapability.COMMENTS,
+            SourceCapability.REPLIES,
+        }
+    )
 
     def __init__(
         self,
@@ -93,7 +107,10 @@ class XApiAdapter:
                 if self._terminal is not None:
                     raise _SourceFailureError(*self._terminal)
                 if (
-                    not isinstance(request, (SearchRequest, AuthorPostsRequest))
+                    not isinstance(
+                        request,
+                        (SearchRequest, AuthorPostsRequest, CommentsRequest, RepliesRequest),
+                    )
                     or request.source_key != "x"
                 ):
                     raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
@@ -120,14 +137,24 @@ class XApiAdapter:
                             raise ValueError("source clock must be UTC")
                         if request.starts_at < now - timedelta(days=7) or request.ends_at > now:
                             raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
-                elif (
-                    request.page_size < 5
-                    or not isinstance(request.author_external_id, str)
-                    or not request.author_external_id.isascii()
-                    or not request.author_external_id.isdigit()
-                    or len(request.author_external_id) > 19
-                ):
-                    raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
+                elif isinstance(request, AuthorPostsRequest):
+                    if request.page_size < 5 or not _valid_x_id(request.author_external_id):
+                        raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
+                else:
+                    parent_id = (
+                        request.post_external_id
+                        if isinstance(request, CommentsRequest)
+                        else request.comment_external_id
+                    )
+                    root_id = (
+                        request.post_external_id if isinstance(request, RepliesRequest) else None
+                    )
+                    if (
+                        request.page_size < 10
+                        or not _valid_x_id(parent_id)
+                        or (root_id is not None and not _valid_x_id(root_id))
+                    ):
+                        raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
                 if request.page_token is not None:
                     if request.page_token in self._seen_tokens:
                         raise _SourceFailureError(SourceStopReason.CURSOR_LOOP)
@@ -148,7 +175,7 @@ class XApiAdapter:
         finally:
             self._lock.release()
 
-    def _fetch_posts(self, request: SearchRequest | AuthorPostsRequest) -> SourcePage:
+    def _fetch_posts(self, request: SourceRequest) -> SourcePage:
         if self._cancelled():
             raise _SourceFailureError(SourceStopReason.CANCELLED)
         assert self._deadline is not None
@@ -173,10 +200,21 @@ class XApiAdapter:
                 if request.starts_at is not None and request.ends_at is not None:
                     params["start_time"] = request.starts_at.isoformat().replace("+00:00", "Z")
                     params["end_time"] = request.ends_at.isoformat().replace("+00:00", "Z")
-            else:
+            elif isinstance(request, AuthorPostsRequest):
                 url = f"https://api.x.com/2/users/{request.author_external_id}/tweets"
                 if request.page_token is not None:
                     params["pagination_token"] = request.page_token
+            else:
+                url = _SEARCH_URL
+                parent_id = (
+                    request.post_external_id
+                    if isinstance(request, CommentsRequest)
+                    else request.comment_external_id
+                )
+                params["query"] = f"in_reply_to_tweet_id:{parent_id}"
+                params["sort_order"] = "recency"
+                if request.page_token is not None:
+                    params["next_token"] = request.page_token
             with (
                 httpx.Client(
                     transport=self._transport,
@@ -228,9 +266,7 @@ class XApiAdapter:
         if response.status_code != 200:
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
 
-    def _parse_page(
-        self, request: SearchRequest | AuthorPostsRequest, payload: object
-    ) -> SourcePage:
+    def _parse_page(self, request: SourceRequest, payload: object) -> SourcePage:
         if not isinstance(payload, dict) or payload.get("errors") or "includes" in payload:
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
         meta = payload.get("meta")
@@ -244,35 +280,73 @@ class XApiAdapter:
         next_token = meta.get("next_token")
         if next_token is not None and (not isinstance(next_token, str) or not next_token):
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
-        expected_author = (
-            request.author_external_id if isinstance(request, AuthorPostsRequest) else None
-        )
-        posts = tuple(self._parse_post(item, expected_author=expected_author) for item in raw_items)
+        items: tuple[SourcePost | SourceComment, ...]
+        if isinstance(request, (CommentsRequest, RepliesRequest)):
+            items = tuple(self._parse_comment(item, request=request) for item in raw_items)
+        else:
+            expected_author = (
+                request.author_external_id if isinstance(request, AuthorPostsRequest) else None
+            )
+            items = tuple(
+                self._parse_post(item, expected_author=expected_author) for item in raw_items
+            )
         if next_token is not None and next_token == request.page_token:
             raise _SourceFailureError(SourceStopReason.CURSOR_LOOP)
         state = (
             SourcePageState.MORE
             if next_token is not None
             else SourcePageState.COMPLETE
-            if posts
+            if items
             else SourcePageState.EMPTY
         )
         return SourcePage(
             source_key="x",
             capability=request.capability,
             state=state,
-            items=posts,
+            items=items,
             next_page_token=next_token,
             watermark=None,
             stop_reason=(
                 None
                 if next_token is not None
                 else SourceStopReason.END_OF_RESULTS
-                if posts
+                if items
                 else SourceStopReason.SOURCE_EMPTY
             ),
             observed_at=datetime.now(UTC),
             adapter_version=XApiAdapter._adapter_version(request),
+        )
+
+    @classmethod
+    def _parse_comment(
+        cls, value: object, *, request: CommentsRequest | RepliesRequest
+    ) -> SourceComment:
+        post = cls._parse_post(value)
+        parent_id = (
+            request.post_external_id
+            if isinstance(request, CommentsRequest)
+            else request.comment_external_id
+        )
+        root_id = request.post_external_id
+        if root_id is not None and post.conversation_external_id not in {None, root_id}:
+            raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
+        root_id = root_id or post.conversation_external_id
+        if (
+            not _valid_x_id(root_id)
+            or post.parent_external_id not in {None, parent_id}
+            or post.external_id in {parent_id, root_id}
+        ):
+            raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
+        assert isinstance(root_id, str)
+        return SourceComment(
+            source_key="x",
+            external_id=post.external_id,
+            post_external_id=root_id,
+            parent_comment_external_id=None if parent_id == root_id else parent_id,
+            author_external_id=post.author_external_id,
+            published_at=post.published_at,
+            text=post.text,
+            like_count=post.like_count,
         )
 
     @staticmethod
@@ -347,8 +421,8 @@ class XApiAdapter:
 
     @staticmethod
     def _adapter_version(request: SourceRequest) -> str:
-        return (
-            "x-api-v2/user-posts"
-            if isinstance(request, AuthorPostsRequest)
-            else "x-api-v2/recent-search"
-        )
+        if isinstance(request, AuthorPostsRequest):
+            return "x-api-v2/user-posts"
+        if isinstance(request, (CommentsRequest, RepliesRequest)):
+            return "x-api-v2/direct-replies"
+        return "x-api-v2/recent-search"
