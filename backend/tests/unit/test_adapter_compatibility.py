@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -101,6 +101,46 @@ def test_capability_requests_keep_distinct_targets_and_opaque_paging() -> None:
             page_size=20,
             provider_secret="must-not-enter-contract",
         )
+
+
+@pytest.mark.parametrize(
+    ("starts_at", "ends_at"),
+    [
+        (OBSERVED_AT, None),
+        (None, OBSERVED_AT),
+        (OBSERVED_AT, OBSERVED_AT),
+        (OBSERVED_AT, OBSERVED_AT - timedelta(seconds=1)),
+        (OBSERVED_AT.replace(tzinfo=None), OBSERVED_AT + timedelta(hours=1)),
+        (
+            OBSERVED_AT,
+            (OBSERVED_AT + timedelta(hours=1)).astimezone(timezone(timedelta(hours=8))),
+        ),
+    ],
+)
+def test_search_time_window_requires_ordered_utc_bounds(
+    starts_at: datetime | None, ends_at: datetime | None
+) -> None:
+    with pytest.raises(ValidationError):
+        SearchRequest(
+            source_key="source-a",
+            query="topic",
+            page_size=20,
+            starts_at=starts_at,
+            ends_at=ends_at,
+        )
+
+
+def test_search_accepts_explicit_utc_time_window() -> None:
+    request = SearchRequest(
+        source_key="source-a",
+        query="topic",
+        page_size=20,
+        starts_at=OBSERVED_AT.replace(microsecond=1),
+        ends_at=OBSERVED_AT + timedelta(hours=1),
+    )
+
+    assert request.starts_at == OBSERVED_AT.replace(microsecond=1)
+    assert request.ends_at == OBSERVED_AT + timedelta(hours=1)
 
 
 def test_page_content_cannot_enter_the_social_paging_contract() -> None:

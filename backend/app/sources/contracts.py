@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Annotated, Literal, Protocol
 from urllib.parse import urlsplit
@@ -103,6 +103,8 @@ class SearchRequest(_PageRequest):
     capability: Literal[SourceCapability.SEARCH] = SourceCapability.SEARCH
     query: str = Field(min_length=1, max_length=512)
     sort: SourceSort = SourceSort.LATEST
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
 
     @field_validator("query")
     @classmethod
@@ -112,6 +114,25 @@ class SearchRequest(_PageRequest):
         ):
             raise ValueError("query cannot contain surrounding whitespace or controls")
         return value
+
+    @field_validator("starts_at", "ends_at")
+    @classmethod
+    def validate_window_bound(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() != timedelta(0):
+            raise ValueError("search window bounds must be UTC")
+        return value
+
+    @model_validator(mode="after")
+    def validate_window(self) -> SearchRequest:
+        if (self.starts_at is None) != (self.ends_at is None):
+            raise ValueError("search window requires both bounds")
+        if (
+            self.starts_at is not None
+            and self.ends_at is not None
+            and self.starts_at >= self.ends_at
+        ):
+            raise ValueError("search window end must follow start")
+        return self
 
 
 class AuthorPostsRequest(_PageRequest):

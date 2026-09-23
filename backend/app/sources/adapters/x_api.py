@@ -5,7 +5,7 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -50,6 +50,7 @@ class XApiAdapter:
         max_requests: int = 20,
         max_seconds: float = 90,
         cancelled: Callable[[], bool] = lambda: False,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         raw_token = token.get_secret_value()
         if not raw_token or any(ord(char) < 33 or ord(char) > 126 for char in raw_token):
@@ -65,6 +66,7 @@ class XApiAdapter:
         self._max_requests = max_requests
         self._max_seconds = max_seconds
         self._cancelled = cancelled
+        self._clock = clock or (lambda: datetime.now(UTC))
         self._deadline: float | None = None
         self._request_count = 0
         self._request_scope: dict[str, Any] | None = None
@@ -93,6 +95,20 @@ class XApiAdapter:
                     raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
                 if request.watermark is not None or request.page_size < 10:
                     raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
+                if (request.starts_at is None) != (request.ends_at is None):
+                    raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
+                if request.starts_at is not None and request.ends_at is not None:
+                    if (
+                        request.starts_at.utcoffset() != timedelta(0)
+                        or request.ends_at.utcoffset() != timedelta(0)
+                        or request.starts_at >= request.ends_at
+                    ):
+                        raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
+                    now = self._clock()
+                    if now.utcoffset() != timedelta(0):
+                        raise ValueError("source clock must be UTC")
+                    if request.starts_at < now - timedelta(days=7) or request.ends_at > now:
+                        raise _SourceFailureError(SourceStopReason.UNSUPPORTED)
                 if request.page_token is not None:
                     if request.page_token in self._seen_tokens:
                         raise _SourceFailureError(SourceStopReason.CURSOR_LOOP)
@@ -134,6 +150,9 @@ class XApiAdapter:
             }
             if request.page_token is not None:
                 params["next_token"] = request.page_token
+            if request.starts_at is not None and request.ends_at is not None:
+                params["start_time"] = request.starts_at.isoformat().replace("+00:00", "Z")
+                params["end_time"] = request.ends_at.isoformat().replace("+00:00", "Z")
             with (
                 httpx.Client(
                     transport=self._transport,

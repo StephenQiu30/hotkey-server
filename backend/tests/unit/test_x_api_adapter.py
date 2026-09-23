@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -108,6 +109,96 @@ def test_recent_search_uses_only_endpoint_declared_post_fields() -> None:
 
     assert page.state is SourcePageState.COMPLETE
     assert page.items[0].author_external_id == "42"
+
+
+def test_recent_search_sends_same_explicit_time_window_on_every_page() -> None:
+    now = datetime(2026, 9, 23, 12, tzinfo=UTC)
+    starts_at = now - timedelta(days=2)
+    ends_at = now - timedelta(hours=1)
+    calls: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"id": "1", "author_id": "42", "text": "post"}],
+                "meta": {"result_count": 1, **({"next_token": "ABCD"} if len(calls) == 1 else {})},
+            },
+        )
+
+    adapter = _adapter(respond, clock=lambda: now)
+    first = adapter.fetch_page(_request(starts_at=starts_at, ends_at=ends_at))
+    second = adapter.fetch_page(_request(starts_at=starts_at, ends_at=ends_at, page_token="ABCD"))
+
+    assert first.state is SourcePageState.MORE
+    assert second.state is SourcePageState.COMPLETE
+    for call in calls:
+        assert call.url.params["start_time"] == "2026-09-21T12:00:00Z"
+        assert call.url.params["end_time"] == "2026-09-23T11:00:00Z"
+
+
+@pytest.mark.parametrize("window_kind", ["older_than_recent", "future_end"])
+def test_recent_search_rejects_outside_recent_window_before_authorization(
+    window_kind: str,
+) -> None:
+    now = datetime(2026, 9, 23, 12, tzinfo=UTC)
+    calls: list[httpx.Request] = []
+    authorizations: list[tuple[int, int]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json={"meta": {"result_count": 0}})
+
+    starts_at = (
+        now - timedelta(days=7, seconds=1)
+        if window_kind == "older_than_recent"
+        else now - timedelta(hours=1)
+    )
+    ends_at = now + timedelta(seconds=1) if window_kind == "future_end" else now
+    page = _adapter(
+        respond,
+        clock=lambda: now,
+        authorize_request=lambda attempt, posts: authorizations.append((attempt, posts)) or True,
+    ).fetch_page(_request(starts_at=starts_at, ends_at=ends_at))
+
+    assert page.stop_reason is SourceStopReason.UNSUPPORTED
+    assert page.request_count == 0
+    assert authorizations == []
+    assert calls == []
+
+
+@pytest.mark.parametrize("window_kind", ["partial", "reversed", "non_utc"])
+def test_recent_search_rejects_a_copied_invalid_window_before_authorization(
+    window_kind: str,
+) -> None:
+    calls: list[httpx.Request] = []
+    authorizations: list[tuple[int, int]] = []
+    start = datetime(2026, 9, 22, 12, tzinfo=UTC)
+    updates = {
+        "partial": {"starts_at": start},
+        "reversed": {"starts_at": start, "ends_at": start - timedelta(hours=1)},
+        "non_utc": {
+            "starts_at": start.astimezone(timezone(timedelta(hours=8))),
+            "ends_at": start + timedelta(hours=1),
+        },
+    }
+    malformed = _request().model_copy(update=updates[window_kind])
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json={"meta": {"result_count": 0}})
+
+    page = _adapter(
+        respond,
+        clock=lambda: datetime(2026, 9, 23, 12, tzinfo=UTC),
+        authorize_request=lambda attempt, posts: authorizations.append((attempt, posts)) or True,
+    ).fetch_page(malformed)
+
+    assert page.stop_reason is SourceStopReason.UNSUPPORTED
+    assert page.request_count == 0
+    assert authorizations == []
+    assert calls == []
 
 
 def test_recent_search_valid_empty_is_not_a_failure() -> None:
