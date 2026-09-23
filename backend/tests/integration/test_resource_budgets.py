@@ -463,6 +463,225 @@ def test_x_api_spend_last_page_is_reserved_by_one_transaction(
     assert statuses.count(BudgetDecisionStatus.DELAYED) == 1
 
 
+def test_x_api_request_reserves_network_and_spend_together(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime(2026, 9, 23, 12, 0, 10, tzinfo=UTC))
+    quote = XApiPostReadCost(max_posts=10, unit_price_usd_micros=5000)
+    operation_id, network_id, spend_id = uuid4(), uuid4(), uuid4()
+    context = BudgetContext(source_ref="x", job_ref="job-a")
+    with resource_budget_context.sessions() as session:
+        service = ResourceBudgetService(session, clock=clock)
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(clock=clock, limit_units=1),
+        )
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(
+                clock=clock,
+                budget_key="global.x.spend",
+                metric=BudgetMetric.X_API_USD_MICROS,
+                limit_units=quote.reservation_units - 1,
+            ),
+        )
+        with session.begin():
+            delayed = service.reserve_x_api_request_budgets_in_transaction(
+                owner_id=resource_budget_context.owner_id,
+                operation_id=operation_id,
+                network_reservation_id=network_id,
+                spend_reservation_id=spend_id,
+                context=context,
+                quote=quote,
+            )
+        assert delayed.status is BudgetDecisionStatus.DELAYED
+        assert delayed.metric is BudgetMetric.X_API_USD_MICROS
+        assert (
+            session.execute(text("SELECT count(*) FROM resource_budget_reservations")).scalar_one()
+            == 0
+        )
+        assert (
+            session.execute(text("SELECT count(*) FROM resource_budget_windows")).scalar_one() == 0
+        )
+
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(
+                clock=clock,
+                budget_key="global.x.spend",
+                metric=BudgetMetric.X_API_USD_MICROS,
+                limit_units=quote.reservation_units,
+            ),
+        )
+        with session.begin():
+            reserved = service.reserve_x_api_request_budgets_in_transaction(
+                owner_id=resource_budget_context.owner_id,
+                operation_id=operation_id,
+                network_reservation_id=network_id,
+                spend_reservation_id=spend_id,
+                context=context,
+                quote=quote,
+            )
+        assert reserved.status is BudgetDecisionStatus.RESERVED
+        assert reserved.metric is BudgetMetric.X_API_USD_MICROS
+        with session.begin():
+            replayed = service.reserve_x_api_request_budgets_in_transaction(
+                owner_id=resource_budget_context.owner_id,
+                operation_id=operation_id,
+                network_reservation_id=network_id,
+                spend_reservation_id=spend_id,
+                context=context,
+                quote=quote,
+            )
+        assert replayed.status is BudgetDecisionStatus.RESERVED
+        with session.begin():
+            service.settle_budget_reservation_in_transaction(
+                owner_id=resource_budget_context.owner_id,
+                reservation_id=network_id,
+                actual_units=1,
+            )
+            service.settle_budget_reservation_in_transaction(
+                owner_id=resource_budget_context.owner_id,
+                reservation_id=spend_id,
+                actual_units=quote.settlement_units(1),
+            )
+        with (
+            pytest.raises(BudgetReservationConflictError, match="already settled"),
+            session.begin(),
+        ):
+            service.reserve_x_api_request_budgets_in_transaction(
+                owner_id=resource_budget_context.owner_id,
+                operation_id=operation_id,
+                network_reservation_id=network_id,
+                spend_reservation_id=spend_id,
+                context=context,
+                quote=quote,
+            )
+        assert (
+            session.execute(text("SELECT count(*) FROM resource_budget_reservations")).scalar_one()
+            == 2
+        )
+
+
+def test_x_api_request_missing_spend_policy_rolls_back_network(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime(2026, 9, 23, 12, 0, 10, tzinfo=UTC))
+    with resource_budget_context.sessions() as session:
+        service = ResourceBudgetService(session, clock=clock)
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(clock=clock, limit_units=1),
+        )
+        with session.begin(), pytest.raises(BudgetPolicyUnavailableError, match="global"):
+            service.reserve_x_api_request_budgets_in_transaction(
+                owner_id=resource_budget_context.owner_id,
+                operation_id=uuid4(),
+                network_reservation_id=uuid4(),
+                spend_reservation_id=uuid4(),
+                context=BudgetContext(source_ref="x"),
+                quote=XApiPostReadCost(max_posts=10, unit_price_usd_micros=5000),
+            )
+        assert (
+            session.execute(text("SELECT count(*) FROM resource_budget_reservations")).scalar_one()
+            == 0
+        )
+        assert (
+            session.execute(text("SELECT count(*) FROM resource_budget_windows")).scalar_one() == 0
+        )
+
+
+def test_x_api_request_competing_for_last_spend_does_not_consume_extra_network(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime(2026, 9, 23, 12, 0, 10, tzinfo=UTC))
+    quote = XApiPostReadCost(max_posts=10, unit_price_usd_micros=5000)
+    with resource_budget_context.sessions() as session:
+        service = ResourceBudgetService(session, clock=clock)
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(clock=clock, limit_units=2),
+        )
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(
+                clock=clock,
+                budget_key="global.x.spend",
+                metric=BudgetMetric.X_API_USD_MICROS,
+                limit_units=quote.reservation_units,
+            ),
+        )
+
+    barrier = Barrier(2)
+
+    def reserve(_: int) -> BudgetDecisionStatus:
+        with resource_budget_context.sessions() as session:
+            service = ResourceBudgetService(session, clock=clock)
+            barrier.wait()
+            with session.begin():
+                return service.reserve_x_api_request_budgets_in_transaction(
+                    owner_id=resource_budget_context.owner_id,
+                    operation_id=uuid4(),
+                    network_reservation_id=uuid4(),
+                    spend_reservation_id=uuid4(),
+                    context=BudgetContext(source_ref="x"),
+                    quote=quote,
+                ).status
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        statuses = list(executor.map(reserve, (1, 2)))
+
+    assert statuses.count(BudgetDecisionStatus.RESERVED) == 1
+    assert statuses.count(BudgetDecisionStatus.DELAYED) == 1
+    with resource_budget_context.engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT p.metric, w.reserved_units FROM resource_budget_windows w "
+                "JOIN resource_budget_policies p ON p.id = w.budget_policy_id"
+            )
+        ).all()
+        reservations = connection.scalar(text("SELECT count(*) FROM resource_budget_reservations"))
+    assert dict(rows) == {"network_request": 1, "x_api_usd_micros": 50_000}
+    assert reservations == 2
+
+
+def test_x_api_request_rejects_a_preexisting_single_budget(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime(2026, 9, 23, 12, 0, 10, tzinfo=UTC))
+    operation_id, network_id = uuid4(), uuid4()
+    context = BudgetContext(source_ref="x")
+    with resource_budget_context.sessions() as session:
+        service = ResourceBudgetService(session, clock=clock)
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(clock=clock, limit_units=2),
+        )
+        service.reserve_budget(
+            owner_id=resource_budget_context.owner_id,
+            command=BudgetReservationInput(
+                reservation_id=network_id,
+                operation_id=operation_id,
+                metric=BudgetMetric.NETWORK_REQUEST,
+                requested_units=1,
+                context=context,
+            ),
+        )
+        with session.begin(), pytest.raises(BudgetReservationConflictError, match="only one"):
+            service.reserve_x_api_request_budgets_in_transaction(
+                owner_id=resource_budget_context.owner_id,
+                operation_id=operation_id,
+                network_reservation_id=network_id,
+                spend_reservation_id=uuid4(),
+                context=context,
+                quote=XApiPostReadCost(max_posts=10, unit_price_usd_micros=5000),
+            )
+        assert (
+            session.execute(text("SELECT count(*) FROM resource_budget_reservations")).scalar_one()
+            == 1
+        )
+
+
 def test_x_api_spend_releases_only_verified_unused_resources(
     resource_budget_context: ResourceBudgetContext,
 ) -> None:
@@ -589,10 +808,15 @@ def test_offline_x_adapter_uses_persistent_spend_window_per_page(
 ) -> None:
     clock = MutableClock(datetime(2026, 9, 23, 12, 0, 10, tzinfo=UTC))
     operation_id = uuid4()
-    reservations: dict[int, tuple[UUID, XApiPostReadCost]] = {}
+    reservations: dict[int, tuple[UUID, UUID, XApiPostReadCost]] = {}
     requests: list[httpx.Request] = []
     with resource_budget_context.sessions() as session:
-        ResourceBudgetService(session, clock=clock).save_budget_policy(
+        service = ResourceBudgetService(session, clock=clock)
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(clock=clock, limit_units=2),
+        )
+        service.save_budget_policy(
             owner_id=resource_budget_context.owner_id,
             command=_budget_policy(
                 clock=clock,
@@ -604,31 +828,38 @@ def test_offline_x_adapter_uses_persistent_spend_window_per_page(
 
     def authorize(attempt: int, max_posts: int) -> bool:
         cost = XApiPostReadCost(max_posts=max_posts, unit_price_usd_micros=5000)
-        reservation_id = uuid4()
-        with resource_budget_context.sessions() as session:
-            decision = ResourceBudgetService(session, clock=clock).reserve_budget(
+        network_id, spend_id = uuid4(), uuid4()
+        with resource_budget_context.sessions() as session, session.begin():
+            decision = ResourceBudgetService(
+                session, clock=clock
+            ).reserve_x_api_request_budgets_in_transaction(
                 owner_id=resource_budget_context.owner_id,
-                command=BudgetReservationInput(
-                    reservation_id=reservation_id,
-                    operation_id=operation_id,
-                    metric=BudgetMetric.X_API_USD_MICROS,
-                    requested_units=cost.reservation_units,
-                    context=BudgetContext(source_ref="x"),
-                ),
+                operation_id=operation_id,
+                network_reservation_id=network_id,
+                spend_reservation_id=spend_id,
+                context=BudgetContext(source_ref="x"),
+                quote=cost,
             )
         if decision.status is BudgetDecisionStatus.RESERVED:
-            reservations[attempt] = (reservation_id, cost)
+            reservations[attempt] = (network_id, spend_id, cost)
             return True
         return False
 
     def settle(attempt: int, posts: int | None) -> None:
-        reservation_id, cost = reservations[attempt]
+        network_id, spend_id, cost = reservations[attempt]
         with resource_budget_context.sessions() as session:
-            ResourceBudgetService(session, clock=clock).settle_budget_reservation(
-                owner_id=resource_budget_context.owner_id,
-                reservation_id=reservation_id,
-                actual_units=cost.settlement_units(posts),
-            )
+            service = ResourceBudgetService(session, clock=clock)
+            with session.begin():
+                service.settle_budget_reservation_in_transaction(
+                    owner_id=resource_budget_context.owner_id,
+                    reservation_id=network_id,
+                    actual_units=1,
+                )
+                service.settle_budget_reservation_in_transaction(
+                    owner_id=resource_budget_context.owner_id,
+                    reservation_id=spend_id,
+                    actual_units=cost.settlement_units(posts),
+                )
 
     def respond(request: httpx.Request) -> httpx.Response:
         requests.append(request)
@@ -659,9 +890,21 @@ def test_offline_x_adapter_uses_persistent_spend_window_per_page(
     assert all("expansions" not in request.url.params for request in requests)
     with resource_budget_context.engine.connect() as connection:
         used, reserved = connection.execute(
-            text("SELECT used_units, reserved_units FROM resource_budget_windows")
+            text(
+                "SELECT used_units, reserved_units FROM resource_budget_windows "
+                "WHERE budget_mode = 'cumulative' AND "
+                "budget_policy_id IN (SELECT id FROM resource_budget_policies "
+                "WHERE metric = 'x_api_usd_micros')"
+            )
         ).one()
+        network_used = connection.scalar(
+            text(
+                "SELECT used_units FROM resource_budget_windows WHERE budget_policy_id "
+                "IN (SELECT id FROM resource_budget_policies WHERE metric = 'network_request')"
+            )
+        )
     assert (used, reserved) == (55_000, 0)
+    assert network_used == 2
 
 
 def test_strictest_scope_delays_without_partial_reservation(

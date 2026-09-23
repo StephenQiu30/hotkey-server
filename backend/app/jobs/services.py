@@ -39,6 +39,7 @@ from jobs.models import (
     ResourceUsageAttempt,
 )
 from jobs.schemas import (
+    BudgetContext,
     BudgetDecisionStatus,
     BudgetMetric,
     BudgetPolicyInput,
@@ -82,6 +83,7 @@ from jobs.schemas import (
     UsageAttemptView,
     UsageOutcome,
     UsageSummaryView,
+    XApiPostReadCost,
 )
 from sources.contracts import SourceCapability, SourcePageState, SourceStopReason
 
@@ -1062,6 +1064,54 @@ class ResourceBudgetService:
             resume_condition=None,
             retry_at=None,
         )
+
+    def reserve_x_api_request_budgets_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        operation_id: UUID,
+        network_reservation_id: UUID,
+        spend_reservation_id: UUID,
+        context: BudgetContext,
+        quote: XApiPostReadCost,
+    ) -> BudgetReservationDecision:
+        """Atomically reserve both offline X budgets; this does not authorize a paid call."""
+        if network_reservation_id == spend_reservation_id:
+            raise ValueError("network and spend reservations require distinct identifiers")
+        network = BudgetReservationInput(
+            reservation_id=network_reservation_id,
+            operation_id=operation_id,
+            metric=BudgetMetric.NETWORK_REQUEST,
+            requested_units=1,
+            context=context,
+        )
+        spend = BudgetReservationInput(
+            reservation_id=spend_reservation_id,
+            operation_id=operation_id,
+            metric=BudgetMetric.X_API_USD_MICROS,
+            requested_units=quote.reservation_units,
+            context=context,
+        )
+        network_existing = self._locked_reservations(owner_id, network_reservation_id)
+        spend_existing = self._locked_reservations(owner_id, spend_reservation_id)
+        if bool(network_existing) != bool(spend_existing):
+            raise BudgetReservationConflictError("x api request has only one existing reservation")
+        if any(
+            row.status != BudgetReservationStatus.RESERVED.value
+            for row in (*network_existing, *spend_existing)
+        ):
+            raise BudgetReservationConflictError("x api request reservation is already settled")
+        with self._session.begin_nested() as savepoint:
+            network_decision = self.reserve_budget_in_transaction(
+                owner_id=owner_id, command=network
+            )
+            if network_decision.status is BudgetDecisionStatus.DELAYED:
+                savepoint.rollback()
+                return network_decision
+            spend_decision = self.reserve_budget_in_transaction(owner_id=owner_id, command=spend)
+            if spend_decision.status is BudgetDecisionStatus.DELAYED:
+                savepoint.rollback()
+            return spend_decision
 
     def settle_budget_reservation(
         self,
