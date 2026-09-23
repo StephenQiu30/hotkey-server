@@ -3,23 +3,39 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import create_engine, select, text
-from sqlalchemy.orm import Session
+from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy.orm import Session, sessionmaker
 
-from content.discovery import KeywordDiscoveryPageCommitService, plan_keyword_discovery
+from content.discovery import (
+    KeywordDiscoveryPageCommitService,
+    KeywordRequestMeter,
+    plan_keyword_discovery,
+)
+from content.discovery_execution import KeywordDiscoveryExecutor
 from content.models import ContentDiscovery, ContentRecord
 from content.schemas import KeywordDiscoveryRunInput
 from core.errors import ApplicationError
 from jobs.cursor import plan_cursor_request
 from jobs.execution import CheckpointConflictError, JobExecutionService
 from jobs.models import CoverageWindow, Job, OutboxMessage
-from jobs.schemas import CoverageWindowInput
-from jobs.services import JobService
+from jobs.schemas import (
+    BudgetMetric,
+    BudgetPolicyInput,
+    BudgetScopeKind,
+    ComponentPolicyInput,
+    CostClass,
+    CoverageWindowInput,
+    JobAcceptedMessage,
+    JobStatus,
+)
+from jobs.services import JobService, ResourceBudgetService
 from sources.contracts import (
+    SearchRequest,
     SourceCapability,
     SourcePage,
     SourcePageState,
@@ -155,6 +171,20 @@ def _page(
     )
 
 
+def _accepted_message(engine: Engine, job_id: UUID) -> JobAcceptedMessage:
+    with Session(engine) as session:
+        outbox = session.scalar(select(OutboxMessage).where(OutboxMessage.aggregate_id == job_id))
+        assert outbox is not None
+        return JobAcceptedMessage.model_validate(
+            {
+                "schema_version": 2,
+                "message_id": outbox.id,
+                "event_type": "job.accepted.v2",
+                **outbox.payload,
+            }
+        )
+
+
 def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap() -> None:
     database_url = os.getenv("HOTKEY_TEST_DATABASE_URL")
     if database_url is None:
@@ -281,6 +311,30 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
             latest_lease = JobExecutionService(
                 session, lease_seconds=60, clock=lambda: now
             ).acquire(job_id=latest_id, worker_id="controlled-latest")
+        with Session(engine) as session:
+            budget = ResourceBudgetService(session, clock=lambda: now)
+            budget.save_component_policy(
+                owner_id=owner_id,
+                command=ComponentPolicyInput(
+                    component_key="collector.controlled",
+                    component_version="1",
+                    cost_class=CostClass.LOCAL,
+                    enabled_for_core=True,
+                    terms_reference="https://example.invalid/controlled-terms",
+                    reviewed_at=now,
+                ),
+            )
+            budget_policy = BudgetPolicyInput(
+                budget_key="global.controlled-requests",
+                metric=BudgetMetric.NETWORK_REQUEST,
+                scope_kind=BudgetScopeKind.GLOBAL,
+                scope_reference=None,
+                limit_units=2,
+                window_seconds=60,
+                window_anchor_at=now,
+                enabled=True,
+            )
+            budget.save_budget_policy(owner_id=owner_id, command=budget_policy)
         first_request = plan_cursor_request(
             window=windows[SourceSort.LATEST],
             checkpoint=latest_lease.checkpoint,
@@ -316,6 +370,51 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
             assert session.get(Job, latest_id).checkpoint_sequence == 0
 
         with Session(engine) as session:
+            meter = KeywordRequestMeter(
+                session,
+                owner_id=owner_id,
+                lease=latest_lease,
+                operation_id=commands[0].operation_id,
+                source_key="x",
+                connection_id=connection_id,
+                connection_version=1,
+                component_key="collector.controlled",
+                max_requests=3,
+                lease_seconds=60,
+                clock=lambda: now,
+            )
+            assert meter.before_request(1)
+            assert meter.before_request(2)
+            assert not meter.before_request(3)
+            with engine.connect() as connection:
+                assert (
+                    connection.execute(
+                        text("SELECT requests_sent FROM jobs WHERE id = :id"), {"id": latest_id}
+                    ).scalar_one()
+                    == 2
+                )
+                assert (
+                    connection.execute(
+                        text(
+                            "SELECT count(*) FROM resource_usage_attempts WHERE outcome = 'started'"
+                        )
+                    ).scalar_one()
+                    == 2
+                )
+            with pytest.raises(ValueError, match="usage does not match"):
+                KeywordDiscoveryPageCommitService(
+                    session, lease_seconds=60, clock=lambda: now
+                ).commit_page(
+                    owner_id=owner_id,
+                    lease=latest_lease,
+                    window=windows[SourceSort.LATEST],
+                    request=first_request,
+                    page_operation_id=uuid4(),
+                    connection_id=connection_id,
+                    connection_version=1,
+                    page=_page(now, SourcePageState.MORE, (old, a), "cursor-1"),
+                    meter=meter,
+                )
             first = KeywordDiscoveryPageCommitService(
                 session, lease_seconds=60, clock=lambda: now
             ).commit_page(
@@ -326,8 +425,43 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                 page_operation_id=uuid4(),
                 connection_id=connection_id,
                 connection_version=1,
-                page=_page(now, SourcePageState.MORE, (old, a), "cursor-1"),
+                page=_page(now, SourcePageState.MORE, (old, a), "cursor-1").model_copy(
+                    update={"request_count": 2}
+                ),
+                meter=meter,
             )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM resource_usage_attempts WHERE outcome = 'succeeded'")
+                ).scalar_one()
+                == 2
+            )
+            assert (
+                connection.execute(
+                    text("SELECT used_units FROM resource_budget_windows")
+                ).scalar_one()
+                == 2
+            )
+        with Session(engine) as session:
+            ResourceBudgetService(session, clock=lambda: now).save_budget_policy(
+                owner_id=owner_id,
+                command=budget_policy.model_copy(update={"limit_units": 6}),
+            )
+            resumed = KeywordRequestMeter(
+                session,
+                owner_id=owner_id,
+                lease=first.lease,
+                operation_id=commands[0].operation_id,
+                source_key="x",
+                connection_id=connection_id,
+                connection_version=1,
+                component_key="collector.controlled",
+                max_requests=2,
+                lease_seconds=60,
+                clock=lambda: now,
+            )
+            assert not resumed.before_request(1)
         assert first.saved_items == 1
         assert first.filtered_items == 1
         assert first.coverage.status == "running"
@@ -344,30 +478,48 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                 connection_version=1,
                 page=_page(now, SourcePageState.MORE, (a,), "cursor-1"),
             )
-        second_request = plan_cursor_request(
-            window=windows[SourceSort.LATEST],
-            checkpoint=first.lease.checkpoint,
-            live_token="cursor-1",
-            max_pages=3,
-            max_rescans=1,
-        )
         b = _post("b", start + timedelta(minutes=3), text_scope="truncated")
+        submitted_latest: list[SearchRequest] = []
+
+        class ControlledLatestAdapter:
+            source_key = "x"
+            capabilities = frozenset({SourceCapability.SEARCH})
+
+            def __init__(self, before_request: Callable[[int], bool]) -> None:
+                self._before_request = before_request
+
+            def fetch_page(self, request: SearchRequest) -> SourcePage:
+                submitted_latest.append(request)
+                assert self._before_request(len(submitted_latest))
+                if len(submitted_latest) == 1:
+                    return _page(now, SourcePageState.MORE, (old, a), "cursor-1")
+                return _page(now, SourcePageState.COMPLETE, (a, b))
+
+        latest_renewed, latest_completion = KeywordDiscoveryExecutor(
+            sessionmaker(bind=engine),
+            lease_seconds=60,
+            component_key="collector.controlled",
+            adapter_factory=lambda before, _cancelled, _limit: ControlledLatestAdapter(before),
+            clock=lambda: now,
+        ).execute(_accepted_message(engine, latest_id), first.lease)
+        assert latest_renewed.checkpoint_sequence == 3
+        assert latest_completion.status is JobStatus.PARTIALLY_SUCCEEDED
+        assert [(request.sort, request.page_token) for request in submitted_latest] == [
+            (SourceSort.LATEST, None),
+            (SourceSort.LATEST, "cursor-1"),
+        ]
         with Session(engine) as session:
-            second = KeywordDiscoveryPageCommitService(
-                session, lease_seconds=60, clock=lambda: now
-            ).commit_page(
-                owner_id=owner_id,
-                lease=first.lease,
-                window=windows[SourceSort.LATEST],
-                request=second_request,
-                page_operation_id=uuid4(),
-                connection_id=connection_id,
-                connection_version=1,
-                page=_page(now, SourcePageState.COMPLETE, (a, b)),
+            latest_coverage = session.scalar(
+                select(CoverageWindow).where(
+                    CoverageWindow.owner_id == owner_id,
+                    CoverageWindow.sort_key == SourceSort.LATEST.value,
+                )
             )
-        assert second.saved_items == 2
-        assert second.coverage.status == "partial"
-        assert second.coverage.stop_reason == "unverified_terminal"
+            assert latest_coverage is not None
+            assert (latest_coverage.status, latest_coverage.stop_reason) == (
+                "partial",
+                "unverified_terminal",
+            )
 
         with Session(engine) as session:
             top_lease = JobExecutionService(session, lease_seconds=60, clock=lambda: now).acquire(
@@ -400,27 +552,94 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                 page=_page(now, SourcePageState.MORE, (a, c), "top-cursor"),
             )
         assert captured.value.code == "connection_disabled"
+        with Session(engine) as session, pytest.raises(ApplicationError) as captured:
+            KeywordRequestMeter(
+                session,
+                owner_id=owner_id,
+                lease=top_lease,
+                operation_id=commands[1].operation_id,
+                source_key="x",
+                connection_id=connection_id,
+                connection_version=1,
+                component_key="collector.controlled",
+                max_requests=4,
+                lease_seconds=60,
+                clock=lambda: now,
+            ).before_request(1)
+        assert captured.value.code == "connection_disabled"
+        with engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT requests_sent FROM jobs WHERE id = :id"), {"id": top_id}
+                ).scalar_one()
+                == 0
+            )
         with engine.begin() as connection:
             connection.execute(
                 text("UPDATE source_connections SET status = 'active' WHERE id = :id"),
                 {"id": connection_id},
             )
-        with Session(engine) as session:
-            top = KeywordDiscoveryPageCommitService(
-                session, lease_seconds=60, clock=lambda: now
-            ).commit_page(
-                owner_id=owner_id,
-                lease=top_lease,
-                window=windows[SourceSort.TOP],
-                request=top_request,
-                page_operation_id=uuid4(),
-                connection_id=connection_id,
-                connection_version=1,
-                page=_page(now, SourcePageState.MORE, (a, c), "top-cursor"),
+
+        class CrashingSearchAdapter:
+            source_key = "x"
+            capabilities = frozenset({SourceCapability.SEARCH})
+
+            def __init__(self, before_request: Callable[[int], bool]) -> None:
+                self._before_request = before_request
+
+            def fetch_page(self, _request: SearchRequest) -> SourcePage:
+                assert self._before_request(1)
+                raise RuntimeError("controlled transport failure")
+
+        with pytest.raises(RuntimeError, match="controlled transport failure"):
+            KeywordDiscoveryExecutor(
+                sessionmaker(bind=engine),
+                lease_seconds=60,
+                component_key="collector.controlled",
+                adapter_factory=lambda before, _cancelled, _limit: CrashingSearchAdapter(before),
+                clock=lambda: now,
+            ).execute(_accepted_message(engine, top_id), top_lease)
+        with engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM resource_usage_attempts WHERE outcome = 'failed'")
+                ).scalar_one()
+                == 1
             )
-        assert top.saved_items == 2
-        assert top.coverage.status == "partial"
-        assert top.coverage.stop_reason == "budget_exhausted"
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM coverage_windows WHERE sort_key = 'top'")
+                ).scalar_one()
+                == 0
+            )
+        submitted: list[SearchRequest] = []
+
+        class ControlledSearchAdapter:
+            source_key = "x"
+            capabilities = frozenset({SourceCapability.SEARCH})
+
+            def __init__(self, before_request: Callable[[int], bool]) -> None:
+                self._before_request = before_request
+
+            def fetch_page(self, request: SearchRequest) -> SourcePage:
+                submitted.append(request)
+                assert self._before_request(1)
+                return _page(now, SourcePageState.MORE, (a, c), "top-cursor")
+
+        top_renewed, completion = KeywordDiscoveryExecutor(
+            sessionmaker(bind=engine),
+            lease_seconds=60,
+            component_key="collector.controlled",
+            adapter_factory=lambda before, _cancelled, _limit: ControlledSearchAdapter(before),
+            clock=lambda: now,
+        ).execute(_accepted_message(engine, top_id), top_lease)
+        assert top_renewed.checkpoint_sequence == 1
+        assert completion.status is JobStatus.PARTIALLY_SUCCEEDED
+        assert completion.failure is not None
+        assert completion.failure.error_code == "search_scope_incomplete"
+        assert [(request.query, request.sort, request.page_token) for request in submitted] == [
+            ("product fault", SourceSort.TOP, None)
+        ]
         with Session(engine) as session:
             records = session.scalars(
                 select(ContentRecord).where(ContentRecord.owner_id == owner_id)
@@ -434,6 +653,17 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
             assert session.get(Job, latest_id).items_saved == 2
             assert session.get(Job, top_id).items_saved == 2
             assert "cursor-1" not in json.dumps(session.get(Job, latest_id).checkpoint)
+            top_coverage = session.scalar(
+                select(CoverageWindow).where(
+                    CoverageWindow.owner_id == owner_id,
+                    CoverageWindow.sort_key == SourceSort.TOP.value,
+                )
+            )
+            assert top_coverage is not None
+            assert (top_coverage.status, top_coverage.stop_reason) == (
+                "partial",
+                "budget_exhausted",
+            )
     finally:
         with engine.begin() as connection:
             connection.execute(text("SET CONSTRAINTS ALL DEFERRED"))

@@ -25,23 +25,228 @@ from jobs.execution import (
     CheckpointConflictError,
     ExecutionLease,
     JobExecutionService,
+    JobLeaseUnavailableError,
     JobProgress,
+    resource_attempt_id,
 )
 from jobs.schemas import (
+    BudgetContext,
+    BudgetDecisionStatus,
+    BudgetMetric,
+    BudgetReservationInput,
     CollectionScanKind,
     CoverageWindowInput,
     CoverageWindowView,
     JobAcceptanceInput,
     JobObservationContext,
     JobStage,
+    UsageAttemptInput,
+    UsageKind,
+    UsageOutcome,
 )
-from jobs.services import CoverageWindowService, load_job_execution_configuration
+from jobs.services import (
+    CoverageWindowService,
+    ResourceBudgetService,
+    load_job_execution_configuration,
+)
 from sources.contracts import (
     SourceCapability,
     SourcePage,
+    SourcePageState,
     SourcePost,
     SourceSort,
 )
+
+_SEARCH_STAGE = "search.request"
+
+
+class KeywordRequestMeter:
+    """Reserve each actual source HTTP attempt before the adapter sends it."""
+
+    def __init__(
+        self,
+        session: Session,
+        *,
+        owner_id: UUID,
+        lease: ExecutionLease,
+        operation_id: UUID,
+        source_key: str,
+        connection_id: UUID,
+        connection_version: int,
+        component_key: str,
+        max_requests: int,
+        lease_seconds: int,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        if not 1 <= max_requests <= 100:
+            raise ValueError("search request budget must be between 1 and 100")
+        self._session = session
+        self._owner_id = owner_id
+        self._lease = lease
+        self._operation_id = operation_id
+        self._source_key = source_key
+        self._connection_id = connection_id
+        self._connection_version = connection_version
+        self._component_key = component_key
+        self._max_requests = max_requests
+        self._lease_seconds = lease_seconds
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._started = 0
+        self._pending: list[UUID] = []
+
+    def before_request(self, attempt: int) -> bool:
+        """Return false only for a fenced cancellation or bounded budget refusal."""
+        if attempt != self._started + 1:
+            raise ValueError("source request attempt is out of sequence")
+        if self._started >= self._max_requests:
+            return False
+        execution = JobExecutionService(
+            self._session, lease_seconds=self._lease_seconds, clock=self._clock
+        )
+        budget = ResourceBudgetService(self._session, clock=self._clock)
+        now = self._clock()
+        self._session.rollback()
+        try:
+            with self._session.begin():
+                request_sequence = execution.current_request_count_in_transaction(
+                    self._lease,
+                    owner_id=self._owner_id,
+                    operation_id=self._operation_id,
+                )
+                if attempt == 1:
+                    budget.recover_abandoned_attempts_in_transaction(
+                        owner_id=self._owner_id,
+                        operation_id=self._operation_id,
+                        component_key=self._component_key,
+                        stage=_SEARCH_STAGE,
+                        finished_at=now,
+                    )
+                require_source_connection_version(
+                    self._session,
+                    owner_id=self._owner_id,
+                    source_key=self._source_key,
+                    connection_id=self._connection_id,
+                    connection_version=self._connection_version,
+                )
+                SourceAccessPolicyService(
+                    self._session, clock=self._clock
+                ).require_admission_ready_in_transaction(
+                    owner_id=self._owner_id,
+                    source_key=self._source_key,
+                    capability=SourceCapability.SEARCH,
+                    data_class=DataClass.STRUCTURED,
+                )
+                if request_sequence >= self._max_requests:
+                    return False
+                attempt_id = resource_attempt_id(
+                    operation_id=self._operation_id,
+                    component_key=self._component_key,
+                    stage=_SEARCH_STAGE,
+                    sequence=request_sequence + 1,
+                )
+                decision = budget.reserve_budget_in_transaction(
+                    owner_id=self._owner_id,
+                    command=BudgetReservationInput(
+                        reservation_id=attempt_id,
+                        operation_id=self._operation_id,
+                        metric=BudgetMetric.NETWORK_REQUEST,
+                        requested_units=1,
+                        context=BudgetContext(
+                            source_ref=self._source_key,
+                            connection_ref=f"connection:{self._connection_id.hex}",
+                            job_ref=f"job:{self._lease.job_id.hex}",
+                        ),
+                    ),
+                )
+                if decision.status is BudgetDecisionStatus.DELAYED:
+                    return False
+                usage = budget.begin_attempt_in_transaction(
+                    owner_id=self._owner_id,
+                    command=UsageAttemptInput(
+                        attempt_id=attempt_id,
+                        operation_id=self._operation_id,
+                        component_key=self._component_key,
+                        usage_kind=UsageKind.NETWORK_REQUEST,
+                        stage=_SEARCH_STAGE,
+                        started_at=now,
+                    ),
+                )
+                if usage.outcome is not UsageOutcome.STARTED:
+                    raise ValueError("source request attempt is already settled")
+                renewed, allowed = execution.begin_request_in_transaction(self._lease)
+                if not allowed:
+                    raise JobLeaseUnavailableError("job cancellation has been requested")
+        except JobLeaseUnavailableError:
+            return False
+        self._lease = renewed
+        self._started += 1
+        self._pending.append(attempt_id)
+        return True
+
+    def settle_page_in_transaction(
+        self,
+        *,
+        page: SourcePage,
+        owner_id: UUID,
+        lease: ExecutionLease,
+        operation_id: UUID,
+    ) -> None:
+        if (
+            owner_id != self._owner_id
+            or lease.job_id != self._lease.job_id
+            or operation_id != self._operation_id
+            or page.request_count != len(self._pending)
+            or (
+                page.request_count == 0
+                and page.state
+                in {
+                    SourcePageState.MORE,
+                    SourcePageState.COMPLETE,
+                    SourcePageState.EMPTY,
+                    SourcePageState.PARTIAL,
+                }
+            )
+        ):
+            raise ValueError("source request usage does not match the committed page")
+        outcome = (
+            UsageOutcome.EMPTY
+            if page.state is SourcePageState.EMPTY
+            else UsageOutcome.SUCCEEDED
+            if page.state in {SourcePageState.MORE, SourcePageState.COMPLETE}
+            else UsageOutcome.FAILED
+        )
+        budget = ResourceBudgetService(self._session, clock=self._clock)
+        for attempt_id in self._pending:
+            budget.settle_budget_reservation_in_transaction(
+                owner_id=owner_id, reservation_id=attempt_id, actual_units=1
+            )
+            budget.finish_attempt_in_transaction(
+                owner_id=owner_id,
+                attempt_id=attempt_id,
+                outcome=outcome,
+                finished_at=self._clock(),
+            )
+
+    def confirm_page(self, lease: ExecutionLease) -> None:
+        self._lease = lease
+        self._pending.clear()
+
+    def fail_pending(self) -> None:
+        """Charge attempts after a transport or persistence error."""
+        self._session.rollback()
+        with self._session.begin():
+            budget = ResourceBudgetService(self._session, clock=self._clock)
+            for attempt_id in self._pending:
+                budget.settle_budget_reservation_in_transaction(
+                    owner_id=self._owner_id, reservation_id=attempt_id, actual_units=1
+                )
+                budget.finish_attempt_in_transaction(
+                    owner_id=self._owner_id,
+                    attempt_id=attempt_id,
+                    outcome=UsageOutcome.FAILED,
+                    finished_at=self._clock(),
+                )
+        self._pending.clear()
 
 
 def _target_hash(configuration_ref: str, query: str) -> bytes:
@@ -122,6 +327,7 @@ class KeywordDiscoveryPageCommitService:
         connection_id: UUID,
         connection_version: int,
         page: SourcePage,
+        meter: KeywordRequestMeter | None = None,
     ) -> KeywordPageCommitResult:
         configuration = load_job_execution_configuration(self._session, job_id=lease.job_id)
         if (
@@ -246,6 +452,15 @@ class KeywordDiscoveryPageCommitService:
                 stop_reason=page.stop_reason,
                 job_progress=JobProgress(stage=JobStage.SAVE, items_saved=saved_items),
             )
+            if meter is not None:
+                meter.settle_page_in_transaction(
+                    page=page,
+                    owner_id=owner_id,
+                    lease=lease,
+                    operation_id=configuration.operation_id,
+                )
+        if meter is not None:
+            meter.confirm_page(renewed)
         return KeywordPageCommitResult(
             lease=renewed,
             coverage=coverage,

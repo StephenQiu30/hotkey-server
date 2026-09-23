@@ -315,6 +315,19 @@ class JobExecutionService:
         operation_id: UUID,
     ) -> ExecutionLease:
         """Verify that a live lease belongs to the expected owner and operation."""
+        return self._lease(
+            self._require_current_operation_model(
+                lease, owner_id=owner_id, operation_id=operation_id
+            )
+        )
+
+    def _require_current_operation_model(
+        self,
+        lease: ExecutionLease,
+        *,
+        owner_id: UUID,
+        operation_id: UUID,
+    ) -> Job:
         now = self._clock()
         model = self._lock_job(lease.job_id)
         self._require_current_lease(model, lease, now)
@@ -322,7 +335,19 @@ class JobExecutionService:
             raise JobLeaseUnavailableError("job cancellation has been requested")
         if model.owner_id != owner_id or model.operation_id != operation_id:
             raise JobLeaseUnavailableError("job lease does not match the requested operation")
-        return self._lease(model)
+        return model
+
+    def current_request_count_in_transaction(
+        self,
+        lease: ExecutionLease,
+        *,
+        owner_id: UUID,
+        operation_id: UUID,
+    ) -> int:
+        """Return the fenced task-wide request count before another outbound attempt."""
+        return self._require_current_operation_model(
+            lease, owner_id=owner_id, operation_id=operation_id
+        ).requests_sent
 
     def save_checkpoint_in_transaction(
         self,
