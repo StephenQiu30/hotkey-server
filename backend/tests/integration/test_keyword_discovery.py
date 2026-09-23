@@ -41,6 +41,7 @@ from jobs.schemas import (
     JobStatus,
 )
 from jobs.services import JobService, ResourceBudgetService
+from monitors.services import MonitorTopicService, evaluate_monitor_rules
 from sources.contracts import (
     SearchRequest,
     SourceCapability,
@@ -136,6 +137,8 @@ def _post(
     published_at: datetime,
     *,
     url: str | None = None,
+    body: str | None = "product fault release",
+    like_count: int = 0,
     text_scope: str = "full",
 ) -> SourcePost:
     return SourcePost(
@@ -143,9 +146,9 @@ def _post(
         external_id=identifier,
         author_external_id="author-1",
         published_at=published_at,
-        text=f"product fault {identifier}",
+        text=body,
         language="en",
-        like_count=0,
+        like_count=like_count,
         comment_count=0,
         repost_count=0,
         canonical_url=url or f"https://example.invalid/posts/{identifier}",
@@ -199,12 +202,18 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
         pytest.skip("HOTKEY_TEST_DATABASE_URL is required for PostgreSQL integration tests")
 
     engine = create_engine(database_url)
-    owner_id, connection_id, policy_id, retention_id = uuid4(), uuid4(), uuid4(), uuid4()
+    owner_id, connection_id, policy_id, retention_id, topic_id = (
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+    )
     now = datetime.now(UTC).replace(microsecond=0)
     start, end = now - timedelta(hours=3), now
     run = KeywordDiscoveryRunInput(
         run_id=uuid4(),
-        configuration_ref="topic:controlled",
+        configuration_ref=f"topic:{topic_id}",
         configuration_version=3,
         source_key="x",
         connection_id=connection_id,
@@ -230,6 +239,33 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                     "VALUES (:id, :username, 'test-only-hash', 1, :now, :now)"
                 ),
                 {"id": owner_id, "username": f"discovery-pages-{owner_id}", "now": now},
+            )
+            session.execute(
+                text(
+                    "INSERT INTO monitor_topics "
+                    "(id, owner_id, name, status, readiness_status, current_version, "
+                    "created_at, updated_at) VALUES "
+                    "(:id, :owner_id, 'Controlled topic', 'paused', "
+                    "'pending_source_selection', 4, :now, :now)"
+                ),
+                {"id": topic_id, "owner_id": owner_id, "now": now},
+            )
+            session.execute(
+                text(
+                    "INSERT INTO monitor_topic_versions "
+                    "(topic_id, version, created_by, match_any, match_all, exclude, created_at) "
+                    "VALUES (:topic_id, 3, :owner_id, CAST(:match_any AS jsonb), "
+                    "CAST(:match_all AS jsonb), CAST(:exclude AS jsonb), :now), "
+                    "(:topic_id, 4, :owner_id, '[\"future version\"]', '[]', '[]', :now)"
+                ),
+                {
+                    "topic_id": topic_id,
+                    "owner_id": owner_id,
+                    "match_any": json.dumps(["product fault", "hotkey"]),
+                    "match_all": json.dumps(["release"]),
+                    "exclude": json.dumps(["spam"]),
+                    "now": now,
+                },
             )
             session.execute(
                 text(
@@ -354,6 +390,23 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
         old = _post("old", start - timedelta(minutes=1))
         a = _post("a", start + timedelta(minutes=1))
         invalid = _post("invalid", start + timedelta(minutes=2), url="not-a-url")
+        excluded = _post(
+            "excluded",
+            start + timedelta(minutes=3),
+            body="product fault release spam",
+        )
+        unrelated_high = _post(
+            "unrelated-high",
+            start + timedelta(minutes=4),
+            body="unrelated meme release",
+            like_count=100_000,
+        )
+        missing_text = _post("missing-text", start + timedelta(minutes=5), body=None)
+        zero_interaction = _post(
+            "zero-interaction",
+            start + timedelta(minutes=6),
+            body="HOTKEY RELEASE launch",
+        )
         with Session(engine) as session, pytest.raises(ValueError):
             KeywordDiscoveryPageCommitService(
                 session, lease_seconds=60, clock=lambda: now
@@ -436,10 +489,48 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                 connection_id=connection_id,
                 connection_version=1,
                 page=_page(now, SourcePageState.MORE, (old, a), "cursor-1").model_copy(
-                    update={"request_count": 2}
+                    update={
+                        "items": (
+                            old,
+                            a,
+                            excluded,
+                            unrelated_high,
+                            missing_text,
+                            zero_interaction,
+                        ),
+                        "request_count": 2,
+                    }
                 ),
                 meter=meter,
             )
+            assert first.saved_items == 2
+            assert first.filtered_items == 4
+            topic_job = session.get(Job, latest_id)
+            assert topic_job is not None
+            assert topic_job.scope["relevance_filter_position"] == "local"
+            assert not {"match_any", "match_all", "exclude"}.intersection(topic_job.scope)
+
+        with Session(engine) as session, session.begin():
+            rules = MonitorTopicService(session).get_topic_rules_in_transaction(
+                owner_id=owner_id,
+                topic_id=topic_id,
+                version=3,
+            )
+            assert evaluate_monitor_rules(rules, "HOTKEY release").matched
+            with pytest.raises(ApplicationError) as missing_version:
+                MonitorTopicService(session).get_topic_rules_in_transaction(
+                    owner_id=owner_id,
+                    topic_id=topic_id,
+                    version=2,
+                )
+            assert missing_version.value.code == "resource_not_found"
+            with pytest.raises(ApplicationError) as wrong_owner:
+                MonitorTopicService(session).get_topic_rules_in_transaction(
+                    owner_id=uuid4(),
+                    topic_id=topic_id,
+                    version=3,
+                )
+            assert wrong_owner.value.code == "resource_not_found"
         with engine.connect() as connection:
             assert (
                 connection.execute(
@@ -473,8 +564,6 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                 clock=lambda: now,
             )
             assert not resumed.before_request(1)
-        assert first.saved_items == 1
-        assert first.filtered_items == 1
         assert first.coverage.status == "running"
         with Session(engine) as session, pytest.raises(CheckpointConflictError):
             KeywordDiscoveryPageCommitService(
@@ -679,10 +768,10 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
             discoveries = session.scalars(
                 select(ContentDiscovery).where(ContentDiscovery.owner_id == owner_id)
             ).all()
-            assert len(records) == 3
-            assert len(discoveries) == 4
+            assert len(records) == 4
+            assert len(discoveries) == 5
             assert {item.job_id for item in discoveries} == {latest_id, top_id}
-            assert session.get(Job, latest_id).items_saved == 2
+            assert session.get(Job, latest_id).items_saved == 3
             assert session.get(Job, top_id).items_saved == 2
             assert "cursor-1" not in json.dumps(session.get(Job, latest_id).checkpoint)
             top_coverage = session.scalar(
@@ -1102,6 +1191,14 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
             connection.execute(
                 text("DELETE FROM source_connection_versions WHERE owner_id = :owner_id"),
                 {"owner_id": owner_id},
+            )
+            connection.execute(
+                text("DELETE FROM monitor_topic_versions WHERE topic_id = :topic_id"),
+                {"topic_id": topic_id},
+            )
+            connection.execute(
+                text("DELETE FROM monitor_topics WHERE id = :topic_id"),
+                {"topic_id": topic_id},
             )
             connection.execute(text("DELETE FROM identity_users WHERE id = :id"), {"id": owner_id})
         engine.dispose()

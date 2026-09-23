@@ -83,6 +83,7 @@ class KeywordDiscoveryExecutor:
                 "max_pages",
                 "max_requests",
                 "max_seconds",
+                "relevance_filter_position",
                 "scan_kind",
             }:
                 raise ValueError("search scope fields are incomplete")
@@ -111,6 +112,7 @@ class KeywordDiscoveryExecutor:
                 not 1 <= max_pages <= 20
                 or not 1 <= max_requests <= 100
                 or not 1 <= max_seconds <= 90
+                or scope["relevance_filter_position"] != "local"
                 or connection_version < 1
                 or configuration.started_at is None
                 or configuration.started_at.utcoffset() is None

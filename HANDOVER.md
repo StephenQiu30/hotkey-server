@@ -32,6 +32,8 @@
 
 随后收紧公开任务请求：`POST /api/jobs` 只接受 Worker 已注册的 `webpage.collect`，历史 `monitor.collect` 不再能被公开 API 假受理。运行时 OpenAPI 和实际 FastAPI 422 拒绝测试通过；后端全量 331 passed/181 skipped、Ruff/format/mypy，前端 42 tests/lint/typecheck/format/build 与运行时 `pnpm openapi:check` 通过。数据库集成测试因未设置专用 `HOTKEY_TEST_DATABASE_URL` 跳过，未使用开发库。关键词 Worker/API/结果入口、合法来源、S01 G3/G4 与产品 AC 0/6 仍未关闭。
 
+2026-09-24 完成 005 S02a 主题规则本地筛选内部技术子片：旧页提交先因无正文作品误入内容持久化而整页失败，红测后改为在写入事务中由 `MonitorTopicService` 读取 owner 的精确不可变版本，再复用现有 NFKC/casefold 规则筛选，并只对命中作品做来源字段准入。受控 PostgreSQL 覆盖排除优先、高互动无关、零互动命中、缺失正文、历史版本与 owner 隔离；后端全量 499 passed/13 skipped，Ruff/format/mypy 通过，一次性测试库已清理。无 DDL、API/UI、Worker、依赖或脚本变更；下一步是 005 S02 有界扫描/停止原因内部 Red-first，S01 完整门禁、真实来源及产品 AC 仍未关闭。
+
 033 S00 已接受仅限内部状态分项的 Design：现有 039 运行快照按 owner、来源和能力分别汇总七态。同一 X 搜索能力一成一败、X 评论成功及另一来源部分成功可同时保留；无来源任务只进总数。隔离 PostgreSQL 用例先红后绿，专用 6 项、一次性空库后端全量 421 passed/5 skipped 与 Ruff/format/mypy 通过。当前 Worker 仍为单循环，未证明资源公平、熔断或真实局部故障恢复；033 S01 G3/G4 与全部产品 AC 未关闭。
 
 002/005/037 及 BACKLOG 已登记费用例外：X 的 App/Token 和控制台账期美元上限未确认，037 当前数据库仍拒绝 paid 核心组件，因此不能挂入 Worker、发起付费请求或把 002/005/037 产品 AC 标为通过。下一步依序完成 037 的完整 paid 准入、账期确认与请求/费用原子预留，004/034 的秘密连接，再验证 002 的真实搜索/作者/回复能力及接入 005 处理器。其他来源和基础分析继续免费/自建；不自动充值或切换网页登录路径。

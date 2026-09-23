@@ -317,6 +317,29 @@ class SourceAccessPolicyService:
         collected_at: datetime,
         payload: Mapping[str, object],
     ) -> AdmittedSourcePayload:
+        try:
+            return self.admit_payload_in_transaction(
+                owner_id=owner_id,
+                source_key=source_key,
+                capability=capability,
+                data_class=data_class,
+                collected_at=collected_at,
+                payload=payload,
+            )
+        finally:
+            self._session.rollback()
+
+    def admit_payload_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        source_key: str,
+        capability: SourceCapability,
+        data_class: DataClass,
+        collected_at: datetime,
+        payload: Mapping[str, object],
+    ) -> AdmittedSourcePayload:
+        """Build admitted data without committing or rolling back the active transaction."""
         model = self._find(owner_id, source_key, capability)
         now = self._clock()
         if (
@@ -326,10 +349,8 @@ class SourceAccessPolicyService:
             or not model.field_purposes
             or (model.review_expires_at is not None and model.review_expires_at <= now)
         ):
-            self._session.rollback()
             raise SourceAccessUnavailableError("source access policy is unavailable")
         if collected_at.tzinfo is None or collected_at > now:
-            self._session.rollback()
             raise ValueError("collected_at must be timezone-aware and cannot be in the future")
         retention = self._session.scalar(
             select(RetentionPolicy).where(
@@ -343,7 +364,6 @@ class SourceAccessPolicyService:
             or retention.source_policy_version != model.policy_version
             or retention.effective_days == 0
         ):
-            self._session.rollback()
             raise RetentionPolicyUnavailableError("retention policy is unavailable")
         policy_id = model.id
         policy_version = model.policy_version
@@ -354,7 +374,6 @@ class SourceAccessPolicyService:
         retention_policy_id = retention.id
         retention_policy_version = retention.policy_version
         expires_at = collected_at + timedelta(days=retention.effective_days)
-        self._session.rollback()
         fields = minimize_payload(
             field_purposes=field_purposes,
             payload=payload,

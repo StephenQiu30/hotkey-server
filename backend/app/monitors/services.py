@@ -186,6 +186,25 @@ class MonitorTopicService:
             view = self._view(topic, version)
         return view
 
+    def get_topic_rules_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        topic_id: UUID,
+        version: int,
+    ) -> NormalizedMonitorRules:
+        if not self._session.in_transaction():
+            raise RuntimeError("topic rules require the caller's transaction")
+        topic = self._find_topic(owner_id=owner_id, topic_id=topic_id, for_update=True)
+        version_row = self._session.get(MonitorTopicVersion, (topic.id, version))
+        if version_row is None:
+            raise ApplicationError("resource_not_found")
+        return normalize_monitor_rules(
+            match_any=version_row.match_any,
+            match_all=version_row.match_all,
+            exclude=version_row.exclude,
+        )
+
     def list_topics(
         self,
         *,

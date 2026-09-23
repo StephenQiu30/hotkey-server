@@ -18,7 +18,7 @@ from content.schemas import (
     PersistContentPostInput,
 )
 from content.services import ContentService
-from evidence.schemas import AdmittedSourcePayload, DataClass
+from evidence.schemas import DataClass
 from evidence.services import SourceAccessPolicyService
 from jobs.cursor import CursorPageProgress, CursorPageRequest
 from jobs.execution import (
@@ -49,6 +49,7 @@ from jobs.services import (
     ResourceBudgetService,
     load_job_execution_configuration,
 )
+from monitors.services import MonitorTopicService, evaluate_monitor_rules
 from sources.contracts import (
     SourceCapability,
     SourcePage,
@@ -257,6 +258,20 @@ def _target_hash(configuration_ref: str, query: str) -> bytes:
     return hashlib.sha256(f"{configuration_ref}\0{query}".encode()).digest()
 
 
+def _topic_id_from_configuration_ref(configuration_ref: str) -> UUID:
+    prefix = "topic:"
+    if not configuration_ref.startswith(prefix):
+        raise ValueError("keyword search requires a topic configuration")
+    value = configuration_ref.removeprefix(prefix)
+    try:
+        topic_id = UUID(value)
+    except ValueError as error:
+        raise ValueError("keyword search requires a valid topic reference") from error
+    if str(topic_id) != value:
+        raise ValueError("keyword search requires a canonical topic reference")
+    return topic_id
+
+
 def plan_keyword_discovery(run: KeywordDiscoveryRunInput) -> tuple[JobAcceptanceInput, ...]:
     """Freeze explicit source queries; acceptance waits for a registered, authorized handler."""
     observation = JobObservationContext(
@@ -291,6 +306,7 @@ def plan_keyword_discovery(run: KeywordDiscoveryRunInput) -> tuple[JobAcceptance
                         "max_pages": max_pages,
                         "max_requests": max_requests,
                         "max_seconds": run.max_seconds,
+                        "relevance_filter_position": "local",
                         "scan_kind": CollectionScanKind.NEW_SCAN.value,
                     },
                 )
@@ -350,6 +366,7 @@ class KeywordDiscoveryPageCommitService:
             or configuration.scope.get("starts_at") != window.starts_at.isoformat()
             or configuration.scope.get("ends_at") != window.ends_at.isoformat()
             or configuration.scope.get("max_pages") != request.max_pages
+            or configuration.scope.get("relevance_filter_position") != "local"
             or window.owner_id != owner_id
             or window.capability is not SourceCapability.SEARCH
             or page.source_key != window.source_key
@@ -365,9 +382,14 @@ class KeywordDiscoveryPageCommitService:
         ):
             self._session.rollback()
             raise ValueError("keyword query hash does not match the accepted scope")
+        try:
+            topic_id = _topic_id_from_configuration_ref(configuration.observation.configuration_ref)
+        except ValueError:
+            self._session.rollback()
+            raise
 
         policy = SourceAccessPolicyService(self._session, clock=self._clock)
-        admitted: list[tuple[SourcePost, AdmittedSourcePayload]] = []
+        candidates: list[SourcePost] = []
         seen: set[str] = set()
         filtered_items = 0
         for item in page.items:
@@ -382,19 +404,7 @@ class KeywordDiscoveryPageCommitService:
                 filtered_items += 1
                 continue
             seen.add(item.external_id)
-            admitted.append(
-                (
-                    item,
-                    policy.admit_payload(
-                        owner_id=owner_id,
-                        source_key=window.source_key,
-                        capability=SourceCapability.SEARCH,
-                        data_class=DataClass.STRUCTURED,
-                        collected_at=page.observed_at,
-                        payload=self._payload(item),
-                    ),
-                )
-            )
+            candidates.append(item)
 
         self._session.rollback()
         execution = JobExecutionService(
@@ -424,8 +434,24 @@ class KeywordDiscoveryPageCommitService:
                 capability=SourceCapability.SEARCH,
                 data_class=DataClass.STRUCTURED,
             )
+            topic_rules = MonitorTopicService(self._session).get_topic_rules_in_transaction(
+                owner_id=owner_id,
+                topic_id=topic_id,
+                version=window.rule_version,
+            )
             content = ContentService(self._session, clock=self._clock)
-            for item, admission in admitted:
+            for item in candidates:
+                if item.text is None or not evaluate_monitor_rules(topic_rules, item.text).matched:
+                    filtered_items += 1
+                    continue
+                admission = policy.admit_payload_in_transaction(
+                    owner_id=owner_id,
+                    source_key=window.source_key,
+                    capability=SourceCapability.SEARCH,
+                    data_class=DataClass.STRUCTURED,
+                    collected_at=page.observed_at,
+                    payload=self._payload(item),
+                )
                 content.persist_post_in_transaction(
                     owner_id=owner_id,
                     command=PersistContentPostInput(
