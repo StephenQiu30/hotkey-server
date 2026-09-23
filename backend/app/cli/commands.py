@@ -128,6 +128,7 @@ def probe_browser() -> None:
         ws_url=settings.browser_ws_url.get_secret_value(),
         enabled=settings.browser_enabled,
         connect_timeout_ms=settings.browser_connect_timeout_seconds * 1_000,
+        execution_timeout_seconds=settings.browser_execution_timeout_seconds,
     )
 
     async def verify() -> None:

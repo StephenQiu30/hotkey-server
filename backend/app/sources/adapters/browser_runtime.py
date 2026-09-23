@@ -9,7 +9,12 @@ from urllib.parse import urlsplit
 
 from playwright.async_api import Browser, BrowserContext, StorageState, async_playwright
 
-_CLOSE_TIMEOUT_SECONDS = 5
+from core.config import (
+    BROWSER_CLOSE_TIMEOUT_SECONDS,
+    BROWSER_EXECUTION_TIMEOUT_MAX_SECONDS,
+)
+
+_CLOSE_TIMEOUT_SECONDS = BROWSER_CLOSE_TIMEOUT_SECONDS
 
 
 class BrowserRuntimeDisabledError(Exception):
@@ -25,7 +30,7 @@ class BrowserRuntime:
         ws_url: str,
         enabled: bool,
         connect_timeout_ms: int = 5_000,
-        execution_timeout_seconds: float = 45,
+        execution_timeout_seconds: float = BROWSER_EXECUTION_TIMEOUT_MAX_SECONDS,
     ) -> None:
         if ws_url or enabled:
             try:
@@ -46,7 +51,10 @@ class BrowserRuntime:
                 raise ValueError("invalid browser WS URL")
         if not 1 <= connect_timeout_ms <= 10_000:
             raise ValueError("invalid browser connect timeout")
-        if not math.isfinite(execution_timeout_seconds) or not 0 < execution_timeout_seconds <= 45:
+        if (
+            not math.isfinite(execution_timeout_seconds)
+            or not 0 < execution_timeout_seconds <= BROWSER_EXECUTION_TIMEOUT_MAX_SECONDS
+        ):
             raise ValueError("invalid browser execution timeout")
         self._ws_url = ws_url
         self._enabled = enabled

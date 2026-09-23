@@ -65,3 +65,46 @@ def test_browser_state_directory_is_optional(monkeypatch) -> None:
     monkeypatch.setenv("HOTKEY_BROWSER_STATE_DIR", "")
     settings = Settings(database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test")
     assert settings.browser_state_dir is None
+
+
+def test_browser_deadline_fits_job_lease_and_kafka_poll_window() -> None:
+    settings = Settings(
+        database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+        browser_enabled=True,
+        browser_ws_url="ws://browser:3000/ws/" + "a" * 48,
+    )
+
+    assert settings.browser_execution_timeout_seconds == 45
+    assert settings.job_lease_seconds == 65
+    assert settings.kafka_max_poll_interval_seconds == 120
+
+
+def test_browser_deadline_cannot_exceed_job_lease_budget() -> None:
+    with pytest.raises(ValidationError, match="job lease"):
+        Settings(
+            database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+            browser_enabled=True,
+            browser_ws_url="ws://browser:3000/ws/" + "a" * 48,
+            job_lease_seconds=64,
+        )
+
+
+def test_job_lease_must_leave_kafka_poll_margin() -> None:
+    with pytest.raises(ValidationError, match="Kafka max poll interval"):
+        Settings(
+            database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+            job_lease_seconds=60,
+            kafka_max_poll_interval_seconds=64,
+        )
+
+
+def test_disabled_source_runtimes_do_not_reserve_external_deadline_budget() -> None:
+    settings = Settings(
+        database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+        firecrawl_enabled=False,
+        browser_enabled=False,
+        job_lease_seconds=5,
+        kafka_max_poll_interval_seconds=30,
+    )
+
+    assert not settings.browser_enabled

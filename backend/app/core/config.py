@@ -6,10 +6,15 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, ValidationInfo, field_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
+BROWSER_EXECUTION_TIMEOUT_MAX_SECONDS = 45
+BROWSER_CLOSE_TIMEOUT_SECONDS = 5
+BROWSER_CLOSE_STEP_COUNT = 3
+JOB_COMPLETION_MARGIN_SECONDS = 5
+KAFKA_POLL_SAFETY_MARGIN_SECONDS = 5
 
 
 class Settings(BaseSettings):
@@ -50,7 +55,7 @@ class Settings(BaseSettings):
     kafka_delivery_timeout_seconds: int = Field(default=10, ge=1, le=60)
     kafka_max_poll_interval_seconds: int = Field(default=120, ge=30, le=900)
 
-    job_lease_seconds: int = Field(default=60, ge=5, le=300)
+    job_lease_seconds: int = Field(default=65, ge=5, le=300)
     job_max_catchup_windows: int = Field(default=3, ge=1, le=100)
 
     firecrawl_enabled: bool = False
@@ -61,6 +66,11 @@ class Settings(BaseSettings):
     browser_enabled: bool = False
     browser_ws_url: SecretStr = SecretStr("")
     browser_connect_timeout_seconds: int = Field(default=5, ge=1, le=10)
+    browser_execution_timeout_seconds: int = Field(
+        default=BROWSER_EXECUTION_TIMEOUT_MAX_SECONDS,
+        ge=1,
+        le=BROWSER_EXECUTION_TIMEOUT_MAX_SECONDS,
+    )
     browser_state_dir: Path | None = None
 
     minio_endpoint: str = "127.0.0.1:9000"
@@ -123,6 +133,22 @@ class Settings(BaseSettings):
     @classmethod
     def empty_browser_state_dir_is_unconfigured(cls, value: object) -> object:
         return None if value == "" else value
+
+    @model_validator(mode="after")
+    def validate_execution_deadlines(self) -> Settings:
+        execution_seconds = self.firecrawl_timeout_seconds if self.firecrawl_enabled else 0
+        if self.browser_enabled:
+            browser_cleanup_seconds = BROWSER_CLOSE_TIMEOUT_SECONDS * BROWSER_CLOSE_STEP_COUNT
+            browser_total_seconds = self.browser_execution_timeout_seconds + browser_cleanup_seconds
+            execution_seconds = max(execution_seconds, browser_total_seconds)
+
+        if self.job_lease_seconds < execution_seconds + JOB_COMPLETION_MARGIN_SECONDS:
+            raise ValueError("job lease must include execution, cleanup, and completion margin")
+        if self.kafka_max_poll_interval_seconds < (
+            self.job_lease_seconds + KAFKA_POLL_SAFETY_MARGIN_SECONDS
+        ):
+            raise ValueError("Kafka max poll interval must leave margin after the job lease")
+        return self
 
 
 @lru_cache
