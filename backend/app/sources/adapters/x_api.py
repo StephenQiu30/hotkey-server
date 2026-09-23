@@ -174,6 +174,10 @@ class XApiAdapter:
                     content.extend(chunk)
                     if len(content) > _MAX_RESPONSE_BYTES:
                         raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
+                    if time.monotonic() >= self._deadline:
+                        raise _SourceFailureError(SourceStopReason.BUDGET_EXHAUSTED)
+                if time.monotonic() >= self._deadline:
+                    raise _SourceFailureError(SourceStopReason.BUDGET_EXHAUSTED)
             page = self._parse_page(request, json.loads(content))
             billable_posts = len(page.items)
             return page

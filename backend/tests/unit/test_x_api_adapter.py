@@ -3,11 +3,13 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import httpx
 import pytest
 from pydantic import SecretStr
 
+from sources.adapters import x_api
 from sources.adapters.x_api import XApiAdapter
 from sources.contracts import SearchRequest, SourcePageState, SourceSort, SourceStopReason
 
@@ -390,6 +392,36 @@ def test_transport_failure_still_settles_unknown_count() -> None:
     ).fetch_page(_request())
 
     assert page.stop_reason is SourceStopReason.UPSTREAM_ERROR
+    assert settlements == [(1, None)]
+
+
+def test_response_after_collection_deadline_is_not_reported_as_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    elapsed = [0.0]
+    settlements: list[tuple[int, int | None]] = []
+    monkeypatch.setattr(x_api, "time", SimpleNamespace(monotonic=lambda: elapsed[0]))
+
+    def respond(_: httpx.Request) -> httpx.Response:
+        elapsed[0] = 2.0
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"id": "1", "author_id": "42", "text": "late post"}],
+                "meta": {"result_count": 1},
+            },
+        )
+
+    page = _adapter(
+        respond,
+        max_seconds=1.0,
+        settle_request=lambda attempt, posts: settlements.append((attempt, posts)),
+    ).fetch_page(_request())
+
+    assert page.state is SourcePageState.STOPPED
+    assert page.stop_reason is SourceStopReason.BUDGET_EXHAUSTED
+    assert page.request_count == 1
+    assert page.items == ()
     assert settlements == [(1, None)]
 
 

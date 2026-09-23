@@ -12,6 +12,8 @@
 
 同日为共享搜索请求增加可选 UTC 起止时间；X Recent Search 两页模拟请求均传相同 `start_time`/`end_time`，超出最近 7 天、未来及被非校验复制的无效窗口在费用授权前拒绝。失败优先回归、来源契约与 X 单测 44 项、一次性空库全量 420 passed/5 skipped，Ruff/format/mypy 通过。此参数不等于平台终点证明，010 水位与旧于 7 天的回补不因此完成；无 X 实调、Worker、第二套服务或新增脚本。
 
+同日补齐离线总时限：模拟传输跨过适配器累计截止后即使返回有效 HTTP 200，也只能停止而不能产出完整页，已授权尝试按未知 Post 数结算。目标测试先红后绿，X 单测 32 项、当前未配置集成环境的后端全量 257 passed/170 skipped、Ruff/format/mypy 通过；未运行真实 X 或启动依赖。此修正不保证阻塞中的单次底层读取被硬中断，不改变 S01b 费用/凭据门禁和 0/10 产品 AC。
+
 005 S01 内部执行器原先从 Job 读取 UTC 范围，却向适配器发送无界 `SearchRequest`；隔离 PostgreSQL 用例先复现 Latest 续页 `(None, None)`，修复后 Latest/Top 均逐页携带冻结窗口。专用 2 项、一次性空库后端全量 420 passed/5 skipped 及 Ruff/format/mypy 通过；没有接 X 付费回调或注册 Worker/HTTP，不能据此确认真实来源终点或完成 005/010 产品验收。
 
 033 S00 已接受仅限内部状态分项的 Design：现有 039 运行快照按 owner、来源和能力分别汇总七态。同一 X 搜索能力一成一败、X 评论成功及另一来源部分成功可同时保留；无来源任务只进总数。隔离 PostgreSQL 用例先红后绿，专用 6 项、一次性空库后端全量 421 passed/5 skipped 与 Ruff/format/mypy 通过。当前 Worker 仍为单循环，未证明资源公平、熔断或真实局部故障恢复；033 S01 G3/G4 与全部产品 AC 未关闭。
