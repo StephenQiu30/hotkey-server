@@ -127,7 +127,7 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 同日 X 报价幂等补片：隔离 PostgreSQL 中，10×5,000 与 5×10,000 微美元的同额报价曾错误复用同一预留；失败优先用例确认后，金额预留强制携带匹配报价并纳入既有指纹，非 X 指纹不变。预算目标 41 passed、后端全量 426 passed/5 skipped，Ruff check/format 与 mypy 通过；5 项跳过需显式启用隔离浏览器服务器。没有 DDL、HTTP、UI、Worker、真实 X 请求或第二套依赖；仅清理本次一次性 QA 库。X App/Token、账期硬上限、费率快照、付费尝试账本原子装配仍缺，037 产品 AC 保持 0/6。
 
-**[038 计划](docs/plans/038-可维护与可替换计划.md) S00/S01 已完成，Plan 保持 in_progress。** `sources` 领域已增加四类纯能力请求、统一作品/评论、显式缺失值与父链、不透明分页/水位、页状态/停止原因及结构化适配器端口；新增 5 tests、相关 23 tests、后端全量 92 tests 及静态门禁通过。本切片复用现有 `.env` 与已启动服务，未新增真实适配器、固定版本/许可、样本/探针、HTTP/UI/Worker 或 SDK；S02—S04 及 038 产品 AC 仍为 0/6，未建立 Acceptance。
+**[038 计划](docs/plans/038-可维护与可替换计划.md) S00/S01 已完成，Plan 保持 in_progress。** `sources` 领域已增加四类纯能力请求、统一作品/评论、显式缺失值与父链、不透明分页/水位、页状态/停止原因及结构化适配器端口；新增 5 tests、相关 23 tests、后端全量 92 tests 及静态门禁通过。2026-09-24 S02 前置核验确认官方 Firecrawl `v2.11.162` tag 的 LICENSE 为 AGPL-3.0-or-later，本地 `6d9fb16` 以该 tag 为父提交；运行镜像无版本标签且无法证明与提交一致。现有容器保持运行，但 `/v2/scrape` 返回 HTTP 500；默认 Compose 解析未指定现有 env-file 并报告多项变量未设置，因此不重建/重启以免覆盖既有配置。固定样本与低频探针未通过，S02—S04、G3/G4、产品 AC 仍待执行，未建立 Acceptance。
 
 **[039 计划](docs/plans/039-可观测与可运维计划.md) S00/S01 与 S02a 技术子片已完成，Plan 保持 in_progress。** S01 的任务运行上下文、阶段尝试与七态汇总继续复用；S02a 增加按 owner 隔离的连续三次任务失败摘要 API，并在任务历史页显示稳定错误动作、配置版本及最近失败详情链接，不新增 DDL、依赖或服务。隔离 PostgreSQL 专用集成 28 passed、后端全量 498 passed/13 skipped，Ruff/format/mypy 与前端 42 tests/lint/typecheck/format/build 通过；运行时 OpenAPI 生成及 agent-browser 在 1440×900、390×844 下登录、查看摘要并点击最近失败任务链接通过。验证只使用隔离 QA 数据库与合成失败任务；不证明真实来源、新鲜度或覆盖缺口，S02—S04 与 039 产品 AC 仍为 0/6，未建立 Acceptance。
 
