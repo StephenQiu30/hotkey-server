@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -487,6 +488,71 @@ class Job(Base):
     manual_retry_allowed: Mapped[bool] = mapped_column(server_default=text("false"))
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
+
+
+class CoverageWindow(Base):
+    __tablename__ = "coverage_windows"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id",
+            "source_key",
+            "capability",
+            "target_hash",
+            "sort_key",
+            "rule_version",
+            "starts_at",
+            "ends_at",
+            name="coverage_windows_scope_range_key",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "last_job_id"],
+            ["jobs.owner_id", "jobs.id"],
+            ondelete="SET NULL (last_job_id)",
+            name="coverage_windows_owner_job_fkey",
+        ),
+        CheckConstraint(
+            "source_key ~ '^[a-z][a-z0-9_-]{0,63}$'", name="coverage_windows_source_check"
+        ),
+        CheckConstraint(
+            "capability IN ('search', 'author_posts', 'comments', 'replies')",
+            name="coverage_windows_capability_check",
+        ),
+        CheckConstraint(
+            "octet_length(target_hash) = 32", name="coverage_windows_target_hash_check"
+        ),
+        CheckConstraint("sort_key IN ('latest', 'top')", name="coverage_windows_sort_check"),
+        CheckConstraint("rule_version >= 1", name="coverage_windows_rule_version_check"),
+        CheckConstraint("starts_at < ends_at", name="coverage_windows_range_check"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'confirmed', 'partial')",
+            name="coverage_windows_status_check",
+        ),
+        CheckConstraint(
+            "(status = 'partial' AND stop_reason ~ '^[a-z][a-z0-9_]{0,63}$') OR "
+            "(status <> 'partial' AND stop_reason IS NULL)",
+            name="coverage_windows_reason_check",
+        ),
+        CheckConstraint("checkpoint_sequence >= 0", name="coverage_windows_checkpoint_check"),
+        CheckConstraint("page_count >= 0", name="coverage_windows_page_count_check"),
+        CheckConstraint("updated_at >= created_at", name="coverage_windows_updated_at_check"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id", ondelete="CASCADE"))
+    source_key: Mapped[str] = mapped_column(String(64))
+    capability: Mapped[str] = mapped_column(String(32))
+    target_hash: Mapped[bytes] = mapped_column(LargeBinary(32))
+    sort_key: Mapped[str] = mapped_column(String(16))
+    rule_version: Mapped[int] = mapped_column(BigInteger)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    stop_reason: Mapped[str | None] = mapped_column(String(64))
+    last_job_id: Mapped[UUID | None]
+    checkpoint_sequence: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    page_count: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class JobStageAttempt(Base):

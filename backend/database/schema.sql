@@ -666,6 +666,46 @@ CREATE TABLE jobs (
 
 CREATE INDEX jobs_runnable_idx ON jobs (status, lease_expires_at);
 
+CREATE TABLE coverage_windows (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    source_key VARCHAR(64) NOT NULL CONSTRAINT coverage_windows_source_check
+        CHECK (source_key ~ '^[a-z][a-z0-9_-]{0,63}$'),
+    capability VARCHAR(32) NOT NULL CONSTRAINT coverage_windows_capability_check
+        CHECK (capability IN ('search', 'author_posts', 'comments', 'replies')),
+    target_hash BYTEA NOT NULL CONSTRAINT coverage_windows_target_hash_check
+        CHECK (octet_length(target_hash) = 32),
+    sort_key VARCHAR(16) NOT NULL CONSTRAINT coverage_windows_sort_check
+        CHECK (sort_key IN ('latest', 'top')),
+    rule_version BIGINT NOT NULL CONSTRAINT coverage_windows_rule_version_check
+        CHECK (rule_version >= 1),
+    starts_at TIMESTAMPTZ NOT NULL,
+    ends_at TIMESTAMPTZ NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending' CONSTRAINT coverage_windows_status_check
+        CHECK (status IN ('pending', 'running', 'confirmed', 'partial')),
+    stop_reason VARCHAR(64),
+    last_job_id UUID,
+    checkpoint_sequence BIGINT NOT NULL DEFAULT 0 CONSTRAINT coverage_windows_checkpoint_check
+        CHECK (checkpoint_sequence >= 0),
+    page_count BIGINT NOT NULL DEFAULT 0 CONSTRAINT coverage_windows_page_count_check
+        CHECK (page_count >= 0),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CONSTRAINT coverage_windows_updated_at_check
+        CHECK (updated_at >= created_at),
+    CONSTRAINT coverage_windows_scope_range_key UNIQUE (
+        owner_id, source_key, capability, target_hash, sort_key,
+        rule_version, starts_at, ends_at
+    ),
+    CONSTRAINT coverage_windows_owner_job_fkey
+        FOREIGN KEY (owner_id, last_job_id)
+        REFERENCES jobs (owner_id, id) ON DELETE SET NULL (last_job_id),
+    CONSTRAINT coverage_windows_range_check CHECK (starts_at < ends_at),
+    CONSTRAINT coverage_windows_reason_check CHECK (
+        (status = 'partial' AND stop_reason ~ '^[a-z][a-z0-9_]{0,63}$')
+        OR (status <> 'partial' AND stop_reason IS NULL)
+    )
+);
+
 CREATE TABLE job_stage_attempts (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL,

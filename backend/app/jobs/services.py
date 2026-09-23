@@ -13,8 +13,14 @@ from sqlalchemy.orm import Session
 
 from connections.services import require_source_connection_enabled
 from core.errors import ApplicationError
-from jobs.execution import ScheduleWindow, scheduled_operation_id
+from jobs.execution import (
+    ExecutionLease,
+    JobExecutionService,
+    ScheduleWindow,
+    scheduled_operation_id,
+)
 from jobs.models import (
+    CoverageWindow,
     Job,
     JobAttempt,
     JobStageAttempt,
@@ -39,6 +45,9 @@ from jobs.schemas import (
     ComponentPolicyInput,
     ComponentPolicyView,
     CostClass,
+    CoverageTerminalEvidence,
+    CoverageWindowInput,
+    CoverageWindowView,
     FreshnessTimelineInput,
     FreshnessTimelineView,
     JobAcceptanceInput,
@@ -66,7 +75,7 @@ from jobs.schemas import (
     UsageOutcome,
     UsageSummaryView,
 )
-from sources.contracts import SourceCapability
+from sources.contracts import SourceCapability, SourcePageState, SourceStopReason
 
 JOB_ACCEPTED_EVENT_TYPE = "job.accepted.v2"
 JOB_ACCEPTED_TOPIC = "hotkey.jobs.accepted.v2"
@@ -78,6 +87,195 @@ JOB_EVENT_SCHEMA_VERSIONS = {
 
 type PublishOutbox = Callable[["OutboxEnvelope"], None]
 type OutboxValue = str | int | bool | None
+
+
+class CoverageWindowConflictError(RuntimeError):
+    """The page cannot advance the selected durable source range."""
+
+
+class CoverageWindowService:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        execution: JobExecutionService,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._session = session
+        self._execution = execution
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def begin_in_transaction(
+        self,
+        *,
+        lease: ExecutionLease,
+        window: CoverageWindowInput,
+    ) -> CoverageWindowView:
+        job = self._require_job(lease=lease, window=window)
+        now = self._clock()
+        self._session.execute(
+            insert(CoverageWindow)
+            .values(
+                id=uuid4(),
+                owner_id=window.owner_id,
+                source_key=window.source_key,
+                capability=window.capability.value,
+                target_hash=window.target_hash,
+                sort_key=window.sort_key.value,
+                rule_version=window.rule_version,
+                starts_at=window.starts_at,
+                ends_at=window.ends_at,
+                status="pending",
+                checkpoint_sequence=0,
+                page_count=0,
+                created_at=now,
+                updated_at=now,
+            )
+            .on_conflict_do_nothing(
+                constraint="coverage_windows_scope_range_key",
+            )
+        )
+        model = self._lock_window(window)
+        if model.status == "confirmed":
+            return self._view(model)
+        if model.status == "running":
+            if model.last_job_id == job.id:
+                return self._view(model)
+            if model.last_job_id is not None:
+                raise CoverageWindowConflictError("coverage window is owned by another job")
+        model.status = "running"
+        model.stop_reason = None
+        model.last_job_id = job.id
+        model.checkpoint_sequence = job.checkpoint_sequence
+        model.updated_at = now
+        return self._view(model)
+
+    def record_page_in_transaction(
+        self,
+        *,
+        lease: ExecutionLease,
+        window: CoverageWindowInput,
+        page_state: SourcePageState,
+        stop_reason: SourceStopReason | None = None,
+        evidence: CoverageTerminalEvidence | None = None,
+    ) -> CoverageWindowView:
+        job = self._require_job(lease=lease, window=window)
+        model = self._lock_window(window)
+        if job.checkpoint_sequence != lease.checkpoint_sequence:
+            raise CoverageWindowConflictError("page checkpoint does not match the current job")
+        if job.checkpoint_sequence == 0:
+            raise CoverageWindowConflictError("a page requires a persisted checkpoint")
+        if model.last_job_id == job.id and job.checkpoint_sequence == model.checkpoint_sequence:
+            return self._view(model)
+        if model.status != "running" or model.last_job_id != job.id:
+            raise CoverageWindowConflictError("coverage window has not been opened by this job")
+        if job.checkpoint_sequence < model.checkpoint_sequence:
+            raise CoverageWindowConflictError("page checkpoint moved backwards")
+
+        if page_state in {SourcePageState.PARTIAL, SourcePageState.STOPPED}:
+            if stop_reason is None or evidence is not None:
+                raise ValueError("stopped pages require a reason and no terminal evidence")
+            model.status = "partial"
+            model.stop_reason = stop_reason.value
+        elif page_state in {SourcePageState.COMPLETE, SourcePageState.EMPTY}:
+            if stop_reason is not None:
+                raise ValueError("terminal pages cannot carry a stop reason")
+            if self._proves_window(window=window, evidence=evidence):
+                model.status = "confirmed"
+                model.stop_reason = None
+            else:
+                model.status = "partial"
+                model.stop_reason = "unverified_terminal"
+        elif page_state is SourcePageState.MORE:
+            if stop_reason is not None or evidence is not None:
+                raise ValueError("continuing pages cannot carry terminal evidence")
+        else:
+            raise ValueError("unsupported source page state")
+
+        model.checkpoint_sequence = job.checkpoint_sequence
+        model.page_count += 1
+        model.updated_at = self._clock()
+        return self._view(model)
+
+    def confirmed_through(self, *, window: CoverageWindowInput, from_at: datetime) -> datetime:
+        if from_at.utcoffset() != timedelta(0):
+            raise ValueError("watermark origin must be UTC")
+        cursor = from_at
+        rows = self._session.scalars(
+            select(CoverageWindow)
+            .where(
+                CoverageWindow.owner_id == window.owner_id,
+                CoverageWindow.source_key == window.source_key,
+                CoverageWindow.capability == window.capability.value,
+                CoverageWindow.target_hash == window.target_hash,
+                CoverageWindow.sort_key == window.sort_key.value,
+                CoverageWindow.rule_version == window.rule_version,
+                CoverageWindow.ends_at > from_at,
+            )
+            .order_by(CoverageWindow.starts_at, CoverageWindow.ends_at)
+        )
+        for row in rows:
+            if row.starts_at > cursor or row.status != "confirmed":
+                break
+            cursor = max(cursor, row.ends_at)
+        return cursor
+
+    def _require_job(self, *, lease: ExecutionLease, window: CoverageWindowInput) -> Job:
+        self._execution.require_current_lease_in_transaction(lease)
+        job = self._session.get(Job, lease.job_id)
+        if job is None or job.owner_id != window.owner_id:
+            raise CoverageWindowConflictError("coverage window owner does not match the job")
+        if job.source_key != window.source_key or job.source_capability != window.capability.value:
+            raise CoverageWindowConflictError("coverage window source does not match the job")
+        if (
+            job.scope.get("target_hash") != window.target_hash.hex()
+            or job.scope.get("sort_key") != window.sort_key.value
+            or job.scope.get("rule_version") != window.rule_version
+        ):
+            raise CoverageWindowConflictError("coverage window scope does not match the job")
+        return job
+
+    def _lock_window(self, window: CoverageWindowInput) -> CoverageWindow:
+        model = self._session.scalar(
+            select(CoverageWindow)
+            .where(
+                CoverageWindow.owner_id == window.owner_id,
+                CoverageWindow.source_key == window.source_key,
+                CoverageWindow.capability == window.capability.value,
+                CoverageWindow.target_hash == window.target_hash,
+                CoverageWindow.sort_key == window.sort_key.value,
+                CoverageWindow.rule_version == window.rule_version,
+                CoverageWindow.starts_at == window.starts_at,
+                CoverageWindow.ends_at == window.ends_at,
+            )
+            .with_for_update()
+        )
+        if model is None:
+            raise CoverageWindowConflictError("coverage window does not exist")
+        return model
+
+    @staticmethod
+    def _proves_window(
+        *, window: CoverageWindowInput, evidence: CoverageTerminalEvidence | None
+    ) -> bool:
+        return bool(
+            evidence is not None
+            and evidence.starts_at == window.starts_at
+            and evidence.ends_at == window.ends_at
+            and evidence.sort_key == window.sort_key
+            and evidence.query_bounded
+            and evidence.sort_applied
+            and evidence.terminal_verified
+        )
+
+    @staticmethod
+    def _view(model: CoverageWindow) -> CoverageWindowView:
+        return CoverageWindowView(
+            id=model.id,
+            status=model.status,
+            stop_reason=model.stop_reason,
+            page_count=model.page_count,
+        )
 
 
 class ResourceBudgetError(RuntimeError):

@@ -77,7 +77,9 @@ def resource_budget_context() -> Iterator[ResourceBudgetContext]:
                 "evidence_cleanup_targets, evidence_deletions, evidence_resources, "
                 "evidence_retention_policies, source_access_policies, "
                 "job_stage_attempts, processed_messages, "
-                "job_attempts, outbox_messages, jobs, monitor_topic_versions, monitor_topics, "
+                "job_attempts, "
+                "outbox_messages, coverage_windows, "
+                "jobs, monitor_topic_versions, monitor_topics, "
                 "identity_sessions, identity_users"
             )
         )
@@ -105,8 +107,10 @@ def resource_budget_context() -> Iterator[ResourceBudgetContext]:
                     "source_connections, provenance_manifest_inputs, provenance_manifests, "
                     "evidence_cleanup_targets, evidence_deletions, evidence_resources, "
                     "evidence_retention_policies, source_access_policies, "
-                    "job_stage_attempts, processed_messages, job_attempts, outbox_messages, jobs, "
-                    "monitor_topic_versions, monitor_topics, identity_sessions, identity_users"
+                    "job_stage_attempts, processed_messages, job_attempts, "
+                    "outbox_messages, coverage_windows, "
+                    "jobs, monitor_topic_versions, monitor_topics, "
+                    "identity_sessions, identity_users"
                 )
             )
         engine.dispose()

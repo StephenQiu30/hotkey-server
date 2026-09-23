@@ -59,7 +59,9 @@ def backup_environment() -> Iterator[tuple[str, Minio, str, str]]:
                 "resource_budget_reservations, resource_budget_windows, "
                 "resource_budget_policies, resource_usage_attempts, "
                 "resource_component_policies, job_stage_attempts, processed_messages, "
-                "job_attempts, outbox_messages, jobs, monitor_topic_versions, monitor_topics, "
+                "job_attempts, "
+                "outbox_messages, coverage_windows, "
+                "jobs, monitor_topic_versions, monitor_topics, "
                 "identity_sessions, identity_users"
             )
         )
@@ -143,7 +145,9 @@ def backup_environment() -> Iterator[tuple[str, Minio, str, str]]:
                     "resource_budget_reservations, resource_budget_windows, "
                     "resource_budget_policies, resource_usage_attempts, "
                     "resource_component_policies, job_stage_attempts, processed_messages, "
-                    "job_attempts, outbox_messages, jobs, monitor_topic_versions, monitor_topics, "
+                    "job_attempts, "
+                    "outbox_messages, coverage_windows, "
+                    "jobs, monitor_topic_versions, monitor_topics, "
                     "identity_sessions, identity_users"
                 )
             )
@@ -179,6 +183,7 @@ def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
     assert manifest.restore_verified is False
     assert manifest.secrets_included is False
     assert set(table_counts) == {
+        "coverage_windows",
         "content_discoveries",
         "content_observations",
         "content_records",

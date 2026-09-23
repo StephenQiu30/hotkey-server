@@ -75,8 +75,10 @@ def lifecycle_context() -> Iterator[LifecycleTestContext]:
                 "resource_budget_reservations, resource_budget_windows, "
                 "resource_budget_policies, resource_usage_attempts, "
                 "resource_component_policies, "
-                "job_stage_attempts, processed_messages, job_attempts, outbox_messages, jobs, "
-                "monitor_topic_versions, monitor_topics, identity_sessions, identity_users"
+                "job_stage_attempts, processed_messages, job_attempts, "
+                "outbox_messages, coverage_windows, "
+                "jobs, monitor_topic_versions, monitor_topics, "
+                "identity_sessions, identity_users"
             )
         )
         connection.execute(
@@ -108,8 +110,10 @@ def lifecycle_context() -> Iterator[LifecycleTestContext]:
                     "resource_budget_reservations, resource_budget_windows, "
                     "resource_budget_policies, resource_usage_attempts, "
                     "resource_component_policies, "
-                    "job_stage_attempts, processed_messages, job_attempts, outbox_messages, jobs, "
-                    "monitor_topic_versions, monitor_topics, identity_sessions, identity_users"
+                    "job_stage_attempts, processed_messages, job_attempts, "
+                    "outbox_messages, coverage_windows, "
+                    "jobs, monitor_topic_versions, monitor_topics, "
+                    "identity_sessions, identity_users"
                 )
             )
         engine.dispose()

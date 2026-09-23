@@ -414,6 +414,17 @@ class ContentService:
         owner_id: UUID,
         command: PersistContentPostInput,
     ) -> ContentRecordDetailView:
+        self._session.rollback()
+        with self._session.begin():
+            return self.persist_post_in_transaction(owner_id=owner_id, command=command)
+
+    def persist_post_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: PersistContentPostInput,
+    ) -> ContentRecordDetailView:
+        """Persist an admitted social post within the caller's page transaction."""
         now = self._clock()
         if now.utcoffset() is None:
             raise ValueError("clock must return a timezone-aware datetime")
@@ -434,18 +445,16 @@ class ContentService:
         values = self._observation_values(fields)
         version_values = _content_version_values(fields)
 
-        self._session.rollback()
-        with self._session.begin():
-            return self._persist_admitted_content_in_transaction(
-                owner_id=owner_id,
-                command=command,
-                object_type="post",
-                native_scope=command.native_scope,
-                external_id=external_id,
-                observation_values=values,
-                version_values=version_values,
-                now=now,
-            )
+        return self._persist_admitted_content_in_transaction(
+            owner_id=owner_id,
+            command=command,
+            object_type="post",
+            native_scope=command.native_scope,
+            external_id=external_id,
+            observation_values=values,
+            version_values=version_values,
+            now=now,
+        )
 
     def persist_document_in_transaction(
         self,

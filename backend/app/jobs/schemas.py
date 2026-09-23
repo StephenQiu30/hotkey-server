@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from sources.contracts import SocialSourceCapability, SourceCapability, WebPageRequest
+from sources.contracts import SocialSourceCapability, SourceCapability, SourceSort, WebPageRequest
 
 type JobScopeValue = str | int | bool | None
 
@@ -24,6 +24,66 @@ class JobStatus(StrEnum):
     PARTIALLY_SUCCEEDED = "partially_succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class CoverageWindowInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    owner_id: UUID
+    source_key: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]{0,63}$")
+    capability: SocialSourceCapability
+    target_hash: bytes = Field(min_length=32, max_length=32)
+    sort_key: SourceSort
+    rule_version: int = Field(ge=1)
+    starts_at: datetime
+    ends_at: datetime
+
+    @field_validator("starts_at", "ends_at")
+    @classmethod
+    def require_utc(cls, value: datetime) -> datetime:
+        if value.utcoffset() != timedelta(0):
+            raise ValueError("coverage window bounds must be UTC")
+        return value
+
+    @model_validator(mode="after")
+    def require_forward_range(self) -> CoverageWindowInput:
+        if self.starts_at >= self.ends_at:
+            raise ValueError("coverage window end must follow start")
+        return self
+
+
+class CoverageTerminalEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    starts_at: datetime
+    ends_at: datetime
+    sort_key: SourceSort
+    query_bounded: bool
+    sort_applied: bool
+    terminal_verified: bool
+
+    @field_validator("starts_at", "ends_at")
+    @classmethod
+    def require_utc(cls, value: datetime) -> datetime:
+        if value.utcoffset() != timedelta(0):
+            raise ValueError("coverage evidence bounds must be UTC")
+        return value
+
+
+class CoverageWindowStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    CONFIRMED = "confirmed"
+    PARTIAL = "partial"
+
+
+class CoverageWindowView(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: UUID
+    status: CoverageWindowStatus
+    stop_reason: str | None
+    page_count: int
 
 
 class JobControlStatus(StrEnum):

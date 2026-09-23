@@ -23,6 +23,7 @@ from evidence.models import (
 )
 from identity.models import IdentitySession, IdentityUser
 from jobs.models import (
+    CoverageWindow,
     Job,
     JobAttempt,
     JobStageAttempt,
@@ -48,6 +49,7 @@ __all__ = [
     "ContentVersion",
     "ContentVersionRelation",
     "ContentVisibilityObservation",
+    "CoverageWindow",
     "DeletionDirective",
     "EvidenceResource",
     "IdentitySession",
