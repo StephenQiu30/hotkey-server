@@ -11,10 +11,12 @@ from jobs.schemas import (
     BudgetContext,
     BudgetMetric,
     BudgetPolicyInput,
+    BudgetReservationInput,
     BudgetScopeKind,
     ComponentPolicyInput,
     CostClass,
     UsageKind,
+    XApiPostReadCost,
 )
 
 
@@ -125,3 +127,54 @@ def test_scoped_budget_policy_requires_stable_reference() -> None:
 def test_budget_context_rejects_unstable_references() -> None:
     with pytest.raises(ValidationError, match="stable lowercase"):
         BudgetContext(source_ref="https://example.test/?token=secret")
+
+
+def test_x_api_post_read_cost_reserves_maximum_and_settles_conservatively() -> None:
+    cost = XApiPostReadCost(max_posts=10, unit_price_usd_micros=5000)
+
+    assert cost.reservation_units == 50_000
+    assert cost.settlement_units(1) == 5000
+    assert cost.settlement_units(0) == 0
+    assert cost.settlement_units(None) == 50_000
+
+    with pytest.raises(ValueError, match="returned_posts"):
+        cost.settlement_units(11)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"max_posts": 0, "unit_price_usd_micros": 5000},
+        {"max_posts": 101, "unit_price_usd_micros": 5000},
+        {"max_posts": 10, "unit_price_usd_micros": 0},
+        {"max_posts": 10, "unit_price_usd_micros": 2**63 - 1},
+    ],
+)
+def test_x_api_post_read_cost_rejects_invalid_or_overflowing_quote(
+    values: dict[str, int],
+) -> None:
+    with pytest.raises(ValidationError):
+        XApiPostReadCost(**values)
+
+
+def test_x_api_spend_budget_requires_x_source() -> None:
+    with pytest.raises(ValidationError, match="x source"):
+        BudgetReservationInput(
+            reservation_id=uuid4(),
+            operation_id=uuid4(),
+            metric=BudgetMetric.X_API_USD_MICROS,
+            requested_units=50_000,
+            context=BudgetContext(source_ref="bilibili"),
+        )
+
+    with pytest.raises(ValidationError, match="x source"):
+        BudgetPolicyInput(
+            budget_key="source.x.spend",
+            metric=BudgetMetric.X_API_USD_MICROS,
+            scope_kind=BudgetScopeKind.SOURCE,
+            scope_reference="bilibili",
+            limit_units=50_000,
+            window_seconds=3600,
+            window_anchor_at=datetime.now(UTC),
+            enabled=True,
+        )

@@ -43,7 +43,7 @@ class ResourceBudgetPolicy(Base):
         ),
         CheckConstraint(
             "metric IN ('network_request', 'collector_call', 'analysis_attempt', "
-            "'concurrency_slot')",
+            "'concurrency_slot', 'x_api_usd_micros')",
             name="resource_budget_policies_metric_check",
         ),
         CheckConstraint(
@@ -55,6 +55,10 @@ class ResourceBudgetPolicy(Base):
             "(scope_kind <> 'global' AND "
             "scope_reference ~ '^[a-z0-9][a-z0-9_.:-]{0,127}$')",
             name="resource_budget_policies_reference_check",
+        ),
+        CheckConstraint(
+            "metric <> 'x_api_usd_micros' OR scope_kind <> 'source' OR scope_reference = 'x'",
+            name="resource_budget_policies_x_source_check",
         ),
         CheckConstraint("limit_units > 0", name="resource_budget_policies_limit_check"),
         CheckConstraint(
@@ -169,7 +173,7 @@ class ResourceBudgetReservation(Base):
         ),
         CheckConstraint(
             "metric IN ('network_request', 'collector_call', 'analysis_attempt', "
-            "'concurrency_slot')",
+            "'concurrency_slot', 'x_api_usd_micros')",
             name="resource_budget_reservations_metric_check",
         ),
         CheckConstraint(

@@ -384,7 +384,7 @@ CREATE TABLE resource_budget_policies (
         budget_key ~ '^[a-z][a-z0-9_.:-]{0,127}$'
     ),
     metric VARCHAR(32) NOT NULL CHECK (
-        metric IN ('network_request', 'collector_call', 'analysis_attempt', 'concurrency_slot')
+        metric IN ('network_request', 'collector_call', 'analysis_attempt', 'concurrency_slot', 'x_api_usd_micros')
     ),
     scope_kind VARCHAR(32) NOT NULL CHECK (
         scope_kind IN ('global', 'source', 'connection', 'job')
@@ -405,7 +405,9 @@ CREATE TABLE resource_budget_policies (
             scope_kind <> 'global'
             AND scope_reference ~ '^[a-z0-9][a-z0-9_.:-]{0,127}$'
         )
-    )
+    ),
+    CONSTRAINT resource_budget_policies_x_source_check
+        CHECK (metric <> 'x_api_usd_micros' OR scope_kind <> 'source' OR scope_reference = 'x')
 );
 
 CREATE TABLE resource_budget_windows (
@@ -443,7 +445,7 @@ CREATE TABLE resource_budget_reservations (
     policy_version BIGINT NOT NULL CHECK (policy_version >= 1),
     limit_units BIGINT NOT NULL CHECK (limit_units > 0),
     metric VARCHAR(32) NOT NULL CHECK (
-        metric IN ('network_request', 'collector_call', 'analysis_attempt', 'concurrency_slot')
+        metric IN ('network_request', 'collector_call', 'analysis_attempt', 'concurrency_slot', 'x_api_usd_micros')
     ),
     budget_mode VARCHAR(32) NOT NULL CHECK (
         budget_mode IN ('cumulative', 'concurrent')

@@ -8,8 +8,11 @@ from datetime import UTC, datetime, timedelta
 from threading import Barrier
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from jobs.execution import resource_attempt_id
@@ -26,6 +29,7 @@ from jobs.schemas import (
     UsageAttemptInput,
     UsageKind,
     UsageOutcome,
+    XApiPostReadCost,
 )
 from jobs.services import (
     BudgetPolicyConflictError,
@@ -35,6 +39,8 @@ from jobs.services import (
     ResourceBudgetService,
     UsageConflictError,
 )
+from sources.adapters.x_api import XApiAdapter
+from sources.contracts import SearchRequest, SourcePageState, SourceStopReason
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,6 +414,254 @@ def test_last_unit_is_reserved_by_at_most_one_concurrent_transaction(
         ).one()
     assert reserved_units == 1
     assert reservation_count == 1
+
+
+def test_x_api_spend_last_page_is_reserved_by_one_transaction(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime(2026, 9, 23, 12, 0, 10, tzinfo=UTC))
+    quote = XApiPostReadCost(max_posts=10, unit_price_usd_micros=5000)
+    with resource_budget_context.sessions() as session:
+        ResourceBudgetService(session, clock=clock).save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(
+                clock=clock,
+                budget_key="global.x.spend",
+                metric=BudgetMetric.X_API_USD_MICROS,
+                limit_units=quote.reservation_units,
+            ),
+        )
+
+    barrier = Barrier(2)
+
+    def reserve(command: BudgetReservationInput) -> BudgetDecisionStatus:
+        with resource_budget_context.sessions() as session:
+            barrier.wait()
+            return (
+                ResourceBudgetService(session, clock=clock)
+                .reserve_budget(owner_id=resource_budget_context.owner_id, command=command)
+                .status
+            )
+
+    commands = (
+        _reservation(
+            metric=BudgetMetric.X_API_USD_MICROS,
+            requested_units=quote.reservation_units,
+            source_ref="x",
+        ),
+        _reservation(
+            metric=BudgetMetric.X_API_USD_MICROS,
+            requested_units=quote.reservation_units,
+            source_ref="x",
+            job_ref="job-b",
+        ),
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        statuses = list(executor.map(reserve, commands))
+
+    assert statuses.count(BudgetDecisionStatus.RESERVED) == 1
+    assert statuses.count(BudgetDecisionStatus.DELAYED) == 1
+
+
+def test_x_api_spend_releases_only_verified_unused_resources(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime(2026, 9, 23, 12, 0, 10, tzinfo=UTC))
+    quote = XApiPostReadCost(max_posts=10, unit_price_usd_micros=5000)
+    first = _reservation(
+        metric=BudgetMetric.X_API_USD_MICROS,
+        requested_units=quote.reservation_units,
+        source_ref="x",
+    )
+    with resource_budget_context.sessions() as session:
+        service = ResourceBudgetService(session, clock=clock)
+        with pytest.raises(BudgetPolicyUnavailableError, match="global"):
+            service.reserve_budget(owner_id=resource_budget_context.owner_id, command=first)
+
+        policy = _budget_policy(
+            clock=clock,
+            budget_key="global.x.spend",
+            metric=BudgetMetric.X_API_USD_MICROS,
+            limit_units=55_000,
+        )
+        service.save_budget_policy(owner_id=resource_budget_context.owner_id, command=policy)
+        reserved = service.reserve_budget(owner_id=resource_budget_context.owner_id, command=first)
+        pending = _reservation(
+            metric=BudgetMetric.X_API_USD_MICROS,
+            requested_units=quote.reservation_units,
+            source_ref="x",
+            job_ref="job-b",
+        )
+        delayed = service.reserve_budget(owner_id=resource_budget_context.owner_id, command=pending)
+        settled = service.settle_budget_reservation(
+            owner_id=resource_budget_context.owner_id,
+            reservation_id=first.reservation_id,
+            actual_units=quote.settlement_units(1),
+        )
+        next_page = service.reserve_budget(
+            owner_id=resource_budget_context.owner_id,
+            command=pending,
+        )
+        unknown = service.settle_budget_reservation(
+            owner_id=resource_budget_context.owner_id,
+            reservation_id=pending.reservation_id,
+            actual_units=quote.settlement_units(None),
+        )
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=policy.model_copy(update={"limit_units": 50_000}),
+        )
+        exhausted = service.reserve_budget(
+            owner_id=resource_budget_context.owner_id,
+            command=_reservation(
+                metric=BudgetMetric.X_API_USD_MICROS,
+                requested_units=quote.reservation_units,
+                source_ref="x",
+                job_ref="job-c",
+            ),
+        )
+
+    assert reserved.status is BudgetDecisionStatus.RESERVED
+    assert delayed.status is BudgetDecisionStatus.DELAYED
+    assert settled.actual_units == 5000
+    assert settled.released_units == 45_000
+    assert next_page.status is BudgetDecisionStatus.RESERVED
+    assert unknown.actual_units == 50_000
+    assert unknown.released_units == 0
+    assert exhausted.status is BudgetDecisionStatus.DELAYED
+
+
+def test_x_api_spend_rejects_unvalidated_model_copies(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime(2026, 9, 23, 12, 0, 10, tzinfo=UTC))
+    policy = _budget_policy(
+        clock=clock,
+        budget_key="source.x.spend",
+        metric=BudgetMetric.X_API_USD_MICROS,
+        scope_kind=BudgetScopeKind.SOURCE,
+        scope_reference="x",
+        limit_units=50_000,
+    )
+    reservation = _reservation(
+        metric=BudgetMetric.X_API_USD_MICROS,
+        requested_units=50_000,
+        source_ref="x",
+    )
+    with resource_budget_context.sessions() as session:
+        service = ResourceBudgetService(session, clock=clock)
+        with pytest.raises(ValueError, match="x source"):
+            service.save_budget_policy(
+                owner_id=resource_budget_context.owner_id,
+                command=policy.model_copy(update={"scope_reference": "bilibili"}),
+            )
+        with pytest.raises(ValueError, match="x source"):
+            service.reserve_budget(
+                owner_id=resource_budget_context.owner_id,
+                command=reservation.model_copy(
+                    update={
+                        "metric": "x_api_usd_micros",
+                        "context": BudgetContext(source_ref="bilibili"),
+                    }
+                ),
+            )
+
+    with (
+        pytest.raises(IntegrityError, match="resource_budget_policies_x_source_check"),
+        resource_budget_context.engine.begin() as connection,
+    ):
+        connection.execute(
+            text(
+                "INSERT INTO resource_budget_policies "
+                "(id, owner_id, budget_key, metric, scope_kind, scope_reference, "
+                "limit_units, window_seconds, window_anchor_at, enabled, "
+                "created_at, updated_at) "
+                "VALUES (:id, :owner_id, 'source.invalid.x.spend', "
+                "'x_api_usd_micros', 'source', 'bilibili', "
+                "50000, 3600, now(), true, now(), now())"
+            ),
+            {"id": uuid4(), "owner_id": resource_budget_context.owner_id},
+        )
+
+
+def test_offline_x_adapter_uses_persistent_spend_window_per_page(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime(2026, 9, 23, 12, 0, 10, tzinfo=UTC))
+    operation_id = uuid4()
+    reservations: dict[int, tuple[UUID, XApiPostReadCost]] = {}
+    requests: list[httpx.Request] = []
+    with resource_budget_context.sessions() as session:
+        ResourceBudgetService(session, clock=clock).save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(
+                clock=clock,
+                budget_key="global.x.spend",
+                metric=BudgetMetric.X_API_USD_MICROS,
+                limit_units=55_000,
+            ),
+        )
+
+    def authorize(attempt: int, max_posts: int) -> bool:
+        cost = XApiPostReadCost(max_posts=max_posts, unit_price_usd_micros=5000)
+        reservation_id = uuid4()
+        with resource_budget_context.sessions() as session:
+            decision = ResourceBudgetService(session, clock=clock).reserve_budget(
+                owner_id=resource_budget_context.owner_id,
+                command=BudgetReservationInput(
+                    reservation_id=reservation_id,
+                    operation_id=operation_id,
+                    metric=BudgetMetric.X_API_USD_MICROS,
+                    requested_units=cost.reservation_units,
+                    context=BudgetContext(source_ref="x"),
+                ),
+            )
+        if decision.status is BudgetDecisionStatus.RESERVED:
+            reservations[attempt] = (reservation_id, cost)
+            return True
+        return False
+
+    def settle(attempt: int, posts: int | None) -> None:
+        reservation_id, cost = reservations[attempt]
+        with resource_budget_context.sessions() as session:
+            ResourceBudgetService(session, clock=clock).settle_budget_reservation(
+                owner_id=resource_budget_context.owner_id,
+                reservation_id=reservation_id,
+                actual_units=cost.settlement_units(posts),
+            )
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"id": "1", "author_id": "42", "text": "post"}],
+                    "meta": {"result_count": 1, "next_token": "ABCD1234"},
+                },
+            )
+        return httpx.Response(429)
+
+    adapter = XApiAdapter(
+        token=SecretStr("offline-test-token"),
+        transport=httpx.MockTransport(respond),
+        authorize_request=authorize,
+        settle_request=settle,
+    )
+    first = adapter.fetch_page(SearchRequest(source_key="x", query="topic", page_size=10))
+    second = adapter.fetch_page(
+        SearchRequest(source_key="x", query="topic", page_size=10, page_token="ABCD1234")
+    )
+
+    assert first.state is SourcePageState.MORE
+    assert second.stop_reason is SourceStopReason.RATE_LIMITED
+    assert len(requests) == 2
+    assert all("expansions" not in request.url.params for request in requests)
+    with resource_budget_context.engine.connect() as connection:
+        used, reserved = connection.execute(
+            text("SELECT used_units, reserved_units FROM resource_budget_windows")
+        ).one()
+    assert (used, reserved) == (55_000, 0)
 
 
 def test_strictest_scope_delays_without_partial_reservation(

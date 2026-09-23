@@ -888,6 +888,12 @@ class ResourceBudgetService:
         owner_id: UUID,
         command: BudgetPolicyInput,
     ) -> BudgetPolicyView:
+        if (
+            command.metric == BudgetMetric.X_API_USD_MICROS
+            and command.scope_kind is BudgetScopeKind.SOURCE
+            and command.scope_reference != "x"
+        ):
+            raise ValueError("x api spend policy requires x source")
         now = self._clock()
         self._require_aware_clock(now)
         self._session.rollback()
@@ -966,6 +972,8 @@ class ResourceBudgetService:
         command: BudgetReservationInput,
     ) -> BudgetReservationDecision:
         """Reserve all applicable budgets inside an existing outer transaction."""
+        if command.metric == BudgetMetric.X_API_USD_MICROS and command.context.source_ref != "x":
+            raise ValueError("x api spend budget requires x source")
         now = self._clock()
         self._require_aware_clock(now)
         fingerprint = self._budget_context_fingerprint(command)

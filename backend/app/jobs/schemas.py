@@ -15,6 +15,7 @@ type JobScopeValue = str | int | bool | None
 _SCOPE_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_.:-]{0,63}$")
 _STABLE_REFERENCE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,127}$")
 _MAX_SCOPE_ITEMS = 32
+_MAX_BUDGET_UNITS = 2**63 - 1
 
 
 class JobStatus(StrEnum):
@@ -185,6 +186,31 @@ class BudgetMetric(StrEnum):
     COLLECTOR_CALL = "collector_call"
     ANALYSIS_ATTEMPT = "analysis_attempt"
     CONCURRENCY_SLOT = "concurrency_slot"
+    X_API_USD_MICROS = "x_api_usd_micros"
+
+
+class XApiPostReadCost(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    max_posts: int = Field(gt=0, le=100)
+    unit_price_usd_micros: int = Field(gt=0, le=_MAX_BUDGET_UNITS)
+
+    @model_validator(mode="after")
+    def validate_reservation_size(self) -> XApiPostReadCost:
+        if self.max_posts * self.unit_price_usd_micros > _MAX_BUDGET_UNITS:
+            raise ValueError("x api reservation exceeds BIGINT")
+        return self
+
+    @property
+    def reservation_units(self) -> int:
+        return self.max_posts * self.unit_price_usd_micros
+
+    def settlement_units(self, returned_posts: int | None) -> int:
+        if returned_posts is None:
+            return self.reservation_units
+        if type(returned_posts) is not int or not 0 <= returned_posts <= self.max_posts:
+            raise ValueError("returned_posts must be within the reserved page")
+        return returned_posts * self.unit_price_usd_micros
 
 
 class BudgetScopeKind(StrEnum):
@@ -235,7 +261,7 @@ class BudgetPolicyInput(BaseModel):
     metric: BudgetMetric
     scope_kind: BudgetScopeKind
     scope_reference: str | None = Field(default=None, max_length=128)
-    limit_units: int = Field(gt=0)
+    limit_units: int = Field(gt=0, le=_MAX_BUDGET_UNITS)
     window_seconds: int = Field(gt=0)
     window_anchor_at: datetime
     enabled: bool
@@ -252,6 +278,12 @@ class BudgetPolicyInput(BaseModel):
             raise ValueError("non-global scope_reference must be a stable lowercase identifier")
         if self.window_anchor_at.tzinfo is None:
             raise ValueError("window_anchor_at must be timezone-aware")
+        if (
+            self.metric is BudgetMetric.X_API_USD_MICROS
+            and self.scope_kind is BudgetScopeKind.SOURCE
+            and self.scope_reference != "x"
+        ):
+            raise ValueError("x api spend policy requires x source")
         return self
 
 
@@ -269,8 +301,14 @@ class BudgetReservationInput(BaseModel):
     reservation_id: UUID
     operation_id: UUID
     metric: BudgetMetric
-    requested_units: int = Field(gt=0)
+    requested_units: int = Field(gt=0, le=_MAX_BUDGET_UNITS)
     context: BudgetContext
+
+    @model_validator(mode="after")
+    def validate_x_source(self) -> BudgetReservationInput:
+        if self.metric is BudgetMetric.X_API_USD_MICROS and self.context.source_ref != "x":
+            raise ValueError("x api spend budget requires x source")
+        return self
 
 
 class BudgetReservationDecision(BaseModel):
