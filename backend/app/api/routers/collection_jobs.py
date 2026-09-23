@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Query, Response, status
 
 from api.dependencies import (
     AuthenticatedIdentityDependency,
@@ -11,10 +11,11 @@ from api.dependencies import (
     JobServiceDependency,
     WebPageCollectionServiceDependency,
 )
-from core.schemas import ErrorView, JobAcceptedView
+from core.schemas import ErrorView, JobAcceptedView, PageView
 from jobs.schemas import (
     CollectionJobInput,
     CollectionJobRequest,
+    JobHistoryItemView,
     JobStatusView,
     WebPageCollectionJobInput,
 )
@@ -66,6 +67,31 @@ def create_collection_job(
     response.headers["location"] = f"/api/jobs/{job.id}"
     response.headers["cache-control"] = "no-store"
     return JobAcceptedView(job_id=job.id, status="queued")
+
+
+@router.get(
+    "",
+    operation_id="listCollectionJobs",
+    response_model=PageView[JobHistoryItemView],
+    status_code=status.HTTP_200_OK,
+    summary="列出采集任务",
+    description="按当前会话 owner 稳定分页读取任务摘要; 不暴露 scope、租约、操作标识或内部消息。",
+    responses=_READ_ERROR_RESPONSES,
+)
+def list_collection_jobs(
+    response: Response,
+    service: JobServiceDependency,
+    identity: AuthenticatedIdentityDependency,
+    cursor: UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> PageView[JobHistoryItemView]:
+    items, next_cursor = service.list_history(
+        owner_id=identity.view.user.id,
+        cursor=cursor,
+        limit=limit,
+    )
+    response.headers["cache-control"] = "no-store"
+    return PageView(items=items, next_cursor=next_cursor)
 
 
 @router.get(

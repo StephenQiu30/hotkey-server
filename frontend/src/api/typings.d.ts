@@ -295,6 +295,29 @@ declare namespace HotKeyAPI {
     manual_retry_allowed: boolean;
   };
 
+  type JobHistoryItemView = {
+    /** Id */
+    id: string;
+    /** Kind */
+    kind: string;
+    /** Source Key */
+    source_key: string | null;
+    source_capability: SourceCapability | null;
+    status: JobControlStatus;
+    /** Requests Sent */
+    requests_sent: number;
+    /** Items Saved */
+    items_saved: number;
+    /** Created At */
+    created_at: string;
+    /** Started At */
+    started_at: string | null;
+    /** Completed At */
+    completed_at: string | null;
+    /** Next Run At */
+    next_run_at: string | null;
+  };
+
   type JobObservationContext = {
     /** Configuration Ref */
     configuration_ref: string;
@@ -348,6 +371,11 @@ declare namespace HotKeyAPI {
   };
 
   type KeywordInput = string;
+
+  type listCollectionJobsParams = {
+    cursor?: string | null;
+    limit?: number;
+  };
 
   type listContentRecordsParams = {
     cursor?: string | null;
@@ -457,6 +485,13 @@ declare namespace HotKeyAPI {
   type PageViewContentRecordSummaryView_ = {
     /** Items */
     items: ContentRecordSummaryView[];
+    /** Next Cursor */
+    next_cursor: string | null;
+  };
+
+  type PageViewJobHistoryItemView_ = {
+    /** Items */
+    items: JobHistoryItemView[];
     /** Next Cursor */
     next_cursor: string | null;
   };

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -64,6 +64,7 @@ from jobs.schemas import (
     JobControlStatus,
     JobFailureCategory,
     JobFailureView,
+    JobHistoryItemView,
     JobObservationContext,
     JobProgressView,
     JobStage,
@@ -1845,6 +1846,48 @@ class JobService:
         finally:
             self._session.rollback()
 
+    def list_history(
+        self,
+        *,
+        owner_id: UUID,
+        cursor: UUID | None,
+        limit: int,
+    ) -> tuple[list[JobHistoryItemView], str | None]:
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+
+        self._session.rollback()
+        with self._session.begin():
+            cursor_job = None
+            if cursor is not None:
+                cursor_job = self._session.scalar(
+                    select(Job).where(Job.owner_id == owner_id, Job.id == cursor)
+                )
+                if cursor_job is None:
+                    raise ApplicationError("resource_not_found")
+
+            statement = select(Job).where(Job.owner_id == owner_id)
+            if cursor_job is not None:
+                statement = statement.where(
+                    or_(
+                        Job.created_at < cursor_job.created_at,
+                        and_(
+                            Job.created_at == cursor_job.created_at,
+                            Job.id < cursor_job.id,
+                        ),
+                    )
+                )
+            models = list(
+                self._session.scalars(
+                    statement.order_by(Job.created_at.desc(), Job.id.desc()).limit(limit + 1)
+                ).all()
+            )
+            has_more = len(models) > limit
+            page = models[:limit]
+            items = [self._history_item_view(model) for model in page]
+            next_cursor = str(page[-1].id) if has_more else None
+        return items, next_cursor
+
     def request_cancel(self, *, owner_id: UUID, job_id: UUID) -> JobStatusView:
         now = self._clock()
         if now.tzinfo is None:
@@ -2066,6 +2109,30 @@ class JobService:
             started_at=_as_utc(model.started_at),
             completed_at=_as_utc(model.completed_at),
             created_at=model.created_at.astimezone(UTC),
+        )
+
+    @staticmethod
+    def _history_item_view(model: Job) -> JobHistoryItemView:
+        return JobHistoryItemView(
+            id=model.id,
+            kind=model.kind,
+            source_key=model.source_key,
+            source_capability=(
+                SourceCapability(model.source_capability)
+                if model.source_capability is not None
+                else None
+            ),
+            status=(
+                JobControlStatus.CANCELLING
+                if model.status == JobStatus.RUNNING.value and model.cancel_requested_at is not None
+                else JobControlStatus(model.status)
+            ),
+            requests_sent=model.requests_sent,
+            items_saved=model.items_saved,
+            created_at=model.created_at.astimezone(UTC),
+            started_at=_as_utc(model.started_at),
+            completed_at=_as_utc(model.completed_at),
+            next_run_at=_as_utc(model.next_run_at),
         )
 
     @staticmethod

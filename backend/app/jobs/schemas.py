@@ -753,6 +753,22 @@ class JobStatusView(BaseModel):
     created_at: datetime
 
 
+class JobHistoryItemView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    kind: str
+    source_key: str | None
+    source_capability: SourceCapability | None
+    status: JobControlStatus
+    requests_sent: int = Field(ge=0)
+    items_saved: int = Field(ge=0)
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    next_run_at: datetime | None
+
+
 class JobView(BaseModel):
     model_config = ConfigDict(frozen=True)
 

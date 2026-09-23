@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LogOutIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
+import {
+  FileTextIcon,
+  ListChecksIcon,
+  LogOutIcon,
+  PlusIcon,
+  RadioIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 
 import { deleteIdentitySession, getIdentityWorkspace } from "@/api/identity";
 import { TopicList } from "@/components/monitors/topic-list";
@@ -143,11 +150,38 @@ export function EventsWorkspace() {
           <span>HotKey</span>
         </Link>
         <div className="flex items-center gap-2">
-          <Button asChild variant="ghost" size="navigation">
-            <Link href="/content">作品资料</Link>
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="sm:h-11 sm:w-auto sm:px-3 md:h-8 md:px-2.5"
+          >
+            <Link href="/content">
+              <FileTextIcon className="sm:hidden" aria-hidden="true" />
+              <span className="sr-only sm:not-sr-only">作品资料</span>
+            </Link>
           </Button>
-          <Button asChild variant="ghost" size="navigation">
-            <Link href="/sources">来源状态</Link>
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="sm:h-11 sm:w-auto sm:px-3 md:h-8 md:px-2.5"
+          >
+            <Link href="/sources">
+              <RadioIcon className="sm:hidden" aria-hidden="true" />
+              <span className="sr-only sm:not-sr-only">来源状态</span>
+            </Link>
+          </Button>
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="sm:h-11 sm:w-auto sm:px-3 md:h-8 md:px-2.5"
+          >
+            <Link href="/jobs">
+              <ListChecksIcon className="sm:hidden" aria-hidden="true" />
+              <span className="sr-only sm:not-sr-only">任务记录</span>
+            </Link>
           </Button>
           <span className="text-muted-foreground hidden text-sm sm:inline">
             {state.workspace.owner.username}

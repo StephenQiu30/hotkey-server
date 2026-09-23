@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -132,6 +133,88 @@ def test_submitted_job_is_persisted_and_readable_after_refresh(
     }
     assert "owner_id" not in refreshed.json()
     assert "scope" not in refreshed.json()
+
+
+def test_job_history_uses_owner_scoped_stable_cursor_and_safe_summary(
+    collection_job_client: TestClient,
+) -> None:
+    _initialize(collection_job_client)
+    job_ids: list[str] = []
+    for window in (1, 2, 3):
+        accepted = collection_job_client.post(
+            "/api/jobs",
+            headers=_csrf_headers(collection_job_client),
+            json=_payload(window=window),
+        )
+        assert accepted.status_code == 202, accepted.json()
+        job_ids.append(accepted.json()["job_id"])
+
+    created_at = datetime(2026, 9, 23, 8, tzinfo=UTC)
+    factory = collection_job_client.app.state.session_factory
+    with factory() as session, session.begin():
+        for job_id in job_ids:
+            session.execute(
+                text(
+                    "UPDATE jobs SET created_at = :created_at, updated_at = :created_at "
+                    "WHERE id = :job_id"
+                ),
+                {"created_at": created_at, "job_id": job_id},
+            )
+
+    history = collection_job_client.get("/api/jobs", params={"limit": 2})
+
+    assert history.status_code == 200, history.json()
+    assert history.headers["cache-control"] == "no-store"
+    expected = sorted(
+        (collection_job_client.get(f"/api/jobs/{job_id}").json() for job_id in job_ids),
+        key=lambda job: (job["created_at"], job["id"]),
+        reverse=True,
+    )
+    first_page = history.json()
+    assert [item["id"] for item in first_page["items"]] == [item["id"] for item in expected[:2]]
+    assert first_page["next_cursor"] == expected[1]["id"]
+    assert set(first_page["items"][0]) == {
+        "id",
+        "kind",
+        "source_key",
+        "source_capability",
+        "status",
+        "requests_sent",
+        "items_saved",
+        "created_at",
+        "started_at",
+        "completed_at",
+        "next_run_at",
+    }
+    assert "owner_id" not in first_page["items"][0]
+    assert "scope" not in first_page["items"][0]
+    assert "request_fingerprint" not in first_page["items"][0]
+
+    next_page = collection_job_client.get(
+        "/api/jobs",
+        params={"cursor": first_page["next_cursor"], "limit": 2},
+    )
+    assert next_page.status_code == 200, next_page.json()
+    assert [item["id"] for item in next_page.json()["items"]] == [
+        item["id"] for item in expected[2:]
+    ]
+    assert next_page.json()["next_cursor"] is None
+    assert collection_job_client.get("/api/jobs", params={"limit": 0}).status_code == 422
+    assert (
+        collection_job_client.get(
+            "/api/jobs",
+            params={"cursor": str(uuid4())},
+        ).status_code
+        == 404
+    )
+
+
+def test_job_history_requires_an_authenticated_owner(
+    collection_job_client: TestClient,
+) -> None:
+    response = collection_job_client.get("/api/jobs")
+
+    assert response.status_code == 401
 
 
 def test_webpage_submission_derives_connection_context_without_leaking_url_to_outbox(

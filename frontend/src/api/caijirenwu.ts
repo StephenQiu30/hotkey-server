@@ -2,6 +2,23 @@
 /* eslint-disable */
 import request from "@/request";
 
+/** 列出采集任务 按当前会话 owner 稳定分页读取任务摘要; 不暴露 scope、租约、操作标识或内部消息。 GET /api/jobs */
+export async function listCollectionJobs(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: HotKeyAPI.listCollectionJobsParams,
+  options?: import("@/request").RequestOptions,
+) {
+  return request<HotKeyAPI.PageViewJobHistoryItemView_>("/api/jobs", {
+    method: "GET",
+    params: {
+      // limit has a default value: 20
+      limit: "20",
+      ...params,
+    },
+    ...(options || {}),
+  });
+}
+
 /** 提交采集任务 任务与 Outbox 持久提交后才返回受理, 相同操作标识复用原任务。 POST /api/jobs */
 export async function createCollectionJob(
   body: HotKeyAPI.CollectionJobInput | HotKeyAPI.WebPageCollectionJobInput,
