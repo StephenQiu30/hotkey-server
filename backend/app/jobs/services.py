@@ -128,8 +128,9 @@ class CoverageWindowService:
         *,
         lease: ExecutionLease,
         window: CoverageWindowInput,
+        allow_cancel: bool = False,
     ) -> CoverageWindowView:
-        job = self._require_job(lease=lease, window=window)
+        job = self._require_job(lease=lease, window=window, allow_cancel=allow_cancel)
         now = self._clock()
         self._session.execute(
             insert(CoverageWindow)
@@ -261,6 +262,27 @@ class CoverageWindowService:
         )
         return updated, view, progress
 
+    def mark_partial_without_page_in_transaction(
+        self,
+        *,
+        lease: ExecutionLease,
+        window: CoverageWindowInput,
+        stop_reason: SourceStopReason,
+        allow_cancel: bool = False,
+    ) -> CoverageWindowView:
+        """Record a local stop without inventing a source page or moving the cursor."""
+        job = self._require_job(lease=lease, window=window, allow_cancel=allow_cancel)
+        opened = self.begin_in_transaction(lease=lease, window=window, allow_cancel=allow_cancel)
+        if opened.status == "confirmed":
+            raise CoverageWindowConflictError("confirmed window cannot be stopped")
+        model = self._lock_window(window)
+        if model.last_job_id != job.id or model.checkpoint_sequence != job.checkpoint_sequence:
+            raise CoverageWindowConflictError("local stop does not match the job checkpoint")
+        model.status = "partial"
+        model.stop_reason = stop_reason.value
+        model.updated_at = self._clock()
+        return self._view(model)
+
     def confirmed_through(self, *, window: CoverageWindowInput, from_at: datetime) -> datetime:
         if from_at.utcoffset() != timedelta(0):
             raise ValueError("watermark origin must be UTC")
@@ -284,8 +306,13 @@ class CoverageWindowService:
             cursor = max(cursor, row.ends_at)
         return cursor
 
-    def _require_job(self, *, lease: ExecutionLease, window: CoverageWindowInput) -> Job:
-        self._execution.require_current_lease_in_transaction(lease)
+    def _require_job(
+        self, *, lease: ExecutionLease, window: CoverageWindowInput, allow_cancel: bool = False
+    ) -> Job:
+        if allow_cancel:
+            self._execution.require_current_lease_allowing_cancel_in_transaction(lease)
+        else:
+            self._execution.require_current_lease_in_transaction(lease)
         job = self._session.get(Job, lease.job_id)
         if job is None or job.owner_id != window.owner_id:
             raise CoverageWindowConflictError("coverage window owner does not match the job")
@@ -410,6 +437,7 @@ class JobExecutionConfiguration:
     owner_id: UUID
     operation_id: UUID
     kind: str
+    started_at: datetime | None
     observation: JobObservationContext
     scope: dict[str, OutboxValue]
 
@@ -448,6 +476,7 @@ def _job_execution_configuration(job: Job) -> JobExecutionConfiguration:
         owner_id=job.owner_id,
         operation_id=job.operation_id,
         kind=job.kind,
+        started_at=job.started_at,
         observation=JobObservationContext(
             configuration_ref=job.configuration_ref,
             configuration_version=job.configuration_version,

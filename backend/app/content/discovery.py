@@ -75,11 +75,14 @@ class KeywordRequestMeter:
         connection_version: int,
         component_key: str,
         max_requests: int,
+        deadline_at: datetime,
         lease_seconds: int,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if not 1 <= max_requests <= 100:
             raise ValueError("search request budget must be between 1 and 100")
+        if deadline_at.utcoffset() is None:
+            raise ValueError("search deadline must be timezone-aware")
         self._session = session
         self._owner_id = owner_id
         self._lease = lease
@@ -89,6 +92,7 @@ class KeywordRequestMeter:
         self._connection_version = connection_version
         self._component_key = component_key
         self._max_requests = max_requests
+        self._deadline_at = deadline_at
         self._lease_seconds = lease_seconds
         self._clock = clock or (lambda: datetime.now(UTC))
         self._started = 0
@@ -98,7 +102,7 @@ class KeywordRequestMeter:
         """Return false only for a fenced cancellation or bounded budget refusal."""
         if attempt != self._started + 1:
             raise ValueError("source request attempt is out of sequence")
-        if self._started >= self._max_requests:
+        if self._started >= self._max_requests or self._clock() >= self._deadline_at:
             return False
         execution = JobExecutionService(
             self._session, lease_seconds=self._lease_seconds, clock=self._clock
@@ -286,6 +290,7 @@ def plan_keyword_discovery(run: KeywordDiscoveryRunInput) -> tuple[JobAcceptance
                         "page_size": run.page_size,
                         "max_pages": max_pages,
                         "max_requests": max_requests,
+                        "max_seconds": run.max_seconds,
                         "scan_kind": CollectionScanKind.NEW_SCAN.value,
                     },
                 )

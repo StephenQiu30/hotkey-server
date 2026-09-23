@@ -307,6 +307,15 @@ class JobExecutionService:
             raise JobLeaseUnavailableError("job cancellation has been requested")
         return self._lease(model)
 
+    def require_current_lease_allowing_cancel_in_transaction(
+        self, lease: ExecutionLease
+    ) -> ExecutionLease:
+        """Lock and verify a live lease when recording a cancellation gap."""
+        now = self._clock()
+        model = self._lock_job(lease.job_id)
+        self._require_current_lease(model, lease, now)
+        return self._lease(model)
+
     def require_current_operation_in_transaction(
         self,
         lease: ExecutionLease,

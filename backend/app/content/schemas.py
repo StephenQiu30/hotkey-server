@@ -39,6 +39,7 @@ class KeywordDiscoveryRunInput(InputModel):
     latest_max_requests: int = Field(ge=1, le=100)
     top_max_pages: int = Field(ge=1, le=20)
     top_max_requests: int = Field(ge=1, le=100)
+    max_seconds: int = Field(ge=1, le=90)
 
     @model_validator(mode="after")
     def validate_search_snapshot(self) -> Self:

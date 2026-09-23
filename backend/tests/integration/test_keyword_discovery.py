@@ -21,7 +21,12 @@ from content.models import ContentDiscovery, ContentRecord
 from content.schemas import KeywordDiscoveryRunInput
 from core.errors import ApplicationError
 from jobs.cursor import plan_cursor_request
-from jobs.execution import CheckpointConflictError, JobExecutionService
+from jobs.execution import (
+    CheckpointConflictError,
+    JobExecutionFailure,
+    JobExecutionService,
+    MessageReference,
+)
 from jobs.models import CoverageWindow, Job, OutboxMessage
 from jobs.schemas import (
     BudgetMetric,
@@ -31,6 +36,8 @@ from jobs.schemas import (
     CostClass,
     CoverageWindowInput,
     JobAcceptedMessage,
+    JobFailureCategory,
+    JobRetryScheduledMessage,
     JobStatus,
 )
 from jobs.services import JobService, ResourceBudgetService
@@ -67,6 +74,7 @@ def test_query_plan_persists_independent_jobs_without_leaking_query_to_outbox() 
         latest_max_requests=6,
         top_max_pages=2,
         top_max_requests=4,
+        max_seconds=30,
     )
     commands = plan_keyword_discovery(run)
     try:
@@ -209,6 +217,7 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
         latest_max_requests=6,
         top_max_pages=1,
         top_max_requests=4,
+        max_seconds=30,
     )
     commands = plan_keyword_discovery(run)
     target_hash = hashlib.sha256(f"{run.configuration_ref}\0{run.primary_query}".encode()).digest()
@@ -380,6 +389,7 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                 connection_version=1,
                 component_key="collector.controlled",
                 max_requests=3,
+                deadline_at=now + timedelta(seconds=30),
                 lease_seconds=60,
                 clock=lambda: now,
             )
@@ -458,6 +468,7 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                 connection_version=1,
                 component_key="collector.controlled",
                 max_requests=2,
+                deadline_at=now + timedelta(seconds=30),
                 lease_seconds=60,
                 clock=lambda: now,
             )
@@ -499,7 +510,9 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
             sessionmaker(bind=engine),
             lease_seconds=60,
             component_key="collector.controlled",
-            adapter_factory=lambda before, _cancelled, _limit: ControlledLatestAdapter(before),
+            adapter_factory=lambda before, _cancelled, _limit, _seconds: ControlledLatestAdapter(
+                before
+            ),
             clock=lambda: now,
         ).execute(_accepted_message(engine, latest_id), first.lease)
         assert latest_renewed.checkpoint_sequence == 3
@@ -563,6 +576,7 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                 connection_version=1,
                 component_key="collector.controlled",
                 max_requests=4,
+                deadline_at=now + timedelta(seconds=30),
                 lease_seconds=60,
                 clock=lambda: now,
             ).before_request(1)
@@ -591,14 +605,18 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                 assert self._before_request(1)
                 raise RuntimeError("controlled transport failure")
 
-        with pytest.raises(RuntimeError, match="controlled transport failure"):
+        with pytest.raises(JobExecutionFailure) as transport_error:
             KeywordDiscoveryExecutor(
                 sessionmaker(bind=engine),
                 lease_seconds=60,
                 component_key="collector.controlled",
-                adapter_factory=lambda before, _cancelled, _limit: CrashingSearchAdapter(before),
+                adapter_factory=lambda before, _cancelled, _limit, _seconds: CrashingSearchAdapter(
+                    before
+                ),
                 clock=lambda: now,
             ).execute(_accepted_message(engine, top_id), top_lease)
+        assert transport_error.value.error_code == "search_source_failed"
+        assert transport_error.value.category is JobFailureCategory.TRANSIENT
         with engine.connect() as connection:
             assert (
                 connection.execute(
@@ -630,7 +648,9 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
             sessionmaker(bind=engine),
             lease_seconds=60,
             component_key="collector.controlled",
-            adapter_factory=lambda before, _cancelled, _limit: ControlledSearchAdapter(before),
+            adapter_factory=lambda before, _cancelled, _limit, _seconds: ControlledSearchAdapter(
+                before
+            ),
             clock=lambda: now,
         ).execute(_accepted_message(engine, top_id), top_lease)
         assert top_renewed.checkpoint_sequence == 1
@@ -664,6 +684,402 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                 "partial",
                 "budget_exhausted",
             )
+
+        with Session(engine) as session:
+            ResourceBudgetService(session, clock=lambda: now).save_budget_policy(
+                owner_id=owner_id,
+                command=budget_policy.model_copy(update={"limit_units": 8}),
+            )
+            auth_run = run.model_copy(update={"run_id": uuid4(), "primary_query": "auth challenge"})
+            auth_job = JobService(session, clock=lambda: now).accept(
+                owner_id=owner_id, command=plan_keyword_discovery(auth_run)[0]
+            )
+            auth_lease = JobExecutionService(session, lease_seconds=60, clock=lambda: now).acquire(
+                job_id=auth_job.id, worker_id="controlled-auth"
+            )
+
+        class ControlledStoppedAdapter:
+            source_key = "x"
+            capabilities = frozenset({SourceCapability.SEARCH})
+
+            def __init__(
+                self,
+                before_request: Callable[[int], bool],
+                reason: SourceStopReason,
+                retry_at: datetime | None = None,
+            ) -> None:
+                self._before_request = before_request
+                self._reason = reason
+                self._retry_at = retry_at
+
+            def fetch_page(self, _request: SearchRequest) -> SourcePage:
+                assert self._before_request(1)
+                return SourcePage(
+                    source_key="x",
+                    capability=SourceCapability.SEARCH,
+                    state=SourcePageState.STOPPED,
+                    items=(),
+                    next_page_token=None,
+                    watermark=None,
+                    stop_reason=self._reason,
+                    observed_at=now,
+                    request_count=1,
+                    adapter_version="controlled-1",
+                    retry_at=self._retry_at,
+                )
+
+        with pytest.raises(JobExecutionFailure) as auth_error:
+            KeywordDiscoveryExecutor(
+                sessionmaker(bind=engine),
+                lease_seconds=60,
+                component_key="collector.controlled",
+                adapter_factory=lambda before, _cancelled, _limit, _seconds: (
+                    ControlledStoppedAdapter(before, SourceStopReason.AUTHENTICATION_REQUIRED)
+                ),
+                clock=lambda: now,
+            ).execute(_accepted_message(engine, auth_job.id), auth_lease)
+        assert auth_error.value.error_code == "source_authentication_required"
+        assert auth_error.value.category is JobFailureCategory.AUTHENTICATION_REQUIRED
+        with Session(engine) as session:
+            auth_coverage = session.scalar(
+                select(CoverageWindow).where(
+                    CoverageWindow.owner_id == owner_id,
+                    CoverageWindow.target_hash
+                    == hashlib.sha256(f"{run.configuration_ref}\0auth challenge".encode()).digest(),
+                )
+            )
+            assert auth_coverage is not None
+            assert (auth_coverage.status, auth_coverage.stop_reason, auth_coverage.page_count) == (
+                "partial",
+                "authentication_required",
+                1,
+            )
+            assert session.get(Job, auth_job.id).requests_sent == 1
+
+        with Session(engine) as session:
+            rate_run = run.model_copy(
+                update={"run_id": uuid4(), "primary_query": "rate challenge", "max_seconds": 90}
+            )
+            rate_job = JobService(session, clock=lambda: now).accept(
+                owner_id=owner_id, command=plan_keyword_discovery(rate_run)[0]
+            )
+            rate_lease = JobExecutionService(session, lease_seconds=60, clock=lambda: now).acquire(
+                job_id=rate_job.id, worker_id="controlled-rate"
+            )
+        with pytest.raises(JobExecutionFailure) as rate_error:
+            KeywordDiscoveryExecutor(
+                sessionmaker(bind=engine),
+                lease_seconds=60,
+                component_key="collector.controlled",
+                adapter_factory=lambda before, _cancelled, _limit, _seconds: (
+                    ControlledStoppedAdapter(
+                        before, SourceStopReason.RATE_LIMITED, now + timedelta(seconds=60)
+                    )
+                ),
+                clock=lambda: now,
+            ).execute(_accepted_message(engine, rate_job.id), rate_lease)
+        assert rate_error.value.error_code == "source_rate_limited"
+        assert rate_error.value.category is JobFailureCategory.RATE_LIMITED
+        assert rate_error.value.retry_at == now + timedelta(seconds=60)
+        assert rate_error.value.max_attempts == 3
+        with Session(engine) as session:
+            JobExecutionService(session, lease_seconds=60, clock=lambda: now).record_failure(
+                rate_lease,
+                message=MessageReference(
+                    message_id=_accepted_message(engine, rate_job.id).message_id,
+                    topic="hotkey.jobs.accepted.v2",
+                    partition=0,
+                    offset=37,
+                ),
+                failure=rate_error.value,
+            )
+            rate_state = session.get(Job, rate_job.id)
+            assert rate_state is not None and rate_state.status == "queued"
+            retry_outbox = session.scalar(
+                select(OutboxMessage).where(
+                    OutboxMessage.aggregate_id == rate_job.id,
+                    OutboxMessage.dispatch_sequence == 2,
+                )
+            )
+            assert retry_outbox is not None
+            retry_message = JobRetryScheduledMessage.model_validate(
+                {
+                    "schema_version": 1,
+                    "message_id": retry_outbox.id,
+                    "event_type": retry_outbox.event_type,
+                    **retry_outbox.payload,
+                }
+            )
+            retry_lease = JobExecutionService(
+                session, lease_seconds=60, clock=lambda: now + timedelta(seconds=60)
+            ).acquire(job_id=rate_job.id, worker_id="controlled-rate-retry")
+
+        class RateRecoveredAdapter:
+            source_key = "x"
+            capabilities = frozenset({SourceCapability.SEARCH})
+
+            def __init__(self, before_request: Callable[[int], bool]) -> None:
+                self._before_request = before_request
+
+            def fetch_page(self, request: SearchRequest) -> SourcePage:
+                assert request.page_token is None
+                assert self._before_request(1)
+                return _page(
+                    now + timedelta(seconds=60),
+                    SourcePageState.COMPLETE,
+                    (_post("rate-recovered", start + timedelta(minutes=5)),),
+                )
+
+        resumed_lease, resumed_completion = KeywordDiscoveryExecutor(
+            sessionmaker(bind=engine),
+            lease_seconds=60,
+            component_key="collector.controlled",
+            adapter_factory=lambda before, _cancelled, _limit, remaining: (
+                RateRecoveredAdapter(before)
+                if 0 < remaining <= 30
+                else pytest.fail("retry must receive only its remaining time budget")
+            ),
+            clock=lambda: now + timedelta(seconds=60),
+        ).execute(retry_message, retry_lease)
+        assert resumed_lease.checkpoint_sequence == 2
+        assert resumed_completion.status is JobStatus.PARTIALLY_SUCCEEDED
+        with Session(engine) as session:
+            rate_state = session.get(Job, rate_job.id)
+            assert rate_state is not None
+            assert (rate_state.requests_sent, rate_state.items_saved) == (2, 1)
+
+        with Session(engine) as session:
+            deadline_run = run.model_copy(
+                update={
+                    "run_id": uuid4(),
+                    "primary_query": "deadline query",
+                    "max_seconds": 1,
+                }
+            )
+            deadline_job = JobService(session, clock=lambda: now).accept(
+                owner_id=owner_id, command=plan_keyword_discovery(deadline_run)[0]
+            )
+            deadline_lease = JobExecutionService(
+                session, lease_seconds=60, clock=lambda: now
+            ).acquire(job_id=deadline_job.id, worker_id="controlled-deadline")
+        expired_lease, expired = KeywordDiscoveryExecutor(
+            sessionmaker(bind=engine),
+            lease_seconds=60,
+            component_key="collector.controlled",
+            adapter_factory=lambda _before, _cancelled, _limit, _seconds: pytest.fail(
+                "expired search must not construct a source adapter"
+            ),
+            clock=lambda: now + timedelta(seconds=2),
+        ).execute(_accepted_message(engine, deadline_job.id), deadline_lease)
+        assert expired_lease.checkpoint_sequence == 0
+        assert expired.status is JobStatus.PARTIALLY_SUCCEEDED
+        assert expired.failure is not None
+        assert expired.failure.error_code == "search_time_budget_exhausted"
+        with Session(engine) as session:
+            deadline_coverage = session.scalar(
+                select(CoverageWindow).where(
+                    CoverageWindow.owner_id == owner_id,
+                    CoverageWindow.target_hash
+                    == hashlib.sha256(f"{run.configuration_ref}\0deadline query".encode()).digest(),
+                )
+            )
+            assert deadline_coverage is not None
+            assert (
+                deadline_coverage.status,
+                deadline_coverage.stop_reason,
+                deadline_coverage.page_count,
+            ) == ("partial", "budget_exhausted", 0)
+            assert session.get(Job, deadline_job.id).requests_sent == 0
+
+        late_at = now + timedelta(seconds=61)
+        with Session(engine) as session:
+            late_run = run.model_copy(
+                update={
+                    "run_id": uuid4(),
+                    "primary_query": "late rate challenge",
+                    "latest_max_pages": 1,
+                }
+            )
+            late_job = JobService(session, clock=lambda: late_at).accept(
+                owner_id=owner_id, command=plan_keyword_discovery(late_run)[0]
+            )
+            late_lease = JobExecutionService(
+                session, lease_seconds=60, clock=lambda: late_at
+            ).acquire(job_id=late_job.id, worker_id="controlled-late-rate")
+        with pytest.raises(JobExecutionFailure) as late_error:
+            KeywordDiscoveryExecutor(
+                sessionmaker(bind=engine),
+                lease_seconds=60,
+                component_key="collector.controlled",
+                adapter_factory=lambda before, _cancelled, _limit, _seconds: (
+                    ControlledStoppedAdapter(
+                        before, SourceStopReason.RATE_LIMITED, late_at + timedelta(seconds=60)
+                    )
+                ),
+                clock=lambda: late_at,
+            ).execute(_accepted_message(engine, late_job.id), late_lease)
+        assert late_error.value.category is JobFailureCategory.RATE_LIMITED
+        assert late_error.value.retry_at is None
+        assert late_error.value.max_attempts is None
+        assert late_error.value.manual_retry_allowed is False
+
+        with Session(engine) as session:
+            cancel_run = run.model_copy(
+                update={"run_id": uuid4(), "primary_query": "cancel challenge"}
+            )
+            cancel_job = JobService(session, clock=lambda: late_at).accept(
+                owner_id=owner_id, command=plan_keyword_discovery(cancel_run)[0]
+            )
+            cancel_lease = JobExecutionService(
+                session, lease_seconds=60, clock=lambda: late_at
+            ).acquire(job_id=cancel_job.id, worker_id="controlled-cancel")
+
+        class CancelledSearchAdapter:
+            source_key = "x"
+            capabilities = frozenset({SourceCapability.SEARCH})
+
+            def __init__(self, before_request: Callable[[int], bool]) -> None:
+                self._before_request = before_request
+
+            def fetch_page(self, _request: SearchRequest) -> SourcePage:
+                assert self._before_request(1)
+                with Session(engine) as cancel_session:
+                    JobService(cancel_session, clock=lambda: late_at).request_cancel(
+                        owner_id=owner_id, job_id=cancel_job.id
+                    )
+                return _page(
+                    late_at,
+                    SourcePageState.MORE,
+                    (_post("cancelled", start + timedelta(minutes=6)),),
+                    "cancel-cursor",
+                )
+
+        cancel_message = _accepted_message(engine, cancel_job.id)
+        cancelled_lease, cancelled_completion = KeywordDiscoveryExecutor(
+            sessionmaker(bind=engine),
+            lease_seconds=60,
+            component_key="collector.controlled",
+            adapter_factory=lambda before, _cancelled, _limit, _seconds: CancelledSearchAdapter(
+                before
+            ),
+            clock=lambda: late_at,
+        ).execute(cancel_message, cancel_lease)
+        with Session(engine) as session:
+            JobExecutionService(session, lease_seconds=60, clock=lambda: late_at).complete(
+                cancelled_lease,
+                message=MessageReference(
+                    message_id=cancel_message.message_id,
+                    topic="hotkey.jobs.accepted.v2",
+                    partition=0,
+                    offset=38,
+                ),
+                completion=cancelled_completion,
+            )
+            cancel_state = session.get(Job, cancel_job.id)
+            assert cancel_state is not None
+            assert (cancel_state.status, cancel_state.requests_sent, cancel_state.items_saved) == (
+                "cancelled",
+                1,
+                0,
+            )
+            assert (
+                session.scalar(
+                    select(ContentDiscovery).where(ContentDiscovery.job_id == cancel_job.id)
+                )
+                is None
+            )
+            assert (
+                session.execute(
+                    text(
+                        "SELECT outcome FROM resource_usage_attempts "
+                        "WHERE owner_id = :owner_id AND operation_id = :operation_id"
+                    ),
+                    {
+                        "owner_id": owner_id,
+                        "operation_id": plan_keyword_discovery(cancel_run)[0].operation_id,
+                    },
+                ).scalar_one()
+                == "failed"
+            )
+            cancel_coverage = session.scalar(
+                select(CoverageWindow).where(
+                    CoverageWindow.owner_id == owner_id,
+                    CoverageWindow.target_hash
+                    == hashlib.sha256(
+                        f"{run.configuration_ref}\0cancel challenge".encode()
+                    ).digest(),
+                )
+            )
+            assert cancel_coverage is not None
+            assert (
+                cancel_coverage.status,
+                cancel_coverage.stop_reason,
+                cancel_coverage.page_count,
+            ) == ("partial", "cancelled", 0)
+
+        progress_clock = [late_at]
+        with Session(engine) as session:
+            progress_run = run.model_copy(
+                update={
+                    "run_id": uuid4(),
+                    "primary_query": "mid-run deadline",
+                    "max_seconds": 1,
+                }
+            )
+            progress_job = JobService(session, clock=lambda: progress_clock[0]).accept(
+                owner_id=owner_id, command=plan_keyword_discovery(progress_run)[0]
+            )
+            progress_lease = JobExecutionService(
+                session, lease_seconds=60, clock=lambda: progress_clock[0]
+            ).acquire(job_id=progress_job.id, worker_id="controlled-mid-deadline")
+
+        class ExpiringSearchAdapter:
+            source_key = "x"
+            capabilities = frozenset({SourceCapability.SEARCH})
+
+            def __init__(self, before_request: Callable[[int], bool]) -> None:
+                self._before_request = before_request
+
+            def fetch_page(self, _request: SearchRequest) -> SourcePage:
+                assert self._before_request(1)
+                progress_clock[0] = late_at + timedelta(seconds=2)
+                return _page(
+                    late_at,
+                    SourcePageState.MORE,
+                    (_post("mid-deadline", start + timedelta(minutes=7)),),
+                    "next-private-cursor",
+                )
+
+        progress_renewed, progress_completion = KeywordDiscoveryExecutor(
+            sessionmaker(bind=engine),
+            lease_seconds=60,
+            component_key="collector.controlled",
+            adapter_factory=lambda before, _cancelled, _limit, _seconds: ExpiringSearchAdapter(
+                before
+            ),
+            clock=lambda: progress_clock[0],
+        ).execute(_accepted_message(engine, progress_job.id), progress_lease)
+        assert progress_renewed.checkpoint_sequence == 1
+        assert progress_completion.status is JobStatus.PARTIALLY_SUCCEEDED
+        assert progress_completion.failure is not None
+        assert progress_completion.failure.error_code == "search_time_budget_exhausted"
+        with Session(engine) as session:
+            progress_coverage = session.scalar(
+                select(CoverageWindow).where(
+                    CoverageWindow.owner_id == owner_id,
+                    CoverageWindow.target_hash
+                    == hashlib.sha256(
+                        f"{run.configuration_ref}\0mid-run deadline".encode()
+                    ).digest(),
+                )
+            )
+            assert progress_coverage is not None
+            assert (
+                progress_coverage.status,
+                progress_coverage.stop_reason,
+                progress_coverage.page_count,
+            ) == ("partial", "budget_exhausted", 1)
+            assert session.get(Job, progress_job.id).items_saved == 1
     finally:
         with engine.begin() as connection:
             connection.execute(text("SET CONSTRAINTS ALL DEFERRED"))

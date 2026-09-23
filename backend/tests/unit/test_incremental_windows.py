@@ -159,3 +159,39 @@ def test_cursor_page_budget_stops_before_an_unknown_tail() -> None:
         stop_reason=SourceStopReason.END_OF_RESULTS,
     )
     assert terminal.stop_reason is None
+
+
+def test_rate_limited_search_can_only_rescan_within_remaining_page_budget() -> None:
+    from jobs.cursor import CursorBudgetExhaustedError, advance_cursor_page, plan_cursor_request
+    from sources.contracts import SourcePageState, SourceStopReason
+
+    window = CoverageWindowInput.model_validate(_window())
+    first = plan_cursor_request(
+        window=window, checkpoint={}, live_token=None, max_pages=3, max_rescans=1
+    )
+    limited = advance_cursor_page(
+        first,
+        state=SourcePageState.STOPPED,
+        stop_reason=SourceStopReason.RATE_LIMITED,
+    )
+    retry = plan_cursor_request(
+        window=window,
+        checkpoint=limited.checkpoint,
+        live_token=None,
+        max_pages=3,
+        max_rescans=1,
+    )
+    assert retry.restarted and retry.pages == 1 and retry.rescans == 1
+    limited_again = advance_cursor_page(
+        retry,
+        state=SourcePageState.STOPPED,
+        stop_reason=SourceStopReason.RATE_LIMITED,
+    )
+    with pytest.raises(CursorBudgetExhaustedError):
+        plan_cursor_request(
+            window=window,
+            checkpoint=limited_again.checkpoint,
+            live_token=None,
+            max_pages=3,
+            max_rescans=1,
+        )

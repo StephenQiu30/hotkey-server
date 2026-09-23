@@ -25,6 +25,7 @@ def _run(**changes: object) -> KeywordDiscoveryRunInput:
         "latest_max_requests": 6,
         "top_max_pages": 2,
         "top_max_requests": 4,
+        "max_seconds": 30,
     }
     values.update(changes)
     return KeywordDiscoveryRunInput.model_validate(values)
@@ -46,6 +47,7 @@ def test_plan_freezes_only_explicit_upstream_queries_with_independent_channels()
         6
     }
     assert {job.scope["max_requests"] for job in planned if job.scope["sort_key"] == "top"} == {4}
+    assert {job.scope["max_seconds"] for job in planned} == {30}
     assert all(job.kind == "keyword.search" for job in planned)
     assert all(job.observation.configuration_version == 3 for job in planned)
     assert {job.scope["query"] for job in plan_keyword_discovery(_run(upstream_aliases=()))} == {
@@ -70,6 +72,8 @@ def test_same_query_under_different_topics_has_distinct_coverage_target() -> Non
         {"top_max_pages": 0},
         {"latest_max_requests": 0},
         {"top_max_requests": 101},
+        {"max_seconds": 0},
+        {"max_seconds": 91},
         {"page_size": 101},
         {"primary_query": " bad"},
         {"upstream_aliases": ("product fault",)},

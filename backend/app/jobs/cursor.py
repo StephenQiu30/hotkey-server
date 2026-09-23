@@ -170,7 +170,12 @@ def advance_cursor_page(
         raise ValueError("terminal page has invalid cursor or stop reason")
     if state in {SourcePageState.COMPLETE, SourcePageState.EMPTY}:
         stop_reason = None
-    restart = stop_reason in {SourceStopReason.CURSOR_EXPIRED, SourceStopReason.CURSOR_LOOP}
+    restart = stop_reason in {
+        SourceStopReason.CURSOR_EXPIRED,
+        SourceStopReason.CURSOR_LOOP,
+        SourceStopReason.RATE_LIMITED,
+        SourceStopReason.UPSTREAM_ERROR,
+    }
     checkpoint: dict[str, CheckpointValue] = {
         "cursor.window": request.window_digest,
         "cursor.pages": pages,
