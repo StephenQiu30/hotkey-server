@@ -26,7 +26,7 @@
 
 ### 逐项需求交付台账
 
-003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 与执行计划；003/004/007/009/027/028/029/031/032/034/035/036/037/038/039/042 为 in_progress 且已有 accepted Design，其余为 planned；尚未建立对应 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
+003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 与执行计划；003/004/007/009/010/027/028/029/031/032/034/035/036/037/038/039/042 为 in_progress 且已有 accepted Design，其余为 planned；尚未建立对应 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
 
 | 编号 | PRD 主题 | 来源需求 | 优先级 | PRD 状态 | Plan |
 |---|---|---|---|---|---|
@@ -37,7 +37,7 @@
 | 007 | [作品资料与上下文](prd/007-作品资料与上下文.md) | FR-001-005 | P0 | accepted | [设计](design/007-作品资料与上下文设计.md) · accepted（S00—S03）；[计划](plans/007-作品资料与上下文计划.md) · in_progress（S00—S02，0/6 AC） |
 | 008 | [评论与回复采集](prd/008-评论与回复采集.md) | FR-001-006 | P0 | draft | [设计](design/008-评论与回复采集设计.md) · proposed；[计划](plans/008-评论与回复采集计划.md) · planned，0/6 AC |
 | 009 | [采集任务控制](prd/009-采集任务控制.md) | FR-001-007 | P0 | draft | [设计](design/009-采集任务控制设计.md) · accepted；[计划](plans/009-采集任务控制计划.md) · in_progress |
-| 010 | [增量更新与历史回补](prd/010-增量更新与历史回补.md) | FR-001-008 | P0 | draft | [设计](design/010-增量更新与历史回补设计.md) · proposed；[计划](plans/010-增量更新与历史回补计划.md) · planned，0/6 AC |
+| 010 | [增量更新与历史回补](prd/010-增量更新与历史回补.md) | FR-001-008 | P0 | draft | [设计](design/010-增量更新与历史回补设计.md) · accepted（内部 S01/S02）；[计划](plans/010-增量更新与历史回补计划.md) · in_progress（S00，0/6 AC） |
 | 011 | [事件识别与归并](prd/011-事件识别与归并.md) | FR-001-009 | P0 | draft | [计划](plans/011-事件识别与归并计划.md) · planned |
 | 012 | [事件详情与发展时间线](prd/012-事件详情与发展时间线.md) | FR-001-010 | P0 | draft | [计划](plans/012-事件详情与发展时间线计划.md) · planned |
 | 013 | [相关性与热度排序](prd/013-相关性与热度排序.md) | FR-001-011 | P0 | draft | [计划](plans/013-相关性与热度排序计划.md) · planned |
