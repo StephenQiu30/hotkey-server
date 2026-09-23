@@ -28,6 +28,7 @@ concurrency:
 jobs:
   compose-runtime:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       HOTKEY_API_PORT: "8867"
       HOTKEY_BOOTSTRAP_TOKEN: runtime-ci-bootstrap-token-is-not-a-default
@@ -71,7 +72,15 @@ jobs:
           curl --fail --silent http://127.0.0.1:8867/api/ready
           curl --fail --silent http://127.0.0.1:3000/health
           curl --fail --silent http://127.0.0.1:3000/api/health
-          docker compose --project-name hotkey-ci run --rm worker | grep no_message_handlers_registered
+          docker compose --project-name hotkey-ci --profile worker up --detach --wait --wait-timeout 30 worker
+          for _ in {1..15}; do
+            if docker compose --project-name hotkey-ci logs --no-color worker 2>&1 | grep --fixed-strings worker_started; then
+              break
+            fi
+            sleep 1
+          done
+          docker compose --project-name hotkey-ci logs --no-color worker 2>&1 | grep --fixed-strings worker_started
+          docker compose --project-name hotkey-ci --profile worker stop worker
           docker compose --project-name hotkey-ci run --rm cli | grep Usage
           test "$(docker compose --project-name hotkey-ci exec -T backend id -u)" = "10001"
           test "$(docker compose --project-name hotkey-ci exec -T frontend id -u)" = "1001"
