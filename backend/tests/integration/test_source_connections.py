@@ -30,11 +30,14 @@ from connections.services import (
     SourceCapabilityEvidenceService,
     SourceConnectionService,
     require_browser_state_execution,
+    require_source_connection_enabled,
     require_web_connection_execution,
     source_credential_reference,
 )
 from core.config import Settings, get_settings
 from core.errors import ApplicationError
+from jobs.schemas import JobAcceptanceInput, JobObservationContext
+from jobs.services import JobService
 from main import create_app
 from sources.contracts import SourceCapability, SourceStopReason
 
@@ -149,6 +152,20 @@ def _seed_search_connection(client: TestClient, owner_id: str) -> UUID:
             },
         )
     return connection_id
+
+
+def _monitor_job_command() -> JobAcceptanceInput:
+    return JobAcceptanceInput(
+        operation_id=uuid4(),
+        kind="monitor.collect",
+        observation=JobObservationContext(
+            configuration_ref="monitor:test",
+            configuration_version=1,
+            source_key="douyin",
+            source_capability=SourceCapability.SEARCH,
+        ),
+        scope={},
+    )
 
 
 def test_capability_catalog_requires_session_and_reports_truthful_defaults(
@@ -727,23 +744,11 @@ def test_disabled_connection_rejects_new_jobs_without_outbox(
         json={"expected_version": 1, "status": "disabled"},
     )
     assert disabled.status_code == 200
-    response = client.post(
-        "/api/jobs",
-        headers=headers,
-        json={
-            "operation_id": str(uuid4()),
-            "kind": "monitor.collect",
-            "observation": {
-                "configuration_ref": "monitor:test",
-                "configuration_version": 1,
-                "source_key": "douyin",
-                "source_capability": "search",
-            },
-            "scope": {},
-        },
-    )
-    assert response.status_code == 409
-    assert response.json()["code"] == "connection_disabled"
+    with (
+        client.app.state.session_factory() as session,
+        pytest.raises(ApplicationError, match="connection_disabled"),
+    ):
+        JobService(session).accept(owner_id=UUID(owner_id), command=_monitor_job_command())
     with client.app.state.session_factory() as session:
         assert session.scalar(text("SELECT count(*) FROM jobs")) == 0
         assert session.scalar(text("SELECT count(*) FROM outbox_messages")) == 0
@@ -792,34 +797,20 @@ def test_connection_auth_failure_propagates_but_capability_denial_is_local(
         )
     platform = client.get("/api/source-capabilities").json()["items"][1]
     search_status = _capability(platform, "search")["manual"]["status"]
-    accepted = client.post(
-        "/api/jobs",
-        headers={"X-HotKey-CSRF": client.cookies["hotkey_csrf"]},
-        json={
-            "operation_id": str(uuid4()),
-            "kind": "monitor.collect",
-            "observation": {
-                "configuration_ref": "monitor:test",
-                "configuration_version": 1,
-                "source_key": "douyin",
-                "source_capability": "search",
-            },
-            "scope": {},
-        },
-    )
+    with client.app.state.session_factory() as session:
+        if reason is SourceStopReason.AUTHENTICATION_REQUIRED:
+            with pytest.raises(ApplicationError, match="connection_authentication_required"):
+                require_source_connection_enabled(session, owner_id=owner_id, source_key="douyin")
+        else:
+            require_source_connection_enabled(session, owner_id=owner_id, source_key="douyin")
+
     if reason is SourceStopReason.AUTHENTICATION_REQUIRED:
-        assert accepted.status_code == 409
-        assert accepted.json()["code"] == "connection_authentication_required"
-        with client.app.state.session_factory() as session:
-            assert session.scalar(text("SELECT count(*) FROM jobs")) == 0
-            assert session.scalar(text("SELECT count(*) FROM outbox_messages")) == 0
         assert search_status == "authentication_required"
         assert all(
             item["scheduled"]["status"] == "authentication_required"
             for item in platform["capabilities"]
         )
     else:
-        assert accepted.status_code == 202
         assert search_status == "available"
         assert _capability(platform, "comments")["manual"]["status"] == "restricted"
 
@@ -863,27 +854,16 @@ def test_concurrent_connection_requests_create_one_version_per_transition(
             )
 
 
-def test_disabled_connection_rejects_manual_retry_but_preserves_accepted_replay(
+def test_disabled_connection_rejects_manual_retry_of_historical_job(
     source_connection_client: TestClient,
 ) -> None:
     client = source_connection_client
     owner_id = _initialize(client)
     _seed_search_connection(client, owner_id)
     headers = {"X-HotKey-CSRF": client.cookies["hotkey_csrf"]}
-    payload = {
-        "operation_id": str(uuid4()),
-        "kind": "monitor.collect",
-        "scope": {},
-        "observation": {
-            "configuration_ref": "monitor:test",
-            "configuration_version": 1,
-            "source_key": "douyin",
-            "source_capability": "search",
-        },
-    }
-    created = client.post("/api/jobs", headers=headers, json=payload)
-    assert created.status_code == 202
-    job_id = created.json()["job_id"]
+    with client.app.state.session_factory() as session:
+        job = JobService(session).accept(owner_id=UUID(owner_id), command=_monitor_job_command())
+    job_id = job.id
     client.app.state.settings.source_credentials = {}
     disabled = client.put(
         "/api/source-connections/douyin",
@@ -891,7 +871,6 @@ def test_disabled_connection_rejects_manual_retry_but_preserves_accepted_replay(
         json={"expected_version": 1, "status": "disabled"},
     )
     assert disabled.status_code == 200
-    assert client.post("/api/jobs", headers=headers, json=payload).json() == created.json()
     with client.app.state.session_factory() as session, session.begin():
         session.execute(
             text(

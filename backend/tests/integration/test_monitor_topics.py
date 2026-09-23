@@ -14,6 +14,7 @@ from jobs.schemas import JobAcceptanceInput
 from jobs.services import JobService
 from main import create_app
 from monitors.services import MonitorTopicService
+from sources.contracts import SourceCapability
 
 _BOOTSTRAP_TOKEN = "monitor-topics-isolated-bootstrap-token"
 _PASSWORD = "correct horse battery staple"
@@ -272,7 +273,7 @@ def test_topic_list_clone_and_archive_keep_independent_history(
                     "configuration_ref": f"topic:{created.json()['id']}",
                     "configuration_version": 1,
                     "source_key": "x",
-                    "source_capability": "search",
+                    "source_capability": SourceCapability.SEARCH,
                 },
                 scope={"query": "brand"},
             ),

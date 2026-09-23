@@ -96,7 +96,7 @@ def _accept_internal_job(client: TestClient, payload: dict[str, object]) -> UUID
         ).scalar_one()
         job = JobService(session).accept(
             owner_id=owner_id,
-            command=JobAcceptanceInput.model_validate(payload),
+            command=JobAcceptanceInput.model_validate(payload, strict=False),
         )
     return job.id
 

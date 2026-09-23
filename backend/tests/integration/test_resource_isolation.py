@@ -12,6 +12,8 @@ from sqlalchemy import create_engine, text
 from api.dependencies import require_identity_session
 from core.config import Settings
 from identity.services import IdentityService
+from jobs.schemas import JobAcceptanceInput, JobObservationContext
+from jobs.services import JobService
 from main import create_app
 
 _BOOTSTRAP_TOKEN = "bootstrap-token-used-only-by-the-isolated-test"
@@ -150,23 +152,28 @@ def test_external_actor_cannot_read_or_mutate_known_resources(
         headers=headers,
         json={"name": "private topic", "match_any": ["private"], "match_all": [], "exclude": []},
     )
-    job = owner_client.post(
-        "/api/jobs",
-        headers=headers,
-        json={
-            "operation_id": str(uuid4()),
-            "kind": "monitor.collect",
-            "scope": {},
-            "observation": {"configuration_ref": "private-config", "configuration_version": 1},
-        },
-    )
-    assert topic.status_code == 201 and job.status_code == 202
-    topic_id, job_id = topic.json()["id"], job.json()["job_id"]
     factory = owner_client.app.state.session_factory
     with factory() as session:
+        owner_id = session.execute(
+            text("SELECT id FROM identity_users WHERE username = 'owner'")
+        ).scalar_one()
+        job = JobService(session).accept(
+            owner_id=owner_id,
+            command=JobAcceptanceInput(
+                operation_id=uuid4(),
+                kind="monitor.collect",
+                observation=JobObservationContext(
+                    configuration_ref="private-config",
+                    configuration_version=1,
+                ),
+                scope={},
+            ),
+        )
         identity = IdentityService(session, owner_client.app.state.settings).authenticate(
             owner_client.cookies["hotkey_session"]
         )
+    assert topic.status_code == 201
+    topic_id, job_id = topic.json()["id"], str(job.id)
     foreign = replace(
         identity,
         view=identity.view.model_copy(
