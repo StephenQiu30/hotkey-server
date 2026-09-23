@@ -264,6 +264,21 @@ declare namespace HotKeyAPI {
     timed_out: boolean;
   };
 
+  type JobContinuousFailureIssueView = {
+    /** Source Key */
+    source_key: string;
+    source_capability: SourceCapability;
+    /** Configuration Ref */
+    configuration_ref: string;
+    /** Configuration Version */
+    configuration_version: number;
+    /** Latest Failed Job Id */
+    latest_failed_job_id: string;
+    failure: JobFailureView;
+    /** Consecutive Failure Threshold */
+    consecutive_failure_threshold: number;
+  };
+
   type JobControlStatus =
     | "queued"
     | "running"

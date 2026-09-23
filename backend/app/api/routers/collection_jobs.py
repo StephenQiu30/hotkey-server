@@ -15,6 +15,7 @@ from core.schemas import ErrorView, JobAcceptedView, PageView
 from jobs.schemas import (
     CollectionJobInput,
     CollectionJobRequest,
+    JobContinuousFailureIssueView,
     JobHistoryItemView,
     JobStatusView,
     WebPageCollectionJobInput,
@@ -92,6 +93,28 @@ def list_collection_jobs(
     )
     response.headers["cache-control"] = "no-store"
     return PageView(items=items, next_cursor=next_cursor)
+
+
+@router.get(
+    "/issues",
+    operation_id="listContinuousFailureIssues",
+    response_model=list[JobContinuousFailureIssueView],
+    status_code=status.HTTP_200_OK,
+    summary="列出连续失败问题",
+    description="按当前会话 owner 返回连续三次失败的来源能力摘要供查看最近失败任务处理动作",
+    responses={
+        401: {"model": ErrorView, "description": "会话无效或已过期"},
+        500: {"model": ErrorView, "description": "服务内部异常"},
+    },
+)
+def list_continuous_failure_issues(
+    response: Response,
+    service: JobServiceDependency,
+    identity: AuthenticatedIdentityDependency,
+) -> list[JobContinuousFailureIssueView]:
+    issues = service.list_continuous_failure_issues(owner_id=identity.view.user.id)
+    response.headers["cache-control"] = "no-store"
+    return list(issues)
 
 
 @router.get(

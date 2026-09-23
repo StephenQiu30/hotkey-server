@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -215,6 +215,75 @@ def test_job_history_requires_an_authenticated_owner(
     response = collection_job_client.get("/api/jobs")
 
     assert response.status_code == 401
+
+
+def test_continuous_failure_issue_endpoint_is_authenticated_and_redacted(
+    collection_job_client: TestClient,
+) -> None:
+    assert collection_job_client.get("/api/jobs/issues").status_code == 401
+    _initialize(collection_job_client)
+
+    job_ids: list[str] = []
+    for window in (1, 2, 3):
+        payload = _payload(window=window)
+        payload["observation"] = {
+            **payload["observation"],
+            "configuration_version": window,
+        }
+        accepted = collection_job_client.post(
+            "/api/jobs",
+            headers=_csrf_headers(collection_job_client),
+            json=payload,
+        )
+        assert accepted.status_code == 202, accepted.json()
+        job_ids.append(accepted.json()["job_id"])
+
+    now = datetime.now(UTC)
+    factory = collection_job_client.app.state.session_factory
+    with factory() as session, session.begin():
+        for index, job_id in enumerate(job_ids, start=1):
+            completed_at = now + timedelta(minutes=index)
+            session.execute(
+                text(
+                    "UPDATE jobs SET status = 'failed', started_at = :started_at, "
+                    "completed_at = :completed_at, updated_at = :completed_at, "
+                    "last_error_code = 'source.timeout', "
+                    "last_error_category = 'transient', last_error_at = :completed_at, "
+                    "next_action = '检查来源连接' WHERE id = :job_id"
+                ),
+                {
+                    "started_at": completed_at - timedelta(seconds=1),
+                    "completed_at": completed_at,
+                    "job_id": job_id,
+                },
+            )
+
+    response = collection_job_client.get("/api/jobs/issues")
+
+    assert response.status_code == 200, response.json()
+    assert response.headers["cache-control"] == "no-store"
+    issues = response.json()
+    assert len(issues) == 1
+    assert set(issues[0]) == {
+        "source_key",
+        "source_capability",
+        "configuration_ref",
+        "configuration_version",
+        "latest_failed_job_id",
+        "failure",
+        "consecutive_failure_threshold",
+    }
+    assert issues[0]["source_key"] == "x"
+    assert issues[0]["source_capability"] == "search"
+    assert issues[0]["configuration_ref"] == "monitor-config-1"
+    assert issues[0]["latest_failed_job_id"] == job_ids[-1]
+    assert issues[0]["configuration_version"] == 3
+    assert issues[0]["consecutive_failure_threshold"] == 3
+    assert issues[0]["failure"]["error_code"] == "source.timeout"
+    assert issues[0]["failure"]["next_action"] == "检查来源连接"
+    assert "scope" not in str(issues)
+    assert "source_id" not in str(issues)
+    assert "owner_id" not in str(issues)
 
 
 def test_webpage_submission_derives_connection_context_without_leaking_url_to_outbox(

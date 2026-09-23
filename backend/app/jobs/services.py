@@ -62,6 +62,7 @@ from jobs.schemas import (
     FreshnessTimelineView,
     JobAcceptanceInput,
     JobCancellationView,
+    JobContinuousFailureIssueView,
     JobControlStatus,
     JobFailureCategory,
     JobFailureView,
@@ -1941,6 +1942,110 @@ class JobService:
             return self._status_view(model, now=now)
         finally:
             self._session.rollback()
+
+    def list_continuous_failure_issues(
+        self,
+        *,
+        owner_id: UUID,
+    ) -> tuple[JobContinuousFailureIssueView, ...]:
+        """Read owner-scoped source failures whose latest three finished jobs failed."""
+        now = self._clock()
+        if now.tzinfo is None:
+            raise ValueError("clock must return a timezone-aware datetime")
+
+        terminal_statuses = (
+            JobStatus.SUCCEEDED.value,
+            JobStatus.PARTIALLY_SUCCEEDED.value,
+            JobStatus.FAILED.value,
+            JobStatus.CANCELLED.value,
+        )
+        ranked_jobs = (
+            select(
+                Job.id.label("id"),
+                Job.owner_id.label("owner_id"),
+                Job.source_key.label("source_key"),
+                Job.source_capability.label("source_capability"),
+                Job.configuration_ref.label("configuration_ref"),
+                Job.status.label("status"),
+                func.row_number()
+                .over(
+                    partition_by=(
+                        Job.owner_id,
+                        Job.source_key,
+                        Job.source_capability,
+                        Job.configuration_ref,
+                    ),
+                    order_by=(Job.completed_at.desc(), Job.id.desc()),
+                )
+                .label("recent_position"),
+            )
+            .where(
+                Job.owner_id == owner_id,
+                Job.source_key.is_not(None),
+                Job.source_capability.is_not(None),
+                Job.completed_at.is_not(None),
+                Job.status.in_(terminal_statuses),
+            )
+            .cte("ranked_source_jobs")
+        )
+        group_keys = (
+            ranked_jobs.c.owner_id,
+            ranked_jobs.c.source_key,
+            ranked_jobs.c.source_capability,
+            ranked_jobs.c.configuration_ref,
+        )
+        failing_groups = (
+            select(*group_keys)
+            .where(ranked_jobs.c.recent_position <= 3)
+            .group_by(*group_keys)
+            .having(
+                func.count() == 3,
+                func.bool_and(ranked_jobs.c.status == JobStatus.FAILED.value),
+            )
+            .cte("continuous_failure_groups")
+        )
+        latest_failures = (
+            select(ranked_jobs.c.id)
+            .join(
+                failing_groups,
+                and_(
+                    ranked_jobs.c.owner_id == failing_groups.c.owner_id,
+                    ranked_jobs.c.source_key == failing_groups.c.source_key,
+                    ranked_jobs.c.source_capability == failing_groups.c.source_capability,
+                    ranked_jobs.c.configuration_ref == failing_groups.c.configuration_ref,
+                ),
+            )
+            .where(ranked_jobs.c.recent_position == 1)
+            .cte("latest_continuous_failures")
+        )
+
+        self._session.rollback()
+        with self._session.begin():
+            models = list(
+                self._session.scalars(
+                    select(Job)
+                    .join(latest_failures, latest_failures.c.id == Job.id)
+                    .where(Job.owner_id == owner_id)
+                    .order_by(Job.last_error_at.desc(), Job.id.desc())
+                )
+            )
+            issues: list[JobContinuousFailureIssueView] = []
+            for model in models:
+                failure = self._status_view(model, now=now).failure
+                if failure is None or model.source_key is None or model.source_capability is None:
+                    raise RuntimeError("continuous failure issue has incomplete persisted context")
+                issues.append(
+                    JobContinuousFailureIssueView(
+                        source_key=model.source_key,
+                        source_capability=SourceCapability(model.source_capability),
+                        configuration_ref=model.configuration_ref,
+                        configuration_version=model.configuration_version,
+                        latest_failed_job_id=model.id,
+                        failure=failure,
+                        consecutive_failure_threshold=3,
+                    )
+                )
+        return tuple(issues)
 
     def list_history(
         self,

@@ -754,6 +754,22 @@ class JobFailureView(BaseModel):
     manual_retry_allowed: bool
 
 
+class JobContinuousFailureIssueView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source_key: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]{0,63}$")
+    source_capability: SourceCapability
+    configuration_ref: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9_.:-]{0,127}$",
+    )
+    configuration_version: int = Field(ge=1)
+    latest_failed_job_id: UUID
+    failure: JobFailureView
+    consecutive_failure_threshold: Literal[3]
+
+
 class JobStatusView(BaseModel):
     model_config = ConfigDict(frozen=True)
 

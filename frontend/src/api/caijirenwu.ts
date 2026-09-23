@@ -75,3 +75,16 @@ export async function retryCollectionJob(
     ...(options || {}),
   });
 }
+
+/** 列出连续失败问题 按当前会话 owner 返回连续三次失败的来源能力摘要供查看最近失败任务处理动作 GET /api/jobs/issues */
+export async function listContinuousFailureIssues(
+  options?: import("@/request").RequestOptions,
+) {
+  return request<HotKeyAPI.JobContinuousFailureIssueView[]>(
+    "/api/jobs/issues",
+    {
+      method: "GET",
+      ...(options || {}),
+    },
+  );
+}

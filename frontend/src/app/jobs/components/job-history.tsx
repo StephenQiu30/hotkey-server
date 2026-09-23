@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiRequestError } from "@/request";
 
+import { JobHealthSummary } from "./job-health-summary";
+
 type HistoryState =
   | { status: "loading" }
   | {
@@ -319,6 +321,8 @@ export function JobHistory() {
         <p className="text-muted-foreground mt-4 max-w-2xl leading-7">
           查看任务状态与已持久保存的进度。
         </p>
+
+        <JobHealthSummary />
 
         <JobHistoryContent
           items={state.items}

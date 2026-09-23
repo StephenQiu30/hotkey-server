@@ -1,6 +1,6 @@
 # HotKey Server 交接
 
-更新日期：2026-09-23。
+更新日期：2026-09-24。
 
 ## 001 核心服务能力规划
 
@@ -129,7 +129,7 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 **[038 计划](docs/plans/038-可维护与可替换计划.md) S00/S01 已完成，Plan 保持 in_progress。** `sources` 领域已增加四类纯能力请求、统一作品/评论、显式缺失值与父链、不透明分页/水位、页状态/停止原因及结构化适配器端口；新增 5 tests、相关 23 tests、后端全量 92 tests 及静态门禁通过。本切片复用现有 `.env` 与已启动服务，未新增真实适配器、固定版本/许可、样本/探针、HTTP/UI/Worker 或 SDK；S02—S04 及 038 产品 AC 仍为 0/6，未建立 Acceptance。
 
-**[039 计划](docs/plans/039-可观测与可运维计划.md) S00/S01 已完成，Plan 保持 in_progress。** `jobs` 领域已增加配置/来源运行上下文、四类阶段尝试与七类显示状态互斥汇总，Worker 临时绑定安全关联字段，`job.accepted.v2` 跨进程传递相同上下文；新增 5 tests、相关 43 tests、后端全量 97 tests 及静态门禁通过。本切片复用现有 `.env` 与 PostgreSQL 18.4，将 0 行 `hotkey_dev` 按完整 schema 重建为 17 表；未新增服务、依赖、HTTP/UI 或具体业务处理器，不证明错误动作、陈旧问题、维护审计或运维闭环，S02—S04 及 039 产品 AC 仍为 0/6，未建立 Acceptance。
+**[039 计划](docs/plans/039-可观测与可运维计划.md) S00/S01 与 S02a 技术子片已完成，Plan 保持 in_progress。** S01 的任务运行上下文、阶段尝试与七态汇总继续复用；S02a 增加按 owner 隔离的连续三次任务失败摘要 API，并在任务历史页显示稳定错误动作、配置版本及最近失败详情链接，不新增 DDL、依赖或服务。隔离 PostgreSQL 专用集成 28 passed、后端全量 498 passed/13 skipped，Ruff/format/mypy 与前端 42 tests/lint/typecheck/format/build 通过；运行时 OpenAPI 生成及 agent-browser 在 1440×900、390×844 下登录、查看摘要并点击最近失败任务链接通过。验证只使用隔离 QA 数据库与合成失败任务；不证明真实来源、新鲜度或覆盖缺口，S02—S04 与 039 产品 AC 仍为 0/6，未建立 Acceptance。
 
 **[027 计划](docs/plans/027-数据正确性计划.md) S00 已完成，Plan 保持 in_progress。** Design v1.0 冻结不透明来源身份、不可变观察/版本、零与未知、时间类型、父链缺失和跨领域职责，为 028 S01 提供 `EvidenceResource` 生命周期锚点边界；本切片只有设计与依赖核对，没有代码、DDL、HTTP/UI、环境或产品 Acceptance，来源具体作用域/单位、受控异常样本及 S01—S04 仍待执行。
 

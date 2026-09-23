@@ -574,3 +574,241 @@ def test_snapshot_keeps_source_capability_states_separate(
         ),
     ]
     assert other_owner.capabilities == ()
+
+
+def test_continuous_failure_issue_requires_three_terminal_jobs_and_owner_scope(
+    observation_context: ObservationTestContext,
+) -> None:
+    with observation_context.sessions() as session:
+        service = JobService(session, clock=lambda: WINDOW_START)
+        jobs = [
+            service.accept(
+                owner_id=observation_context.owner_id,
+                command=JobAcceptanceInput(
+                    operation_id=uuid4(),
+                    kind="monitor.collect",
+                    observation=JobObservationContext(
+                        configuration_ref="monitor-config-1",
+                        configuration_version=version,
+                        source_key="x",
+                        source_capability=SourceCapability.SEARCH,
+                    ),
+                    scope={"window": version},
+                ),
+            )
+            for version in range(1, 4)
+        ]
+        queued = service.accept(
+            owner_id=observation_context.owner_id,
+            command=JobAcceptanceInput(
+                operation_id=uuid4(),
+                kind="monitor.collect",
+                observation=_observation(version=4),
+                scope={"window": 4},
+            ),
+        )
+        running = service.accept(
+            owner_id=observation_context.owner_id,
+            command=JobAcceptanceInput(
+                operation_id=uuid4(),
+                kind="monitor.collect",
+                observation=_observation(version=5),
+                scope={"window": 5},
+            ),
+        )
+        below_threshold = service.accept(
+            owner_id=observation_context.owner_id,
+            command=JobAcceptanceInput(
+                operation_id=uuid4(),
+                kind="monitor.collect",
+                observation=JobObservationContext(
+                    configuration_ref="monitor-config-2",
+                    configuration_version=1,
+                    source_key="x",
+                    source_capability=SourceCapability.SEARCH,
+                ),
+                scope={"window": 4},
+            ),
+        )
+
+    with observation_context.engine.begin() as connection:
+        for index, job in enumerate([*jobs, below_threshold], start=1):
+            completed_at = WINDOW_START + timedelta(minutes=index)
+            connection.execute(
+                text(
+                    "UPDATE jobs SET status = 'failed', started_at = :started_at, "
+                    "completed_at = :completed_at, updated_at = :completed_at, "
+                    "last_error_code = 'source.timeout', "
+                    "last_error_category = 'transient', last_error_at = :completed_at, "
+                    "next_action = '检查来源连接', manual_retry_allowed = false "
+                    "WHERE id = :job_id"
+                ),
+                {
+                    "started_at": completed_at - timedelta(seconds=1),
+                    "completed_at": completed_at,
+                    "job_id": job.id,
+                },
+            )
+        connection.execute(
+            text(
+                "UPDATE jobs SET status = 'running', started_at = :started_at, "
+                "lease_owner = 'worker-running', lease_epoch = 1, "
+                "lease_expires_at = :lease_expires_at, updated_at = :started_at "
+                "WHERE id = :job_id"
+            ),
+            {
+                "started_at": WINDOW_START + timedelta(minutes=5),
+                "lease_expires_at": WINDOW_START + timedelta(minutes=6),
+                "job_id": running.id,
+            },
+        )
+
+    with observation_context.sessions() as session:
+        service = JobService(session)
+        issues = service.list_continuous_failure_issues(owner_id=observation_context.owner_id)
+        other_owner_issues = service.list_continuous_failure_issues(
+            owner_id=observation_context.other_owner_id
+        )
+
+    assert len(issues) == 1
+    assert issues[0].source_key == "x"
+    assert issues[0].source_capability == SourceCapability.SEARCH
+    assert issues[0].configuration_ref == "monitor-config-1"
+    assert issues[0].configuration_version == 3
+    assert issues[0].latest_failed_job_id == jobs[-1].id
+    assert issues[0].failure.error_code == "source.timeout"
+    assert issues[0].failure.next_action == "检查来源连接"
+    assert queued.status == "queued"
+    assert other_owner_issues == ()
+
+
+def test_success_resets_continuous_failure_issue_without_deleting_history(
+    observation_context: ObservationTestContext,
+) -> None:
+    with observation_context.sessions() as session:
+        service = JobService(session, clock=lambda: WINDOW_START)
+        jobs = [
+            service.accept(
+                owner_id=observation_context.owner_id,
+                command=_command(version=version),
+            )
+            for version in range(1, 5)
+        ]
+
+    with observation_context.engine.begin() as connection:
+        for index, (job, status) in enumerate(
+            zip(jobs, ("failed", "failed", "failed", "succeeded"), strict=True),
+            start=1,
+        ):
+            completed_at = WINDOW_START + timedelta(minutes=index)
+            failure_values = (
+                {
+                    "last_error_code": "source.timeout",
+                    "last_error_category": "transient",
+                    "last_error_at": completed_at,
+                    "next_action": "检查来源连接",
+                }
+                if status == "failed"
+                else {
+                    "last_error_code": None,
+                    "last_error_category": None,
+                    "last_error_at": None,
+                    "next_action": None,
+                }
+            )
+            connection.execute(
+                text(
+                    "UPDATE jobs SET status = :status, started_at = :started_at, "
+                    "completed_at = :completed_at, updated_at = :completed_at, "
+                    "last_error_code = :last_error_code, "
+                    "last_error_category = :last_error_category, "
+                    "last_error_at = :last_error_at, next_action = :next_action "
+                    "WHERE id = :job_id"
+                ),
+                {
+                    "status": status,
+                    "started_at": completed_at - timedelta(seconds=1),
+                    "completed_at": completed_at,
+                    "job_id": job.id,
+                    **failure_values,
+                },
+            )
+
+    with observation_context.sessions() as session:
+        issues = JobService(session).list_continuous_failure_issues(
+            owner_id=observation_context.owner_id
+        )
+        history = JobService(session).list_history(
+            owner_id=observation_context.owner_id,
+            cursor=None,
+            limit=10,
+        )[0]
+
+    assert issues == ()
+    assert {job.id for job in history} == {job.id for job in jobs}
+
+
+@pytest.mark.parametrize("reset_status", ("partially_succeeded", "cancelled"))
+def test_partial_or_cancelled_job_resets_continuous_failure_streak(
+    observation_context: ObservationTestContext,
+    reset_status: str,
+) -> None:
+    with observation_context.sessions() as session:
+        service = JobService(session, clock=lambda: WINDOW_START)
+        jobs = [
+            service.accept(
+                owner_id=observation_context.owner_id,
+                command=_command(version=version),
+            )
+            for version in range(1, 5)
+        ]
+
+    with observation_context.engine.begin() as connection:
+        for index, (job, status) in enumerate(
+            zip(
+                jobs,
+                ("failed", "failed", "failed", reset_status),
+                strict=True,
+            ),
+            start=1,
+        ):
+            completed_at = WINDOW_START + timedelta(minutes=index)
+            failure_values = (
+                {
+                    "last_error_code": "source.timeout",
+                    "last_error_category": "transient",
+                    "last_error_at": completed_at,
+                    "next_action": "检查来源连接",
+                }
+                if status == "failed"
+                else {
+                    "last_error_code": None,
+                    "last_error_category": None,
+                    "last_error_at": None,
+                    "next_action": None,
+                }
+            )
+            connection.execute(
+                text(
+                    "UPDATE jobs SET status = :status, started_at = :started_at, "
+                    "completed_at = :completed_at, updated_at = :completed_at, "
+                    "last_error_code = :last_error_code, "
+                    "last_error_category = :last_error_category, "
+                    "last_error_at = :last_error_at, next_action = :next_action "
+                    "WHERE id = :job_id"
+                ),
+                {
+                    "status": status,
+                    "started_at": completed_at - timedelta(seconds=1),
+                    "completed_at": completed_at,
+                    "job_id": job.id,
+                    **failure_values,
+                },
+            )
+
+    with observation_context.sessions() as session:
+        issues = JobService(session).list_continuous_failure_issues(
+            owner_id=observation_context.owner_id
+        )
+
+    assert issues == ()
