@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, TypeGuard
 
 import httpx
 from pydantic import SecretStr, ValidationError
@@ -31,7 +31,7 @@ _POST_FIELDS = "id,text,created_at,lang,conversation_id,public_metrics"
 _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
 
-def _valid_x_id(value: object) -> bool:
+def _valid_x_id(value: object) -> TypeGuard[str]:
     return isinstance(value, str) and 1 <= len(value) <= 19 and value.isascii() and value.isdigit()
 
 
@@ -357,11 +357,14 @@ class XApiAdapter:
         author_id = value.get("author_id")
         if author_id is None:
             author_id = expected_author
-        if not isinstance(identifier, str) or not identifier.isascii() or not identifier.isdigit():
+        if not _valid_x_id(identifier):
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
-        if not isinstance(author_id, str) or not author_id.isascii() or not author_id.isdigit():
+        if not _valid_x_id(author_id):
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
         if expected_author is not None and author_id != expected_author:
+            raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
+        conversation_id = value.get("conversation_id")
+        if conversation_id is not None and not _valid_x_id(conversation_id):
             raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
         metrics = value.get("public_metrics")
         if metrics is not None and not isinstance(metrics, dict):
@@ -375,7 +378,9 @@ class XApiAdapter:
             if not isinstance(reference, dict):
                 raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
             kind, target = reference.get("type"), reference.get("id")
-            if kind in {"replied_to", "quoted", "retweeted"} and isinstance(target, str):
+            if kind in {"replied_to", "quoted", "retweeted"}:
+                if not _valid_x_id(target) or (kind in targets and targets[kind] != target):
+                    raise _SourceFailureError(SourceStopReason.PROTOCOL_ERROR)
                 targets[kind] = target
         published = value.get("created_at")
         try:
@@ -393,7 +398,7 @@ class XApiAdapter:
             comment_count=metrics.get("reply_count"),
             repost_count=metrics.get("repost_count"),
             canonical_url=f"https://x.com/i/web/status/{identifier}",
-            conversation_external_id=value.get("conversation_id"),
+            conversation_external_id=conversation_id,
             parent_external_id=targets.get("replied_to"),
             quote_external_id=targets.get("quoted"),
             repost_external_id=targets.get("retweeted"),

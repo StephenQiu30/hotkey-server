@@ -190,6 +190,49 @@ def test_direct_replies_reject_unknown_root_or_conflicting_relationship(
 
 
 @pytest.mark.parametrize(
+    "response_post",
+    [
+        {"id": "12345678901234567890", "author_id": "42"},
+        {"id": "100", "author_id": "bad/author"},
+        {"id": "100", "author_id": "42", "conversation_id": "bad/root"},
+        {
+            "id": "100",
+            "author_id": "42",
+            "referenced_posts": [{"type": "replied_to", "id": "bad/parent"}],
+        },
+        {
+            "id": "100",
+            "author_id": "42",
+            "referenced_posts": [{"type": "quoted", "id": 123}],
+        },
+        {
+            "id": "100",
+            "author_id": "42",
+            "referenced_posts": [
+                {"type": "quoted", "id": "101"},
+                {"type": "quoted", "id": "102"},
+            ],
+        },
+    ],
+)
+def test_invalid_x_identity_or_conflicting_reference_rejects_whole_page(
+    response_post: dict[str, object],
+) -> None:
+    settlements: list[tuple[int, int | None]] = []
+    page = _adapter(
+        lambda _request: httpx.Response(
+            200, json={"data": [response_post], "meta": {"result_count": 1}}
+        ),
+        settle_request=lambda attempt, posts: settlements.append((attempt, posts)),
+    ).fetch_page(_request())
+
+    assert page.stop_reason is SourceStopReason.PROTOCOL_ERROR
+    assert page.items == ()
+    assert page.request_count == 1
+    assert settlements == [(1, None)]
+
+
+@pytest.mark.parametrize(
     "source_request",
     [_comments_request(post_external_id="bad/path"), _replies_request(comment_external_id="bad")],
 )

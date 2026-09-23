@@ -18,6 +18,8 @@
 
 同日按官方 `in_reply_to_tweet_id:` 补一级/嵌套直接回复离线路径：复用 Recent Search 和共享评论请求，每次查询一个父帖的直接子回复；根帖/父回复身份冲突、未知根帖和非法 ID 均拒绝，不用会话搜索结果猜父链。旧适配器 4 项目标失败，最终 X 单测 49 passed、隔离 PostgreSQL 后端全量 443 passed/5 skipped，Ruff/format/mypy 通过。MockTransport 以外仍不可用，不证明逐层遍历、旧于 7 天的回复或平台完整性；App/Token、账期上限、037 付费门禁、S02 实采与 002 产品 0/10 AC 均待执行。
 
+同日补 027 S01 / 002 S01a 的 X 离线身份预检：6 组坏 ID/关系目标/互斥引用响应中，旧实现 5 组误报完整；现在整页协议失败、未知 Post 数保守结算。X 单测 55 passed、现有 PostgreSQL 一次性空 QA 库后端全量 449 passed/5 skipped、Ruff/format/mypy 通过。`sources` 纯映射和测试以外无运行变化，QA 库验后删除；不发真实 X 请求。官方端点对查询 ID 的位数约束外推至响应对象仍须实调核对；`post.fields` 与 Quickstart 的 `tweet.fields=author_id` 文档冲突未解除，不放行付费门禁，不宣称 027 父链持久化或 002 真实接入。
+
 005 S01 内部执行器原先从 Job 读取 UTC 范围，却向适配器发送无界 `SearchRequest`；隔离 PostgreSQL 用例先复现 Latest 续页 `(None, None)`，修复后 Latest/Top 均逐页携带冻结窗口。专用 2 项、一次性空库后端全量 420 passed/5 skipped 及 Ruff/format/mypy 通过；没有接 X 付费回调或注册 Worker/HTTP，不能据此确认真实来源终点或完成 005/010 产品验收。
 
 033 S00 已接受仅限内部状态分项的 Design：现有 039 运行快照按 owner、来源和能力分别汇总七态。同一 X 搜索能力一成一败、X 评论成功及另一来源部分成功可同时保留；无来源任务只进总数。隔离 PostgreSQL 用例先红后绿，专用 6 项、一次性空库后端全量 421 passed/5 skipped 与 Ruff/format/mypy 通过。当前 Worker 仍为单循环，未证明资源公平、熔断或真实局部故障恢复；033 S01 G3/G4 与全部产品 AC 未关闭。
