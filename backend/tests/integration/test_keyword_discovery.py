@@ -624,12 +624,19 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                 ).scalar_one()
                 == 1
             )
-            assert (
-                connection.execute(
-                    text("SELECT count(*) FROM coverage_windows WHERE sort_key = 'top'")
-                ).scalar_one()
-                == 0
+        with Session(engine) as session:
+            failed_coverage = session.scalar(
+                select(CoverageWindow).where(
+                    CoverageWindow.owner_id == owner_id,
+                    CoverageWindow.sort_key == SourceSort.TOP.value,
+                )
             )
+            assert failed_coverage is not None
+            assert (
+                failed_coverage.status,
+                failed_coverage.stop_reason,
+                failed_coverage.page_count,
+            ) == ("partial", "upstream_error", 0)
         submitted: list[SearchRequest] = []
 
         class ControlledSearchAdapter:

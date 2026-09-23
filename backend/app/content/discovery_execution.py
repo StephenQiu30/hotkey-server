@@ -229,7 +229,26 @@ class KeywordDiscoveryExecutor:
                     raise
                 except Exception as error:
                     meter.fail_pending()
-                    raise self._adapter_failure(error) from error
+                    if self._stop_if_cancelled(
+                        session, execution=execution, lease=lease, window=window
+                    ):
+                        return lease, JobCompletion(status=JobStatus.SUCCEEDED)
+                    failure = self._adapter_failure(error)
+                    if failure.category in {
+                        JobFailureCategory.TRANSIENT,
+                        JobFailureCategory.INVALID_RESPONSE,
+                    }:
+                        self._mark_local_stop(
+                            session,
+                            lease=lease,
+                            window=window,
+                            reason=(
+                                SourceStopReason.UPSTREAM_ERROR
+                                if failure.category is JobFailureCategory.TRANSIENT
+                                else SourceStopReason.PROTOCOL_ERROR
+                            ),
+                        )
+                    raise failure from error
                 try:
                     result = KeywordDiscoveryPageCommitService(
                         session, lease_seconds=self._lease_seconds, clock=self._clock
