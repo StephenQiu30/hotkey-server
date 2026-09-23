@@ -127,6 +127,7 @@ def test_search_preserves_large_ids_missing_counts_and_raw_text() -> None:
     assert page.items[0].like_count == 0
     assert page.items[0].comment_count is None
     assert page.items[0].text == "受控原文"
+    assert page.items[0].language == "zh"
     assert page.request_count == 1
     assert json.loads(requests[0].url.params["variables"])["product"] == "Latest"
 

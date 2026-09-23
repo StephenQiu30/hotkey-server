@@ -439,6 +439,7 @@ class XTwscrapeAdapter:
         return SourcePost.model_validate(
             {
                 **values,
+                "language": tweet.lang,
                 "comment_count": fields.get("reply_count"),
                 "repost_count": fields.get("retweet_count"),
                 "canonical_url": f"https://x.com/i/status/{identifier}",

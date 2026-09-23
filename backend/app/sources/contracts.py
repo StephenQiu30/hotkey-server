@@ -242,6 +242,7 @@ class SourcePost(_ContractModel):
     author_external_id: str | None = Field(min_length=1, max_length=512)
     published_at: datetime | None
     text: str | None = Field(max_length=_MAX_TEXT_LENGTH)
+    language: str | None = Field(default=None, min_length=2, max_length=35)
     like_count: int | None = Field(ge=0)
     comment_count: int | None = Field(ge=0)
     repost_count: int | None = Field(ge=0)
