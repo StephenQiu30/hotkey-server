@@ -62,6 +62,7 @@ class BrowserRuntime:
         manager = async_playwright()
         browser: Browser | None = None
         context: BrowserContext | None = None
+        operation_error: BaseException | None = None
         try:
             async with asyncio.timeout(self._execution_timeout_seconds):
                 playwright = await manager.__aenter__()
@@ -79,15 +80,40 @@ class BrowserRuntime:
                         storage_state=storage_state,
                     )
                 yield context
+        except BaseException as error:
+            operation_error = error
         finally:
+            cleanup_errors: list[BaseException] = []
             try:
                 try:
                     if context is not None:
-                        await asyncio.wait_for(context.close(), timeout=_CLOSE_TIMEOUT_SECONDS)
+                        try:
+                            await asyncio.wait_for(context.close(), timeout=_CLOSE_TIMEOUT_SECONDS)
+                        except BaseException as error:
+                            cleanup_errors.append(error)
                 finally:
                     if browser is not None:
-                        await asyncio.wait_for(browser.close(), timeout=_CLOSE_TIMEOUT_SECONDS)
+                        try:
+                            await asyncio.wait_for(browser.close(), timeout=_CLOSE_TIMEOUT_SECONDS)
+                        except BaseException as error:
+                            cleanup_errors.append(error)
             finally:
-                await asyncio.wait_for(
-                    manager.__aexit__(None, None, None), timeout=_CLOSE_TIMEOUT_SECONDS
+                try:
+                    await asyncio.wait_for(
+                        manager.__aexit__(None, None, None), timeout=_CLOSE_TIMEOUT_SECONDS
+                    )
+                except BaseException as error:
+                    cleanup_errors.append(error)
+
+            if operation_error is not None:
+                control_error = next(
+                    (error for error in cleanup_errors if not isinstance(error, Exception)), None
                 )
+                if control_error is not None:
+                    raise control_error
+                if cleanup_errors:
+                    cleanup_types = ", ".join(type(error).__name__ for error in cleanup_errors)
+                    operation_error.add_note(f"browser resource cleanup failed: {cleanup_types}")
+                raise operation_error
+            if cleanup_errors:
+                raise cleanup_errors[0]

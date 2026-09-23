@@ -71,6 +71,30 @@ def test_browser_runtime_closes_context_and_connection_on_failure(
     browser.close.assert_awaited_once()
 
 
+def test_browser_runtime_preserves_operation_error_when_context_cleanup_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, browser, context = _playwright(monkeypatch)
+
+    async def slow_close() -> None:
+        await asyncio.sleep(1)
+
+    context.close.side_effect = slow_close
+    monkeypatch.setattr(browser_runtime, "_CLOSE_TIMEOUT_SECONDS", 0.01)
+    runtime = BrowserRuntime(ws_url=_WS_URL, enabled=True)
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="source operation failed") as captured:
+            async with runtime.context():
+                raise RuntimeError("source operation failed")
+        assert any("TimeoutError" in note for note in captured.value.__notes__)
+
+    asyncio.run(run())
+
+    context.close.assert_awaited_once()
+    browser.close.assert_awaited_once()
+
+
 def test_browser_runtime_closes_after_cancel(monkeypatch: pytest.MonkeyPatch) -> None:
     _, browser, context = _playwright(monkeypatch)
     runtime = BrowserRuntime(ws_url=_WS_URL, enabled=True)
