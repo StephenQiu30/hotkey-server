@@ -20,6 +20,8 @@ S03-T02 现有 `browser_state` 连接维护 CLI 已落地：可从 0600 捕获�
 
 S03-T02 又将 context 创建纳入原有 45 秒协作式截止，关闭 context/连接分别以 5 秒等待预算请求取消，前者超时仍尝试后者。失败优先单测、现有 browser 内网 live 超时关闭与重连、一次性空库后端全量 328 passed/3 skipped、Ruff/mypy 通过；未启动第二套依赖。Python `wait_for` 可能等待吞没取消的协程，且 WS 建连/管理器退出与业务任务总时限未覆盖；G4-002/EV-047-005、产品 AC 0/8 仍未关闭。
 
+047 S04/008 评论所需的 [010 增量与历史回补 Design](docs/design/010-增量更新与历史回补设计.md) 已建立 proposed 草案：复用现有 Job 检查点、内容身份与观察，提出单一范围状态承载确认/缺口，避免把最大已见发布时间或任务完成当完整水位。仅为 S00 设计准备；010 Plan 仍 planned，G0—G2、代码、真实来源和 0/6 产品 AC 均未完成，10 分钟重叠与旧帖刷新周期待来源样本校准。
+
 ## 当前结构
 
 - `backend/`：Python 3.12、FastAPI、SQLAlchemy 2、PostgreSQL、Redis、Kafka；底座可运行，依赖由 uv 锁定，数据库 DDL 由单一事务化 SQL 文件管理。
