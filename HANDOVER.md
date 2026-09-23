@@ -6,6 +6,8 @@
 
 006 S00 与 X 身份解析离线子片（2026-09-23）：新增同编号 Design 和仅接受 `MockTransport` 的官方单用户名 Lookup；本地从 `@handle` 或精确 X 主页提取用户名，请求前需批准最坏 1 个 User，返回严格校验稳定数字 ID、用户名与展示名，失败按未知用量回调。同名显示名不同 ID 与同 ID 改名受控样本均不自动改绑。专用 36 tests，后端无隔离数据库配置的全量 320 passed/174 skipped，Ruff/format/mypy 通过。尚无关注持久化/API/Web、真实费用装配、App/Token、实际 X 请求或产品 AC；006 保持 in_progress、0/6 AC。
 
+2026-09-23 补充按已确认稳定 ID 的离线回查：`GET /2/users/{id}` 只经 `MockTransport`，响应 ID 必须匹配；非法 ID 不消耗预算、不请求，改名可更新别名但旧用户名被他人占用不能改绑。专用 45 tests，后端全量 329 passed/174 skipped、Ruff/format/mypy 通过。仍无真实 X 请求、关注持久化或产品 AC；用户当前要求优先规划 HotKey 顶层服务能力，不继续扩展 X 接口实现。
+
 2026-09-23 用户将 X 自动采集从网页登录/twscrape 改为官方 API；目前尚无开发者 App/Token，要求先离线实现。002 S01a 已在 `sources/adapters/x_api.py` 加入仅接收 `MockTransport` 的 Recent Search 只读适配器，覆盖 recency/relevancy、分页、作品字段、合法空和认证/限流/协议失败，复用共享 SourcePage；旧 `x_twscrape.py` 不注册 Worker，也不读取现有浏览器登录。15 项模拟 HTTP 测试、后端全量 227 passed/161 skipped（未设置集成/live 测试条件）、Ruff/format/mypy 通过；没有真实 X 请求、额外服务或脚本。
 
 同日离线费用预留接口补片：移除可能产生额外 User 资源的作者展开；每页在模拟发送前必须授权最大 Post 数，完整响应回报实际数，失败/取消/意外扩展资源回报未知供后续保守结算。新片先红 20 项，额外扩展资源回归另有 1 项先红，最终 23 项通过；后端全量 235 passed/161 skipped，Ruff/format/mypy 通过。未改 DDL、Worker、API 或运行进程；这不是持久费用门禁，现有 `paid` 拒绝仍生效。

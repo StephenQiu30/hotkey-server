@@ -221,3 +221,97 @@ def test_transport_error_settles_unknown_usage_without_confirming_identity() -> 
     assert result.request_count == 1
     assert result.user is None
     assert settlements == [(1, None)]
+
+
+def test_saved_id_lookup_accepts_changed_handle_without_rebinding() -> None:
+    calls: list[httpx.Request] = []
+    approvals: list[tuple[int, int]] = []
+    settlements: list[tuple[int, int | None]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(
+            200,
+            json={"data": {"id": "123", "username": "renamed", "name": "Same account"}},
+        )
+
+    result = _adapter(
+        httpx.MockTransport(respond),
+        authorize_request=lambda attempt, max_users: approvals.append((attempt, max_users)) or True,
+        settle_request=lambda attempt, count: settlements.append((attempt, count)),
+    ).lookup_by_id("123")
+
+    assert result.stop_reason is None
+    assert result.user is not None
+    assert (result.user.external_id, result.user.username) == ("123", "renamed")
+    assert [str(call.url) for call in calls] == ["https://api.x.com/2/users/123"]
+    assert approvals == [(1, 1)]
+    assert settlements == [(1, 1)]
+
+
+@pytest.mark.parametrize("identifier", ["", "abc", "123 ", "https://x.com/123", "1" * 20])
+def test_saved_id_lookup_rejects_invalid_id_without_budget_or_request(identifier: str) -> None:
+    calls: list[httpx.Request] = []
+    approvals: list[tuple[int, int]] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        raise AssertionError("network must not be touched")
+
+    adapter = _adapter(
+        httpx.MockTransport(respond),
+        authorize_request=lambda attempt, max_users: approvals.append((attempt, max_users)) or True,
+    )
+    with pytest.raises(ValueError):
+        adapter.lookup_by_id(identifier)
+    assert approvals == []
+    assert calls == []
+
+
+def test_saved_id_lookup_rejects_different_returned_id() -> None:
+    settlements: list[tuple[int, int | None]] = []
+    result = _adapter(
+        httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={"data": {"id": "456", "username": "original", "name": "Other account"}},
+            )
+        ),
+        settle_request=lambda attempt, count: settlements.append((attempt, count)),
+    ).lookup_by_id("123")
+    assert result.stop_reason is SourceStopReason.PROTOCOL_ERROR
+    assert result.user is None
+    assert settlements == [(1, None)]
+
+
+def test_saved_id_lookup_does_not_retry_with_old_handle_on_not_found() -> None:
+    calls: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(404)
+
+    result = _adapter(httpx.MockTransport(respond)).lookup_by_id("123")
+    assert result.stop_reason is SourceStopReason.NOT_FOUND
+    assert result.user is None
+    assert [str(call.url) for call in calls] == ["https://api.x.com/2/users/123"]
+
+
+def test_reoccupied_old_handle_cannot_replace_saved_identity() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/2/users/123":
+            return httpx.Response(
+                200,
+                json={"data": {"id": "123", "username": "renamed", "name": "Original owner"}},
+            )
+        return httpx.Response(
+            200,
+            json={"data": {"id": "456", "username": "original", "name": "New owner"}},
+        )
+
+    adapter = _adapter(httpx.MockTransport(respond))
+    tracked = adapter.lookup_by_id("123")
+    old_handle = adapter.lookup("@original")
+    assert tracked.user is not None and old_handle.user is not None
+    assert (tracked.user.external_id, tracked.user.username) == ("123", "renamed")
+    assert (old_handle.user.external_id, old_handle.user.username) == ("456", "original")

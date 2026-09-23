@@ -81,6 +81,23 @@ class XUserLookupAdapter:
 
     def lookup(self, profile_input: str) -> XUserLookupResult:
         handle = parse_x_handle(profile_input)
+        return self._lookup(
+            f"https://api.x.com/2/users/by/username/{handle}",
+            expected_username=handle,
+        )
+
+    def lookup_by_id(self, external_id: str) -> XUserLookupResult:
+        if not isinstance(external_id, str) or _USER_ID.fullmatch(external_id) is None:
+            raise ValueError("invalid X user ID")
+        return self._lookup(f"https://api.x.com/2/users/{external_id}", expected_id=external_id)
+
+    def _lookup(
+        self,
+        url: str,
+        *,
+        expected_username: str | None = None,
+        expected_id: str | None = None,
+    ) -> XUserLookupResult:
         if not self._authorize_request(1, 1):
             return XUserLookupResult(None, SourceStopReason.BUDGET_EXHAUSTED, 0)
 
@@ -94,7 +111,7 @@ class XUserLookupAdapter:
                 ) as client,
                 client.stream(
                     "GET",
-                    f"https://api.x.com/2/users/by/username/{handle}",
+                    url,
                     headers={"Authorization": f"Bearer {self._token.get_secret_value()}"},
                 ) as response,
             ):
@@ -132,7 +149,11 @@ class XUserLookupAdapter:
                 or _USER_ID.fullmatch(identifier) is None
                 or not isinstance(username, str)
                 or _HANDLE.fullmatch(username) is None
-                or username.casefold() != handle.casefold()
+                or (
+                    expected_username is not None
+                    and username.casefold() != expected_username.casefold()
+                )
+                or (expected_id is not None and identifier != expected_id)
                 or not isinstance(name, str)
                 or not 1 <= len(name) <= 50
                 or any(ord(character) < 32 or ord(character) == 127 for character in name)
