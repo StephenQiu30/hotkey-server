@@ -32,7 +32,7 @@
 |---|---|---|---|---|---|
 | 003 | [监控主题管理](prd/003-监控主题管理.md) | FR-001-001 | P0 | accepted | [设计](design/003-监控主题管理设计.md) · accepted；[计划](plans/003-监控主题管理计划.md) · in_progress |
 | 004 | [平台与连接管理](prd/004-平台与连接管理.md) | FR-001-002 | P0 | accepted | [设计](design/004-平台与连接管理设计.md) · accepted；[计划](plans/004-平台与连接管理计划.md) · in_progress（S00—S03 内部技术闭环，0/6 AC） |
-| 005 | [关键词主动发现](prd/005-关键词主动发现.md) | FR-001-003 | P0 | draft | [设计](design/005-关键词主动发现设计.md) · accepted（S00 与来源无关契约）；[计划](plans/005-关键词主动发现计划.md) · in_progress（S00、S01 语言子片，0/6 AC） |
+| 005 | [关键词主动发现](prd/005-关键词主动发现.md) | FR-001-003 | P0 | draft | [设计](design/005-关键词主动发现设计.md) · accepted（S00 与来源无关契约）；[计划](plans/005-关键词主动发现计划.md) · in_progress（S00、S01 语言/查询冻结子片，0/6 AC） |
 | 006 | [指定用户作品追踪](prd/006-指定用户作品追踪.md) | FR-001-004 | P0 | draft | [计划](plans/006-指定用户作品追踪计划.md) · planned |
 | 007 | [作品资料与上下文](prd/007-作品资料与上下文.md) | FR-001-005 | P0 | accepted | [设计](design/007-作品资料与上下文设计.md) · accepted（S00—S03）；[计划](plans/007-作品资料与上下文计划.md) · in_progress（S00—S02，0/6 AC） |
 | 008 | [评论与回复采集](prd/008-评论与回复采集.md) | FR-001-006 | P0 | draft | [设计](design/008-评论与回复采集设计.md) · proposed；[计划](plans/008-评论与回复采集计划.md) · planned，0/6 AC |

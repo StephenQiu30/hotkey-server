@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Literal, Self
+from unicodedata import normalize
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
@@ -11,7 +12,46 @@ from connections.schemas import SourceEntryPoint
 from core.schemas import InputModel, OutputModel
 from evidence.schemas import AdmittedSourcePayload, DataClass
 from jobs.schemas import CollectionScanKind
-from sources.contracts import SourceCapability
+from sources.contracts import SearchRequest, SourceCapability
+
+
+class KeywordDiscoveryRunInput(InputModel):
+    """Internal search snapshot; it does not authorize or submit a source request."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True, str_strip_whitespace=False)
+
+    run_id: UUID
+    configuration_ref: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9_.:-]{0,127}$",
+    )
+    configuration_version: int = Field(ge=1)
+    source_key: str = Field(min_length=1, max_length=64)
+    primary_query: str
+    upstream_aliases: tuple[str, ...] = Field(default=(), max_length=9)
+    starts_at: datetime
+    ends_at: datetime
+    page_size: int = Field(ge=1, le=100)
+    latest_max_pages: int = Field(ge=1, le=20)
+    latest_max_requests: int = Field(ge=1, le=100)
+    top_max_pages: int = Field(ge=1, le=20)
+    top_max_requests: int = Field(ge=1, le=100)
+
+    @model_validator(mode="after")
+    def validate_search_snapshot(self) -> Self:
+        if (
+            self.starts_at.utcoffset() != timedelta(0)
+            or self.ends_at.utcoffset() != timedelta(0)
+            or not self.starts_at < self.ends_at <= self.starts_at + timedelta(days=30)
+        ):
+            raise ValueError("search requires an ordered UTC window of at most 30 days")
+        queries = (self.primary_query, *self.upstream_aliases)
+        for query in queries:
+            SearchRequest(source_key=self.source_key, query=query, page_size=self.page_size)
+        if len({normalize("NFKC", query).casefold() for query in queries}) != len(queries):
+            raise ValueError("upstream search queries must be distinct")
+        return self
 
 
 def _validate_opaque_identifier(value: str | None, *, field_name: str) -> str | None:
