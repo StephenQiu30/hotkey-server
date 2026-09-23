@@ -18,6 +18,8 @@ S03-T02 又为每次 BrowserContext 交互设置默认及最大 45 秒截止；�
 
 S03-T02 现有 `browser_state` 连接维护 CLI 已落地：可从 0600 捕获文件换版，或按当前版本停用；文件/父目录权限、符号链接、当前版本、重复停用、再启用及输出脱敏由受控测试覆盖。复用既有 PostgreSQL 的一次性空库执行后端全量 325 passed/3 skipped，Ruff/mypy 通过，临时库删除；未改现有开发/测试库或启动第二套依赖。CLI 不创建首个真实平台连接，未执行平台人工登录、业务 Worker 或产品验收；G4-002/EV-047-005、AC 0/8 不变。
 
+S03-T02 又将 context 创建纳入原有 45 秒协作式截止，关闭 context/连接分别以 5 秒等待预算请求取消，前者超时仍尝试后者。失败优先单测、现有 browser 内网 live 超时关闭与重连、一次性空库后端全量 328 passed/3 skipped、Ruff/mypy 通过；未启动第二套依赖。Python `wait_for` 可能等待吞没取消的协程，且 WS 建连/管理器退出与业务任务总时限未覆盖；G4-002/EV-047-005、产品 AC 0/8 仍未关闭。
+
 ## 当前结构
 
 - `backend/`：Python 3.12、FastAPI、SQLAlchemy 2、PostgreSQL、Redis、Kafka；底座可运行，依赖由 uv 锁定，数据库 DDL 由单一事务化 SQL 文件管理。

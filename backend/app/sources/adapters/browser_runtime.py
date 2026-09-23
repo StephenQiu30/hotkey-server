@@ -8,6 +8,8 @@ from urllib.parse import urlsplit
 
 from playwright.async_api import BrowserContext, StorageState, async_playwright
 
+_CLOSE_TIMEOUT_SECONDS = 5
+
 
 class BrowserRuntimeDisabledError(Exception):
     """The optional browser runtime is disabled."""
@@ -59,21 +61,23 @@ class BrowserRuntime:
             browser = await playwright.chromium.connect(
                 self._ws_url, timeout=self._connect_timeout_ms
             )
+            context: BrowserContext | None = None
             try:
-                if storage_state is None:
-                    context = await browser.new_context(
-                        accept_downloads=False, service_workers="block"
-                    )
-                else:
-                    context = await browser.new_context(
-                        accept_downloads=False,
-                        service_workers="block",
-                        storage_state=storage_state,
-                    )
-                try:
-                    async with asyncio.timeout(self._execution_timeout_seconds):
-                        yield context
-                finally:
-                    await context.close()
+                async with asyncio.timeout(self._execution_timeout_seconds):
+                    if storage_state is None:
+                        context = await browser.new_context(
+                            accept_downloads=False, service_workers="block"
+                        )
+                    else:
+                        context = await browser.new_context(
+                            accept_downloads=False,
+                            service_workers="block",
+                            storage_state=storage_state,
+                        )
+                    yield context
             finally:
-                await browser.close()
+                try:
+                    if context is not None:
+                        await asyncio.wait_for(context.close(), timeout=_CLOSE_TIMEOUT_SECONDS)
+                finally:
+                    await asyncio.wait_for(browser.close(), timeout=_CLOSE_TIMEOUT_SECONDS)

@@ -127,6 +127,74 @@ def test_browser_runtime_enforces_interaction_deadline_and_closes(
     browser.close.assert_awaited_once()
 
 
+def test_browser_runtime_deadline_includes_context_creation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, browser, context = _playwright(monkeypatch)
+
+    async def slow_context(**_kwargs: object) -> AsyncMock:
+        await asyncio.sleep(1)
+        return context
+
+    browser.new_context.side_effect = slow_context
+    runtime = BrowserRuntime(
+        ws_url="ws://browser:3000/",
+        enabled=True,
+        execution_timeout_seconds=0.01,
+    )
+
+    async def run() -> None:
+        with pytest.raises(TimeoutError):
+            async with runtime.context():
+                pass
+
+    asyncio.run(run())
+    context.close.assert_not_awaited()
+    browser.close.assert_awaited_once()
+
+
+def test_browser_runtime_attempts_disconnect_after_slow_context_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, browser, context = _playwright(monkeypatch)
+
+    async def slow_close() -> None:
+        await asyncio.sleep(1)
+
+    context.close.side_effect = slow_close
+    monkeypatch.setattr(browser_runtime, "_CLOSE_TIMEOUT_SECONDS", 0.01, raising=False)
+    runtime = BrowserRuntime(ws_url="ws://browser:3000/", enabled=True)
+
+    async def run() -> None:
+        with pytest.raises(TimeoutError):
+            async with runtime.context():
+                pass
+
+    asyncio.run(run())
+    context.close.assert_awaited_once()
+    browser.close.assert_awaited_once()
+
+
+def test_browser_runtime_bounds_slow_disconnect(monkeypatch: pytest.MonkeyPatch) -> None:
+    _, browser, context = _playwright(monkeypatch)
+
+    async def slow_close() -> None:
+        await asyncio.sleep(1)
+
+    browser.close.side_effect = slow_close
+    monkeypatch.setattr(browser_runtime, "_CLOSE_TIMEOUT_SECONDS", 0.01)
+    runtime = BrowserRuntime(ws_url="ws://browser:3000/", enabled=True)
+
+    async def run() -> None:
+        with pytest.raises(TimeoutError):
+            async with runtime.context():
+                pass
+
+    asyncio.run(run())
+    context.close.assert_awaited_once()
+    browser.close.assert_awaited_once()
+
+
 def test_browser_runtime_rejects_unbounded_interaction_deadline() -> None:
     for duration in (0, -1, 46, float("nan"), float("inf")):
         with pytest.raises(ValueError, match="execution timeout"):
