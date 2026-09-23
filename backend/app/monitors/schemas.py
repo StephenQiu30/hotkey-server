@@ -54,6 +54,8 @@ class MonitorRuleSetView(OutputModel):
 class MonitorRulePreviewSampleView(OutputModel):
     sample_index: int = Field(ge=0)
     matched: bool
+    matched_any: list[str]
+    matched_all: list[str]
     excluded_by: list[str]
 
 

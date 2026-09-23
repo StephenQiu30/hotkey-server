@@ -39,6 +39,8 @@ class NormalizedMonitorRules:
 @dataclass(frozen=True, slots=True)
 class MonitorRuleMatch:
     matched: bool
+    matched_any: tuple[str, ...]
+    matched_all: tuple[str, ...]
     excluded_by: tuple[str, ...]
 
 
@@ -90,18 +92,23 @@ def normalize_monitor_rules(
 
 def evaluate_monitor_rules(rules: NormalizedMonitorRules, content: str) -> MonitorRuleMatch:
     comparable_content = _comparison_key(_normalize_text(content))
+    matched_any = tuple(
+        keyword for keyword in rules.match_any if _comparison_key(keyword) in comparable_content
+    )
+    matched_all = tuple(
+        keyword for keyword in rules.match_all if _comparison_key(keyword) in comparable_content
+    )
     excluded_by = tuple(
         keyword for keyword in rules.exclude if _comparison_key(keyword) in comparable_content
     )
-    if excluded_by:
-        return MonitorRuleMatch(matched=False, excluded_by=excluded_by)
-    any_matches = not rules.match_any or any(
-        _comparison_key(keyword) in comparable_content for keyword in rules.match_any
+    any_matches = not rules.match_any or bool(matched_any)
+    all_matches = len(matched_all) == len(rules.match_all)
+    return MonitorRuleMatch(
+        matched=any_matches and all_matches and not excluded_by,
+        matched_any=matched_any,
+        matched_all=matched_all,
+        excluded_by=excluded_by,
     )
-    all_matches = not rules.match_all or all(
-        _comparison_key(keyword) in comparable_content for keyword in rules.match_all
-    )
-    return MonitorRuleMatch(matched=any_matches and all_matches, excluded_by=())
 
 
 class MonitorTopicService:
@@ -159,6 +166,8 @@ class MonitorTopicService:
                 MonitorRulePreviewSampleView(
                     sample_index=index,
                     matched=result.matched,
+                    matched_any=list(result.matched_any),
+                    matched_all=list(result.matched_all),
                     excluded_by=list(result.excluded_by),
                 )
             )

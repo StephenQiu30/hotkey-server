@@ -166,6 +166,22 @@ export function TopicRulePreview({
               </div>
               <dl className="text-muted-foreground mt-4 space-y-2 text-xs leading-5">
                 <div>
+                  <dt className="text-foreground font-medium">本次任意命中</dt>
+                  <dd>{sample.matched_any.join("、") || "无"}</dd>
+                </div>
+                <div>
+                  <dt className="text-foreground font-medium">
+                    本次全部包含命中
+                  </dt>
+                  <dd>
+                    {state.preview.rules.match_all.length === 0
+                      ? "未配置（不限制）"
+                      : `${sample.matched_all.join("、") || "无"}；命中 ${sample.matched_all.length}/${state.preview.rules.match_all.length} 项`}
+                  </dd>
+                </div>
+              </dl>
+              <dl className="text-muted-foreground mt-4 space-y-2 text-xs leading-5">
+                <div>
                   <dt className="text-foreground font-medium">任意命中</dt>
                   <dd>
                     {state.preview.rules.match_any.join("、") || "不限制"}

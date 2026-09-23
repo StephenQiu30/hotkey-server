@@ -424,8 +424,20 @@ def test_topic_preview_is_local_explainable_and_side_effect_free(
             "exclude": ["招聘"],
         },
         "samples": [
-            {"sample_index": 0, "matched": False, "excluded_by": ["招聘"]},
-            {"sample_index": 1, "matched": True, "excluded_by": []},
+            {
+                "sample_index": 0,
+                "matched": False,
+                "matched_any": ["Brand"],
+                "matched_all": ["召回"],
+                "excluded_by": ["招聘"],
+            },
+            {
+                "sample_index": 1,
+                "matched": True,
+                "matched_any": ["Brand"],
+                "matched_all": ["召回"],
+                "excluded_by": [],
+            },
         ],
         "expansion": {
             "local_alias_external_queries": 0,

@@ -397,6 +397,10 @@ declare namespace HotKeyAPI {
     sample_index: number;
     /** Matched */
     matched: boolean;
+    /** Matched Any */
+    matched_any: string[];
+    /** Matched All */
+    matched_all: string[];
     /** Excluded By */
     excluded_by: string[];
   };
