@@ -22,6 +22,27 @@ export function formatTime(value: string | null): string {
   return value === null ? "未知" : DATE_TIME_FORMATTER.format(new Date(value));
 }
 
+export function safeExternalHref(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      !url.hostname ||
+      url.username ||
+      url.password
+    ) {
+      return null;
+    }
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 const SCAN_KIND_LABELS: Record<HotKeyAPI.CollectionScanKind, string> = {
   new_scan: "追新",
   refresh: "旧作刷新",

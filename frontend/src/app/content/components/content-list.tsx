@@ -12,6 +12,7 @@ import {
   formatMetric,
   formatTime,
   hasUnknownMetrics,
+  safeExternalHref,
   visibilityStatusLabel,
   visibilityStatusNotice,
 } from "@/app/content/components/content-presenters";
@@ -93,6 +94,29 @@ function VisibilityNotice({
     <p className="text-muted-foreground mt-2 text-xs leading-5">
       {visibilityStatusNotice(visibility.status)}
     </p>
+  );
+}
+
+function OriginalContentLink({
+  canonicalUrl,
+}: {
+  canonicalUrl: string | null;
+}) {
+  const href = safeExternalHref(canonicalUrl);
+  if (href === null) {
+    return null;
+  }
+
+  return (
+    <a
+      className="text-muted-foreground mt-3 inline-flex items-center gap-1 text-xs underline underline-offset-4"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+    >
+      打开原文
+      <ExternalLinkIcon className="size-3" aria-hidden="true" />
+    </a>
   );
 }
 
@@ -389,17 +413,9 @@ export function ContentList() {
                       </Link>
                     </Button>
                   </div>
-                  {content.latest_observation.canonical_url ? (
-                    <a
-                      className="text-muted-foreground mt-3 inline-flex items-center gap-1 text-xs underline underline-offset-4"
-                      href={content.latest_observation.canonical_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      打开原文
-                      <ExternalLinkIcon className="size-3" aria-hidden="true" />
-                    </a>
-                  ) : null}
+                  <OriginalContentLink
+                    canonicalUrl={content.latest_observation.canonical_url}
+                  />
                 </article>
               ))}
             </div>

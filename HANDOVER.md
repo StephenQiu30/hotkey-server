@@ -113,7 +113,7 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 **[042 计划](docs/plans/042-容量与部署可重复性计划.md) S00/S01 已完成，B01 底座前置已关闭。** 本地隔离 Compose 验证五个长期服务 healthy，API/Web/代理/空 Worker 和部署态客户端生成通过；该结果不代表完整 B0、两干净环境、恢复或 042 的 0/6 产品 AC 已通过。
 
-**[034 计划](docs/plans/034-凭据与应用安全计划.md) S00/S01 已完成，Plan 保持 in_progress。** 全新隔离 PostgreSQL/Compose 已验证受控初始化、登录/注销、CSRF、旧会话失效、维护恢复和日志不泄密；后端 34 tests、前端 11 tests 及全量门禁通过。尚无受保护业务资料、连接秘密、正文、导出或网络目标，034 产品 AC 仍为 0/6，未建立 Acceptance。
+**[034 计划](docs/plans/034-凭据与应用安全计划.md) S00/S01 与 S02a 当前内容页链接安全技术子片已完成，Plan 保持 in_progress。** S00/S01 的隔离 PostgreSQL/Compose 验证覆盖受控初始化、登录/注销、CSRF、旧会话失效、维护恢复和日志不泄密；S02a 列表/详情共用 HTTP(S) 原文链接校验，前端 43 tests、lint/format/typecheck/build 及合成数据浏览器 DOM 验证通过。S02a 未改 API/DDL/依赖/env/服务；未覆盖 CSV 导出、模型/通知消费者与 Firecrawl 网络级 DNS/重定向。034 产品 AC 仍为 0/6，未建立 Acceptance。
 
 **[035 计划](docs/plans/035-权限与数据隔离计划.md) S00/S01 已完成，S02 当前资源先行输出通过，Plan 保持 in_progress。** 在既有工作区授权上增加主题/任务越权操作矩阵、作品关联失败整笔回滚、连接证据隔离、删除目标引用不展开、混合证据清单整体拒绝及注销后拒绝。修复统一错误响应缺少 no-store 的缓存边界。真实 PostgreSQL 全量 243 tests、前端 22 tests、静态/契约及隔离构建通过；现有 API 已替换为当前代码，原 Web 代理确认禁存头与 request ID 透传，未新增服务/脚本。完整 S02 的评论/事件、实际缓存/异步发布/导出下载及 S03/S04 随业务接入，产品 AC 仍为 0/6，未建立 Acceptance。
 

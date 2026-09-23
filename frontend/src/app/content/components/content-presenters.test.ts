@@ -7,6 +7,7 @@ import {
   formatTime,
   hasUnknownMetrics,
   scanKindLabel,
+  safeExternalHref,
   visibilityStatusLabel,
   visibilityStatusNotice,
 } from "./content-presenters";
@@ -35,6 +36,22 @@ describe("content presenters", () => {
 
   it("does not invent an unknown timestamp", () => {
     expect(formatTime(null)).toBe("未知");
+  });
+
+  it("allows only absolute HTTP(S) links without embedded credentials", () => {
+    expect(safeExternalHref("https://example.com/post/1")).toBe(
+      "https://example.com/post/1",
+    );
+    expect(safeExternalHref("HTTP://example.com/post/1")).toBe(
+      "http://example.com/post/1",
+    );
+    expect(safeExternalHref("javascript:alert(1)")).toBeNull();
+    expect(safeExternalHref("data:text/html,unsafe")).toBeNull();
+    expect(safeExternalHref("//example.com/post/1")).toBeNull();
+    expect(safeExternalHref("/post/1")).toBeNull();
+    expect(safeExternalHref("https://user:pass@example.com/post/1")).toBeNull();
+    expect(safeExternalHref("not a URL")).toBeNull();
+    expect(safeExternalHref(null)).toBeNull();
   });
 
   it("marks historical discovery without presenting it as a new event", () => {

@@ -16,6 +16,7 @@ import {
   METRIC_LABELS,
   relationTypeLabel,
   scanKindLabel,
+  safeExternalHref,
   truncationReasonLabel,
   visibilityBasisLabel,
   visibilityStatusLabel,
@@ -363,6 +364,7 @@ export function ContentDetail({ contentId }: ContentDetailProps) {
 
   const { content } = state;
   const observation = content.latest_observation;
+  const canonicalHref = safeExternalHref(observation.canonical_url);
 
   return (
     <div className="bg-background min-h-screen">
@@ -425,13 +427,9 @@ export function ContentDetail({ contentId }: ContentDetailProps) {
               value={formatTime(observation.observed_at)}
             />
           </dl>
-          {observation.canonical_url ? (
+          {canonicalHref ? (
             <Button asChild variant="outline" className="mt-4">
-              <a
-                href={observation.canonical_url}
-                target="_blank"
-                rel="noreferrer"
-              >
+              <a href={canonicalHref} target="_blank" rel="noreferrer">
                 打开原文
                 <ExternalLinkIcon data-icon="inline-end" />
               </a>
