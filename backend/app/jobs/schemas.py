@@ -27,6 +27,15 @@ class JobStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class JobReliabilityOutcome(StrEnum):
+    SUCCEEDED = "succeeded"
+    PARTIALLY_SUCCEEDED = "partially_succeeded"
+    SOURCE_FAILURE = "source_failure"
+    UNATTRIBUTED_FAILURE = "unattributed_failure"
+    CANCELLED = "cancelled"
+    IN_PROGRESS = "in_progress"
+
+
 class CoverageWindowInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
@@ -594,6 +603,120 @@ class OperationalSnapshot(BaseModel):
     operations: tuple[OperationAttemptCount, ...]
     summary: OperationalSummary
     capabilities: tuple[SourceCapabilityTaskSummary, ...]
+
+
+class JobReliabilityRecord(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    job_id: UUID
+    operation_id: UUID
+    kind: str
+    outcome: JobReliabilityOutcome
+    logical_start_at: datetime
+    sla_deadline_at: datetime
+    completed_at: datetime | None
+    elapsed_us: int | None = Field(default=None, ge=0)
+    failed_source_evidence_count: int = Field(ge=0)
+    on_time: bool
+
+    @model_validator(mode="after")
+    def validate_evidence_and_times(self) -> JobReliabilityRecord:
+        if self.logical_start_at.utcoffset() is None:
+            raise ValueError("logical_start_at must be timezone-aware")
+        if self.sla_deadline_at.utcoffset() is None:
+            raise ValueError("sla_deadline_at must be timezone-aware")
+        if self.sla_deadline_at <= self.logical_start_at:
+            raise ValueError("sla_deadline_at must follow logical_start_at")
+        if self.completed_at is not None and self.completed_at.utcoffset() is None:
+            raise ValueError("completed_at must be timezone-aware")
+        if self.completed_at is None and self.elapsed_us is not None:
+            raise ValueError("non-terminal observation cannot have terminal elapsed time")
+        if self.completed_at is None and self.outcome is not JobReliabilityOutcome.IN_PROGRESS:
+            raise ValueError("terminal outcome requires completed_at")
+        if self.completed_at is not None and self.outcome is JobReliabilityOutcome.IN_PROGRESS:
+            raise ValueError("in-progress outcome cannot have completed_at")
+        if (
+            self.outcome is JobReliabilityOutcome.SOURCE_FAILURE
+            and self.failed_source_evidence_count == 0
+        ):
+            raise ValueError("source failure requires persisted source evidence")
+        if (
+            self.outcome is JobReliabilityOutcome.UNATTRIBUTED_FAILURE
+            and self.failed_source_evidence_count != 0
+        ):
+            raise ValueError("unattributed failure cannot have matching source evidence")
+        if self.on_time and (
+            self.completed_at is None
+            or self.elapsed_us is None
+            or self.outcome
+            not in {JobReliabilityOutcome.SUCCEEDED, JobReliabilityOutcome.SOURCE_FAILURE}
+        ):
+            raise ValueError("only a completed success or persisted source failure can be on time")
+        return self
+
+
+def _validate_reliability_counts(counts: dict[JobReliabilityOutcome, int], total: int) -> None:
+    if set(counts) != set(JobReliabilityOutcome):
+        raise ValueError("outcome_counts must include every reliability outcome")
+    if any(value < 0 for value in counts.values()):
+        raise ValueError("outcome counts cannot be negative")
+    if sum(counts.values()) != total:
+        raise ValueError("outcome counts must reconcile to total_jobs")
+
+
+class JobReliabilitySnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    window_start: datetime
+    window_end: datetime
+    sla_seconds: int = Field(gt=0)
+    total_jobs: int = Field(ge=0)
+    on_time_jobs: int = Field(ge=0)
+    outcome_counts: dict[JobReliabilityOutcome, int]
+    records: tuple[JobReliabilityRecord, ...]
+
+    @model_validator(mode="after")
+    def validate_snapshot(self) -> JobReliabilitySnapshot:
+        if self.window_start.utcoffset() is None or self.window_end.utcoffset() is None:
+            raise ValueError("reliability window must be timezone-aware")
+        if self.window_end <= self.window_start:
+            raise ValueError("reliability window end must follow start")
+        if len(self.records) != self.total_jobs:
+            raise ValueError("reliability records must reconcile to total_jobs")
+        if self.on_time_jobs > self.total_jobs:
+            raise ValueError("on_time_jobs cannot exceed total_jobs")
+        _validate_reliability_counts(self.outcome_counts, self.total_jobs)
+        record_counts = {
+            outcome: sum(record.outcome is outcome for record in self.records)
+            for outcome in JobReliabilityOutcome
+        }
+        if self.outcome_counts != record_counts:
+            raise ValueError("outcome_counts must match reliability records")
+        expected_on_time_jobs = 0
+        for record in self.records:
+            if record.kind != "webpage.collect":
+                raise ValueError("webpage.collect is the only task kind with a frozen SLA")
+            if record.sla_deadline_at != record.logical_start_at + timedelta(
+                seconds=self.sla_seconds
+            ):
+                raise ValueError("sla_deadline_at must match the configured SLA")
+            if not self.window_start <= record.sla_deadline_at < self.window_end:
+                raise ValueError("record SLA deadline must be inside the observation window")
+            if record.on_time:
+                if record.elapsed_us is None:
+                    raise ValueError("on-time record requires terminal duration")
+                if record.elapsed_us > self.sla_seconds * 1_000_000:
+                    raise ValueError("on-time record cannot exceed its SLA")
+            expected_on_time_jobs += record.on_time
+        if self.on_time_jobs != expected_on_time_jobs:
+            raise ValueError("on_time_jobs must match reliability records")
+        return self
+
+    @property
+    def on_time_rate(self) -> float | None:
+        if self.total_jobs == 0:
+            return None
+        return self.on_time_jobs / self.total_jobs
 
 
 class FreshnessTimelineInput(BaseModel):

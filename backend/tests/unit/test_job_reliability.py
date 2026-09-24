@@ -7,8 +7,14 @@ import pytest
 from pydantic import ValidationError
 
 from jobs.execution import plan_catchup_windows, scheduled_operation_id
-from jobs.schemas import JobAcceptanceInput, JobObservationContext
-from jobs.services import fingerprint_request
+from jobs.schemas import (
+    JobAcceptanceInput,
+    JobObservationContext,
+    JobReliabilityOutcome,
+    JobReliabilitySnapshot,
+    JobStatus,
+)
+from jobs.services import classify_job_reliability_outcome, fingerprint_request
 from sources.contracts import SourceCapability
 
 
@@ -100,3 +106,43 @@ def test_schedule_operation_id_is_stable_per_owner_kind_key_and_window() -> None
 
     assert first == repeated
     assert first != changed
+
+
+@pytest.mark.parametrize(
+    ("status", "failed_source_evidence_count", "expected"),
+    [
+        (JobStatus.FAILED, 1, JobReliabilityOutcome.SOURCE_FAILURE),
+        (JobStatus.FAILED, 0, JobReliabilityOutcome.UNATTRIBUTED_FAILURE),
+        (JobStatus.SUCCEEDED, 1, JobReliabilityOutcome.SUCCEEDED),
+        (JobStatus.PARTIALLY_SUCCEEDED, 0, JobReliabilityOutcome.PARTIALLY_SUCCEEDED),
+        (JobStatus.CANCELLED, 0, JobReliabilityOutcome.CANCELLED),
+        (JobStatus.QUEUED, 0, JobReliabilityOutcome.IN_PROGRESS),
+        (JobStatus.RUNNING, 0, JobReliabilityOutcome.IN_PROGRESS),
+    ],
+)
+def test_reliability_outcome_requires_durable_source_failure_evidence(
+    status: JobStatus,
+    failed_source_evidence_count: int,
+    expected: JobReliabilityOutcome,
+) -> None:
+    assert (
+        classify_job_reliability_outcome(
+            status,
+            failed_source_evidence_count=failed_source_evidence_count,
+        )
+        is expected
+    )
+
+
+def test_reliability_rate_is_undefined_when_no_sla_deadlines_fall_in_window() -> None:
+    snapshot = JobReliabilitySnapshot(
+        window_start=datetime(2026, 9, 24, 12, tzinfo=UTC),
+        window_end=datetime(2026, 9, 24, 13, tzinfo=UTC),
+        sla_seconds=1800,
+        total_jobs=0,
+        on_time_jobs=0,
+        outcome_counts={outcome: 0 for outcome in JobReliabilityOutcome},
+        records=(),
+    )
+
+    assert snapshot.on_time_rate is None

@@ -35,10 +35,11 @@ from jobs.schemas import (
     JobAcceptanceInput,
     JobFailureCategory,
     JobObservationContext,
+    JobReliabilityOutcome,
     JobStage,
     JobStatus,
 )
-from jobs.services import JobService, OutboxService
+from jobs.services import JobObservationService, JobService, OutboxService
 from sources.contracts import SourceCapability
 from worker.app import JobExecutionContext, create_job_message_handler
 from worker.messaging import (
@@ -118,7 +119,12 @@ def job_context() -> Iterator[JobTestContext]:
         engine.dispose()
 
 
-def _command(*, operation_id: UUID | None = None, window: int = 7) -> JobAcceptanceInput:
+def _command(
+    *,
+    operation_id: UUID | None = None,
+    window: int = 7,
+    scheduled_for_at: datetime | None = None,
+) -> JobAcceptanceInput:
     return JobAcceptanceInput(
         operation_id=operation_id or uuid4(),
         kind="monitor.collect",
@@ -128,7 +134,25 @@ def _command(*, operation_id: UUID | None = None, window: int = 7) -> JobAccepta
             source_key="x",
             source_capability=SourceCapability.SEARCH,
         ),
+        scheduled_for_at=scheduled_for_at,
         scope={"source_id": "account-1", "window": window},
+    )
+
+
+def _webpage_command(
+    *, operation_id: UUID | None = None, scheduled_for_at: datetime | None = None
+) -> JobAcceptanceInput:
+    return JobAcceptanceInput(
+        operation_id=operation_id or uuid4(),
+        kind="webpage.collect",
+        observation=JobObservationContext(
+            configuration_ref="web-collector-1",
+            configuration_version=1,
+            source_key="web",
+            source_capability=SourceCapability.PAGE_CONTENT,
+        ),
+        scheduled_for_at=scheduled_for_at,
+        scope={"target": "https://example.com/"},
     )
 
 
@@ -254,6 +278,211 @@ def test_lost_response_retry_returns_the_original_job_and_one_outbox(
         "source_key": "x",
         "source_capability": "search",
     }
+
+
+def test_reliability_snapshot_uses_logical_start_and_durable_source_evidence(
+    job_context: JobTestContext,
+) -> None:
+    window_start = datetime(2026, 9, 24, 12, tzinfo=UTC)
+    window_end = window_start + timedelta(minutes=40)
+    scheduled_start = window_start + timedelta(minutes=1)
+    scheduled_job_created_at = window_start + timedelta(minutes=2)
+    immediate_created_at = window_start + timedelta(minutes=3)
+    success_start = window_start + timedelta(minutes=4)
+    late_success_start = window_start + timedelta(minutes=5)
+    source_completed_at = scheduled_start + timedelta(minutes=30)
+    unattributed_completed_at = immediate_created_at + timedelta(minutes=1)
+    success_completed_at = success_start + timedelta(minutes=30)
+    late_success_completed_at = late_success_start + timedelta(minutes=30, microseconds=1)
+    operation_id = uuid4()
+    with job_context.sessions() as session:
+        source_job = JobService(
+            session,
+            clock=lambda: scheduled_job_created_at,
+        ).accept(
+            owner_id=job_context.owner_id,
+            command=_webpage_command(
+                operation_id=operation_id,
+                scheduled_for_at=scheduled_start,
+            ),
+        )
+    with job_context.sessions() as session:
+        unattributed_job = JobService(
+            session,
+            clock=lambda: immediate_created_at,
+        ).accept(
+            owner_id=job_context.owner_id,
+            command=_webpage_command(),
+        )
+    with job_context.sessions() as session:
+        success_job = JobService(
+            session,
+            clock=lambda: success_start,
+        ).accept(
+            owner_id=job_context.owner_id,
+            command=_webpage_command(),
+        )
+    with job_context.sessions() as session:
+        late_success_job = JobService(
+            session,
+            clock=lambda: late_success_start,
+        ).accept(
+            owner_id=job_context.owner_id,
+            command=_webpage_command(),
+        )
+    with job_context.sessions() as session:
+        boundary_job = JobService(
+            session,
+            clock=lambda: immediate_created_at + timedelta(minutes=1),
+        ).accept(
+            owner_id=job_context.owner_id,
+            command=_webpage_command(scheduled_for_at=window_end - timedelta(minutes=30)),
+        )
+
+    with job_context.engine.begin() as connection:
+        for job, completed_at, error_code in (
+            (source_job, source_completed_at, "source_upstream_unavailable"),
+            (unattributed_job, unattributed_completed_at, "job_execution_timeout"),
+        ):
+            connection.execute(
+                text(
+                    "UPDATE jobs SET status = 'failed', started_at = :started_at, "
+                    "completed_at = :completed_at, updated_at = :completed_at, "
+                    "last_error_code = :error_code, last_error_category = 'transient', "
+                    "last_error_at = :completed_at, next_action = 'Retry after recovery' "
+                    "WHERE id = :job_id"
+                ),
+                {
+                    "started_at": job.scheduled_for_at or job.created_at,
+                    "completed_at": completed_at,
+                    "error_code": error_code,
+                    "job_id": job.id,
+                },
+            )
+        for job, completed_at in (
+            (success_job, success_completed_at),
+            (late_success_job, late_success_completed_at),
+        ):
+            connection.execute(
+                text(
+                    "UPDATE jobs SET status = 'succeeded', started_at = :started_at, "
+                    "completed_at = :completed_at, updated_at = :completed_at "
+                    "WHERE id = :job_id"
+                ),
+                {
+                    "started_at": job.created_at,
+                    "completed_at": completed_at,
+                    "job_id": job.id,
+                },
+            )
+
+        connection_id = uuid4()
+        component_policy_id = uuid4()
+        attempt_id = uuid4()
+        evidence_at = source_completed_at - timedelta(seconds=1)
+        connection.execute(
+            text(
+                "INSERT INTO source_connections "
+                "(id, owner_id, source_key, status, current_version, created_at, updated_at) "
+                "VALUES (:id, :owner_id, 'web', 'active', 1, :now, :now)"
+            ),
+            {"id": connection_id, "owner_id": job_context.owner_id, "now": window_start},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO source_connection_versions "
+                "(connection_id, version, owner_id, auth_kind, secret_ref, configuration, "
+                "created_by, created_at) VALUES (:id, 1, :owner_id, 'none', NULL, '{}'::jsonb, "
+                ":owner_id, :now)"
+            ),
+            {"id": connection_id, "owner_id": job_context.owner_id, "now": window_start},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO resource_component_policies "
+                "(id, owner_id, component_key, component_version, cost_class, enabled_for_core, "
+                "terms_reference, reviewed_at, policy_version, created_at, updated_at) VALUES "
+                "(:id, :owner_id, 'collector.firecrawl', '2.11.162', 'zero_price', true, "
+                "'test-fixture', :now, 1, :now, :now)"
+            ),
+            {"id": component_policy_id, "owner_id": job_context.owner_id, "now": window_start},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO resource_usage_attempts "
+                "(id, owner_id, attempt_id, operation_id, component_policy_id, component_version, "
+                "usage_kind, stage, outcome, started_at, finished_at) VALUES "
+                "(:id, :owner_id, :attempt_id, :operation_id, :policy_id, '2.11.162', "
+                "'collector_call', 'page_content.fetch', 'failed', :started_at, :finished_at)"
+            ),
+            {
+                "id": uuid4(),
+                "owner_id": job_context.owner_id,
+                "attempt_id": attempt_id,
+                "operation_id": source_job.operation_id,
+                "policy_id": component_policy_id,
+                "started_at": evidence_at - timedelta(seconds=1),
+                "finished_at": evidence_at,
+            },
+        )
+        connection.execute(
+            text(
+                "INSERT INTO source_capability_evidence "
+                "(id, operation_id, owner_id, connection_id, connection_version, capability, "
+                "entry_point, kind, outcome, stop_reason, resource_ref, component_name, "
+                "component_version, observed_at, created_at) VALUES "
+                "(:id, :attempt_id, :owner_id, :connection_id, 1, 'page_content', 'manual', "
+                "'persisted_read', 'failed', 'upstream_error', NULL, 'firecrawl', '2.11.162', "
+                ":now, :now)"
+            ),
+            {
+                "id": uuid4(),
+                "attempt_id": attempt_id,
+                "owner_id": job_context.owner_id,
+                "connection_id": connection_id,
+                "now": evidence_at,
+            },
+        )
+
+    with job_context.sessions() as session:
+        snapshot = JobObservationService(session).reliability_snapshot(
+            owner_id=job_context.owner_id,
+            window_start=window_start,
+            window_end=window_end,
+        )
+
+    assert snapshot.sla_seconds == 1800
+    assert snapshot.total_jobs == 4
+    assert snapshot.on_time_jobs == 2
+    assert snapshot.on_time_rate == 0.5
+    assert boundary_job.id not in {record.job_id for record in snapshot.records}
+    assert snapshot.outcome_counts == {
+        JobReliabilityOutcome.SUCCEEDED: 2,
+        JobReliabilityOutcome.PARTIALLY_SUCCEEDED: 0,
+        JobReliabilityOutcome.SOURCE_FAILURE: 1,
+        JobReliabilityOutcome.UNATTRIBUTED_FAILURE: 1,
+        JobReliabilityOutcome.CANCELLED: 0,
+        JobReliabilityOutcome.IN_PROGRESS: 0,
+    }
+    source_record, unattributed_record, success_record, late_success_record = snapshot.records
+    assert source_record.job_id == source_job.id
+    assert source_record.logical_start_at == scheduled_start
+    assert source_record.sla_deadline_at == source_completed_at
+    assert source_record.elapsed_us == 1_800_000_000
+    assert source_record.outcome is JobReliabilityOutcome.SOURCE_FAILURE
+    assert source_record.failed_source_evidence_count == 1
+    assert source_record.on_time is True
+    assert unattributed_record.job_id == unattributed_job.id
+    assert unattributed_record.logical_start_at == immediate_created_at
+    assert unattributed_record.outcome is JobReliabilityOutcome.UNATTRIBUTED_FAILURE
+    assert unattributed_record.failed_source_evidence_count == 0
+    assert unattributed_record.on_time is False
+    assert success_record.job_id == success_job.id
+    assert success_record.elapsed_us == 1_800_000_000
+    assert success_record.on_time is True
+    assert late_success_record.job_id == late_success_job.id
+    assert late_success_record.elapsed_us == 1_800_000_001
+    assert late_success_record.on_time is False
 
 
 def test_transient_failure_retries_twice_then_fails_without_replay_duplicates(

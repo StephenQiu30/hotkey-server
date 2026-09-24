@@ -12,7 +12,10 @@ from sqlalchemy import Select, and_, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from connections.services import require_source_connection_enabled
+from connections.services import (
+    SourceCapabilityEvidenceService,
+    require_source_connection_enabled,
+)
 from core.errors import ApplicationError
 from jobs.cursor import (
     CursorPageProgress,
@@ -71,6 +74,9 @@ from jobs.schemas import (
     JobHistoryItemView,
     JobObservationContext,
     JobProgressView,
+    JobReliabilityOutcome,
+    JobReliabilityRecord,
+    JobReliabilitySnapshot,
     JobStage,
     JobStageOutcome,
     JobStatus,
@@ -97,6 +103,8 @@ from sources.contracts import SourceCapability, SourcePageState, SourceStopReaso
 JOB_ACCEPTED_EVENT_TYPE = "job.accepted.v2"
 JOB_ACCEPTED_TOPIC = "hotkey.jobs.accepted.v2"
 JOB_RETRY_EVENT_TYPE = "job.retry_scheduled.v1"
+WEBPAGE_COLLECT_SLA = timedelta(minutes=30)
+WEBPAGE_COLLECT_SLA_MICROSECONDS = int(WEBPAGE_COLLECT_SLA.total_seconds() * 1_000_000)
 JOB_EVENT_SCHEMA_VERSIONS = {
     JOB_ACCEPTED_EVENT_TYPE: 2,
     JOB_RETRY_EVENT_TYPE: 1,
@@ -570,6 +578,28 @@ def _duration_us(start: datetime | None, end: datetime | None) -> int | None:
         return None
     duration = end - start
     return (duration.days * 86_400 + duration.seconds) * 1_000_000 + duration.microseconds
+
+
+def classify_job_reliability_outcome(
+    status: JobStatus,
+    *,
+    failed_source_evidence_count: int,
+) -> JobReliabilityOutcome:
+    if failed_source_evidence_count < 0:
+        raise ValueError("failed_source_evidence_count cannot be negative")
+    if status is JobStatus.SUCCEEDED:
+        return JobReliabilityOutcome.SUCCEEDED
+    if status is JobStatus.PARTIALLY_SUCCEEDED:
+        return JobReliabilityOutcome.PARTIALLY_SUCCEEDED
+    if status is JobStatus.FAILED:
+        return (
+            JobReliabilityOutcome.SOURCE_FAILURE
+            if failed_source_evidence_count > 0
+            else JobReliabilityOutcome.UNATTRIBUTED_FAILURE
+        )
+    if status is JobStatus.CANCELLED:
+        return JobReliabilityOutcome.CANCELLED
+    return JobReliabilityOutcome.IN_PROGRESS
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -1788,6 +1818,142 @@ class JobObservationService:
             summary=summary,
             capabilities=capabilities,
         )
+
+    def reliability_snapshot(
+        self,
+        *,
+        owner_id: UUID,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> JobReliabilitySnapshot:
+        """Read logical-job outcomes and linked source-failure evidence for a half-open window."""
+        if window_start.utcoffset() is None or window_end.utcoffset() is None:
+            raise ValueError("observation window must be timezone-aware")
+        start = window_start.astimezone(UTC)
+        end = window_end.astimezone(UTC)
+        if end <= start:
+            raise ValueError("observation window end must follow start")
+
+        logical_start = func.coalesce(Job.scheduled_for_at, Job.created_at)
+        sla_window_start = start - WEBPAGE_COLLECT_SLA
+        sla_window_end = end - WEBPAGE_COLLECT_SLA
+        try:
+            jobs = list(
+                self._session.scalars(
+                    select(Job)
+                    .where(
+                        Job.owner_id == owner_id,
+                        Job.kind == "webpage.collect",
+                        logical_start >= sla_window_start,
+                        logical_start < sla_window_end,
+                    )
+                    .order_by(logical_start, Job.id)
+                )
+            )
+            webpage_operation_ids = {
+                job.operation_id
+                for job in jobs
+                if job.kind == "webpage.collect"
+                and job.source_key == "web"
+                and job.source_capability == SourceCapability.PAGE_CONTENT.value
+            }
+            failed_evidence_counts: dict[UUID, int] = {}
+            if webpage_operation_ids:
+                ambiguous_operation_ids = set(
+                    self._session.scalars(
+                        select(Job.operation_id)
+                        .where(
+                            Job.owner_id == owner_id,
+                            Job.operation_id.in_(webpage_operation_ids),
+                        )
+                        .group_by(Job.operation_id)
+                        .having(func.count(Job.id) > 1)
+                    )
+                )
+                attributable_operation_ids = webpage_operation_ids - ambiguous_operation_ids
+                if attributable_operation_ids:
+                    attempt_rows = self._session.execute(
+                        select(ResourceUsageAttempt.operation_id, ResourceUsageAttempt.attempt_id)
+                        .join(
+                            ResourceComponentPolicy,
+                            and_(
+                                ResourceComponentPolicy.owner_id == ResourceUsageAttempt.owner_id,
+                                ResourceComponentPolicy.id
+                                == ResourceUsageAttempt.component_policy_id,
+                            ),
+                        )
+                        .where(
+                            ResourceUsageAttempt.owner_id == owner_id,
+                            ResourceUsageAttempt.operation_id.in_(attributable_operation_ids),
+                            ResourceUsageAttempt.usage_kind == "collector_call",
+                            ResourceUsageAttempt.stage == "page_content.fetch",
+                            ResourceComponentPolicy.component_key == "collector.firecrawl",
+                        )
+                    )
+                    attempt_to_operation = {
+                        attempt_id: operation_id for operation_id, attempt_id in attempt_rows
+                    }
+                    failed_attempt_ids = SourceCapabilityEvidenceService(
+                        self._session
+                    ).list_failed_persisted_read_operation_ids(
+                        owner_id=owner_id,
+                        operation_ids=attempt_to_operation,
+                    )
+                    for attempt_id in failed_attempt_ids:
+                        operation_id = attempt_to_operation.get(attempt_id)
+                        if operation_id is not None:
+                            failed_evidence_counts[operation_id] = (
+                                failed_evidence_counts.get(operation_id, 0) + 1
+                            )
+
+            records: list[JobReliabilityRecord] = []
+            outcome_counts = {outcome: 0 for outcome in JobReliabilityOutcome}
+            for job in jobs:
+                failed_evidence_count = failed_evidence_counts.get(job.operation_id, 0)
+                outcome = classify_job_reliability_outcome(
+                    JobStatus(job.status),
+                    failed_source_evidence_count=failed_evidence_count,
+                )
+                logical_started_at = (job.scheduled_for_at or job.created_at).astimezone(UTC)
+                sla_deadline_at = logical_started_at + WEBPAGE_COLLECT_SLA
+                completed_at = _as_utc(job.completed_at)
+                elapsed_us = _duration_us(logical_started_at, completed_at)
+                if elapsed_us is not None and elapsed_us < 0:
+                    elapsed_us = None
+                on_time = (
+                    outcome
+                    in {JobReliabilityOutcome.SUCCEEDED, JobReliabilityOutcome.SOURCE_FAILURE}
+                    and elapsed_us is not None
+                    and elapsed_us <= WEBPAGE_COLLECT_SLA_MICROSECONDS
+                )
+                if outcome is not JobReliabilityOutcome.IN_PROGRESS and completed_at is None:
+                    raise RuntimeError("terminal job is missing completed_at")
+                records.append(
+                    JobReliabilityRecord(
+                        job_id=job.id,
+                        operation_id=job.operation_id,
+                        kind=job.kind,
+                        outcome=outcome,
+                        logical_start_at=logical_started_at,
+                        sla_deadline_at=sla_deadline_at,
+                        completed_at=completed_at,
+                        elapsed_us=elapsed_us,
+                        failed_source_evidence_count=failed_evidence_count,
+                        on_time=on_time,
+                    )
+                )
+                outcome_counts[outcome] += 1
+            return JobReliabilitySnapshot(
+                window_start=start,
+                window_end=end,
+                sla_seconds=int(WEBPAGE_COLLECT_SLA.total_seconds()),
+                total_jobs=len(records),
+                on_time_jobs=sum(record.on_time for record in records),
+                outcome_counts=outcome_counts,
+                records=tuple(records),
+            )
+        finally:
+            self._session.rollback()
 
     @staticmethod
     def _operational_status(model: Job) -> OperationalTaskStatus:

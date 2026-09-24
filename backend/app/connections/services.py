@@ -150,6 +150,29 @@ class SourceCapabilityEvidenceService:
             resource_ref=command.resource_ref,
         )
 
+    def list_failed_persisted_read_operation_ids(
+        self,
+        *,
+        owner_id: UUID,
+        operation_ids: Iterable[UUID],
+    ) -> frozenset[UUID]:
+        """Return only IDs backed by durable failed-read evidence for this owner."""
+        requested_ids = tuple(set(operation_ids))
+        if not requested_ids:
+            return frozenset()
+        return frozenset(
+            self._session.scalars(
+                select(SourceCapabilityEvidence.operation_id).where(
+                    SourceCapabilityEvidence.owner_id == owner_id,
+                    SourceCapabilityEvidence.operation_id.in_(requested_ids),
+                    SourceCapabilityEvidence.kind == ConnectionEvidenceKind.PERSISTED_READ.value,
+                    SourceCapabilityEvidence.capability == SourceCapability.PAGE_CONTENT.value,
+                    SourceCapabilityEvidence.outcome == ConnectionEvidenceOutcome.FAILED.value,
+                    SourceCapabilityEvidence.component_name == "firecrawl",
+                )
+            )
+        )
+
     def _record(
         self,
         *,
