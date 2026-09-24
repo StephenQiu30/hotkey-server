@@ -187,3 +187,5 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 
 本轮已交付 009/003/007/004 S00—S03 和 002 S01，技术证据见上文与各 Plan。验证复用当前 PostgreSQL/Redis/Kafka/MinIO 与 env，未启动第二套依赖；002 S01 收尾后后端 226 tests、前端 22 tests、静态检查、OpenAPI/客户端无漂移及隔离生产构建通过。构建另发现既有路由辅助函数非法导出，已以独立修复提交保留内部函数并新增导出集合断言。尚未执行真实业务处理器/来源、真实连接探测/采集、上游扩词、跨任务来源预算/租约装配、真实评分/模型记录、独立对象备份/真实恢复、完整 B0 或产品 Acceptance。
+
+2026-09-25 Firecrawl 凭据日志脱敏复验：独立 Firecrawl 本机 `main` 提交 `9262e24` 补齐 API/access token/client secret/password 字段及内联 Bearer/Basic 赋值脱敏；logger 3 tests 与 API Dockerfile 中 TypeScript build 通过。仅以 `--no-deps` 原位重建/替换现有 API，readiness 200，`example.com` 带 URL/query 与请求头 canary 抓取成功（180 字符）；API/Playwright 日志均无 canary 且保留固定运行事件。未改数据库、Playwright、代理/SSRF 规则或依赖容器；这不是 HotKey 来源/产品验收，也不改变 038/047 AC 状态。
