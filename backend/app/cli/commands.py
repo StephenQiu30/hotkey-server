@@ -14,6 +14,7 @@ from backups.adapters.minio import MinioObjectInventory, ObjectInventoryError
 from backups.adapters.postgres import BackupToolError, PostgresDumpAdapter
 from backups.restore import BackupRestoreError, BackupRestoreService
 from backups.services import BackupError, BackupService
+from cli.jobs import jobs_app
 from connections.adapters.local_secrets import BrowserStateError, BrowserStateStore
 from connections.schemas import (
     ConnectionEvidenceOutcome,
@@ -44,6 +45,7 @@ app.add_typer(identity_app, name="identity")
 app.add_typer(lifecycle_app, name="lifecycle")
 app.add_typer(backup_app, name="backup")
 app.add_typer(connections_app, name="connections")
+app.add_typer(jobs_app, name="jobs")
 app.add_typer(sources_app, name="sources")
 
 
