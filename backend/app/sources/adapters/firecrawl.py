@@ -100,15 +100,21 @@ class FirecrawlAdapter(AbstractContextManager["FirecrawlAdapter"]):
                 timeout=request.timeout_seconds,
             ) as response:
                 service_reason = self._service_failure(response.status_code)
-                if service_reason is not None:
+                if service_reason is not None and response.status_code < 500:
                     return self._failure(service_reason, calls=1)
                 body = bytearray()
                 for chunk in response.iter_bytes(chunk_size=64 * 1024):
                     body.extend(chunk)
                     if len(body) > self._max_response_bytes:
-                        return self._failure(SourceStopReason.BUDGET_EXHAUSTED, calls=1)
+                        return self._failure(
+                            service_reason or SourceStopReason.BUDGET_EXHAUSTED,
+                            calls=1,
+                        )
         except (httpx.HTTPError, TimeoutError):
             return self._failure(SourceStopReason.UPSTREAM_ERROR, calls=1)
+
+        if service_reason is not None:
+            return self._server_response_failure(body)
 
         try:
             decoded = json.loads(body)
@@ -116,10 +122,38 @@ class FirecrawlAdapter(AbstractContextManager["FirecrawlAdapter"]):
         except (json.JSONDecodeError, TypeError, ValueError, KeyError):
             return self._failure(SourceStopReason.PROTOCOL_ERROR, calls=1)
 
+    @classmethod
+    def _server_response_failure(cls, body: bytes | bytearray) -> WebPageResult:
+        try:
+            payload = json.loads(body)
+        except (json.JSONDecodeError, TypeError):
+            return cls._failure(SourceStopReason.UPSTREAM_ERROR, calls=1)
+        reason = (
+            SourceStopReason.ACCESS_DENIED
+            if cls._is_document_antibot_failure(payload)
+            else SourceStopReason.UPSTREAM_ERROR
+        )
+        return cls._failure(reason, calls=1)
+
+    @staticmethod
+    def _is_document_antibot_failure(payload: Any) -> bool:
+        if not isinstance(payload, dict) or payload.get("success") is not False:
+            return False
+        error = payload.get("error")
+        return (
+            payload.get("code") == "SCRAPE_RETRY_LIMIT"
+            and isinstance(error, str)
+            and "document_antibot" in error.lower()
+        )
+
     def _map_response(
         self, payload: Any, *, request: WebPageRequest, request_url: str
     ) -> WebPageResult:
-        if not isinstance(payload, dict) or payload.get("success") is not True:
+        if not isinstance(payload, dict):
+            return self._failure(SourceStopReason.PROTOCOL_ERROR, calls=1)
+        if payload.get("success") is not True:
+            if self._is_document_antibot_failure(payload):
+                return self._failure(SourceStopReason.ACCESS_DENIED, calls=1)
             return self._failure(SourceStopReason.PROTOCOL_ERROR, calls=1)
         data = payload.get("data")
         if not isinstance(data, dict):

@@ -180,6 +180,26 @@ def test_firecrawl_adapter_rejects_false_success_and_unusable_pages(
     assert result.collector_call_count == 1
 
 
+def test_firecrawl_adapter_classifies_document_antibot_as_access_denied() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            500,
+            json={
+                "success": False,
+                "code": "SCRAPE_RETRY_LIMIT",
+                "error": "Scrape aborted after exceeding retry limit (document_antibot).",
+            },
+            request=request,
+        )
+
+    with _adapter(httpx.MockTransport(handle)) as adapter:
+        result = adapter.fetch_document(WebPageRequest(url="https://example.com/start"))
+
+    assert result.document is None
+    assert result.stop_reason is SourceStopReason.ACCESS_DENIED
+    assert result.collector_call_count == 1
+
+
 def test_firecrawl_adapter_bounds_response_and_content_separately() -> None:
     body = _response(markdown="0123456789")
 
@@ -221,6 +241,16 @@ def test_firecrawl_adapter_maps_transport_and_service_failures_without_raw_detai
                 lambda request: httpx.Response(429, text="private rate detail", request=request)
             ),
             SourceStopReason.RATE_LIMITED,
+        ),
+        (
+            httpx.MockTransport(
+                lambda request: httpx.Response(
+                    500,
+                    json={"success": False, "error": "private upstream detail"},
+                    request=request,
+                )
+            ),
+            SourceStopReason.UPSTREAM_ERROR,
         ),
         (
             httpx.MockTransport(
