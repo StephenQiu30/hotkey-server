@@ -193,3 +193,5 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 2026-09-25 Firecrawl 安全补充修复：独立 Firecrawl `main` 提交 `a25f95b` 补齐 `Authorization: Basic` 组合文本脱敏回归，并澄清标准上游 HTTP 代理由自身目的地址 ACL 承担最终限制。logger 3 tests、代理选项 3 tests、Playwright TypeScript 检查和 API Dockerfile TypeScript build/logger tests 通过；仅原位 `--no-deps` 重建 API，liveness/readiness 200，未重启 Playwright 或依赖。未在此提交后发外部抓取。安全差异复核为 0 项已确认报告，代理/DNS 绑定与配置范围仍待核对；不改 038/047 产品 AC、S02 G3/G4 或平台采集状态。
 
 2026-09-25 Firecrawl 双服务部署复验：API/Playwright 定向测试各 3 项、镜像构建通过；仅以现有 `.env` 和 `--no-deps --force-recreate` 原位重建现有 `api`、`playwright-service`。readiness `ok`，API 运行时脱敏探针仅返回 `[REDACTED]`，Playwright 运行时代理配置保留目标主机名；没有外部抓取或新增/重启依赖服务。共享 Squid ACL 对合成 DNS 目标范围仍未核验，不能据此宣称完整 SSRF 边界已验收；038/047 门禁与产品 Acceptance 状态不变。
+
+2026-09-25 Firecrawl 共享出口修复：Video `main` 提交 `e3eca45a` 将现有 Squid ACL 精确补齐到 Firecrawl 本机声明的合成 DNS 范围，保留其他私网/保留段和字面量目标拒绝；Red/Green 出口配置 4 tests、Ruff/format、`squid -k check` 通过，只原位重建现有 `egress-proxy`。既有代理对 `www.cloudflare.com` 返回 200；HotKey 无持久化 Firecrawl 探针对 `robots.txt` 返回 200/1088 字符；`localhost` 与合成 IPv6 字面量均为 403，Firecrawl API/Browser health 为 200。实际 DNS 样本未出现 fdfe 主机名，且没有 DNS 重绑定测试；不据此宣称完整 SSRF 边界验收，不改变 038 S02、047 G4-002/产品 AC。
