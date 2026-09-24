@@ -48,7 +48,7 @@
 
 2026-09-24 Firecrawl 复验：现有服务对 `example.com` 返回 HTTP 500 `SCRAPE_RETRY_LIMIT`/`document_antibot`，HotKey 现在将该结构化失败映射为 `access_denied`；无页面正文，故不宣称采集成功，047 产品 AC 仍 0/8。后端 347 passed/187 skipped、Ruff/format/mypy 通过（DB/Kafka 隔离集成项跳过）；未写 `hotkey-server`、重启现有进程或启动第二套依赖。
 
-2026-09-24 深入只读诊断：Firecrawl readiness 与 Playwright health 为 200，但受控 `example.com` 仍无正文；内部 Browser `/scrape` 的页面状态为 403（安全分类 `private_block`）。出口代理 CONNECT 与 DoH 探针成功，运行时解析的目标地址为公网。Firecrawl `resolution.pinConnection` 分支只给 Playwright 提供 `dnsLookup`，未设置 `upstreamProxyUrl`；容器内 proxy-chain 2.7.1 在无 upstream 时走 direct 连接，故合成 DNS pinning 路径可能绕过既有代理 allowlist，尚无证据证明其导致该 403。保持 SSRF 与目标白名单，出口路径修复需先形成安全设计/获授权；本轮未改代码、数据库或服务，也未重启容器。
+2026-09-24 深入只读诊断：Firecrawl readiness 与 Playwright health 为 200，但受控 `example.com` 仍无正文；内部 Browser `/scrape` 的页面状态为 403（安全分类 `private_block`）。出口代理 CONNECT 与 DoH 探针成功，运行时解析的目标地址为公网。只读代码审查发现出口路径与既有代理策略的一致性仍需安全复核；实现路径及复现细节不在公开交接文档披露，且没有证据证明该疑点导致当前 403。保持 SSRF 与目标白名单，出口路径修复需先形成安全设计/获授权；本轮未改代码、数据库或服务，也未重启容器。
 
 调研发现小红书 0 值配置文档与源码不一致、微博候选缺楼中楼继续分页、opencli B站评论仅单页；MediaCrawler 的置顶漏采已修复但许可证限制仍需遵循，Nemo2011/bilibili-api 已关停。S03-T00 在相同受控页面比较 Scrapling 0.4.15 与直接 Playwright：两者均可展开并保留字符串 ID，但 Scrapling 动作失败/超时仍返回 200、自适应误认另一评论 ID，默认记录完整 URL。选用 Playwright 1.63.0 原生 WS 单浏览器拓扑，不引入 Scrapling/Selector/CDP。S03-T01 已构建非 root、sandbox、只读、内部 WS 且默认断网的 browser；Worker 一次性容器的无网络探针成功，公网/宿主数据库端点不可达。Linux-arm64 Docker Desktop 证据不代替生产主机或真实平台验收。
 
@@ -141,7 +141,7 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 同日 X 报价幂等补片：隔离 PostgreSQL 中，10×5,000 与 5×10,000 微美元的同额报价曾错误复用同一预留；失败优先用例确认后，金额预留强制携带匹配报价并纳入既有指纹，非 X 指纹不变。预算目标 41 passed、后端全量 426 passed/5 skipped，Ruff check/format 与 mypy 通过；5 项跳过需显式启用隔离浏览器服务器。没有 DDL、HTTP、UI、Worker、真实 X 请求或第二套依赖；仅清理本次一次性 QA 库。X App/Token、账期硬上限、费率快照、付费尝试账本原子装配仍缺，037 产品 AC 保持 0/6。
 
-**[038 计划](docs/plans/038-可维护与可替换计划.md) S00/S01 已完成，Plan 保持 in_progress。** `sources` 领域已增加四类纯能力请求、统一作品/评论、显式缺失值与父链、不透明分页/水位、页状态/停止原因及结构化适配器端口；新增 5 tests、相关 23 tests、后端全量 92 tests 及静态门禁通过。2026-09-24 S02 前置核验确认官方 Firecrawl `v2.11.162` tag 的 LICENSE 为 AGPL-3.0-or-later，本地 `6d9fb16` 以该 tag 为父提交。找到权限 0600 的现有 `.env` 并核实 API/Playwright 环境项 46/46、8/8 与运行容器匹配后，从干净提交重建镜像并仅 `--no-deps` 原位重建两个现有容器。最新 readiness/Browser health 均为 200，但受控网页仍未提取正文；合成 DNS 固定连接路径可能绕过代理 allowlist，因果未证，安全修复待设计/授权。固定样本、S02—S04、G3/G4、产品 AC 仍待执行，未建立 Acceptance。
+**[038 计划](docs/plans/038-可维护与可替换计划.md) S00/S01 已完成，Plan 保持 in_progress。** `sources` 领域已增加四类纯能力请求、统一作品/评论、显式缺失值与父链、不透明分页/水位、页状态/停止原因及结构化适配器端口；新增 5 tests、相关 23 tests、后端全量 92 tests 及静态门禁通过。2026-09-24 S02 前置核验确认官方 Firecrawl `v2.11.162` tag 的 LICENSE 为 AGPL-3.0-or-later，本地 `6d9fb16` 以该 tag 为父提交。找到权限 0600 的现有 `.env` 并核实 API/Playwright 环境项 46/46、8/8 与运行容器匹配后，从干净提交重建镜像并仅 `--no-deps` 原位重建两个现有容器。最新 readiness/Browser health 均为 200，但受控网页仍未提取正文；出口路径与既有代理策略的一致性待安全复核，细节不在公开交接文档披露。固定样本、S02—S04、G3/G4、产品 AC 仍待执行，未建立 Acceptance。
 
 **[039 计划](docs/plans/039-可观测与可运维计划.md) S00/S01、S02a 与 S02b G4 实现/Green 子片已完成，Plan 保持 in_progress。** S02a 增加按 owner 隔离的连续三次任务失败摘要 API；S02b 在现有任务详情呈现 owner/current-job 限定的持久窗口范围、状态、停止原因和页数，不推断未记录范围。`4820b56c` 后端隔离 PostgreSQL CI 533 passed/15 skipped，窗口投影集成文件 11 passed；Ruff/format/mypy、contract/runtime CI 通过，前端 47 tests/lint/typecheck/format/build 通过。本机合成响应浏览器完成刷新交互、390×844 无横向溢出和 axe 0 violations。首轮 CI 发现精确任务状态快照未列出新增空 `coverage_windows`，补断言后复验成功。实现前隔离 PostgreSQL Red 未执行，S02b G3 保持开放；未写入 `hotkey-server`。完整新鲜度/覆盖缺口、S03—S04 和 039 产品 AC 仍为 0/6，未建立 Acceptance。
 
