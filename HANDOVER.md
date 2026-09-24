@@ -12,7 +12,7 @@
 
 ## X 官方 API 离线接入 S01a
 
-2026-09-25：006 来源无关的离线身份存储子片已实现：`monitors` 登记 owner/source/stable ID，并按身份保存可重名的别名观测；同一 ID 改名不变号，别名复用返回多个候选，读取按 owner 隔离。提交 `fca8b212` 的隔离 backend CI 实际运行 PostgreSQL 用例，后端全量 564 passed/12 skipped，contract/runtime workflows success。后续修复了时钟回拨导致 `updated_at`/`last_seen_at` 倒退：Red/Green、本机 backend 全量 383 passed/194 skipped、Ruff/format/mypy 通过；该 follow-up 的隔离 PostgreSQL CI 待验证。未增加 API/UI/Worker、来源请求或运行库 DDL，未连接/修改 `hotkey-server`。完整 S01、真实来源与产品 0/6 AC 继续开放。
+2026-09-25：006 来源无关的离线身份存储子片已实现：`monitors` 登记 owner/source/stable ID，并按身份保存可重名的别名观测；同一 ID 改名不变号，别名复用返回多个候选，读取按 owner 隔离。提交 `fca8b212` 的隔离 backend CI 实际运行 PostgreSQL 用例，后端全量 564 passed/12 skipped，contract/runtime workflows success。后续修复时钟回拨导致的 `updated_at`/`last_seen_at` 倒退：Red/Green、本机 backend 全量 383 passed/194 skipped、Ruff/format/mypy 通过；提交 `4ba0dfa9` 的隔离 backend CI 565 passed/12 skipped，contract/runtime success。未增加 API/UI/Worker、来源请求或运行库 DDL，未连接/修改 `hotkey-server`。完整 S01、真实来源与产品 0/6 AC 继续开放。
 
 006 S00 与 X 身份解析离线子片（2026-09-23）：新增同编号 Design 和仅接受 `MockTransport` 的官方单用户名 Lookup；本地从 `@handle` 或精确 X 主页提取用户名，请求前需批准最坏 1 个 User，返回严格校验稳定数字 ID、用户名与展示名，失败按未知用量回调。同名显示名不同 ID 与同 ID 改名受控样本均不自动改绑。专用 36 tests，后端无隔离数据库配置的全量 320 passed/174 skipped，Ruff/format/mypy 通过。尚无关注持久化/API/Web、真实费用装配、App/Token、实际 X 请求或产品 AC；006 保持 in_progress、0/6 AC。
 
