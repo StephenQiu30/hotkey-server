@@ -85,6 +85,26 @@ _FIRECRAWL_COMPONENT_KEY = "collector.firecrawl"
 _FIRECRAWL_STAGE = "page_content.fetch"
 
 
+def recover_webpage_collection_usage_in_transaction(
+    session: Session,
+    *,
+    owner_id: UUID,
+    operation_id: UUID,
+    finished_at: datetime,
+) -> tuple[UUID, ...]:
+    """Settle Firecrawl usage left open by an interrupted webpage job."""
+    return ResourceBudgetService(
+        session,
+        clock=lambda: finished_at,
+    ).recover_abandoned_attempts_in_transaction(
+        owner_id=owner_id,
+        operation_id=operation_id,
+        component_key=_FIRECRAWL_COMPONENT_KEY,
+        stage=_FIRECRAWL_STAGE,
+        finished_at=finished_at,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class WebPageFetchInput:
     operation_id: UUID
@@ -237,11 +257,10 @@ class WebPageFetchService:
                 owner_id=owner_id,
                 operation_id=command.operation_id,
             )
-            budget.recover_abandoned_attempts_in_transaction(
+            recover_webpage_collection_usage_in_transaction(
+                self._session,
                 owner_id=owner_id,
                 operation_id=command.operation_id,
-                component_key=_FIRECRAWL_COMPONENT_KEY,
-                stage=_FIRECRAWL_STAGE,
                 finished_at=started_at,
             )
             connection = require_web_connection_execution(

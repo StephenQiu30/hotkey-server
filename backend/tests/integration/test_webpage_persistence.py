@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from threading import Event
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -32,6 +33,7 @@ from core.errors import ApplicationError
 from evidence.schemas import AdmittedSourcePayload, DataClass
 from evidence.services import ResourceUnavailableError
 from jobs.execution import (
+    JobExecutionFailure,
     JobExecutionService,
     JobLeaseUnavailableError,
     StaleExecutionLeaseError,
@@ -44,6 +46,7 @@ from jobs.schemas import (
     BudgetScopeKind,
     ComponentPolicyInput,
     CostClass,
+    JobFailureCategory,
 )
 from jobs.services import JobService, OutboxService, ResourceBudgetService, UsageConflictError
 from sources.adapters.firecrawl import FirecrawlAdapter
@@ -54,7 +57,14 @@ from sources.contracts import (
     WebPageRequest,
     WebPageResult,
 )
-from worker.app import JobExecutionContext, create_job_message_handler
+from worker.app import (
+    ChildJobFailure,
+    ChildJobResult,
+    JobExecutionContext,
+    _finalize_supervised_result,
+    create_job_message_handler,
+)
+from worker.execution import JobProcessSupervisor
 from worker.messaging import create_producer, decode_job_message, publish_outbox
 
 _TABLES = (
@@ -770,6 +780,164 @@ def test_abandoned_collector_attempt_is_conservatively_charged_before_retry(
         ).one()
     assert attempts == [("failed", "settled", 1), ("succeeded", "settled", 1)]
     assert tuple(window) == (2, 0)
+
+
+def test_supervised_terminal_write_recovers_usage_and_inbox_atomically(
+    webpage_context: WebPageContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_firecrawl_budget(webpage_context)
+    clock = [webpage_context.now + timedelta(seconds=2)]
+    job_id, kafka_message = _accept_webpage_job(webpage_context, clock=clock)
+    body, reference = decode_job_message(kafka_message)
+    with webpage_context.sessions() as session:
+        lease = JobExecutionService(
+            session,
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        ).acquire(job_id=job_id, worker_id="worker-supervised")
+
+    def interrupt_settlement(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("injected interruption after request start")
+
+    monkeypatch.setattr(WebPageFetchService, "_settle", interrupt_settlement)
+    with (
+        webpage_context.sessions() as session,
+        pytest.raises(RuntimeError, match="injected interruption"),
+    ):
+        WebPageFetchService(
+            session,
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        ).fetch_document(
+            owner_id=webpage_context.owner_id,
+            lease=lease,
+            command=WebPageFetchInput(
+                operation_id=body.operation_id,
+                connection_id=webpage_context.connection_id,
+                connection_version=1,
+                target_url="https://example.com/articles/one",
+            ),
+            adapter_factory=lambda _hosts: ExplodingDocumentAdapter(),
+        )
+
+    failure = JobExecutionFailure(
+        error_code="job_execution_timeout",
+        category=JobFailureCategory.TRANSIENT,
+        occurred_at=clock[0],
+        next_action="确认目标服务状态后手动重试",
+        manual_retry_allowed=True,
+    )
+    report = ChildJobResult(
+        lease=lease,
+        failure=ChildJobFailure.from_failure(failure),
+    )
+    original_record_failure = JobExecutionService.record_failure_in_transaction
+
+    def fail_after_job_write(
+        service: JobExecutionService,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        original_record_failure(service, *args, **kwargs)  # type: ignore[arg-type]
+        raise RuntimeError("injected transaction rollback")
+
+    monkeypatch.setattr(
+        JobExecutionService,
+        "record_failure_in_transaction",
+        fail_after_job_write,
+    )
+    with pytest.raises(RuntimeError, match="injected transaction rollback"):
+        _finalize_supervised_result(
+            webpage_context.sessions,
+            message=body,
+            reference=reference,
+            report=report,
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        )
+
+    with webpage_context.engine.connect() as connection:
+        after_rollback = connection.execute(
+            text(
+                "SELECT a.outcome, r.status, j.status, "
+                "(SELECT count(*) FROM processed_messages p WHERE p.job_id = j.id) "
+                "FROM jobs j "
+                "JOIN resource_usage_attempts a ON a.operation_id = j.operation_id "
+                "JOIN resource_budget_reservations r ON r.reservation_id = a.attempt_id "
+                "WHERE j.id = :job_id"
+            ),
+            {"job_id": job_id},
+        ).one()
+    assert tuple(after_rollback) == ("started", "reserved", "running", 0)
+
+    monkeypatch.setattr(
+        JobExecutionService,
+        "record_failure_in_transaction",
+        original_record_failure,
+    )
+    _finalize_supervised_result(
+        webpage_context.sessions,
+        message=body,
+        reference=reference,
+        report=report,
+        lease_seconds=60,
+        clock=lambda: clock[0],
+    )
+
+    with webpage_context.engine.connect() as connection:
+        committed = connection.execute(
+            text(
+                "SELECT a.outcome, r.status, r.actual_units, j.status, "
+                "(SELECT count(*) FROM processed_messages p WHERE p.job_id = j.id) "
+                "FROM jobs j "
+                "JOIN resource_usage_attempts a ON a.operation_id = j.operation_id "
+                "JOIN resource_budget_reservations r ON r.reservation_id = a.attempt_id "
+                "WHERE j.id = :job_id"
+            ),
+            {"job_id": job_id},
+        ).one()
+    assert tuple(committed) == ("failed", "settled", 1, "failed", 1)
+
+
+def test_worker_executes_job_in_a_spawned_process(
+    webpage_context: WebPageContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_firecrawl_budget(webpage_context)
+    clock = [datetime.now(UTC)]
+    job_id, message = _accept_webpage_job(webpage_context, clock=clock)
+    database_url = os.getenv("HOTKEY_TEST_DATABASE_URL")
+    assert database_url is not None
+    monkeypatch.setenv("HOTKEY_DATABASE_URL", database_url)
+    monkeypatch.setenv("HOTKEY_FIRECRAWL_ENABLED", "false")
+    handler = create_job_message_handler(
+        webpage_context.sessions,
+        {"webpage.collect": lambda _context: None},
+        worker_id="worker-spawn-integration",
+        lease_seconds=60,
+        supervisor=JobProcessSupervisor(
+            startup_timeout_seconds=5,
+            execution_timeout_seconds=10,
+            terminate_grace_seconds=1,
+            poll_interval_seconds=0.05,
+        ),
+        stopping=Event(),
+    )
+
+    handler(message)
+
+    with webpage_context.engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT status, last_error_code, "
+                "(SELECT outcome FROM job_attempts WHERE job_id = jobs.id), "
+                "(SELECT count(*) FROM processed_messages WHERE job_id = jobs.id) "
+                "FROM jobs WHERE id = :job_id"
+            ),
+            {"job_id": job_id},
+        ).one()
+    assert tuple(row) == ("failed", "collector_unavailable", "failed", 1)
 
 
 def test_worker_executes_webpage_job_and_replay_has_no_duplicate_effects(

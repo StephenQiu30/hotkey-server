@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from threading import Event
 from uuid import UUID
 
@@ -20,6 +21,20 @@ BeforePoll = Callable[[], None]
 
 class MessagePublishError(RuntimeError):
     """Kafka did not durably acknowledge an outbox message."""
+
+
+class MessageDeferredError(RuntimeError):
+    """The current message must be replayed after its durable lease expires."""
+
+    def __init__(self, retry_at: datetime) -> None:
+        if retry_at.tzinfo is None:
+            raise ValueError("message retry time must be timezone-aware")
+        self.retry_at = retry_at
+        super().__init__("message execution is deferred until its lease expires")
+
+
+class StopProcessingMessageError(RuntimeError):
+    """The worker is stopping and must leave the current message uncommitted."""
 
 
 def create_consumer(settings: Settings) -> Consumer:
@@ -134,31 +149,57 @@ def run_consumer_loop(
         logger.info("worker_idle", reason="no_message_handlers_registered")
         return
 
-    consumer = create_consumer(settings)
-    consumer.subscribe(topics)
     logger.info("worker_started", topics=topics)
-    try:
-        while not stopping.is_set():
-            if before_poll is not None:
-                before_poll()
-            message = consumer.poll(timeout=1.0)
-            if message is None:
-                continue
-            error = message.error()
-            if error is not None:
-                logger.error("kafka_consume_failed", error_code=error.code())
-                continue
+    while not stopping.is_set():
+        consumer = create_consumer(settings)
+        consumer.subscribe(topics)
+        deferred_until: datetime | None = None
+        stop_after_close = False
+        try:
+            while not stopping.is_set():
+                if before_poll is not None:
+                    before_poll()
+                message = consumer.poll(timeout=1.0)
+                if message is None:
+                    continue
+                error = message.error()
+                if error is not None:
+                    logger.error("kafka_consume_failed", error_code=error.code())
+                    continue
 
-            try:
-                process_message(consumer, message, handlers)
-            except Exception as error:
-                logger.exception(
-                    "message_processing_failed",
-                    topic=message.topic(),
-                    partition=message.partition(),
-                    offset=message.offset(),
-                    exception_type=type(error).__name__,
-                )
-                raise
-    finally:
-        consumer.close()
+                try:
+                    process_message(consumer, message, handlers)
+                except MessageDeferredError as deferred:
+                    deferred_until = deferred.retry_at
+                    logger.info(
+                        "message_processing_deferred",
+                        topic=message.topic(),
+                        partition=message.partition(),
+                        offset=message.offset(),
+                        retry_at=deferred.retry_at,
+                    )
+                    break
+                except StopProcessingMessageError:
+                    stop_after_close = True
+                    break
+                except Exception as error:
+                    logger.exception(
+                        "message_processing_failed",
+                        topic=message.topic(),
+                        partition=message.partition(),
+                        offset=message.offset(),
+                        exception_type=type(error).__name__,
+                    )
+                    raise
+        finally:
+            consumer.close()
+
+        if stop_after_close:
+            break
+        if deferred_until is not None:
+            delay_seconds = max(
+                0.0,
+                (deferred_until - datetime.now(UTC)).total_seconds(),
+            )
+            if stopping.wait(delay_seconds):
+                break

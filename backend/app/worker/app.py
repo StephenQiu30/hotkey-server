@@ -5,32 +5,56 @@ import signal
 import socket
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from threading import Event
+from typing import NoReturn
 
 import structlog
 from confluent_kafka import Message
 from sqlalchemy.orm import Session, sessionmaker
 from structlog.contextvars import bound_contextvars
 
-from content.collection import WebPageCollectionExecutor
-from core.config import Settings, get_settings
+from content.collection import (
+    WebPageCollectionExecutor,
+    recover_webpage_collection_usage_in_transaction,
+)
+from core.config import (
+    JOB_PROCESS_STARTUP_TIMEOUT_SECONDS,
+    JOB_PROCESS_TERMINATE_GRACE_SECONDS,
+    Settings,
+    get_settings,
+)
 from core.logging import configure_logging
+
+# Spawn starts a fresh interpreter; import the canonical registry to resolve ORM foreign keys.
+from db.metadata import metadata as _registered_metadata  # noqa: F401
 from db.session import create_db_engine, create_session_factory
 from jobs.execution import (
     CheckpointValue,
     Clock,
     ExecutionLease,
     JobCompletion,
+    JobExecutionError,
     JobExecutionFailure,
     JobExecutionService,
+    JobLeaseUnavailableError,
     JobProgress,
+    MessageReference,
 )
 from jobs.schemas import JobFailureCategory, JobMessage, JobStatus
 from jobs.services import JOB_ACCEPTED_TOPIC, OutboxService
 from sources.adapters.firecrawl import FirecrawlAdapter
+from worker.execution import (
+    IsolatedProcessResult,
+    JobProcessCrashedError,
+    JobProcessOutcome,
+    JobProcessShutdownError,
+    JobProcessSupervisor,
+)
 from worker.messaging import (
+    MessageDeferredError,
     MessageHandler,
+    StopProcessingMessageError,
     create_producer,
     decode_job_message,
     publish_outbox,
@@ -85,6 +109,123 @@ class JobExecutionContext:
         return allowed
 
 
+@dataclass(frozen=True, slots=True)
+class ChildJobFailure:
+    error_code: str
+    category: str
+    occurred_at: datetime
+    next_action: str
+    manual_retry_allowed: bool
+    retry_at: datetime | None
+    max_attempts: int | None
+
+    @classmethod
+    def from_failure(cls, failure: JobExecutionFailure) -> ChildJobFailure:
+        return cls(
+            error_code=failure.error_code,
+            category=failure.category.value,
+            occurred_at=failure.occurred_at,
+            next_action=failure.next_action,
+            manual_retry_allowed=failure.manual_retry_allowed,
+            retry_at=failure.retry_at,
+            max_attempts=failure.max_attempts,
+        )
+
+    def to_failure(self) -> JobExecutionFailure:
+        return JobExecutionFailure(
+            error_code=self.error_code,
+            category=JobFailureCategory(self.category),
+            occurred_at=self.occurred_at,
+            next_action=self.next_action,
+            manual_retry_allowed=self.manual_retry_allowed,
+            retry_at=self.retry_at,
+            max_attempts=self.max_attempts,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ChildJobCompletion:
+    status: str
+    failure: ChildJobFailure | None = None
+
+    @classmethod
+    def from_completion(cls, completion: JobCompletion) -> ChildJobCompletion:
+        return cls(
+            status=completion.status.value,
+            failure=(
+                ChildJobFailure.from_failure(completion.failure)
+                if completion.failure is not None
+                else None
+            ),
+        )
+
+    def to_completion(self) -> JobCompletion:
+        return JobCompletion(
+            status=JobStatus(self.status),
+            failure=self.failure.to_failure() if self.failure is not None else None,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ChildJobResult:
+    lease: ExecutionLease
+    completion: ChildJobCompletion | None = None
+    failure: ChildJobFailure | None = None
+
+    def __post_init__(self) -> None:
+        if self.completion is not None and self.failure is not None:
+            raise ValueError("child result cannot contain both completion and failure")
+
+
+def _run_job_in_child(
+    message: JobMessage,
+    lease: ExecutionLease,
+    lease_seconds: int,
+) -> ChildJobResult:
+    settings = get_settings()
+    engine = create_db_engine(settings)
+    sessions = create_session_factory(engine)
+    try:
+        handler = _registered_job_handlers(sessions, settings).get(message.kind)
+        if handler is None:
+            occurred_at = datetime.now(UTC)
+            return ChildJobResult(
+                lease=lease,
+                failure=ChildJobFailure.from_failure(
+                    JobExecutionFailure(
+                        error_code="job_handler_unavailable",
+                        category=JobFailureCategory.CONFIGURATION_UNAVAILABLE,
+                        occurred_at=occurred_at,
+                        next_action="启用匹配当前任务类型的处理器后重试",
+                        manual_retry_allowed=True,
+                    )
+                ),
+            )
+
+        context = JobExecutionContext(
+            message=message,
+            lease=lease,
+            _sessions=sessions,
+            _lease_seconds=lease_seconds,
+            _clock=None,
+        )
+        try:
+            completion = handler(context)
+        except JobExecutionFailure as failure:
+            return ChildJobResult(
+                lease=context.lease,
+                failure=ChildJobFailure.from_failure(failure),
+            )
+        return ChildJobResult(
+            lease=context.lease,
+            completion=(
+                ChildJobCompletion.from_completion(completion) if completion is not None else None
+            ),
+        )
+    finally:
+        engine.dispose()
+
+
 def create_job_message_handler(
     sessions: sessionmaker[Session],
     handlers: Mapping[str, JobHandler],
@@ -92,6 +233,8 @@ def create_job_message_handler(
     worker_id: str,
     lease_seconds: int,
     clock: Clock | None = None,
+    supervisor: JobProcessSupervisor | None = None,
+    stopping: Event | None = None,
 ) -> MessageHandler:
     def handle(message: Message) -> None:
         body, reference = decode_job_message(message)
@@ -119,7 +262,13 @@ def create_job_message_handler(
                     message=reference,
                 ):
                     return
-                lease = execution.acquire(job_id=body.job_id, worker_id=worker_id)
+                try:
+                    lease = execution.acquire(job_id=body.job_id, worker_id=worker_id)
+                except JobLeaseUnavailableError as error:
+                    retry_at = execution.current_lease_expiration(body.job_id)
+                    if retry_at is None:
+                        raise
+                    raise MessageDeferredError(retry_at) from error
                 handler = handlers.get(body.kind)
                 if handler is None:
                     occurred_at = clock() if clock is not None else datetime.now(UTC)
@@ -135,6 +284,69 @@ def create_job_message_handler(
                         ),
                     )
                     return
+
+            if supervisor is not None:
+                if stopping is None:
+                    raise ValueError("a stopping event is required for supervised handlers")
+                try:
+                    result = supervisor.run(
+                        _run_job_in_child,
+                        (body, lease, lease_seconds),
+                        cancellation_requested=lambda: _cancellation_requested(
+                            sessions,
+                            lease=lease,
+                            lease_seconds=lease_seconds,
+                            clock=clock,
+                        ),
+                        stopping=stopping,
+                    )
+                except JobProcessShutdownError as error:
+                    raise StopProcessingMessageError from error
+                except JobProcessCrashedError as error:
+                    _defer_after_child_exit(
+                        sessions,
+                        lease=lease,
+                        lease_seconds=lease_seconds,
+                        clock=clock,
+                        cause=error,
+                    )
+
+                if result.outcome is JobProcessOutcome.TIMED_OUT:
+                    report = ChildJobResult(
+                        lease=lease,
+                        failure=ChildJobFailure.from_failure(
+                            JobExecutionFailure(
+                                error_code="job_execution_timeout",
+                                category=JobFailureCategory.TRANSIENT,
+                                occurred_at=_now(clock),
+                                next_action="确认目标服务状态后手动重试",
+                                manual_retry_allowed=True,
+                            )
+                        ),
+                    )
+                else:
+                    if result.outcome is JobProcessOutcome.CANCELLED:
+                        report = ChildJobResult(lease=lease)
+                    else:
+                        try:
+                            report = _validate_child_result(result, lease)
+                        except JobProcessCrashedError as error:
+                            _defer_after_child_exit(
+                                sessions,
+                                lease=lease,
+                                lease_seconds=lease_seconds,
+                                clock=clock,
+                                cause=error,
+                            )
+                _finalize_supervised_result(
+                    sessions,
+                    message=body,
+                    reference=reference,
+                    report=report,
+                    lease_seconds=lease_seconds,
+                    clock=clock,
+                )
+                return
 
             context = JobExecutionContext(
                 message=body,
@@ -169,6 +381,122 @@ def create_job_message_handler(
                 )
 
     return handle
+
+
+def _now(clock: Clock | None) -> datetime:
+    return clock() if clock is not None else datetime.now(UTC)
+
+
+def _cancellation_requested(
+    sessions: sessionmaker[Session],
+    *,
+    lease: ExecutionLease,
+    lease_seconds: int,
+    clock: Clock | None,
+) -> bool:
+    try:
+        with sessions() as session:
+            return JobExecutionService(
+                session,
+                lease_seconds=lease_seconds,
+                clock=clock,
+            ).cancellation_requested(lease)
+    except JobExecutionError as error:
+        raise JobProcessCrashedError(type(error).__name__) from None
+
+
+def _lease_retry_time(
+    sessions: sessionmaker[Session],
+    *,
+    lease: ExecutionLease,
+    lease_seconds: int,
+    clock: Clock | None,
+) -> datetime:
+    with sessions() as session:
+        expires_at = JobExecutionService(
+            session,
+            lease_seconds=lease_seconds,
+            clock=clock,
+        ).current_lease_expiration(lease.job_id)
+    if expires_at is not None:
+        return expires_at
+    return _now(clock) + timedelta(seconds=1)
+
+
+def _defer_after_child_exit(
+    sessions: sessionmaker[Session],
+    *,
+    lease: ExecutionLease,
+    lease_seconds: int,
+    clock: Clock | None,
+    cause: JobProcessCrashedError,
+) -> NoReturn:
+    raise MessageDeferredError(
+        _lease_retry_time(
+            sessions,
+            lease=lease,
+            lease_seconds=lease_seconds,
+            clock=clock,
+        )
+    ) from cause
+
+
+def _validate_child_result(
+    result: IsolatedProcessResult,
+    acquired_lease: ExecutionLease,
+) -> ChildJobResult:
+    report = result.value
+    if (
+        not isinstance(report, ChildJobResult)
+        or report.lease.job_id != acquired_lease.job_id
+        or report.lease.worker_id != acquired_lease.worker_id
+        or report.lease.epoch != acquired_lease.epoch
+    ):
+        raise JobProcessCrashedError("InvalidChildResult")
+    return report
+
+
+def _finalize_supervised_result(
+    sessions: sessionmaker[Session],
+    *,
+    message: JobMessage,
+    reference: MessageReference,
+    report: ChildJobResult,
+    lease_seconds: int,
+    clock: Clock | None,
+) -> None:
+    finished_at = _now(clock)
+    with sessions() as session:
+        session.rollback()
+        with session.begin():
+            if message.kind == "webpage.collect":
+                recover_webpage_collection_usage_in_transaction(
+                    session,
+                    owner_id=message.owner_id,
+                    operation_id=message.operation_id,
+                    finished_at=finished_at,
+                )
+            execution = JobExecutionService(
+                session,
+                lease_seconds=lease_seconds,
+                clock=lambda: finished_at,
+            )
+            if report.failure is not None:
+                execution.record_failure_in_transaction(
+                    report.lease,
+                    message=reference,
+                    failure=report.failure.to_failure(),
+                    now=finished_at,
+                )
+            else:
+                execution.complete_in_transaction(
+                    report.lease,
+                    message=reference,
+                    completion=(
+                        report.completion.to_completion() if report.completion is not None else None
+                    ),
+                    now=finished_at,
+                )
 
 
 def _worker_id() -> str:
@@ -223,6 +551,12 @@ def run_worker() -> None:
         job_handlers,
         worker_id=_worker_id(),
         lease_seconds=settings.job_lease_seconds,
+        supervisor=JobProcessSupervisor(
+            startup_timeout_seconds=JOB_PROCESS_STARTUP_TIMEOUT_SECONDS,
+            execution_timeout_seconds=settings.job_process_execution_timeout_seconds,
+            terminate_grace_seconds=JOB_PROCESS_TERMINATE_GRACE_SECONDS,
+        ),
+        stopping=stopping,
     )
 
     def publish_pending() -> None:

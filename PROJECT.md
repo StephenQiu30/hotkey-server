@@ -135,7 +135,8 @@ backend/
 │   ├── worker/
 │   │   ├── __main__.py            # python -m worker 入口
 │   │   ├── app.py                 # Worker 生命周期和服务装配
-│   │   └── messaging.py           # Kafka 收发与位点提交
+│   │   ├── messaging.py           # Kafka 收发与位点提交
+│   │   └── execution.py           # 单任务子进程监督与有界终止
 │   └── cli/
 │       ├── __main__.py            # python -m cli 入口
 │       └── commands.py            # 管理命令
@@ -154,7 +155,7 @@ backend/
 - `api/routers/` 只处理 HTTP 参数、认证依赖、状态码和响应模型；不得导入 SQLAlchemy、业务 Service 实现、Worker 或消息客户端。
 - 领域 Service 负责业务用例和事务；跨领域原子写入使用同一 Session，内层函数不得自行提交。
 - Schema 不依赖 ORM、Session 或 FastAPI；Model 只负责持久化映射；Adapter 只封装外部系统差异。
-- `worker/` 和 `cli/` 调用领域 Service，不复制 HTTP 层或业务规则。
+- `worker/` 和 `cli/` 调用领域 Service，不复制 HTTP 层或业务规则。Worker 父进程独占 Kafka Consumer、offset 与任务终结；`worker/execution.py` 只监督单个 `spawn` 子进程，子进程自行创建数据库资源，不接收父进程 Session、Engine、Kafka Consumer 或网络连接。
 - 不创建未定义的 API 版本目录、`app/app/`、`app/hotkey/` 或其他没有明确职责的包装目录。
 
 ### API 契约与版本策略

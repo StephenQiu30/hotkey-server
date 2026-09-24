@@ -41,7 +41,12 @@ from jobs.schemas import (
 from jobs.services import JobService, OutboxService
 from sources.contracts import SourceCapability
 from worker.app import JobExecutionContext, create_job_message_handler
-from worker.messaging import create_producer, decode_job_message, publish_outbox
+from worker.messaging import (
+    MessageDeferredError,
+    create_producer,
+    decode_job_message,
+    publish_outbox,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,6 +388,94 @@ def test_permission_failure_is_terminal_and_never_switches_context(
         ).one()
     assert seen_sources == [("x", SourceCapability.SEARCH)]
     assert tuple(row) == ("failed", "permission_denied", 0, 1, 1, 1)
+
+
+def test_cancellation_wins_when_handler_failure_finishes_concurrently(
+    job_context: JobTestContext,
+) -> None:
+    with job_context.sessions() as session:
+        job = JobService(session).accept(owner_id=job_context.owner_id, command=_command())
+    clock = [job.created_at + timedelta(seconds=1)]
+    with job_context.sessions() as session:
+        lease = JobExecutionService(
+            session,
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        ).acquire(job_id=job.id, worker_id="worker-cancel-race")
+    with job_context.sessions() as session:
+        JobService(session, clock=lambda: clock[0]).request_cancel(
+            owner_id=job_context.owner_id,
+            job_id=job.id,
+        )
+
+    with job_context.sessions() as session:
+        JobExecutionService(
+            session,
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        ).record_failure(
+            lease,
+            message=MessageReference(
+                message_id=uuid4(),
+                topic="hotkey.jobs.accepted.v2",
+                partition=0,
+                offset=12,
+            ),
+            failure=JobExecutionFailure(
+                error_code="job_execution_timeout",
+                category=JobFailureCategory.TRANSIENT,
+                occurred_at=clock[0],
+                next_action="确认目标服务状态后手动重试",
+                manual_retry_allowed=True,
+            ),
+        )
+
+    with job_context.engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT status, retry_count, last_error_code, "
+                "(SELECT outcome FROM job_attempts WHERE job_id = jobs.id), "
+                "(SELECT count(*) FROM processed_messages WHERE job_id = jobs.id), "
+                "(SELECT count(*) FROM outbox_messages WHERE aggregate_id = jobs.id) "
+                "FROM jobs WHERE id = :job_id"
+            ),
+            {"job_id": job.id},
+        ).one()
+    assert tuple(row) == ("cancelled", 0, None, "cancelled", 1, 1)
+
+
+def test_message_with_live_lease_is_deferred_without_duplicate_execution(
+    job_context: JobTestContext,
+) -> None:
+    with job_context.sessions() as session:
+        job = JobService(session).accept(owner_id=job_context.owner_id, command=_command())
+    clock = [job.created_at + timedelta(seconds=1)]
+    with job_context.sessions() as session:
+        JobExecutionService(
+            session,
+            lease_seconds=60,
+            clock=lambda: clock[0],
+        ).acquire(job_id=job.id, worker_id="worker-owner")
+    handler = create_job_message_handler(
+        job_context.sessions,
+        {"monitor.collect": lambda _context: None},
+        worker_id="worker-duplicate",
+        lease_seconds=60,
+        clock=lambda: clock[0],
+    )
+
+    with pytest.raises(MessageDeferredError):
+        handler(_stored_message(job_context, job_id=job.id, dispatch_sequence=1, offset=12))
+
+    with job_context.engine.connect() as connection:
+        counts = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM job_attempts WHERE job_id = :job_id), "
+                "(SELECT count(*) FROM processed_messages WHERE job_id = :job_id)"
+            ),
+            {"job_id": job.id},
+        ).one()
+    assert tuple(counts) == (1, 0)
 
 
 def test_retry_outbox_is_published_only_when_due_and_only_once(

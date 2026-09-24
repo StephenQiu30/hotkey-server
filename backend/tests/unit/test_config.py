@@ -75,7 +75,8 @@ def test_browser_deadline_fits_job_lease_and_kafka_poll_window() -> None:
     )
 
     assert settings.browser_execution_timeout_seconds == 45
-    assert settings.job_lease_seconds == 65
+    assert settings.job_process_execution_timeout_seconds == 65
+    assert settings.job_lease_seconds == 75
     assert settings.kafka_max_poll_interval_seconds == 120
 
 
@@ -85,7 +86,7 @@ def test_browser_deadline_cannot_exceed_job_lease_budget() -> None:
             database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
             browser_enabled=True,
             browser_ws_url="ws://browser:3000/ws/" + "a" * 48,
-            job_lease_seconds=64,
+            job_lease_seconds=74,
         )
 
 
@@ -103,8 +104,25 @@ def test_disabled_source_runtimes_do_not_reserve_external_deadline_budget() -> N
         database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
         firecrawl_enabled=False,
         browser_enabled=False,
-        job_lease_seconds=5,
+        job_lease_seconds=15,
         kafka_max_poll_interval_seconds=30,
     )
 
     assert not settings.browser_enabled
+    assert settings.job_process_execution_timeout_seconds == 5
+
+
+def test_firecrawl_timeout_includes_process_and_finalization_margins() -> None:
+    settings = Settings(
+        database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+        firecrawl_enabled=True,
+        job_lease_seconds=35,
+    )
+
+    assert settings.job_process_execution_timeout_seconds == 25
+    with pytest.raises(ValidationError, match="job lease"):
+        Settings(
+            database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+            firecrawl_enabled=True,
+            job_lease_seconds=34,
+        )
