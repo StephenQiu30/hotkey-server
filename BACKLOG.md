@@ -139,7 +139,7 @@ M0 的外部准入结论可能仍为“未就绪”。这不阻止 M1 和受控�
 | BL-035 | [权限与数据隔离](docs/plans/035-权限与数据隔离计划.md) | P0 | M1 准备 → M5 | 后端＋安全验证 | 034 S01 | in_progress | 0/6 | S00/S01 已完成；S02 当前主题/任务/作品/证据越权矩阵、事务回滚与错误禁存通过；完整 S02、S03/S04 与产品 AC 仍待业务接齐 |
 | BL-036 | [数据访问与生命周期](docs/plans/036-数据访问与生命周期计划.md) | P0 | M0 准备 → M5 | 产品＋后端＋运维 | 042 S01 | in_progress | 0/6 | S00—S02 来源政策、版本化准入、字段最小化、保留/即时删除屏障与 Redis/MinIO 在线清理通过真实依赖；S03/S04、真实业务对象与产品 AC 待执行 |
 | BL-037 | [费用与资源约束](docs/plans/037-费用与资源约束计划.md) | P0 | M1 准备 → M5 | 后端＋来源接入＋运维 | 042 S01 | in_progress | 0/6 | S00—S02、S03 X 离线预算子片与 S03a owner 过滤的只读预算窗口快照已通过隔离 PostgreSQL/后端回归；唯一 paid 例外、控制台账期硬上限、费率快照、付费尝试账本原子装配与 S03/S04 完整能力仍未实现，数据库继续拒绝 paid 核心组件，产品 AC 未通过 |
-| BL-038 | [可维护与可替换](docs/plans/038-可维护与可替换计划.md) | P0 | M0 准备 → M5 | 来源接入＋后端 | 042 S01 | in_progress | 0/6 | S00/S01 纯来源能力、统一作品/评论、分页/停止语义与结构化端口通过；S02 已核对官方版本/许可证，并从干净提交重建现有 API/Playwright；重建后探针仍为 upstream_error；固定样本、S02—S04 与产品 AC 待执行 |
+| BL-038 | [可维护与可替换](docs/plans/038-可维护与可替换计划.md) | P0 | M0 准备 → M5 | 来源接入＋后端 | 042 S01 | in_progress | 0/6 | S00/S01 纯来源能力、统一作品/评论、分页/停止语义与结构化端口通过；S02 已核对 Firecrawl v2.11.162/AGPL-3.0-or-later 并重建既有 API/Playwright。最新受控复验 readiness/Browser health 为 200，但 `example.com` scrape 仍为 `SCRAPE_RETRY_LIMIT`/`document_antibot` 且无正文；合成 DNS 固定连接分支可能绕过现有代理出口 allowlist，安全修复待设计/授权。固定样本、G3/G4、S02—S04 与产品 AC 待执行 |
 | BL-039 | [可观测与可运维](docs/plans/039-可观测与可运维计划.md) | P0 | M1 准备 → M5 | 后端＋运维＋前端 | 042 S01 | in_progress | 0/6 | S00/S01、S02a 与 S02b G4 实现/Green 已通过；后端隔离 PostgreSQL CI 533 passed/15 skipped、前端 47 tests 与质量门禁、390×844/axe 检查通过；实现前 PostgreSQL Red 的 G3 仍开放，完整 S02 新鲜度/覆盖缺口、S03—S04 与产品 AC 仍待执行 |
 | BL-040 | [可用性与可访问性](docs/plans/040-可用性与可访问性计划.md) | P0 | M0 准备 → M5 | 产品＋前端＋体验验证 | 042 S01 | planned | 0/6 | 无；全部待执行 |
 | BL-041 | [分析有效性与不确定性](docs/plans/041-分析有效性与不确定性计划.md) | P0 | M0 准备 → M5 | 产品分析＋质量验证 | 042 S01、027 S00、028 S00 | planned | 0/6 | 无；全部待执行 |
@@ -287,6 +287,8 @@ B09、B10、B11 互不强制串行；B10 中模型服务先行，后续三项按
 
 2026-09-24 当前 Firecrawl 探针补充：现有实例对受控 `example.com` 请求返回 HTTP 500 `SCRAPE_RETRY_LIMIT`/`document_antibot`，HotKey 已将结构化拒绝映射为 `access_denied`，但未取得正文；这只是失败归类修复，不新增或改写既有技术门禁证据，产品 AC 仍为 0/8。后端 347 passed/187 skipped，Ruff/format/mypy 通过；跳过项未配置隔离 DB/Kafka，未写 `hotkey-server`、重启服务或启动第二套依赖。
 
+最新只读诊断已写入 [038 Plan](docs/plans/038-可维护与可替换计划.md) 与 [047 Plan](docs/plans/047-本地网页与浏览器采集计划.md)：readiness/Browser health 200 不能证明正文采集成功；Firecrawl 对受控 `example.com` 仍返回 `SCRAPE_RETRY_LIMIT`/`document_antibot`，Browser 内页状态 403；代码审查发现合成 DNS 固定连接分支未传上游代理配置，可能绕过现有出口 allowlist，尚未证明与 403 的因果关系。未放宽 SSRF/域名白名单，未修改或重启容器。047 继续沿用 031 已冻结的 `webpage.collect` 30 分钟逻辑任务 SLA（含排队与重试）；产品 AC 仍 0/8。
+
 046 S03、042 S00/S01、009/003/007 S00—S03、004 S00—S03、002 S01、005/006 S00、028/029/032/034/035/038/039 S00/S01、027 S00、031/036/037 S00—S02 与 010 S00/S01 内部切片已通过，001 总体 Design 为 proposed，B02 技术批次完成。010 S02 时间标记/游标有限重扫已有受控内部证据；005 S01 已覆盖有界多页、预算停止、失败/部分缺口，S02a 完成本地规则筛选，S02b 已在现有主题预览展示实际命中依据，不重复实现这些内部语义。完整搜索结果用户路径仍须使用准入来源的处理器，显示实际过滤位置与停止状态；来源无关工程能力继续按各 Plan 推进。真实来源、S01 G3/G4、S02 完整门禁和产品 AC 均保持未通过；不设置全局重叠默认值或勾选产品 AC。主题规则、分立能力证据、可追溯作品与有界 X 适配器已具备受控验证；035 S02 当前资源先行输出已通过，完整分支随业务继续接入。004 S03 连接管理内部闭环已通过，真实处理器/外采门禁随 B04 与 S04 联验。四平台评论必需已确认，发现次序、合法样本和实际资源仍需准备，X 仍未就绪，外部条件不阻塞无关的内部领域实现；不要求提前选完所有 P1 模型或 App 平台。
 
 | 未决/风险 | 影响的出口 | 当前结论 | 下一动作 |
@@ -430,3 +432,4 @@ B09、B10、B11 互不强制串行；B10 中模型服务先行，后续三项按
 | 2026-09-24 | 修正 029 S02 PostgreSQL 集成夹具 | 首轮远端 backend CI 使用隔离 `hotkey_test` 正常运行全量测试，但用例尝试创建第二个身份，触发 schema 单 owner 唯一约束（529 passed/15 skipped/1 failed），未到达待测查询。已移除第二 owner 夹具；owner 谓词继续由编译 SQL 单测验证，隔离 PostgreSQL 用例验证真实聚合与配置版本隔离。修复提交 CI 复验待完成，G4 保持开放。 |
 | 2026-09-24 | 修正 029 S02 PostgreSQL 断言变量遮蔽 | 第二轮远端 backend CI 已到达查询并返回旧配置版本的正确最近成功时间；测试的期望时间在循环中被同名局部变量覆盖，造成误断言。现已改用无冲突变量名，第三轮 CI 复验待完成；无业务查询改动，G4 保持开放。 |
 | 2026-09-24 | 完成 029 S02 新鲜度 API/UI 与隔离 PostgreSQL 验证 | `549abfcd` backend CI 的隔离 PostgreSQL 全量测试 530 passed/15 skipped；实际聚合和配置版本隔离通过。runtime、contract CI success；本机后端 357 passed/188 skipped，前端 45 tests/lint/typecheck/format/build、OpenAPI 与浏览器响应式/刷新/axe 通过。S02 G4 关闭；029 S03/S04、B0 与产品 AC 0/6 继续开放，不建 Acceptance。 |
+| 2026-09-24 | 记录 Firecrawl 复验失败与出口代理风险 | 现有 readiness/Browser health 200；受控 `example.com` 仍未提取正文，返回 anti-bot retry limit；合成 DNS 固定连接路径可能绕过代理 allowlist，因果与安全修复方案待确认。更新 038/047 Plan 与 HANDOVER；未改代码、数据库或容器，未放宽 SSRF/域名约束；`webpage.collect` 30 分钟 SLA 引用 031。 |
