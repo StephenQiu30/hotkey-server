@@ -189,3 +189,5 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 本轮已交付 009/003/007/004 S00—S03 和 002 S01，技术证据见上文与各 Plan。验证复用当前 PostgreSQL/Redis/Kafka/MinIO 与 env，未启动第二套依赖；002 S01 收尾后后端 226 tests、前端 22 tests、静态检查、OpenAPI/客户端无漂移及隔离生产构建通过。构建另发现既有路由辅助函数非法导出，已以独立修复提交保留内部函数并新增导出集合断言。尚未执行真实业务处理器/来源、真实连接探测/采集、上游扩词、跨任务来源预算/租约装配、真实评分/模型记录、独立对象备份/真实恢复、完整 B0 或产品 Acceptance。
 
 2026-09-25 Firecrawl 凭据日志脱敏复验：独立 Firecrawl 本机 `main` 提交 `9262e24` 补齐 API/access token/client secret/password 字段及内联 Bearer/Basic 赋值脱敏；logger 3 tests 与 API Dockerfile 中 TypeScript build 通过。仅以 `--no-deps` 原位重建/替换现有 API，readiness 200，`example.com` 带 URL/query 与请求头 canary 抓取成功（180 字符）；API/Playwright 日志均无 canary 且保留固定运行事件。未改数据库、Playwright、代理/SSRF 规则或依赖容器；这不是 HotKey 来源/产品验收，也不改变 038/047 AC 状态。
+
+2026-09-25 Firecrawl 安全补充修复：独立 Firecrawl `main` 提交 `a25f95b` 补齐 `Authorization: Basic` 组合文本脱敏回归，并澄清标准上游 HTTP 代理由自身目的地址 ACL 承担最终限制。logger 3 tests、代理选项 3 tests、Playwright TypeScript 检查和 API Dockerfile TypeScript build/logger tests 通过；仅原位 `--no-deps` 重建 API，liveness/readiness 200，未重启 Playwright 或依赖。未在此提交后发外部抓取。安全差异复核为 0 项已确认报告，代理/DNS 绑定与配置范围仍待核对；不改 038/047 产品 AC、S02 G3/G4 或平台采集状态。
