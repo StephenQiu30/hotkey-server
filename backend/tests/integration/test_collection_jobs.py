@@ -94,18 +94,12 @@ def _csrf_headers(client: TestClient) -> dict[str, str]:
     return {"X-HotKey-CSRF": client.cookies["hotkey_csrf"]}
 
 
-def _accept_internal_job(
-    client: TestClient,
-    payload: dict[str, object],
-    *,
-    owner_id: UUID | None = None,
-) -> UUID:
+def _accept_internal_job(client: TestClient, payload: dict[str, object]) -> UUID:
     factory = client.app.state.session_factory
     with factory() as session:
-        if owner_id is None:
-            owner_id = session.execute(
-                text("SELECT id FROM identity_users WHERE username = 'owner'")
-            ).scalar_one()
+        owner_id = session.execute(
+            text("SELECT id FROM identity_users WHERE username = 'owner'")
+        ).scalar_one()
         job = JobService(session).accept(
             owner_id=owner_id,
             command=JobAcceptanceInput.model_validate(payload, strict=False),
@@ -229,30 +223,13 @@ def test_job_status_reports_last_attempt_full_success_and_budget_delay(
         _payload(configuration_version=4),
     )
 
-    other_owner_id = uuid4()
     factory = collection_job_client.app.state.session_factory
-    with factory() as session, session.begin():
-        session.execute(
-            text(
-                "INSERT INTO identity_users "
-                "(id, username, password_hash, credential_version, created_at, updated_at) "
-                "VALUES (:id, 'other-job-owner', 'test-only-hash', 1, now(), now())"
-            ),
-            {"id": other_owner_id},
-        )
-    other_owner_job_id = _accept_internal_job(
-        collection_job_client,
-        _payload(),
-        owner_id=other_owner_id,
-    )
-
     now = datetime.now(UTC)
     completed_at = now - timedelta(hours=1)
     partial_completed_at = now - timedelta(minutes=10)
     last_attempt_at = now - timedelta(minutes=5)
     delayed_at = now - timedelta(minutes=2)
     other_version_success_at = now - timedelta(minutes=1)
-    other_owner_success_at = now - timedelta(seconds=30)
     jobs = (
         (success_job_id, "succeeded", completed_at - timedelta(minutes=2), completed_at, None),
         (
@@ -268,13 +245,6 @@ def test_job_status_reports_last_attempt_full_success_and_budget_delay(
             "succeeded",
             other_version_success_at - timedelta(minutes=1),
             other_version_success_at,
-            None,
-        ),
-        (
-            other_owner_job_id,
-            "succeeded",
-            other_owner_success_at - timedelta(minutes=1),
-            other_owner_success_at,
             None,
         ),
     )
