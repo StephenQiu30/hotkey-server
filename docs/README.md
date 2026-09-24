@@ -26,7 +26,7 @@
 
 ### 逐项需求交付台账
 
-003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 与执行计划；003/004/005/006/007/009/010/027/028/029/031/032/033/034/035/036/037/038/039/042 为 in_progress，其中 005 Design 只接受 S00 与来源无关契约、006 Design 只接受 S00 与 X 离线身份解析、033 Design 只接受 S00 与内部状态分项；其余为 planned，尚未建立对应产品 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
+003—042 共 40 个编号已登记为独立需求交付项，当前各有 PRD 与执行计划；003/004/005/006/007/009/010/027/028/029/031/032/033/034/035/036/037/038/039/040/042 为 in_progress，其中 005 Design 只接受 S00 与来源无关契约、006 Design 只接受 S00 与 X 离线身份解析、033 Design 只接受 S00 与内部状态分项、040 Design 为 proposed 且用户/浏览器/标准仍待确认；其余为 planned，尚未建立对应产品 Acceptance。来源依据统一引用 001 Research，002 专项仅作为 X 可行性输入。Design 准备、SPEC 和每阶段 checklist 已列入对应 Plan。另新增 043 的 Research / PRD / proposed Design / Plan 完整链，连同 044/045 两类信息采集入口，逐项需求合计 43 项。
 
 | 编号 | PRD 主题 | 来源需求 | 优先级 | PRD 状态 | Plan |
 |---|---|---|---|---|---|
@@ -67,7 +67,7 @@
 | 037 | [费用与资源约束](prd/037-费用与资源约束.md) · [Design](design/037-费用与资源约束设计.md) accepted | NFR-001-011 | P0 | draft | [计划](plans/037-费用与资源约束计划.md) · in_progress（S00—S02 完成，0/6 AC） |
 | 038 | [可维护与可替换](prd/038-可维护与可替换.md) · [Design](design/038-可维护与可替换设计.md) accepted | NFR-001-012 | P0 | draft | [计划](plans/038-可维护与可替换计划.md) · in_progress（S00/S01 完成，0/6 AC） |
 | 039 | [可观测与可运维](prd/039-可观测与可运维.md) · [Design](design/039-可观测与可运维设计.md) accepted | NFR-001-013 | P0 | draft | [计划](plans/039-可观测与可运维计划.md) · in_progress（S00/S01 完成，0/6 AC） |
-| 040 | [可用性与可访问性](prd/040-可用性与可访问性.md) | NFR-001-014 | P0 | draft | [计划](plans/040-可用性与可访问性计划.md) · planned |
+| 040 | [可用性与可访问性](prd/040-可用性与可访问性.md) | NFR-001-014 | P0 | draft | [设计](design/040-可用性与可访问性设计.md) · proposed；[计划](plans/040-可用性与可访问性计划.md) · in_progress（S00，0/6 AC） |
 | 041 | [分析有效性与不确定性](prd/041-分析有效性与不确定性.md) | NFR-001-015 | P0 | draft | [计划](plans/041-分析有效性与不确定性计划.md) · planned |
 | 042 | [容量与部署可重复性](prd/042-容量与部署可重复性.md) · [Design](design/042-容量与部署可重复性设计.md) accepted | NFR-001-016 | P0 | draft | [计划](plans/042-容量与部署可重复性计划.md) · in_progress |
 | 043 | [模型服务接入与模型配置](prd/043-模型服务接入与模型配置.md) | FR-001-025 | P1 | draft | [计划](plans/043-模型服务接入与模型配置计划.md) · planned |
