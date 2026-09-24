@@ -64,6 +64,15 @@ const FAILURE_LABELS: Record<HotKeyAPI.JobFailureCategory, string> = {
   configuration_unavailable: "配置不可用",
 };
 
+const DELAY_LABELS: Record<HotKeyAPI.JobDelayReason, string> = {
+  internal_queue: "内部队列排队",
+  rate_limited: "来源限流",
+  budget_exhausted: "采集预算耗尽",
+  transient_failure: "来源暂时不可用",
+  manual_retry: "人工重试已排队",
+  other: "其他延期",
+};
+
 function isInvalidSession(error: unknown): boolean {
   return error instanceof ApiRequestError && error.code === "invalid_session";
 }
@@ -97,6 +106,76 @@ function DetailItem({ label, value }: { label: string; value: string }) {
       <dt className="text-muted-foreground text-sm">{label}</dt>
       <dd className="mt-1 text-base font-medium">{value}</dd>
     </div>
+  );
+}
+
+function formatDelayDuration(value: number | null): string {
+  if (value === null) {
+    return "时长暂不可用";
+  }
+  const seconds = Math.floor(value / 1_000_000);
+  if (seconds === 0) {
+    return "不足 1 秒";
+  }
+  if (seconds < 60) {
+    return `${seconds} 秒`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    const remainingSeconds = seconds % 60;
+    return `${minutes} 分钟${remainingSeconds ? ` ${remainingSeconds} 秒` : ""}`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const remainingMinutes = minutes % 60;
+    return `${hours} 小时${remainingMinutes ? ` ${remainingMinutes} 分钟` : ""}`;
+  }
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return `${days} 天${remainingHours ? ` ${remainingHours} 小时` : ""}`;
+}
+
+export function JobSourceFreshness({
+  freshness,
+}: {
+  freshness: HotKeyAPI.SourceFreshnessView;
+}) {
+  return (
+    <section className="mt-8" aria-labelledby="source-freshness-title">
+      <h2 id="source-freshness-title" className="text-xl font-semibold">
+        来源时效
+      </h2>
+      <div className="bg-muted mt-4 rounded-2xl p-6 sm:p-8">
+        <dl className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+          <DetailItem
+            label="最近尝试"
+            value={
+              freshness.last_attempt_at
+                ? formatTime(freshness.last_attempt_at)
+                : "尚无执行尝试"
+            }
+          />
+          <DetailItem
+            label="最近完整成功"
+            value={
+              freshness.last_success_at
+                ? formatTime(freshness.last_success_at)
+                : "尚无完整成功记录"
+            }
+          />
+        </dl>
+        {freshness.delay_reason ? (
+          <p className="text-muted-foreground mt-5 text-sm leading-6">
+            当前延期：{DELAY_LABELS[freshness.delay_reason]}，已等待{" "}
+            {formatDelayDuration(freshness.delay_duration_us)}
+            {freshness.delay_since_at
+              ? `（自 ${formatTime(freshness.delay_since_at)}）`
+              : ""}
+            。
+          </p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -349,7 +428,7 @@ export function JobDetail({ jobId }: JobDetailProps) {
             {canCancel ? (
               <Button
                 type="button"
-                variant="destructive"
+                variant="secondary"
                 onClick={() => void cancel()}
                 disabled={isCancelling}
               >
@@ -357,7 +436,7 @@ export function JobDetail({ jobId }: JobDetailProps) {
                 {isCancelling ? "正在取消" : "取消任务"}
               </Button>
             ) : isCancellationPending ? (
-              <Button type="button" variant="destructive" disabled>
+              <Button type="button" variant="secondary" disabled>
                 <BanIcon data-icon="inline-start" />
                 等待在途请求
               </Button>
@@ -413,6 +492,10 @@ export function JobDetail({ jobId }: JobDetailProps) {
                 : " 当前没有自动重试计划。"}
             </p>
           </section>
+        ) : null}
+
+        {job.source_freshness ? (
+          <JobSourceFreshness freshness={job.source_freshness} />
         ) : null}
 
         {actionError ? (

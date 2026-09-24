@@ -114,6 +114,15 @@ class JobFailureCategory(StrEnum):
     CONFIGURATION_UNAVAILABLE = "configuration_unavailable"
 
 
+class JobDelayReason(StrEnum):
+    INTERNAL_QUEUE = "internal_queue"
+    RATE_LIMITED = "rate_limited"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    TRANSIENT_FAILURE = "transient_failure"
+    MANUAL_RETRY = "manual_retry"
+    OTHER = "other"
+
+
 class CollectionJobKind(StrEnum):
     MONITOR_COLLECT = "monitor.collect"
     WEBPAGE_COLLECT = "webpage.collect"
@@ -749,6 +758,16 @@ class JobContinuousFailureIssueView(BaseModel):
     consecutive_failure_threshold: Literal[3]
 
 
+class SourceFreshnessView(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    last_attempt_at: datetime | None
+    last_success_at: datetime | None
+    delay_reason: JobDelayReason | None
+    delay_since_at: datetime | None
+    delay_duration_us: int | None = Field(ge=0)
+
+
 class JobStatusView(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -767,6 +786,7 @@ class JobStatusView(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
+    source_freshness: SourceFreshnessView | None = None
 
 
 class JobHistoryItemView(BaseModel):

@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
 from core.config import Settings
 from jobs.schemas import JobAcceptanceInput
@@ -69,13 +70,18 @@ def _initialize(client: TestClient) -> None:
     assert response.status_code == 201
 
 
-def _payload(*, operation_id: UUID | None = None, window: int = 7) -> dict[str, object]:
+def _payload(
+    *,
+    operation_id: UUID | None = None,
+    window: int = 7,
+    configuration_version: int = 3,
+) -> dict[str, object]:
     return {
         "operation_id": str(operation_id or uuid4()),
         "kind": "monitor.collect",
         "observation": {
             "configuration_ref": "monitor-config-1",
-            "configuration_version": 3,
+            "configuration_version": configuration_version,
             "source_key": "x",
             "source_capability": "search",
         },
@@ -88,17 +94,78 @@ def _csrf_headers(client: TestClient) -> dict[str, str]:
     return {"X-HotKey-CSRF": client.cookies["hotkey_csrf"]}
 
 
-def _accept_internal_job(client: TestClient, payload: dict[str, object]) -> UUID:
+def _accept_internal_job(
+    client: TestClient,
+    payload: dict[str, object],
+    *,
+    owner_id: UUID | None = None,
+) -> UUID:
     factory = client.app.state.session_factory
     with factory() as session:
-        owner_id = session.execute(
-            text("SELECT id FROM identity_users WHERE username = 'owner'")
-        ).scalar_one()
+        if owner_id is None:
+            owner_id = session.execute(
+                text("SELECT id FROM identity_users WHERE username = 'owner'")
+            ).scalar_one()
         job = JobService(session).accept(
             owner_id=owner_id,
             command=JobAcceptanceInput.model_validate(payload, strict=False),
         )
     return job.id
+
+
+def _set_job_facts(
+    session: Session,
+    *,
+    job_id: UUID,
+    status: str,
+    started_at: datetime,
+    completed_at: datetime | None,
+    outcome: str,
+    delayed_at: datetime | None = None,
+) -> None:
+    updated_at = delayed_at or completed_at
+    assert updated_at is not None
+    session.execute(
+        text(
+            "INSERT INTO job_attempts "
+            "(id, job_id, lease_epoch, worker_id, started_at, lease_expires_at, "
+            "finished_at, outcome) VALUES (:id, :job_id, 1, 'freshness-test', "
+            ":started_at, :lease_expires_at, :finished_at, :outcome)"
+        ),
+        {
+            "id": uuid4(),
+            "job_id": job_id,
+            "started_at": started_at,
+            "lease_expires_at": started_at + timedelta(minutes=10),
+            "finished_at": updated_at,
+            "outcome": outcome,
+        },
+    )
+    session.execute(
+        text(
+            "UPDATE jobs SET created_at = :created_at, status = :status, "
+            "started_at = :started_at, completed_at = :completed_at, updated_at = :updated_at, "
+            "defer_reason = :defer_reason, next_run_at = :next_run_at, retry_count = :retry_count, "
+            "last_error_code = :error_code, last_error_category = :error_category, "
+            "last_error_at = :error_at, next_action = :next_action "
+            "WHERE id = :job_id"
+        ),
+        {
+            "job_id": job_id,
+            "created_at": started_at - timedelta(minutes=5),
+            "status": status,
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "updated_at": updated_at,
+            "defer_reason": "rate_limited" if delayed_at is not None else None,
+            "next_run_at": delayed_at + timedelta(minutes=10) if delayed_at else None,
+            "retry_count": 1 if delayed_at is not None else 0,
+            "error_code": "collector_budget_exhausted" if delayed_at is not None else None,
+            "error_category": "rate_limited" if delayed_at is not None else None,
+            "error_at": delayed_at,
+            "next_action": "等待预算窗口恢复" if delayed_at is not None else None,
+        },
+    )
 
 
 def test_internal_job_status_is_readable_after_refresh(
@@ -109,10 +176,12 @@ def test_internal_job_status_is_readable_after_refresh(
     job_id = _accept_internal_job(collection_job_client, payload)
 
     refreshed = collection_job_client.get(f"/api/jobs/{job_id}")
+    body = refreshed.json()
+    freshness = body["source_freshness"]
 
     assert refreshed.status_code == 200
     assert refreshed.headers["cache-control"] == "no-store"
-    assert refreshed.json() == {
+    assert body == {
         "id": str(job_id),
         "operation_id": payload["operation_id"],
         "kind": "monitor.collect",
@@ -132,10 +201,110 @@ def test_internal_job_status_is_readable_after_refresh(
         "scheduled_for_at": None,
         "started_at": None,
         "completed_at": None,
-        "created_at": refreshed.json()["created_at"],
+        "created_at": body["created_at"],
+        "source_freshness": freshness,
     }
-    assert "owner_id" not in refreshed.json()
-    assert "scope" not in refreshed.json()
+    assert freshness == {
+        "last_attempt_at": None,
+        "last_success_at": None,
+        "delay_reason": "internal_queue",
+        "delay_since_at": body["created_at"],
+        "delay_duration_us": freshness["delay_duration_us"],
+    }
+    assert isinstance(freshness["delay_duration_us"], int)
+    assert freshness["delay_duration_us"] >= 0
+    assert "owner_id" not in body
+    assert "scope" not in body
+
+
+def test_job_status_reports_last_attempt_full_success_and_budget_delay(
+    collection_job_client: TestClient,
+) -> None:
+    _initialize(collection_job_client)
+    success_job_id = _accept_internal_job(collection_job_client, _payload())
+    partial_job_id = _accept_internal_job(collection_job_client, _payload())
+    delayed_job_id = _accept_internal_job(collection_job_client, _payload())
+    other_version_job_id = _accept_internal_job(
+        collection_job_client,
+        _payload(configuration_version=4),
+    )
+
+    other_owner_id = uuid4()
+    factory = collection_job_client.app.state.session_factory
+    with factory() as session, session.begin():
+        session.execute(
+            text(
+                "INSERT INTO identity_users "
+                "(id, username, password_hash, credential_version, created_at, updated_at) "
+                "VALUES (:id, 'other-job-owner', 'test-only-hash', 1, now(), now())"
+            ),
+            {"id": other_owner_id},
+        )
+    other_owner_job_id = _accept_internal_job(
+        collection_job_client,
+        _payload(),
+        owner_id=other_owner_id,
+    )
+
+    now = datetime.now(UTC)
+    completed_at = now - timedelta(hours=1)
+    partial_completed_at = now - timedelta(minutes=10)
+    last_attempt_at = now - timedelta(minutes=5)
+    delayed_at = now - timedelta(minutes=2)
+    other_version_success_at = now - timedelta(minutes=1)
+    other_owner_success_at = now - timedelta(seconds=30)
+    jobs = (
+        (success_job_id, "succeeded", completed_at - timedelta(minutes=2), completed_at, None),
+        (
+            partial_job_id,
+            "partially_succeeded",
+            partial_completed_at - timedelta(minutes=2),
+            partial_completed_at,
+            None,
+        ),
+        (delayed_job_id, "queued", last_attempt_at, None, delayed_at),
+        (
+            other_version_job_id,
+            "succeeded",
+            other_version_success_at - timedelta(minutes=1),
+            other_version_success_at,
+            None,
+        ),
+        (
+            other_owner_job_id,
+            "succeeded",
+            other_owner_success_at - timedelta(minutes=1),
+            other_owner_success_at,
+            None,
+        ),
+    )
+    with factory() as session, session.begin():
+        for job_id, status, started_at, completed_at, delay_at in jobs:
+            _set_job_facts(
+                session,
+                job_id=job_id,
+                status=status,
+                started_at=started_at,
+                completed_at=completed_at,
+                outcome="delayed" if delay_at is not None else "succeeded",
+                delayed_at=delay_at,
+            )
+
+    response = collection_job_client.get(f"/api/jobs/{delayed_job_id}")
+
+    assert response.status_code == 200, response.json()
+    freshness = response.json()["source_freshness"]
+    assert datetime.fromisoformat(freshness["last_attempt_at"].replace("Z", "+00:00")) == (
+        last_attempt_at
+    )
+    assert datetime.fromisoformat(freshness["last_success_at"].replace("Z", "+00:00")) == (
+        completed_at
+    )
+    assert freshness["delay_reason"] == "budget_exhausted"
+    assert datetime.fromisoformat(freshness["delay_since_at"].replace("Z", "+00:00")) == (
+        delayed_at
+    )
+    assert freshness["delay_duration_us"] >= 0
 
 
 def test_job_history_uses_owner_scoped_stable_cursor_and_safe_summary(

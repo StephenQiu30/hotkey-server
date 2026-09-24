@@ -266,6 +266,14 @@ declare namespace HotKeyAPI {
     | "failed"
     | "cancelled";
 
+  type JobDelayReason =
+    | "internal_queue"
+    | "rate_limited"
+    | "budget_exhausted"
+    | "transient_failure"
+    | "manual_retry"
+    | "other";
+
   type JobFailureCategory =
     | "transient"
     | "rate_limited"
@@ -359,6 +367,7 @@ declare namespace HotKeyAPI {
     completed_at: string | null;
     /** Created At */
     created_at: string;
+    source_freshness?: SourceFreshnessView | null;
   };
 
   type KeywordInput = string;
@@ -571,6 +580,18 @@ declare namespace HotKeyAPI {
     stop_reason: SourceStopReason | null;
     /** Next Action */
     next_action: string;
+  };
+
+  type SourceFreshnessView = {
+    /** Last Attempt At */
+    last_attempt_at: string | null;
+    /** Last Success At */
+    last_success_at: string | null;
+    delay_reason: JobDelayReason | null;
+    /** Delay Since At */
+    delay_since_at: string | null;
+    /** Delay Duration Us */
+    delay_duration_us: number | null;
   };
 
   type SourcePlatformStatus =

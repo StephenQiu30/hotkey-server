@@ -5,9 +5,10 @@ import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import Select, and_, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -64,6 +65,7 @@ from jobs.schemas import (
     JobCancellationView,
     JobContinuousFailureIssueView,
     JobControlStatus,
+    JobDelayReason,
     JobFailureCategory,
     JobFailureView,
     JobHistoryItemView,
@@ -80,6 +82,7 @@ from jobs.schemas import (
     OperationalTaskStatus,
     OperationAttemptCount,
     SourceCapabilityTaskSummary,
+    SourceFreshnessView,
     SourceTimeStatus,
     StageAttemptInput,
     StageAttemptView,
@@ -2031,7 +2034,7 @@ class JobService:
             )
             issues: list[JobContinuousFailureIssueView] = []
             for model in models:
-                failure = self._status_view(model, now=now).failure
+                failure = self._failure_view(model)
                 if failure is None or model.source_key is None or model.source_capability is None:
                     raise RuntimeError("continuous failure issue has incomplete persisted context")
                 issues.append(
@@ -2247,7 +2250,114 @@ class JobService:
         )
 
     @staticmethod
-    def _status_view(model: Job, *, now: datetime) -> JobStatusView:
+    def _source_freshness_statement(
+        model: Job,
+    ) -> Select[tuple[datetime | None, datetime | None]]:
+        statement = (
+            select(
+                func.max(JobAttempt.started_at),
+                func.max(case((Job.status == JobStatus.SUCCEEDED.value, Job.completed_at))),
+            )
+            .select_from(Job)
+            .outerjoin(JobAttempt, JobAttempt.job_id == Job.id)
+            .where(
+                Job.owner_id == model.owner_id,
+                Job.source_key == model.source_key,
+                Job.source_capability == model.source_capability,
+                Job.configuration_ref == model.configuration_ref,
+                Job.configuration_version == model.configuration_version,
+            )
+        )
+        return cast(Select[tuple[datetime | None, datetime | None]], statement)
+
+    def _source_freshness(self, model: Job, *, now: datetime) -> SourceFreshnessView | None:
+        if model.source_key is None and model.source_capability is None:
+            return None
+        if model.source_key is None or model.source_capability is None:
+            raise RuntimeError("job source context is incomplete")
+
+        last_attempt_at, last_success_at = self._session.execute(
+            self._source_freshness_statement(model)
+        ).one()
+        return self._source_freshness_view(
+            model,
+            now=now,
+            last_attempt_at=last_attempt_at,
+            last_success_at=last_success_at,
+        )
+
+    @staticmethod
+    def _source_freshness_view(
+        model: Job,
+        *,
+        now: datetime,
+        last_attempt_at: datetime | None,
+        last_success_at: datetime | None,
+    ) -> SourceFreshnessView:
+        if now.tzinfo is None:
+            raise ValueError("now must be timezone-aware")
+
+        delay_reason = None
+        delay_since_at = None
+        if model.status == JobStatus.QUEUED.value:
+            if model.defer_reason is None:
+                eligible_at = model.scheduled_for_at or model.created_at
+                if eligible_at <= now:
+                    delay_reason = JobDelayReason.INTERNAL_QUEUE
+                    delay_since_at = eligible_at
+            else:
+                delay_since_at = model.updated_at
+                if model.defer_reason == "rate_limited":
+                    delay_reason = (
+                        JobDelayReason.BUDGET_EXHAUSTED
+                        if model.last_error_code == "collector_budget_exhausted"
+                        else JobDelayReason.RATE_LIMITED
+                    )
+                elif model.defer_reason == "transient":
+                    delay_reason = JobDelayReason.TRANSIENT_FAILURE
+                elif model.defer_reason == "manual_retry":
+                    delay_reason = JobDelayReason.MANUAL_RETRY
+                else:
+                    delay_reason = JobDelayReason.OTHER
+
+        delay_duration_us = None
+        if (
+            delay_since_at is not None
+            and delay_since_at.tzinfo is not None
+            and now.astimezone(UTC) >= delay_since_at.astimezone(UTC)
+        ):
+            duration = now.astimezone(UTC) - delay_since_at.astimezone(UTC)
+            delay_duration_us = (
+                duration.days * 86_400 + duration.seconds
+            ) * 1_000_000 + duration.microseconds
+
+        return SourceFreshnessView(
+            last_attempt_at=_as_utc(last_attempt_at),
+            last_success_at=_as_utc(last_success_at),
+            delay_reason=delay_reason,
+            delay_since_at=_as_utc(delay_since_at),
+            delay_duration_us=delay_duration_us,
+        )
+
+    @staticmethod
+    def _failure_view(model: Job) -> JobFailureView | None:
+        if model.last_error_code is None:
+            return None
+        if (
+            model.last_error_category is None
+            or model.last_error_at is None
+            or model.next_action is None
+        ):
+            raise RuntimeError("job failure context is incomplete")
+        return JobFailureView(
+            error_code=model.last_error_code,
+            category=JobFailureCategory(model.last_error_category),
+            occurred_at=model.last_error_at.astimezone(UTC),
+            next_action=model.next_action,
+            manual_retry_allowed=model.manual_retry_allowed,
+        )
+
+    def _status_view(self, model: Job, *, now: datetime) -> JobStatusView:
         public_status = (
             JobControlStatus.CANCELLING
             if model.status == JobStatus.RUNNING.value and model.cancel_requested_at is not None
@@ -2265,21 +2375,7 @@ class JobService:
                 deadline_at=_as_utc(deadline),
                 timed_out=timed_out,
             )
-        failure = None
-        if model.last_error_code is not None:
-            if (
-                model.last_error_category is None
-                or model.last_error_at is None
-                or model.next_action is None
-            ):
-                raise RuntimeError("job failure context is incomplete")
-            failure = JobFailureView(
-                error_code=model.last_error_code,
-                category=JobFailureCategory(model.last_error_category),
-                occurred_at=model.last_error_at.astimezone(UTC),
-                next_action=model.next_action,
-                manual_retry_allowed=model.manual_retry_allowed,
-            )
+        failure = self._failure_view(model)
         result_content_id = None
         raw_content_id = model.checkpoint.get("content_id")
         if raw_content_id is not None:
@@ -2310,6 +2406,7 @@ class JobService:
             started_at=_as_utc(model.started_at),
             completed_at=_as_utc(model.completed_at),
             created_at=model.created_at.astimezone(UTC),
+            source_freshness=self._source_freshness(model, now=now),
         )
 
     @staticmethod
