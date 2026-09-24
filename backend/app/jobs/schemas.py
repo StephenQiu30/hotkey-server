@@ -240,6 +240,27 @@ class XApiPostReadCost(BaseModel):
         return returned_posts * self.unit_price_usd_micros
 
 
+class XApiUserReadCost(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    resource_kind: Literal["user"] = "user"
+    unit_price_usd_micros: int = Field(gt=0, le=_MAX_BUDGET_UNITS)
+
+    @property
+    def reservation_units(self) -> int:
+        return self.unit_price_usd_micros
+
+    def settlement_units(self, returned_users: int | None) -> int:
+        if returned_users is None:
+            return self.reservation_units
+        if type(returned_users) is not int or returned_users not in {0, 1}:
+            raise ValueError("returned_users must be zero or one")
+        return returned_users * self.unit_price_usd_micros
+
+
+XApiReadCostQuote = XApiPostReadCost | XApiUserReadCost
+
+
 class BudgetScopeKind(StrEnum):
     GLOBAL = "global"
     SOURCE = "source"
@@ -351,14 +372,17 @@ class BudgetReservationInput(BaseModel):
     metric: BudgetMetric
     requested_units: int = Field(gt=0, le=_MAX_BUDGET_UNITS)
     context: BudgetContext
-    cost_quote: XApiPostReadCost | None = None
+    cost_quote: XApiReadCostQuote | None = None
 
     @model_validator(mode="after")
     def validate_x_source(self) -> BudgetReservationInput:
         if self.metric is BudgetMetric.X_API_USD_MICROS:
             if self.context.source_ref != "x":
                 raise ValueError("x api spend budget requires x source")
-            if self.cost_quote is None or self.requested_units != self.cost_quote.reservation_units:
+            if (
+                not isinstance(self.cost_quote, (XApiPostReadCost, XApiUserReadCost))
+                or self.requested_units != self.cost_quote.reservation_units
+            ):
                 raise ValueError("x api spend budget requires a matching cost quote")
         elif self.cost_quote is not None:
             raise ValueError("cost quote requires x api spend budget")

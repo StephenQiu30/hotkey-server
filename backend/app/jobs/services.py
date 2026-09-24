@@ -97,6 +97,8 @@ from jobs.schemas import (
     UsageOutcome,
     UsageSummaryView,
     XApiPostReadCost,
+    XApiReadCostQuote,
+    XApiUserReadCost,
 )
 from sources.contracts import SourceCapability, SourcePageState, SourceStopReason
 
@@ -1109,7 +1111,7 @@ class ResourceBudgetService:
             if command.context.source_ref != "x":
                 raise ValueError("x api spend budget requires x source")
             if (
-                not isinstance(command.cost_quote, XApiPostReadCost)
+                not isinstance(command.cost_quote, (XApiPostReadCost, XApiUserReadCost))
                 or command.requested_units != command.cost_quote.reservation_units
             ):
                 raise ValueError("x api spend budget requires a matching cost quote")
@@ -1212,7 +1214,7 @@ class ResourceBudgetService:
         network_reservation_id: UUID,
         spend_reservation_id: UUID,
         context: BudgetContext,
-        quote: XApiPostReadCost,
+        quote: XApiReadCostQuote,
     ) -> BudgetReservationDecision:
         """Atomically reserve both offline X budgets; this does not authorize a paid call."""
         if network_reservation_id == spend_reservation_id:

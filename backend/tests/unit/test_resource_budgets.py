@@ -17,6 +17,7 @@ from jobs.schemas import (
     CostClass,
     UsageKind,
     XApiPostReadCost,
+    XApiUserReadCost,
 )
 
 
@@ -157,6 +158,41 @@ def test_x_api_post_read_cost_rejects_invalid_or_overflowing_quote(
         XApiPostReadCost(**values)
 
 
+def test_x_api_user_read_cost_reserves_one_user_and_settles_conservatively() -> None:
+    cost = XApiUserReadCost(unit_price_usd_micros=12_345)
+
+    assert cost.reservation_units == 12_345
+    assert cost.settlement_units(1) == 12_345
+    assert cost.settlement_units(0) == 0
+    assert cost.settlement_units(None) == 12_345
+
+    with pytest.raises(ValueError, match="returned_users"):
+        cost.settlement_units(2)
+
+
+def test_x_api_user_read_cost_requires_an_explicit_positive_price() -> None:
+    with pytest.raises(ValidationError):
+        XApiUserReadCost()
+
+    with pytest.raises(ValidationError):
+        XApiUserReadCost(unit_price_usd_micros=0)
+
+
+def test_x_api_user_read_spend_accepts_a_matching_quote() -> None:
+    quote = XApiUserReadCost(unit_price_usd_micros=12_345)
+
+    command = BudgetReservationInput(
+        reservation_id=uuid4(),
+        operation_id=uuid4(),
+        metric=BudgetMetric.X_API_USD_MICROS,
+        requested_units=quote.reservation_units,
+        context=BudgetContext(source_ref="x"),
+        cost_quote=quote,
+    )
+
+    assert command.cost_quote == quote
+
+
 def test_x_api_spend_budget_requires_x_source() -> None:
     with pytest.raises(ValidationError, match="x source"):
         BudgetReservationInput(
@@ -182,10 +218,14 @@ def test_x_api_spend_budget_requires_x_source() -> None:
 
 @pytest.mark.parametrize(
     "quote",
-    [None, XApiPostReadCost(max_posts=5, unit_price_usd_micros=5000)],
+    [
+        None,
+        XApiPostReadCost(max_posts=5, unit_price_usd_micros=5000),
+        XApiUserReadCost(unit_price_usd_micros=50_001),
+    ],
 )
 def test_x_api_spend_budget_requires_matching_quote(
-    quote: XApiPostReadCost | None,
+    quote: XApiPostReadCost | XApiUserReadCost | None,
 ) -> None:
     with pytest.raises(ValidationError, match="matching cost quote"):
         BudgetReservationInput(

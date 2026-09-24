@@ -178,6 +178,8 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 ## 本轮产品文档复核
 
+2026-09-25 037/006 X User Read 离线费用子片：官方价格页将 User Read 定义为按返回资源收费，并说明 Developer Console 才是实际费率来源、价格可变；实现接受显式单 User 微美元单价，无默认价。`XApiUserReadCost` 对已知 0/1 与未知结果结算，复用既有 network request + X spend 双预留与报价幂等指纹；不触碰 App/Token、不发 X 请求、不解除 `paid` 核心拒绝。单元回归、后端 unit+architecture 360 passed、Ruff/format/mypy 通过；数据库集成 fixture 会 TRUNCATE 全库表，故本机未对 `hotkey-server` 执行，3 个定向集成场景仅确认安全跳过，隔离 PostgreSQL CI 待完成。详见 037 EV-037-G3/G4-X04。
+
 2026-09-25 HotKey 适配器复验：`PYTHONPATH=app uv run --env-file .env pytest tests/unit/test_webpage_adapter.py -q` 为 21 passed；后端 unit+architecture 为 356 passed（2 个第三方弃用警告）。显式、无持久化 `probe-webpage` 对 `example.com` 返回 target status 200、180 字符、`text_scope=full`、`firecrawl/2.11.162`，target request count 未知。该探针通过 HotKey 适配器调用现有 Firecrawl，不写数据库/任务；固定样本与修复前失败输入已归档，关闭 038 S02 G3/G4。没有运行数据库集成测试；单次成功不等于长期健康或平台能力，047 G4-002/产品 AC 仍开放。
 
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
