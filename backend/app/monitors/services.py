@@ -10,8 +10,16 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from core.errors import ApplicationError
-from monitors.models import MonitorTopic, MonitorTopicVersion
+from monitors.models import (
+    FollowedAccount,
+    FollowedAccountAlias,
+    MonitorTopic,
+    MonitorTopicVersion,
+)
 from monitors.schemas import (
+    FollowedAccountAliasView,
+    FollowedAccountIdentityInput,
+    FollowedAccountView,
     MonitorExpansionPreviewView,
     MonitorRulePreviewSampleView,
     MonitorRuleSetView,
@@ -109,6 +117,166 @@ def evaluate_monitor_rules(rules: NormalizedMonitorRules, content: str) -> Monit
         matched_all=matched_all,
         excluded_by=excluded_by,
     )
+
+
+class FollowedAccountService:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._session = session
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def record_confirmed_identity(
+        self,
+        *,
+        owner_id: UUID,
+        identity: FollowedAccountIdentityInput,
+    ) -> FollowedAccountView:
+        now = self._clock()
+        self._session.rollback()
+        with self._session.begin():
+            account = self._session.scalar(
+                select(FollowedAccount)
+                .where(
+                    FollowedAccount.owner_id == owner_id,
+                    FollowedAccount.source_key == identity.source_key,
+                    FollowedAccount.external_id == identity.external_id,
+                )
+                .with_for_update()
+            )
+            if account is None:
+                account = FollowedAccount(
+                    id=uuid4(),
+                    owner_id=owner_id,
+                    source_key=identity.source_key,
+                    external_id=identity.external_id,
+                    display_name=identity.display_name,
+                    created_at=now,
+                    updated_at=now,
+                )
+                self._session.add(account)
+                self._session.flush()
+            else:
+                if identity.display_name is not None:
+                    account.display_name = identity.display_name
+                account.updated_at = now
+
+            if identity.alias_value is not None:
+                alias = self._session.get(
+                    FollowedAccountAlias,
+                    (owner_id, account.id, identity.alias_value),
+                )
+                if alias is None:
+                    self._session.add(
+                        FollowedAccountAlias(
+                            owner_id=owner_id,
+                            account_id=account.id,
+                            alias_value=identity.alias_value,
+                            first_seen_at=now,
+                            last_seen_at=now,
+                        )
+                    )
+                else:
+                    alias.last_seen_at = now
+
+            self._session.flush()
+            aliases = self._aliases(owner_id=owner_id, account_id=account.id)
+            result = self._view(account, aliases)
+        return result
+
+    def get_account(self, *, owner_id: UUID, account_id: UUID) -> FollowedAccountView:
+        self._session.rollback()
+        with self._session.begin():
+            account = self._session.scalar(
+                select(FollowedAccount).where(
+                    FollowedAccount.owner_id == owner_id,
+                    FollowedAccount.id == account_id,
+                )
+            )
+            if account is None:
+                raise ApplicationError("resource_not_found")
+            aliases = self._aliases(owner_id=owner_id, account_id=account.id)
+            result = self._view(account, aliases)
+        return result
+
+    def find_by_alias(
+        self,
+        *,
+        owner_id: UUID,
+        source_key: str,
+        alias_value: str,
+    ) -> list[FollowedAccountView]:
+        self._session.rollback()
+        with self._session.begin():
+            accounts = list(
+                self._session.scalars(
+                    select(FollowedAccount)
+                    .join(
+                        FollowedAccountAlias,
+                        and_(
+                            FollowedAccountAlias.owner_id == FollowedAccount.owner_id,
+                            FollowedAccountAlias.account_id == FollowedAccount.id,
+                        ),
+                    )
+                    .where(
+                        FollowedAccount.owner_id == owner_id,
+                        FollowedAccount.source_key == source_key,
+                        FollowedAccountAlias.alias_value == alias_value,
+                    )
+                    .order_by(FollowedAccount.id)
+                ).all()
+            )
+            results = [
+                self._view(
+                    account,
+                    self._aliases(owner_id=owner_id, account_id=account.id),
+                )
+                for account in accounts
+            ]
+        return results
+
+    def _aliases(self, *, owner_id: UUID, account_id: UUID) -> list[FollowedAccountAlias]:
+        return list(
+            self._session.scalars(
+                select(FollowedAccountAlias)
+                .where(
+                    FollowedAccountAlias.owner_id == owner_id,
+                    FollowedAccountAlias.account_id == account_id,
+                )
+                .order_by(FollowedAccountAlias.first_seen_at, FollowedAccountAlias.alias_value)
+            ).all()
+        )
+
+    @staticmethod
+    def _view(
+        account: FollowedAccount,
+        aliases: list[FollowedAccountAlias],
+    ) -> FollowedAccountView:
+        latest_alias = max(
+            aliases,
+            key=lambda alias: (alias.last_seen_at, alias.alias_value),
+            default=None,
+        )
+        return FollowedAccountView(
+            id=account.id,
+            source_key=account.source_key,
+            external_id=account.external_id,
+            display_name=account.display_name,
+            latest_observed_alias=latest_alias.alias_value if latest_alias else None,
+            aliases=[
+                FollowedAccountAliasView(
+                    alias_value=alias.alias_value,
+                    first_seen_at=alias.first_seen_at,
+                    last_seen_at=alias.last_seen_at,
+                )
+                for alias in aliases
+            ],
+            created_at=account.created_at,
+            updated_at=account.updated_at,
+        )
 
 
 class MonitorTopicService:

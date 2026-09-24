@@ -71,7 +71,8 @@ def observation_context() -> Iterator[ObservationTestContext]:
                 "resource_component_policies, job_stage_attempts, "
                 "processed_messages, job_attempts, "
                 "outbox_messages, coverage_windows, "
-                "jobs, monitor_topic_versions, monitor_topics, "
+                "jobs, followed_account_aliases, followed_accounts, "
+                "monitor_topic_versions, monitor_topics, "
                 "identity_sessions, identity_users"
             )
         )
@@ -106,7 +107,8 @@ def observation_context() -> Iterator[ObservationTestContext]:
                     "resource_component_policies, job_stage_attempts, "
                     "processed_messages, job_attempts, "
                     "outbox_messages, coverage_windows, "
-                    "jobs, monitor_topic_versions, monitor_topics, "
+                    "jobs, followed_account_aliases, followed_accounts, "
+                    "monitor_topic_versions, monitor_topics, "
                     "identity_sessions, identity_users"
                 )
             )

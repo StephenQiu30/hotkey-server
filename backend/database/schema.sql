@@ -75,6 +75,39 @@ CREATE TABLE monitor_topic_versions (
 CREATE INDEX monitor_topic_versions_created_by_idx
     ON monitor_topic_versions (created_by);
 
+CREATE TABLE followed_accounts (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    source_key VARCHAR(64) NOT NULL CHECK (length(source_key) BETWEEN 1 AND 64),
+    external_id VARCHAR(256) NOT NULL CHECK (length(external_id) BETWEEN 1 AND 256),
+    display_name VARCHAR(256) CHECK (
+        display_name IS NULL OR length(display_name) BETWEEN 1 AND 256
+    ),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT followed_accounts_owner_source_identity_key
+        UNIQUE (owner_id, source_key, external_id),
+    CONSTRAINT followed_accounts_owner_id_key UNIQUE (owner_id, id)
+);
+
+CREATE INDEX followed_accounts_owner_created_idx
+    ON followed_accounts (owner_id, created_at, id);
+
+CREATE TABLE followed_account_aliases (
+    owner_id UUID NOT NULL,
+    account_id UUID NOT NULL,
+    alias_value VARCHAR(128) NOT NULL CHECK (length(alias_value) BETWEEN 1 AND 128),
+    first_seen_at TIMESTAMPTZ NOT NULL,
+    last_seen_at TIMESTAMPTZ NOT NULL CHECK (last_seen_at >= first_seen_at),
+    PRIMARY KEY (owner_id, account_id, alias_value),
+    CONSTRAINT followed_account_aliases_owner_account_fkey
+        FOREIGN KEY (owner_id, account_id)
+        REFERENCES followed_accounts (owner_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX followed_account_aliases_owner_value_idx
+    ON followed_account_aliases (owner_id, alias_value);
+
 CREATE TABLE source_connections (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,

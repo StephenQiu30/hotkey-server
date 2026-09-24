@@ -12,6 +12,8 @@
 
 ## X 官方 API 离线接入 S01a
 
+2026-09-25：006 来源无关的离线身份存储子片已实现：`monitors` 登记 owner/source/stable ID，并按身份保存可重名的别名观测；同一 ID 改名不变号，别名复用返回多个候选，读取按 owner 隔离。未增加 API/UI/Worker、来源请求或运行库 DDL。7 项单测、37 项定向单元/架构测试、后端全量 382 passed/194 skipped，Ruff/format/mypy 通过；专用 PostgreSQL 集成因本机未设置 `HOTKEY_TEST_DATABASE_URL` 跳过，提交后等待隔离 CI，未写 `hotkey-server`。完整 S01、G3/G4、真实来源与产品 0/6 AC 继续开放。
+
 006 S00 与 X 身份解析离线子片（2026-09-23）：新增同编号 Design 和仅接受 `MockTransport` 的官方单用户名 Lookup；本地从 `@handle` 或精确 X 主页提取用户名，请求前需批准最坏 1 个 User，返回严格校验稳定数字 ID、用户名与展示名，失败按未知用量回调。同名显示名不同 ID 与同 ID 改名受控样本均不自动改绑。专用 36 tests，后端无隔离数据库配置的全量 320 passed/174 skipped，Ruff/format/mypy 通过。尚无关注持久化/API/Web、真实费用装配、App/Token、实际 X 请求或产品 AC；006 保持 in_progress、0/6 AC。
 
 2026-09-23 补充按已确认稳定 ID 的离线回查：`GET /2/users/{id}` 只经 `MockTransport`，响应 ID 必须匹配；非法 ID 不消耗预算、不请求，改名可更新别名但旧用户名被他人占用不能改绑。专用 45 tests，后端全量 329 passed/174 skipped、Ruff/format/mypy 通过。仍无真实 X 请求、关注持久化或产品 AC；用户当前要求优先规划 HotKey 顶层服务能力，不继续扩展 X 接口实现。

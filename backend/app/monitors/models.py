@@ -3,11 +3,93 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, text
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import Base
+
+
+class FollowedAccount(Base):
+    __tablename__ = "followed_accounts"
+    __table_args__ = (
+        CheckConstraint(
+            "length(source_key) BETWEEN 1 AND 64",
+            name="followed_accounts_source_key_length_check",
+        ),
+        CheckConstraint(
+            "length(external_id) BETWEEN 1 AND 256",
+            name="followed_accounts_external_id_length_check",
+        ),
+        CheckConstraint(
+            "display_name IS NULL OR length(display_name) BETWEEN 1 AND 256",
+            name="followed_accounts_display_name_length_check",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at",
+            name="followed_accounts_updated_at_check",
+        ),
+        UniqueConstraint(
+            "owner_id",
+            "source_key",
+            "external_id",
+            name="followed_accounts_owner_source_identity_key",
+        ),
+        UniqueConstraint("owner_id", "id", name="followed_accounts_owner_id_key"),
+        Index("followed_accounts_owner_created_idx", "owner_id", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id", ondelete="CASCADE"))
+    source_key: Mapped[str] = mapped_column(String(64))
+    external_id: Mapped[str] = mapped_column(String(256))
+    display_name: Mapped[str | None] = mapped_column(String(256))
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]
+
+    aliases: Mapped[list[FollowedAccountAlias]] = relationship(
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class FollowedAccountAlias(Base):
+    __tablename__ = "followed_account_aliases"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "account_id"],
+            ["followed_accounts.owner_id", "followed_accounts.id"],
+            ondelete="CASCADE",
+            name="followed_account_aliases_owner_account_fkey",
+        ),
+        CheckConstraint(
+            "length(alias_value) BETWEEN 1 AND 128",
+            name="followed_account_aliases_value_length_check",
+        ),
+        CheckConstraint(
+            "last_seen_at >= first_seen_at",
+            name="followed_account_aliases_seen_at_check",
+        ),
+        Index("followed_account_aliases_owner_value_idx", "owner_id", "alias_value"),
+    )
+
+    owner_id: Mapped[UUID] = mapped_column(primary_key=True)
+    account_id: Mapped[UUID] = mapped_column(primary_key=True)
+    alias_value: Mapped[str] = mapped_column(String(128), primary_key=True)
+    first_seen_at: Mapped[datetime]
+    last_seen_at: Mapped[datetime]
+
+    account: Mapped[FollowedAccount] = relationship(back_populates="aliases")
 
 
 class MonitorTopic(Base):

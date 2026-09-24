@@ -86,7 +86,8 @@ def resource_budget_context() -> Iterator[ResourceBudgetContext]:
                 "job_stage_attempts, processed_messages, "
                 "job_attempts, "
                 "outbox_messages, coverage_windows, "
-                "jobs, monitor_topic_versions, monitor_topics, "
+                "jobs, followed_account_aliases, followed_accounts, "
+                "monitor_topic_versions, monitor_topics, "
                 "identity_sessions, identity_users"
             )
         )
@@ -116,7 +117,8 @@ def resource_budget_context() -> Iterator[ResourceBudgetContext]:
                     "evidence_retention_policies, source_access_policies, "
                     "job_stage_attempts, processed_messages, job_attempts, "
                     "outbox_messages, coverage_windows, "
-                    "jobs, monitor_topic_versions, monitor_topics, "
+                    "jobs, followed_account_aliases, followed_accounts, "
+                    "monitor_topic_versions, monitor_topics, "
                     "identity_sessions, identity_users"
                 )
             )

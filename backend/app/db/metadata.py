@@ -35,7 +35,12 @@ from jobs.models import (
     ResourceComponentPolicy,
     ResourceUsageAttempt,
 )
-from monitors.models import MonitorTopic, MonitorTopicVersion
+from monitors.models import (
+    FollowedAccount,
+    FollowedAccountAlias,
+    MonitorTopic,
+    MonitorTopicVersion,
+)
 
 # Import each domain's models here for runtime mapping and clean-database verification.
 # DDL ownership remains exclusively in database/schema.sql.
@@ -52,6 +57,8 @@ __all__ = [
     "CoverageWindow",
     "DeletionDirective",
     "EvidenceResource",
+    "FollowedAccount",
+    "FollowedAccountAlias",
     "IdentitySession",
     "IdentityUser",
     "Job",

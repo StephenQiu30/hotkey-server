@@ -43,6 +43,34 @@ class MonitorTopicPreviewInput(MonitorRuleSetInput):
     sample_titles: list[PreviewSampleInput] = Field(min_length=1, max_length=20)
 
 
+class FollowedAccountIdentityInput(InputModel):
+    source_key: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]{0,63}$")
+    external_id: str = Field(min_length=1, max_length=256, pattern=r"^\S+$")
+    alias_value: str | None = Field(default=None, min_length=1, max_length=128)
+    display_name: str | None = Field(default=None, min_length=1, max_length=256)
+
+
+class FollowedAccountAliasView(OutputModel):
+    model_config = ConfigDict(frozen=True)
+
+    alias_value: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class FollowedAccountView(OutputModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    source_key: str
+    external_id: str
+    display_name: str | None
+    latest_observed_alias: str | None
+    aliases: list[FollowedAccountAliasView]
+    created_at: datetime
+    updated_at: datetime
+
+
 class MonitorRuleSetView(OutputModel):
     model_config = ConfigDict(frozen=True)
 
