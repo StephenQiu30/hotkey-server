@@ -37,6 +37,7 @@ from jobs.execution import (
     JobExecutionService,
     JobLeaseUnavailableError,
     StaleExecutionLeaseError,
+    resource_attempt_id,
 )
 from jobs.schemas import (
     BudgetContext,
@@ -988,7 +989,34 @@ def test_worker_executes_webpage_job_and_replay_has_no_duplicate_effects(
             ),
             {"job_id": job_id},
         ).one()
+        evidence = connection.execute(
+            text(
+                "SELECT usage.attempt_id, usage.operation_id, evidence.operation_id, "
+                "evidence.outcome, evidence.stop_reason "
+                "FROM jobs job "
+                "JOIN resource_usage_attempts usage "
+                "ON usage.owner_id = job.owner_id AND usage.operation_id = job.operation_id "
+                "JOIN source_capability_evidence evidence "
+                "ON evidence.owner_id = usage.owner_id "
+                "AND evidence.operation_id = usage.attempt_id "
+                "WHERE job.id = :job_id AND usage.usage_kind = 'collector_call'"
+            ),
+            {"job_id": job_id},
+        ).one()
     assert tuple(counts) == (1, 1, 1)
+    expected_attempt_id = resource_attempt_id(
+        operation_id=webpage_context.operation_id,
+        component_key="collector.firecrawl",
+        stage="page_content.fetch",
+        sequence=1,
+    )
+    assert tuple(evidence) == (
+        expected_attempt_id,
+        webpage_context.operation_id,
+        expected_attempt_id,
+        "succeeded",
+        None,
+    )
 
 
 def test_real_kafka_delivers_webpage_job_to_persisted_result(
@@ -1298,7 +1326,34 @@ def test_worker_persists_rate_limit_evidence_and_schedules_bounded_retry(
             ),
             {"job_id": job_id},
         ).one()
+        evidence = connection.execute(
+            text(
+                "SELECT usage.attempt_id, usage.operation_id, evidence.operation_id, "
+                "evidence.outcome, evidence.stop_reason "
+                "FROM jobs job "
+                "JOIN resource_usage_attempts usage "
+                "ON usage.owner_id = job.owner_id AND usage.operation_id = job.operation_id "
+                "JOIN source_capability_evidence evidence "
+                "ON evidence.owner_id = usage.owner_id "
+                "AND evidence.operation_id = usage.attempt_id "
+                "WHERE job.id = :job_id AND usage.usage_kind = 'collector_call'"
+            ),
+            {"job_id": job_id},
+        ).one()
     assert tuple(row) == (0, 1, 1, 2, 1)
+    expected_attempt_id = resource_attempt_id(
+        operation_id=webpage_context.operation_id,
+        component_key="collector.firecrawl",
+        stage="page_content.fetch",
+        sequence=1,
+    )
+    assert tuple(evidence) == (
+        expected_attempt_id,
+        webpage_context.operation_id,
+        expected_attempt_id,
+        "failed",
+        "rate_limited",
+    )
 
 
 def test_document_page_is_persisted_with_checkpoint_in_one_transaction(
