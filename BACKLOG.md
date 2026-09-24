@@ -1,6 +1,6 @@
 # HotKey BACKLOG
 
-更新时间：2026-09-24。这是**总体进度与实施顺序的唯一台账**。正式执行依据是 [平台总计划](docs/plans/001-热点事件监控平台总计划.md)、[逐项 Plan](docs/plans/README.md) 和 [PRD](docs/prd/README.md)。
+更新时间：2026-09-25。这是**总体进度与实施顺序的唯一台账**。正式执行依据是 [平台总计划](docs/plans/001-热点事件监控平台总计划.md)、[逐项 Plan](docs/plans/README.md) 和 [PRD](docs/prd/README.md)。
 
 技术基线见 [PROJECT.md](PROJECT.md)，交接见 [HANDOVER.md](HANDOVER.md)。2026-09-18 已固定 Redis/Kafka、server 内 Web 与独立 Flutter App；2026-09-23 X 改用官方 API，先交付离线适配器。以上规范调整不推进产品验收进度。
 
@@ -139,7 +139,7 @@ M0 的外部准入结论可能仍为“未就绪”。这不阻止 M1 和受控�
 | BL-035 | [权限与数据隔离](docs/plans/035-权限与数据隔离计划.md) | P0 | M1 准备 → M5 | 后端＋安全验证 | 034 S01 | in_progress | 0/6 | S00/S01 已完成；S02 当前主题/任务/作品/证据越权矩阵、事务回滚与错误禁存通过；完整 S02、S03/S04 与产品 AC 仍待业务接齐 |
 | BL-036 | [数据访问与生命周期](docs/plans/036-数据访问与生命周期计划.md) | P0 | M0 准备 → M5 | 产品＋后端＋运维 | 042 S01 | in_progress | 0/6 | S00—S02 来源政策、版本化准入、字段最小化、保留/即时删除屏障与 Redis/MinIO 在线清理通过真实依赖；S03/S04、真实业务对象与产品 AC 待执行 |
 | BL-037 | [费用与资源约束](docs/plans/037-费用与资源约束计划.md) | P0 | M1 准备 → M5 | 后端＋来源接入＋运维 | 042 S01 | in_progress | 0/6 | S00—S02、S03 X 离线预算子片与 S03a owner 过滤的只读预算窗口快照已通过隔离 PostgreSQL/后端回归；唯一 paid 例外、控制台账期硬上限、费率快照、付费尝试账本原子装配与 S03/S04 完整能力仍未实现，数据库继续拒绝 paid 核心组件，产品 AC 未通过 |
-| BL-038 | [可维护与可替换](docs/plans/038-可维护与可替换计划.md) | P0 | M0 准备 → M5 | 来源接入＋后端 | 042 S01 | in_progress | 0/6 | S00/S01 纯来源能力、统一作品/评论、分页/停止语义与结构化端口通过；S02 已核对 Firecrawl v2.11.162/AGPL-3.0-or-later 并重建既有 API/Playwright。最新受控复验 readiness/Browser health 为 200，但 `example.com` scrape 仍为 `SCRAPE_RETRY_LIMIT`/`document_antibot` 且无正文；出口路径与既有代理策略的一致性待安全复核，具体实现/复现细节不在公开 backlog 披露。固定样本、G3/G4、S02—S04 与产品 AC 待执行 |
+| BL-038 | [可维护与可替换](docs/plans/038-可维护与可替换计划.md) | P0 | M0 准备 → M5 | 来源接入＋后端 | 042 S01 | in_progress | 0/6 | S00/S01 纯来源能力、统一作品/评论、分页/停止语义与结构化端口通过；S02 已核对 Firecrawl v2.11.162/AGPL-3.0-or-later。2026-09-25 在现有本机 profile 修复后，Playwright 单测 3 passed/build 通过、受控 `example.com` `/v2/scrape` 成功、loopback 403 拒绝；仅重建既有 Playwright 服务，未启动依赖。此为运行态技术冒烟，不替代固定样本、G3/G4、S02—S04 或 0/6 产品 AC。公开 backlog 不披露具体出口实现/复现细节 |
 | BL-039 | [可观测与可运维](docs/plans/039-可观测与可运维计划.md) | P0 | M1 准备 → M5 | 后端＋运维＋前端 | 042 S01 | in_progress | 0/6 | S00/S01、S02a 与 S02b G4 实现/Green 已通过；后端隔离 PostgreSQL CI 533 passed/15 skipped、前端 47 tests 与质量门禁、390×844/axe 检查通过；实现前 PostgreSQL Red 的 G3 仍开放，完整 S02 新鲜度/覆盖缺口、S03—S04 与产品 AC 仍待执行 |
 | BL-040 | [可用性与可访问性](docs/plans/040-可用性与可访问性计划.md) | P0 | M0 准备 → M5 | 产品＋前端＋体验验证 | 042 S01 | planned | 0/6 | 无；全部待执行 |
 | BL-041 | [分析有效性与不确定性](docs/plans/041-分析有效性与不确定性计划.md) | P0 | M0 准备 → M5 | 产品分析＋质量验证 | 042 S01、027 S00、028 S00 | planned | 0/6 | 无；全部待执行 |
@@ -229,7 +229,7 @@ M0 的外部准入结论可能仍为“未就绪”。这不阻止 M1 和受控�
 
 批次是交付编排，不增加需求分母，也不替代 TASK/CHK。每个批次在开工时指定一位实际负责人；表中是建议主责。范围与现有参数仍为草案，工期在来源实验、设备和人员明确后估算。**先复核已存在的实现，再补缺；不重新初始化第二套项目。**
 
-新增 **BL-047 本地网页与浏览器采集技术专项**：[Design](docs/design/047-本地网页与浏览器采集设计.md) accepted（S00/S01/S02 与 S03 出口拓扑），[Plan](docs/plans/047-本地网页与浏览器采集计划.md) in_progress，0/8 AC。S01 G1/G2 与 S02 G3/G4-001 已关闭；`web` 无凭据连接、精确允许域名、collector_call、类型化 API→Kafka→Worker→Firecrawl→webpage 原子结果/恢复，以及 URL 表单→任务→资料用户路径均已实现。S03 已有隔离 Playwright、连接状态维护、仅允许测试域名的专用代理、私有 WS 路径、管理器生命周期限时、运行时错误优先级、执行/lease/poll 配置校验及 Worker spawn 硬截止/取消/未知崩溃重放共享能力，并通过真实 PostgreSQL/Kafka 技术回归；G4-002 仍未完成（Browser 业务任务未接入 Worker 子进程，真实平台会话、凭据上下文隔离与换版旧写的完整端到端证据欠缺）。S04 四平台评论随 008/B05 联验；047 不改变 43 项 PRD/34 项 P0 分母。
+新增 **BL-047 本地网页与浏览器采集技术专项**：[Design](docs/design/047-本地网页与浏览器采集设计.md) accepted（S00/S01/S02 与 S03 出口拓扑），[Plan](docs/plans/047-本地网页与浏览器采集计划.md) in_progress，0/8 AC。S01 G1/G2 与 S02 G3/G4-001 已关闭；`web` 无凭据连接、精确允许域名、collector_call、类型化 API→Kafka→Worker→Firecrawl→webpage 原子结果/恢复，以及 URL 表单→任务→资料用户路径均已实现。2026-09-25 既有 Firecrawl 本地服务恢复受控 `example.com` 正文采集且仍拒绝 loopback；该次运行态冒烟不关闭 EV-047-005/G4-002 或产品 AC。S03 已有隔离 Playwright、连接状态维护、仅允许测试域名的专用代理、私有 WS 路径、管理器生命周期限时、运行时错误优先级、执行/lease/poll 配置校验及 Worker spawn 硬截止/取消/未知崩溃重放共享能力，并通过真实 PostgreSQL/Kafka 技术回归；G4-002 仍未完成（Browser 业务任务未接入 Worker 子进程，真实平台会话、凭据上下文隔离与换版旧写的完整端到端证据欠缺）。S04 四平台评论随 008/B05 联验；047 不改变 43 项 PRD/34 项 P0 分母。
 
 | 批次 | 优先级 / 阶段 | 关联切片（批内按依赖推进） | 前置 | 可演示的完成输出 | 主责 / 状态 |
 |---|---|---|---|---|---|
@@ -433,3 +433,4 @@ B09、B10、B11 互不强制串行；B10 中模型服务先行，后续三项按
 | 2026-09-24 | 修正 029 S02 PostgreSQL 断言变量遮蔽 | 第二轮远端 backend CI 已到达查询并返回旧配置版本的正确最近成功时间；测试的期望时间在循环中被同名局部变量覆盖，造成误断言。现已改用无冲突变量名，第三轮 CI 复验待完成；无业务查询改动，G4 保持开放。 |
 | 2026-09-24 | 完成 029 S02 新鲜度 API/UI 与隔离 PostgreSQL 验证 | `549abfcd` backend CI 的隔离 PostgreSQL 全量测试 530 passed/15 skipped；实际聚合和配置版本隔离通过。runtime、contract CI success；本机后端 357 passed/188 skipped，前端 45 tests/lint/typecheck/format/build、OpenAPI 与浏览器响应式/刷新/axe 通过。S02 G4 关闭；029 S03/S04、B0 与产品 AC 0/6 继续开放，不建 Acceptance。 |
 | 2026-09-24 | 记录 Firecrawl 复验失败与出口策略安全复核 | 现有 readiness/Browser health 200；受控 `example.com` 仍未提取正文，返回 anti-bot retry limit；出口路径与既有代理策略的一致性待安全复核，公开 backlog 不披露实现/复现细节。更新 038/047 Plan 与 HANDOVER；未改代码、数据库或容器，未放宽 SSRF/域名约束；`webpage.collect` 30 分钟 SLA 引用 031。 |
+| 2026-09-25 | 恢复 Firecrawl 本机受控网页探针 | Playwright 出口策略单测 3 passed、TypeScript build 通过；现有 Firecrawl `/v2/scrape` 对 `example.com` 返回正文，Firecrawl 与 Squid 均拒绝 loopback 测试目标。仅原位重建既有 Playwright 服务，复用现有 API/依赖；不计入 038/047 产品 AC，也不关闭 G3/G4。更新 038/047 Plan 与 HANDOVER；不在公开 backlog 记录具体出口实现/复现细节。 |

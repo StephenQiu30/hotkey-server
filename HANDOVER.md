@@ -1,6 +1,6 @@
 # HotKey Server 交接
 
-更新日期：2026-09-24。
+更新日期：2026-09-25。
 
 ## 本机 PostgreSQL 开发库
 
@@ -49,6 +49,8 @@
 2026-09-24 Firecrawl 复验：现有服务对 `example.com` 返回 HTTP 500 `SCRAPE_RETRY_LIMIT`/`document_antibot`，HotKey 现在将该结构化失败映射为 `access_denied`；无页面正文，故不宣称采集成功，047 产品 AC 仍 0/8。后端 347 passed/187 skipped、Ruff/format/mypy 通过（DB/Kafka 隔离集成项跳过）；未写 `hotkey-server`、重启现有进程或启动第二套依赖。
 
 2026-09-24 深入只读诊断：Firecrawl readiness 与 Playwright health 为 200，但受控 `example.com` 仍无正文；内部 Browser `/scrape` 的页面状态为 403（安全分类 `private_block`）。出口代理 CONNECT 与 DoH 探针成功，运行时解析的目标地址为公网。只读代码审查发现出口路径与既有代理策略的一致性仍需安全复核；实现路径及复现细节不在公开交接文档披露，且没有证据证明该疑点导致当前 403。保持 SSRF 与目标白名单，出口路径修复需先形成安全设计/获授权；本轮未改代码、数据库或服务，也未重启容器。
+
+2026-09-25 Firecrawl 本机受控修复与复验：在既有 profile 上修正合成 DNS 地址识别，并使已验证的公开目标继续走既有出口代理；没有放宽 SSRF/目标规则或新增服务/依赖。Playwright 路由单测 3 passed、TypeScript build 通过；原位重建现有 Playwright 服务后，`/health` 为 200，内部 `/scrape` 的 `example.com` 返回 200，完整 `/v2/scrape` 成功并返回 Markdown；loopback 域名目标在 Firecrawl 与现有 Squid 均为 403 拒绝。只重建 Playwright 容器，API 和依赖服务未重启。此为受控运行态冒烟，不是固定样本/完整 G3/G4 或产品 Acceptance；047 仍 0/8 AC，038 仍 0/6 AC。公开交接仅记录结果，不展开出口实现/复现细节。
 
 调研发现小红书 0 值配置文档与源码不一致、微博候选缺楼中楼继续分页、opencli B站评论仅单页；MediaCrawler 的置顶漏采已修复但许可证限制仍需遵循，Nemo2011/bilibili-api 已关停。S03-T00 在相同受控页面比较 Scrapling 0.4.15 与直接 Playwright：两者均可展开并保留字符串 ID，但 Scrapling 动作失败/超时仍返回 200、自适应误认另一评论 ID，默认记录完整 URL。选用 Playwright 1.63.0 原生 WS 单浏览器拓扑，不引入 Scrapling/Selector/CDP。S03-T01 已构建非 root、sandbox、只读、内部 WS 且默认断网的 browser；Worker 一次性容器的无网络探针成功，公网/宿主数据库端点不可达。Linux-arm64 Docker Desktop 证据不代替生产主机或真实平台验收。
 
