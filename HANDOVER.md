@@ -2,6 +2,10 @@
 
 更新日期：2026-09-24。
 
+## 本机 PostgreSQL 开发库
+
+2026-09-24：复用已运行的本机 PostgreSQL `127.0.0.1:5432`，仅新建 `hotkey-server` 数据库并应用唯一 `backend/database/schema.sql`；31 张表与 SQLAlchemy 元数据表名完全一致。忽略提交的 `backend/.env` 与 `backend/.env.example` 均指向该库；不配置 `HOTKEY_TEST_DATABASE_URL`，避免集成测试清表逻辑碰到运行数据库。原 `hotkey_dev` 未改动，没有启动 Compose PostgreSQL 或第二套依赖；现有 API 原位重启后 `/api/ready` 为 200，Web 未重启且首页为 200。
+
 ## 001 核心服务能力规划
 
 2026-09-23：001 Design v1.2 增加首版能力链“监控/账号配置 → 持久任务与采集 → 事件研究 → 证据化分析/修订 → 变化与成果交付”，并明确各步的事实 owner、子 Plan 映射与身份/预算/幂等/审计/生命周期横切保护。没有新增代码目录、服务栈、依赖或产品需求。Design 仍为 proposed：首轮样本、真实来源访问条件、实际资源与 B0/Q0 仍待冻结；服务能力图可指导与外部来源无关的内部切片，但不是实现/验收完成证据。
