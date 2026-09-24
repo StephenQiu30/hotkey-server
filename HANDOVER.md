@@ -74,7 +74,7 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 010 S02 时间标记子片已推进：范围 Job 必须显式标识 `new_scan|refresh|backfill`，旧 Job 类型缺失时保守返回 `null`；作品发现详情通过运行时 OpenAPI/生成客户端显示历史回补标签，原始发布时间与本次观察时间继续分列。隔离 PostgreSQL 全量 343 passed/5 skipped，前端 36 tests、静态/构建及桌面/390px 受控响应（axe 0 violation）通过；本轮未修改 DDL、未迁移现有开发库、未新建依赖服务。受控浏览器响应不代表真实来源；游标有限重扫、实际回补和通知抑制尚未实现，S02 G3/G4 与产品 0/6 AC 仍未关闭。
 
-031 S03 预研确认：宽泛捕获 Worker 处理器异常并确认消息会破坏已有 Kafka 重投/检查点恢复；尝试已撤回，原恢复用例重新通过。只有明确分类的永久来源/解析错误可持久隔离；毒消息和 72 小时执行率仍需逐类期限、证据及真实运行，031 G3/G4 和产品 AC 保持未通过。
+031 S03 状态校准（2026-09-24）：009 已实现 `JobExecutionFailure` 类型化分类、有限重试、终态失败与同事务 inbox；047 已实现 Worker 子进程监督与未知崩溃重放。禁止宽泛捕获异常后确认消息；分类终态记录不另建 Kafka DLT。031 仍缺失败后后续独立任务继续处理的专用 Kafka 证据，以及明确内部/来源故障归属、逐类完成期限和 72 小时真实统计；G3/G4 与产品 AC 保持未通过。
 
 ## 当前结构
 
@@ -105,7 +105,7 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 - `app/identity/` 已实现单 owner 初始化、Argon2 密码散列、服务端不透明会话、CSRF、注销和维护恢复；`python -m cli identity reset-password` 从隐藏交互输入读取新密码并撤销全部旧会话。
 - 身份 HTTP 契约为 `/api/identity/initialize`、`/api/identity/sessions` 与 `/api/identity/session`；Web 请求层自动为写请求补 CSRF，请求凭据和 Cookie 不进入生成客户端参数。
 - `GET /api/identity/workspace` 从有效会话派生当前 owner，不接受客户端归属标识；`require_resource_owner` 为后续业务资源提供默认拒绝规则。Web 已有 `/login` 与受保护 `/events` 空工作台，尚未接入事件业务资源。
-- `app/jobs/` 已实现内部持久受理与恢复：任务与 `job.accepted.v2` outbox 同事务写入，owner/kind/operation ID 唯一，绑定非敏感配置版本与来源能力，等价重试返回原任务，异范围重用拒绝；outbox 收到 Kafka 回执后才标记，消费者在数据库事务后手动提交 offset，inbox、lease epoch、attempt 和连续 checkpoint 防止重投与旧执行者覆盖，调度追赶默认最多 3 个窗口。阶段尝试与任务/Worker/资源尝试汇总可按 operation 核对；尚无 HTTP、具体业务处理器、有限重试/死信、错误/陈旧问题或 72 小时度量。
+- `app/jobs/` 已实现内部持久受理与恢复：任务与 `job.accepted.v2` outbox 同事务写入，owner/kind/operation ID 唯一，绑定非敏感配置版本与来源能力，等价重试返回原任务，异范围重用拒绝；outbox 收到 Kafka 回执后才标记，消费者在数据库事务后手动提交 offset，inbox、lease epoch、attempt 和连续 checkpoint 防止重投与旧执行者覆盖，调度追赶默认最多 3 个窗口。009 已提供任务 HTTP、类型化失败、有限重试、到期 Outbox 与终态失败隔离；047 已登记 `webpage.collect` 处理器。阶段尝试与任务/Worker/资源尝试汇总可按 operation 核对；031 仍缺专用跨任务继续处理证据、内部/来源故障归属和 72 小时可靠性度量。
 - `app/evidence/` 已实现内部来源访问与在线生命周期控制：owner/source/capability 唯一政策、原子换版、入库前白名单投影；结构化/原始/媒体保留取用户请求与来源上限的更严值，缩期立即作用于已追踪资源；删除或到期后默认拒绝读取，`python -m cli lifecycle cleanup-once` 以 PostgreSQL lease 和有限重试清理 Redis/MinIO 在线副本。`app/backups/` 复用证据 DTO 生成同快照数据库候选归档和 MinIO 引用清单；已有 X 受控适配器、Firecrawl 网页适配器/显式 CLI 与 `webpage.collect` 业务处理器，当前本地 env 已启用既有 Firecrawl。网页 UI、MinIO 内容备份、真实恢复/回补和社交平台授权证据仍未完成。
 - 本机既有 PostgreSQL 数据库包含旧系统历史表，不符合当前完整 schema。不得对这些旧库执行 `database/schema.sql`；需要保留数据时先备份，再用新库完整建表并校验导入。
 
@@ -127,7 +127,7 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 **[035 计划](docs/plans/035-权限与数据隔离计划.md) S00/S01 已完成，S02 当前资源先行输出通过，Plan 保持 in_progress。** 在既有工作区授权上增加主题/任务越权操作矩阵、作品关联失败整笔回滚、连接证据隔离、删除目标引用不展开、混合证据清单整体拒绝及注销后拒绝。修复统一错误响应缺少 no-store 的缓存边界。真实 PostgreSQL 全量 243 tests、前端 22 tests、静态/契约及隔离构建通过；现有 API 已替换为当前代码，原 Web 代理确认禁存头与 request ID 透传，未新增服务/脚本。完整 S02 的评论/事件、实际缓存/异步发布/导出下载及 S03/S04 随业务接入，产品 AC 仍为 0/6，未建立 Acceptance。
 
-**[031 计划](docs/plans/031-可靠执行与幂等计划.md) S00—S02 已完成，Plan 保持 in_progress。** 原子受理、outbox 重发、消费组中断/再均衡、手动 offset、inbox、租约 fencing、checkpoint 恢复、有限调度追赶和 Redis 不可用已通过本机既有 PostgreSQL 18.4 与 Kafka；后端 51 tests 与静态门禁通过。047 已在该底座上登记首个固定 `webpage.collect` 处理器，并验证真实 Kafka 重投与检查点恢复；其他业务 kind、S03/S04、72 小时运行及 031 产品 AC 仍为 0/6，未建立 Acceptance。
+**[031 计划](docs/plans/031-可靠执行与幂等计划.md) S00—S02 已完成，S03—S04 保持进行中。** 原子受理、outbox 重发、消费组中断/再均衡、手动 offset、inbox、租约 fencing、checkpoint 恢复、有限调度追赶和 Redis 不可用已通过本机既有 PostgreSQL 18.4 与 Kafka；009 已实现分类失败/有限重试，047 已实现任务监督与未知崩溃重放并登记 `webpage.collect`。S03 仍需跨任务继续处理证据、冻结内部/来源失败归属和各任务完成期限、可靠性统计与 72 小时观察；产品 AC 仍为 0/6，未建立 Acceptance。
 
 **[036 计划](docs/plans/036-数据访问与生命周期计划.md) S00—S02 已完成，Plan 保持 in_progress。** 来源政策、字段最小化、从严保留与缩期、即时读取屏障、幂等删除、Redis/MinIO 在线清理和有限重试已通过本机既有 PostgreSQL 18.4、Redis 与 MinIO；专用 12 tests、后端全量 63 tests 及静态门禁通过。受控样本不代表任何真实平台已授权；没有 HTTP/UI/Worker 变化或真实业务对象接入，S03 的备份/回补和来源状态、S04 及 036 产品 AC 仍为 0/6，未建立 Acceptance。
 
