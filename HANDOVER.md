@@ -191,3 +191,5 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 2026-09-25 Firecrawl 凭据日志脱敏复验：独立 Firecrawl 本机 `main` 提交 `9262e24` 补齐 API/access token/client secret/password 字段及内联 Bearer/Basic 赋值脱敏；logger 3 tests 与 API Dockerfile 中 TypeScript build 通过。仅以 `--no-deps` 原位重建/替换现有 API，readiness 200，`example.com` 带 URL/query 与请求头 canary 抓取成功（180 字符）；API/Playwright 日志均无 canary 且保留固定运行事件。未改数据库、Playwright、代理/SSRF 规则或依赖容器；这不是 HotKey 来源/产品验收，也不改变 038/047 AC 状态。
 
 2026-09-25 Firecrawl 安全补充修复：独立 Firecrawl `main` 提交 `a25f95b` 补齐 `Authorization: Basic` 组合文本脱敏回归，并澄清标准上游 HTTP 代理由自身目的地址 ACL 承担最终限制。logger 3 tests、代理选项 3 tests、Playwright TypeScript 检查和 API Dockerfile TypeScript build/logger tests 通过；仅原位 `--no-deps` 重建 API，liveness/readiness 200，未重启 Playwright 或依赖。未在此提交后发外部抓取。安全差异复核为 0 项已确认报告，代理/DNS 绑定与配置范围仍待核对；不改 038/047 产品 AC、S02 G3/G4 或平台采集状态。
+
+2026-09-25 Firecrawl 双服务部署复验：API/Playwright 定向测试各 3 项、镜像构建通过；仅以现有 `.env` 和 `--no-deps --force-recreate` 原位重建现有 `api`、`playwright-service`。readiness `ok`，API 运行时脱敏探针仅返回 `[REDACTED]`，Playwright 运行时代理配置保留目标主机名；没有外部抓取或新增/重启依赖服务。共享 Squid ACL 对合成 DNS 目标范围仍未核验，不能据此宣称完整 SSRF 边界已验收；038/047 门禁与产品 Acceptance 状态不变。
