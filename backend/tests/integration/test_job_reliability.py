@@ -45,6 +45,7 @@ from worker.messaging import (
     MessageDeferredError,
     create_producer,
     decode_job_message,
+    process_message,
     publish_outbox,
 )
 
@@ -1044,6 +1045,119 @@ def test_concurrent_schedule_window_acceptance_creates_one_job(
             text("SELECT scheduled_for_at FROM jobs")
         ).scalar_one()
     assert scheduled_for_at == window.end
+
+
+def test_terminal_failure_does_not_block_later_kafka_job(
+    job_context: JobTestContext,
+) -> None:
+    bootstrap_servers = os.getenv("HOTKEY_TEST_KAFKA_BOOTSTRAP_SERVERS")
+    if bootstrap_servers is None:
+        pytest.skip("HOTKEY_TEST_KAFKA_BOOTSTRAP_SERVERS is required for Kafka integration")
+
+    topic = f"hotkey.tests.jobs.{uuid4().hex}"
+    group_id = f"hotkey-tests-{uuid4().hex}"
+    admin = AdminClient({"bootstrap.servers": bootstrap_servers})
+    admin.create_topics([NewTopic(topic, num_partitions=1, replication_factor=1)])[topic].result(10)
+    consumer = Consumer(
+        {
+            "bootstrap.servers": bootstrap_servers,
+            "group.id": group_id,
+            "enable.auto.commit": False,
+            "enable.auto.offset.store": False,
+            "auto.offset.reset": "earliest",
+        }
+    )
+    consumer.subscribe([topic])
+
+    try:
+        _wait_for_assignment(consumer)
+        with job_context.sessions() as session:
+            failed_job = JobService(session).accept(
+                owner_id=job_context.owner_id,
+                command=_command(window=1),
+            )
+        with job_context.engine.begin() as connection:
+            connection.execute(
+                text("UPDATE outbox_messages SET topic = :topic WHERE aggregate_id = :job_id"),
+                {"topic": topic, "job_id": failed_job.id},
+            )
+
+        settings = Settings(
+            database_url=os.environ["HOTKEY_TEST_DATABASE_URL"],
+            kafka_bootstrap_servers=bootstrap_servers,
+            kafka_delivery_timeout_seconds=10,
+        )
+        producer = create_producer(settings)
+
+        def publish(envelope) -> None:
+            publish_outbox(producer, envelope, timeout_seconds=10)
+
+        with job_context.sessions() as session:
+            assert OutboxService(session).publish_pending(publish) == 1
+
+        with job_context.sessions() as session:
+            succeeding_job = JobService(session).accept(
+                owner_id=job_context.owner_id,
+                command=_command(window=2),
+            )
+        with job_context.engine.begin() as connection:
+            connection.execute(
+                text("UPDATE outbox_messages SET topic = :topic WHERE aggregate_id = :job_id"),
+                {"topic": topic, "job_id": succeeding_job.id},
+            )
+        with job_context.sessions() as session:
+            assert OutboxService(session).publish_pending(publish) == 1
+
+        handled_job_ids: list[UUID] = []
+
+        def handle(context: JobExecutionContext) -> None:
+            handled_job_ids.append(context.message.job_id)
+            if context.message.job_id == failed_job.id:
+                raise JobExecutionFailure(
+                    error_code="source_permission_denied",
+                    category=JobFailureCategory.PERMISSION_DENIED,
+                    occurred_at=datetime.now(UTC),
+                    next_action="检查当前连接的访问权限",
+                    manual_retry_allowed=True,
+                )
+
+        handler = create_job_message_handler(
+            job_context.sessions,
+            {"monitor.collect": handle},
+            worker_id="worker-terminal-failure-isolation",
+            lease_seconds=60,
+        )
+        topic_handlers = {topic: handler}
+
+        first_message = _poll_message(consumer)
+        assert decode_job_message(first_message)[0].job_id == failed_job.id
+        process_message(consumer, first_message, topic_handlers)
+
+        second_message = _poll_message(consumer)
+        assert decode_job_message(second_message)[0].job_id == succeeding_job.id
+        process_message(consumer, second_message, topic_handlers)
+
+        with job_context.engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT id, status, "
+                    "(SELECT count(*) FROM processed_messages WHERE job_id = jobs.id) "
+                    "FROM jobs WHERE id IN (:failed_job_id, :succeeding_job_id)"
+                ),
+                {
+                    "failed_job_id": failed_job.id,
+                    "succeeding_job_id": succeeding_job.id,
+                },
+            ).all()
+
+        assert handled_job_ids == [failed_job.id, succeeding_job.id]
+        assert {row.id: (row.status, row[2]) for row in rows} == {
+            failed_job.id: ("failed", 1),
+            succeeding_job.id: ("succeeded", 1),
+        }
+    finally:
+        consumer.close()
+        admin.delete_topics([topic])[topic].result(10)
 
 
 def test_real_kafka_redelivery_rebalance_and_redis_loss_recover_once(
