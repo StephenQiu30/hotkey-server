@@ -225,13 +225,19 @@ def test_job_status_reports_last_attempt_full_success_and_budget_delay(
 
     factory = collection_job_client.app.state.session_factory
     now = datetime.now(UTC)
-    completed_at = now - timedelta(hours=1)
+    last_success_at = now - timedelta(hours=1)
     partial_completed_at = now - timedelta(minutes=10)
     last_attempt_at = now - timedelta(minutes=5)
     delayed_at = now - timedelta(minutes=2)
     other_version_success_at = now - timedelta(minutes=1)
     jobs = (
-        (success_job_id, "succeeded", completed_at - timedelta(minutes=2), completed_at, None),
+        (
+            success_job_id,
+            "succeeded",
+            last_success_at - timedelta(minutes=2),
+            last_success_at,
+            None,
+        ),
         (
             partial_job_id,
             "partially_succeeded",
@@ -249,13 +255,13 @@ def test_job_status_reports_last_attempt_full_success_and_budget_delay(
         ),
     )
     with factory() as session, session.begin():
-        for job_id, status, started_at, completed_at, delay_at in jobs:
+        for job_id, status, started_at, job_completed_at, delay_at in jobs:
             _set_job_facts(
                 session,
                 job_id=job_id,
                 status=status,
                 started_at=started_at,
-                completed_at=completed_at,
+                completed_at=job_completed_at,
                 outcome="delayed" if delay_at is not None else "succeeded",
                 delayed_at=delay_at,
             )
@@ -268,7 +274,7 @@ def test_job_status_reports_last_attempt_full_success_and_budget_delay(
         last_attempt_at
     )
     assert datetime.fromisoformat(freshness["last_success_at"].replace("Z", "+00:00")) == (
-        completed_at
+        last_success_at
     )
     assert freshness["delay_reason"] == "budget_exhausted"
     assert datetime.fromisoformat(freshness["delay_since_at"].replace("Z", "+00:00")) == (
