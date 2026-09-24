@@ -163,6 +163,35 @@ def test_reobserving_same_alias_updates_last_seen_without_duplicate_history(
     assert _without_timezone(result.aliases[0].last_seen_at) == datetime(2026, 9, 25, 0, 5)
 
 
+def test_account_and_alias_observation_timestamps_do_not_regress_with_clock(
+    account_session: Session,
+) -> None:
+    owner_id = _owner_id(account_session)
+    observed_at = datetime(2026, 9, 25, tzinfo=UTC)
+    service = FollowedAccountService(account_session, clock=lambda: observed_at)
+
+    service.record_confirmed_identity(
+        owner_id=owner_id,
+        identity=_identity(external_id="1001", alias_value="small"),
+    )
+    observed_at += timedelta(minutes=5)
+    latest = service.record_confirmed_identity(
+        owner_id=owner_id,
+        identity=_identity(external_id="1001", alias_value="small"),
+    )
+
+    observed_at -= timedelta(minutes=3)
+    regressed = service.record_confirmed_identity(
+        owner_id=owner_id,
+        identity=_identity(external_id="1001", alias_value="small"),
+    )
+
+    assert regressed.id == latest.id
+    assert _without_timezone(regressed.updated_at) == datetime(2026, 9, 25, 0, 5)
+    assert _without_timezone(regressed.aliases[0].first_seen_at) == datetime(2026, 9, 25)
+    assert _without_timezone(regressed.aliases[0].last_seen_at) == datetime(2026, 9, 25, 0, 5)
+
+
 def test_account_read_hides_records_outside_owner_scope(account_session: Session) -> None:
     owner_id = _owner_id(account_session)
     account = FollowedAccountService(account_session).record_confirmed_identity(

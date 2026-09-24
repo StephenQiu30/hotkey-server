@@ -37,6 +37,14 @@ _MAX_KEYWORD_LENGTH = 100
 _MAX_TOPIC_NAME_LENGTH = 80
 
 
+def _latest_timestamp(current: datetime, observed: datetime) -> datetime:
+    current_utc = current.replace(tzinfo=UTC) if current.tzinfo is None else current.astimezone(UTC)
+    observed_utc = (
+        observed.replace(tzinfo=UTC) if observed.tzinfo is None else observed.astimezone(UTC)
+    )
+    return max(current_utc, observed_utc)
+
+
 @dataclass(frozen=True, slots=True)
 class NormalizedMonitorRules:
     match_any: tuple[str, ...]
@@ -162,7 +170,7 @@ class FollowedAccountService:
             else:
                 if identity.display_name is not None:
                     account.display_name = identity.display_name
-                account.updated_at = now
+                account.updated_at = _latest_timestamp(account.updated_at, now)
 
             if identity.alias_value is not None:
                 alias = self._session.get(
@@ -180,7 +188,7 @@ class FollowedAccountService:
                         )
                     )
                 else:
-                    alias.last_seen_at = now
+                    alias.last_seen_at = _latest_timestamp(alias.last_seen_at, now)
 
             self._session.flush()
             aliases = self._aliases(owner_id=owner_id, account_id=account.id)
