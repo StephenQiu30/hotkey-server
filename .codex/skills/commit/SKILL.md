@@ -16,18 +16,18 @@ description:
 
 ## Commit title convention
 
-Every title must use Conventional Commits with a non-empty scope:
+Every title must use the project format with a non-empty scope:
 
 ```text
-<type>(<scope>): <subject>
+<type>(<scope>):<中文描述>
 ```
 
 Allowed types are `feat`, `fix`, `test`, `refactor`, `docs`, `chore`, `perf`,
 `build`, `ci`, and `revert`. Use a stable lowercase scope such as `backend`,
 `frontend`, `identity`, `docs`, `ci`, or `repo`. Do not use `impl`, an empty
-scope, an unscoped prefix, or omit the single space after the colon. The
-subject must be a concise Simplified Chinese verb-object phrase; do not use an
-English subject.
+scope, or an unscoped prefix. Do not add a space after the colon. The Chinese
+description must be a concise Simplified Chinese verb-object phrase; do not
+use an English description.
 
 For feature or behavior work, preserve order: `test` first, then `feat`/`fix`,
 then optional `refactor`, `docs`, or `chore`.
@@ -48,7 +48,7 @@ Do not mix unrelated types in one commit. Split by type when practical.
 4. Sanity-check newly added files; flag build artifacts, logs, or temp files before committing.
 5. If staging is incomplete or includes unrelated files, fix the index or ask for confirmation.
 6. Choose the allowed type and stable non-empty scope that match the staged diff.
-7. Write a concise Simplified Chinese subject, <= 72 characters. Format: `<type>(<scope>): <subject>`.
+7. Write a concise Simplified Chinese description, <= 72 characters. Format: `<type>(<scope>):<中文描述>`.
 8. Write the body in Chinese with change summary, rationale, and tests or validation run (or why not run).
 9. Wrap body lines at 72 characters.
 10. Create the commit message with a here-doc or temp file and use `git commit -F <file>`.
@@ -61,7 +61,7 @@ Do not mix unrelated types in one commit. Split by type when practical.
 ## Template
 
 ```
-<type>(<scope>): <中文主题>
+<type>(<scope>):中文主题
 
 变更摘要：
 - <变更内容>
