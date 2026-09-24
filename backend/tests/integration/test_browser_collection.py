@@ -1,10 +1,13 @@
 """Opt-in live checks against the isolated Playwright server."""
 
 import asyncio
+import multiprocessing
 import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Event
+from typing import Protocol
 from uuid import uuid4
 
 from playwright.async_api import Error as PlaywrightError
@@ -12,6 +15,7 @@ from playwright.async_api import async_playwright
 
 from connections.adapters.local_secrets import BrowserStateStore
 from sources.adapters.browser_runtime import BrowserRuntime
+from worker.execution import JobProcessOutcome, JobProcessSupervisor
 
 _FIXTURE_URL = "https://browser-fixture.invalid/"
 _PAGE = """
@@ -53,6 +57,28 @@ _ENDLESS_PAGE = """
   };
 </script>
 """
+
+
+class _ReadySignal(Protocol):
+    def is_set(self) -> bool: ...
+
+    def set(self) -> None: ...
+
+
+def _hold_browser_context_until_cancelled(ready: _ReadySignal) -> None:
+    runtime = BrowserRuntime(
+        ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", ""),
+        enabled=True,
+    )
+
+    async def hold_context() -> None:
+        async with runtime.context() as context:
+            page = await context.new_page()
+            await page.set_content(_PAGE)
+            ready.set()
+            await asyncio.Future()
+
+    asyncio.run(hold_context())
 
 
 @unittest.skipUnless(
@@ -243,3 +269,33 @@ class BrowserCollectionLiveTests(unittest.TestCase):
                 self.assertEqual(await page.locator("main").inner_text(), "still available")
 
         asyncio.run(verify())
+
+    def test_supervisor_cancellation_releases_child_browser_context(self) -> None:
+        ready = multiprocessing.get_context("spawn").Event()
+        supervisor = JobProcessSupervisor(
+            startup_timeout_seconds=5,
+            execution_timeout_seconds=20,
+            terminate_grace_seconds=1,
+            poll_interval_seconds=0.05,
+        )
+
+        result = supervisor.run(
+            _hold_browser_context_until_cancelled,
+            (ready,),
+            cancellation_requested=ready.is_set,
+            stopping=Event(),
+        )
+
+        self.assertEqual(result.outcome, JobProcessOutcome.CANCELLED)
+
+        async def verify_browser_remains_usable() -> None:
+            runtime = BrowserRuntime(
+                ws_url=os.environ.get("HOTKEY_BROWSER_WS_URL", ""),
+                enabled=True,
+            )
+            async with runtime.context() as context:
+                page = await context.new_page()
+                await page.set_content("<main>browser recovered</main>")
+                self.assertEqual(await page.locator("main").inner_text(), "browser recovered")
+
+        asyncio.run(verify_browser_remains_usable())
