@@ -1073,7 +1073,8 @@ def test_real_kafka_delivers_webpage_job_to_persisted_result(
         with webpage_context.sessions() as session:
             assert (
                 OutboxService(session).publish_pending(
-                    lambda envelope: publish_outbox(producer, envelope, timeout_seconds=10)
+                    lambda envelope: publish_outbox(producer, envelope, timeout_seconds=10),
+                    published_at=clock[0],
                 )
                 == 1
             )

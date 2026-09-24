@@ -10,7 +10,7 @@ import pytest
 from confluent_kafka import Message, Producer
 from confluent_kafka.admin import AdminClient, NewTopic
 
-from core.config import get_settings
+from core.config import Settings
 from worker.messaging import MessageDeferredError, run_consumer_loop
 
 
@@ -28,11 +28,10 @@ def test_deferred_message_is_redelivered_after_consumer_recreation() -> None:
     stopping = Event()
     calls: list[tuple[int, int]] = []
     timeout = Timer(10, stopping.set)
-    settings = get_settings().model_copy(
-        update={
-            "kafka_bootstrap_servers": bootstrap_servers,
-            "kafka_group_id": group_id,
-        }
+    settings = Settings(
+        database_url=os.environ["HOTKEY_TEST_DATABASE_URL"],
+        kafka_bootstrap_servers=bootstrap_servers,
+        kafka_group_id=group_id,
     )
 
     try:
