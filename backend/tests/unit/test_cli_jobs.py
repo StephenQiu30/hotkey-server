@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 from typer.testing import CliRunner
@@ -105,3 +106,30 @@ def test_job_reliability_cli_rejects_timestamps_without_timezone(monkeypatch) ->
 
     assert result.exit_code == 2
     assert engine_opened is False
+
+
+def test_job_reliability_cli_fails_closed_when_owner_is_not_initialized(monkeypatch) -> None:
+    engine = MagicMock()
+    session = MagicMock()
+    session.__enter__.return_value = session
+    session.scalar.return_value = None
+    monkeypatch.setattr(job_commands, "get_settings", lambda: object())
+    monkeypatch.setattr(job_commands, "create_db_engine", lambda _settings: engine)
+    monkeypatch.setattr(job_commands, "create_session_factory", lambda _engine: lambda: session)
+    monkeypatch.setattr(job_commands, "JobObservationService", None)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "jobs",
+            "reliability-snapshot",
+            "--window-start",
+            "2026-09-24T12:00:00Z",
+            "--window-end",
+            "2026-09-27T12:00:00Z",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "identity_uninitialized" in result.stderr
+    engine.dispose.assert_called_once()
