@@ -143,7 +143,7 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 同日 X 报价幂等补片：隔离 PostgreSQL 中，10×5,000 与 5×10,000 微美元的同额报价曾错误复用同一预留；失败优先用例确认后，金额预留强制携带匹配报价并纳入既有指纹，非 X 指纹不变。预算目标 41 passed、后端全量 426 passed/5 skipped，Ruff check/format 与 mypy 通过；5 项跳过需显式启用隔离浏览器服务器。没有 DDL、HTTP、UI、Worker、真实 X 请求或第二套依赖；仅清理本次一次性 QA 库。X App/Token、账期硬上限、费率快照、付费尝试账本原子装配仍缺，037 产品 AC 保持 0/6。
 
-**[038 计划](docs/plans/038-可维护与可替换计划.md) S00/S01 已完成，Plan 保持 in_progress。** `sources` 领域已增加四类纯能力请求、统一作品/评论、显式缺失值与父链、不透明分页/水位、页状态/停止原因及结构化适配器端口；新增 5 tests、相关 23 tests、后端全量 92 tests 及静态门禁通过。2026-09-24 S02 前置核验确认官方 Firecrawl `v2.11.162` tag 的 LICENSE 为 AGPL-3.0-or-later，本地 `6d9fb16` 以该 tag 为父提交。找到权限 0600 的现有 `.env` 并核实 API/Playwright 环境项 46/46、8/8 与运行容器匹配后，从干净提交重建镜像并仅 `--no-deps` 原位重建两个现有容器。最新 readiness/Browser health 均为 200，但受控网页仍未提取正文；出口路径与既有代理策略的一致性待安全复核，细节不在公开交接文档披露。固定样本、S02—S04、G3/G4、产品 AC 仍待执行，未建立 Acceptance。
+**[038 计划](docs/plans/038-可维护与可替换计划.md) S00/S01 与 S02 G3/G4 已完成，Plan 保持 in_progress。** `sources` 领域已增加四类纯能力请求、统一作品/评论、显式缺失值与父链、不透明分页/水位、页状态/停止原因及结构化适配器端口；新增 5 tests、相关 23 tests、后端全量 92 tests 及静态门禁通过。Firecrawl `v2.11.162` 与 AGPL-3.0-or-later 已核对；固定公开响应样本、适配器 21 项回归、受限在线探针与 Firecrawl Playwright 3 项测试/build 通过，详细边界见 EV-038-005/008。该证据不代表真实平台或长期健康；S03/S04、维护/回退演练与产品 AC 0/6 仍开放，未建立 Acceptance。
 
 **[039 计划](docs/plans/039-可观测与可运维计划.md) S00/S01、S02a 与 S02b G4 实现/Green 子片已完成，Plan 保持 in_progress。** S02a 增加按 owner 隔离的连续三次任务失败摘要 API；S02b 在现有任务详情呈现 owner/current-job 限定的持久窗口范围、状态、停止原因和页数，不推断未记录范围。`4820b56c` 后端隔离 PostgreSQL CI 533 passed/15 skipped，窗口投影集成文件 11 passed；Ruff/format/mypy、contract/runtime CI 通过，前端 47 tests/lint/typecheck/format/build 通过。本机合成响应浏览器完成刷新交互、390×844 无横向溢出和 axe 0 violations。首轮 CI 发现精确任务状态快照未列出新增空 `coverage_windows`，补断言后复验成功。实现前隔离 PostgreSQL Red 未执行，S02b G3 保持开放；未写入 `hotkey-server`。完整新鲜度/覆盖缺口、S03—S04 和 039 产品 AC 仍为 0/6，未建立 Acceptance。
 
@@ -177,6 +177,8 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 后端在 `backend/` 执行 `uv run ruff format --check .`、`uv run ruff check .`、`uv run mypy` 和 `uv run pytest`。前端执行 `pnpm test`、`pnpm lint`、`pnpm typecheck`、`pnpm format:check` 和 `pnpm build`；运行中的后端配合 `pnpm openapi:check` 校验生成漂移。产品进度以 `BACKLOG.md` 和对应 Acceptance 为准。
 
 ## 本轮产品文档复核
+
+2026-09-25 HotKey 适配器复验：`PYTHONPATH=app uv run --env-file .env pytest tests/unit/test_webpage_adapter.py -q` 为 21 passed；后端 unit+architecture 为 356 passed（2 个第三方弃用警告）。显式、无持久化 `probe-webpage` 对 `example.com` 返回 target status 200、180 字符、`text_scope=full`、`firecrawl/2.11.162`，target request count 未知。该探针通过 HotKey 适配器调用现有 Firecrawl，不写数据库/任务；固定样本与修复前失败输入已归档，关闭 038 S02 G3/G4。没有运行数据库集成测试；单次成功不等于长期健康或平台能力，047 G4-002/产品 AC 仍开放。
 
 2026-09-21 先基于 HEAD `9093ed47` 静态复核工程，随后从 `37064d2a` 执行 046 与 042 S00/S01。BACKLOG 已补完整交付内容、跨计划批次、平台扩面及 App 队列；046 技术前置 8/8 AC 已通过，042 运行底座切片已通过，但所有产品 AC 仍未通过，业务流程、完整容量/恢复和验收仍待完成。
 

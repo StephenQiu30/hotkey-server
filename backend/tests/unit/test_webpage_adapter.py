@@ -145,6 +145,49 @@ def test_firecrawl_adapter_sends_a_fixed_bounded_request_and_maps_document() -> 
     assert result.document.extractor_version == "firecrawl/2.11.162"
 
 
+def test_firecrawl_adapter_maps_captured_v2_11_162_public_sample() -> None:
+    # Fixed public response sample observed from Firecrawl v2.11.162 on 2026-09-25.
+    markdown = (
+        "Example Domain\n"
+        "==============\n"
+        "\n"
+        "This domain is for use in documentation examples without needing permission. "
+        "Avoid use in operations.\n"
+        "\n"
+        "[Learn more](https://iana.org/domains/example)"
+    )
+    sample = {
+        "success": True,
+        "data": {
+            "markdown": markdown,
+            "metadata": {
+                "url": "https://example.com",
+                "sourceURL": "https://example.com",
+                "statusCode": 200,
+                "title": "Example Domain",
+                "publishedTime": None,
+            },
+        },
+    }
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=sample, request=request)
+
+    with _adapter(httpx.MockTransport(handle)) as adapter:
+        result = adapter.fetch_document(WebPageRequest(url="https://example.com"))
+
+    assert result.stop_reason is None
+    assert result.target_status_code == 200
+    assert result.document is not None
+    assert result.document.title == "Example Domain"
+    assert result.document.request_url == "https://example.com/"
+    assert result.document.final_url == "https://example.com/"
+    assert result.document.text == markdown
+    assert result.document.text_scope == "full"
+    assert result.document.published_at is None
+    assert result.document.extractor_version == "firecrawl/2.11.162"
+
+
 @pytest.mark.parametrize(
     ("payload", "reason"),
     [
