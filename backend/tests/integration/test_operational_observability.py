@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from db.metadata import metadata
+from jobs.models import CoverageWindow
 from jobs.schemas import (
     ComponentPolicyInput,
     CostClass,
@@ -746,6 +747,99 @@ def test_success_resets_continuous_failure_issue_without_deleting_history(
 
     assert issues == ()
     assert {job.id for job in history} == {job.id for job in jobs}
+
+
+def test_job_status_projects_only_its_persisted_coverage_windows(
+    observation_context: ObservationTestContext,
+) -> None:
+    window_id = uuid4()
+    confirmed_window_id = uuid4()
+    adjacent_window_id = uuid4()
+    with observation_context.sessions() as session:
+        service = JobService(session, clock=lambda: WINDOW_START)
+        job = service.accept(
+            owner_id=observation_context.owner_id,
+            command=_command(version=1),
+        )
+        adjacent_job = service.accept(
+            owner_id=observation_context.owner_id,
+            command=_command(version=2),
+        )
+        session.add_all(
+            (
+                CoverageWindow(
+                    id=window_id,
+                    owner_id=observation_context.owner_id,
+                    source_key="x",
+                    capability="search",
+                    target_hash=b"a" * 32,
+                    sort_key="latest",
+                    rule_version=1,
+                    starts_at=WINDOW_START,
+                    ends_at=WINDOW_START + timedelta(hours=1),
+                    status="partial",
+                    stop_reason="cursor_loop",
+                    last_job_id=job.id,
+                    checkpoint_sequence=1,
+                    page_count=2,
+                    created_at=WINDOW_START,
+                    updated_at=WINDOW_START,
+                ),
+                CoverageWindow(
+                    id=confirmed_window_id,
+                    owner_id=observation_context.owner_id,
+                    source_key="x",
+                    capability="search",
+                    target_hash=b"c" * 32,
+                    sort_key="latest",
+                    rule_version=1,
+                    starts_at=WINDOW_START + timedelta(hours=1),
+                    ends_at=WINDOW_START + timedelta(hours=2),
+                    status="confirmed",
+                    stop_reason=None,
+                    last_job_id=job.id,
+                    checkpoint_sequence=1,
+                    page_count=3,
+                    created_at=WINDOW_START,
+                    updated_at=WINDOW_START,
+                ),
+                CoverageWindow(
+                    id=adjacent_window_id,
+                    owner_id=observation_context.owner_id,
+                    source_key="x",
+                    capability="search",
+                    target_hash=b"b" * 32,
+                    sort_key="latest",
+                    rule_version=1,
+                    starts_at=WINDOW_START,
+                    ends_at=WINDOW_START + timedelta(hours=1),
+                    status="confirmed",
+                    stop_reason=None,
+                    last_job_id=adjacent_job.id,
+                    checkpoint_sequence=1,
+                    page_count=3,
+                    created_at=WINDOW_START,
+                    updated_at=WINDOW_START,
+                ),
+            )
+        )
+        session.commit()
+
+        view = JobService(session, clock=lambda: WINDOW_START).get_status(
+            owner_id=observation_context.owner_id,
+            job_id=job.id,
+        )
+
+    assert [window.id for window in view.coverage_windows] == [window_id, confirmed_window_id]
+    window = view.coverage_windows[0]
+    assert window.status == "partial"
+    assert window.starts_at == WINDOW_START
+    assert window.ends_at == WINDOW_START + timedelta(hours=1)
+    assert window.stop_reason == "cursor_loop"
+    assert window.page_count == 2
+    assert not hasattr(window, "target_hash")
+    assert window.id != adjacent_window_id
+    assert view.coverage_windows[1].status == "confirmed"
 
 
 @pytest.mark.parametrize("reset_status", ("partially_succeeded", "cancelled"))

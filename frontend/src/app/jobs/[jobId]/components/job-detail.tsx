@@ -73,6 +73,30 @@ const DELAY_LABELS: Record<HotKeyAPI.JobDelayReason, string> = {
   other: "其他延期",
 };
 
+const COVERAGE_STATUS_LABELS: Record<HotKeyAPI.CoverageWindowStatus, string> = {
+  pending: "待执行",
+  running: "采集中",
+  confirmed: "已确认",
+  partial: "部分完成",
+};
+
+const COVERAGE_STOP_REASON_LABELS: Record<string, string> = {
+  access_denied: "访问被拒绝",
+  authentication_required: "需要重新连接",
+  budget_exhausted: "采集预算耗尽",
+  cancelled: "任务被取消",
+  cursor_expired: "分页游标失效",
+  cursor_loop: "检测到重复分页",
+  end_of_results: "已到结果末尾",
+  not_found: "内容不可用",
+  protocol_error: "来源响应无效",
+  rate_limited: "来源限流",
+  source_empty: "来源返回空结果",
+  unverified_terminal: "结果终点未能验证",
+  unsupported: "来源不支持此范围",
+  upstream_error: "来源暂时不可用",
+};
+
 function isInvalidSession(error: unknown): boolean {
   return error instanceof ApiRequestError && error.code === "invalid_session";
 }
@@ -209,6 +233,50 @@ export function JobResult({
           </p>
         )}
       </div>
+    </section>
+  );
+}
+
+export function JobCoverageWindows({
+  windows,
+}: {
+  windows: HotKeyAPI.CoverageWindowView[];
+}) {
+  if (windows.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mt-8" aria-labelledby="coverage-windows-title">
+      <h2 id="coverage-windows-title" className="text-xl font-semibold">
+        采集窗口记录
+      </h2>
+      <p className="text-muted-foreground mt-2 text-sm leading-6">
+        仅展示已保存窗口，不代表未记录范围已完整覆盖。
+      </p>
+      <ul className="mt-4 grid gap-3">
+        {windows.map((window) => (
+          <li
+            key={window.id}
+            className="bg-muted grid gap-3 rounded-2xl p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-6"
+          >
+            <div>
+              <p className="font-medium">
+                {formatTime(window.starts_at)} — {formatTime(window.ends_at)}
+              </p>
+              <p className="text-muted-foreground mt-1 text-sm">
+                {window.page_count} 页
+                {window.stop_reason
+                  ? ` · ${COVERAGE_STOP_REASON_LABELS[window.stop_reason] ?? "窗口尚未确认"}`
+                  : ""}
+              </p>
+            </div>
+            <Badge variant="secondary">
+              {COVERAGE_STATUS_LABELS[window.status]}
+            </Badge>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -497,6 +565,8 @@ export function JobDetail({ jobId }: JobDetailProps) {
         {job.source_freshness ? (
           <JobSourceFreshness freshness={job.source_freshness} />
         ) : null}
+
+        <JobCoverageWindows windows={job.coverage_windows ?? []} />
 
         {actionError ? (
           <p role="alert" className="text-destructive mt-5 text-sm">

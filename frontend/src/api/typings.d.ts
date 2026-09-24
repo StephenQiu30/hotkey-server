@@ -173,6 +173,22 @@ declare namespace HotKeyAPI {
     basis: ContentVisibilityBasis;
   };
 
+  type CoverageWindowStatus = "pending" | "running" | "confirmed" | "partial";
+
+  type CoverageWindowView = {
+    /** Id */
+    id: string;
+    /** Starts At */
+    starts_at: string;
+    /** Ends At */
+    ends_at: string;
+    status: CoverageWindowStatus;
+    /** Stop Reason */
+    stop_reason: string | null;
+    /** Page Count */
+    page_count: number;
+  };
+
   type ErrorView = {
     /** Code */
     code: string;
@@ -368,6 +384,8 @@ declare namespace HotKeyAPI {
     /** Created At */
     created_at: string;
     source_freshness?: SourceFreshnessView | null;
+    /** Coverage Windows */
+    coverage_windows?: CoverageWindowView[];
   };
 
   type KeywordInput = string;

@@ -88,9 +88,18 @@ class CoverageWindowView(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: UUID
+    starts_at: datetime
+    ends_at: datetime
     status: CoverageWindowStatus
     stop_reason: str | None
-    page_count: int
+    page_count: int = Field(ge=0)
+
+    @field_validator("starts_at", "ends_at")
+    @classmethod
+    def require_utc(cls, value: datetime) -> datetime:
+        if value.utcoffset() != timedelta(0):
+            raise ValueError("coverage window bounds must be UTC")
+        return value
 
 
 class JobControlStatus(StrEnum):
@@ -787,6 +796,7 @@ class JobStatusView(BaseModel):
     completed_at: datetime | None
     created_at: datetime
     source_freshness: SourceFreshnessView | None = None
+    coverage_windows: tuple[CoverageWindowView, ...] = ()
 
 
 class JobHistoryItemView(BaseModel):

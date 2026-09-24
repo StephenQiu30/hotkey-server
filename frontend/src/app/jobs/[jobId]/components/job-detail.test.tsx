@@ -2,7 +2,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { JobResult, JobSourceFreshness } from "./job-detail";
+import {
+  JobCoverageWindows,
+  JobResult,
+  JobSourceFreshness,
+} from "./job-detail";
 
 describe("job result", () => {
   it("links a persisted result to the existing content detail page", () => {
@@ -69,5 +73,38 @@ describe("job source freshness", () => {
     expect(html).toContain("尚无执行尝试");
     expect(html).toContain("尚无完整成功记录");
     expect(html).not.toContain("当前延期");
+  });
+});
+
+describe("job coverage windows", () => {
+  it("shows only persisted ranges without implying coverage beyond them", () => {
+    const html = renderToStaticMarkup(
+      createElement(JobCoverageWindows, {
+        windows: [
+          {
+            id: "window-1",
+            starts_at: "2026-09-21T00:00:00Z",
+            ends_at: "2026-09-22T00:00:00Z",
+            status: "partial",
+            stop_reason: "cursor_loop",
+            page_count: 2,
+          },
+        ],
+      }),
+    );
+
+    expect(html).toContain("采集窗口记录");
+    expect(html).toContain("部分完成");
+    expect(html).toContain("检测到重复分页");
+    expect(html).toContain("2 页");
+    expect(html).toContain("不代表未记录范围已完整覆盖");
+  });
+
+  it("does not show an empty window block", () => {
+    const html = renderToStaticMarkup(
+      createElement(JobCoverageWindows, { windows: [] }),
+    );
+
+    expect(html).toBe("");
   });
 });

@@ -372,8 +372,14 @@ class CoverageWindowService:
 
     @staticmethod
     def _view(model: CoverageWindow) -> CoverageWindowView:
+        starts_at = _as_utc(model.starts_at)
+        ends_at = _as_utc(model.ends_at)
+        if starts_at is None or ends_at is None:
+            raise RuntimeError("coverage window is missing a range boundary")
         return CoverageWindowView(
             id=model.id,
+            starts_at=starts_at,
+            ends_at=ends_at,
             status=model.status,
             stop_reason=model.stop_reason,
             page_count=model.page_count,
@@ -2407,7 +2413,27 @@ class JobService:
             completed_at=_as_utc(model.completed_at),
             created_at=model.created_at.astimezone(UTC),
             source_freshness=self._source_freshness(model, now=now),
+            coverage_windows=self._coverage_windows(model),
         )
+
+    def _coverage_windows(self, model: Job) -> tuple[CoverageWindowView, ...]:
+        if model.source_key is None or model.source_capability is None:
+            return ()
+        windows = self._session.scalars(
+            select(CoverageWindow)
+            .where(
+                CoverageWindow.owner_id == model.owner_id,
+                CoverageWindow.last_job_id == model.id,
+                CoverageWindow.source_key == model.source_key,
+                CoverageWindow.capability == model.source_capability,
+            )
+            .order_by(
+                CoverageWindow.starts_at,
+                CoverageWindow.ends_at,
+                CoverageWindow.id,
+            )
+        ).all()
+        return tuple(CoverageWindowService._view(window) for window in windows)
 
     @staticmethod
     def _history_item_view(model: Job) -> JobHistoryItemView:
