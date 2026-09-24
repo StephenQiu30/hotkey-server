@@ -74,7 +74,7 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 010 S02 时间标记子片已推进：范围 Job 必须显式标识 `new_scan|refresh|backfill`，旧 Job 类型缺失时保守返回 `null`；作品发现详情通过运行时 OpenAPI/生成客户端显示历史回补标签，原始发布时间与本次观察时间继续分列。隔离 PostgreSQL 全量 343 passed/5 skipped，前端 36 tests、静态/构建及桌面/390px 受控响应（axe 0 violation）通过；本轮未修改 DDL、未迁移现有开发库、未新建依赖服务。受控浏览器响应不代表真实来源；游标有限重扫、实际回补和通知抑制尚未实现，S02 G3/G4 与产品 0/6 AC 仍未关闭。
 
-031 S03 状态校准（2026-09-24）：009 已实现 `JobExecutionFailure` 类型化分类、有限重试、终态失败与同事务 inbox；047 已实现 Worker 子进程监督与未知崩溃重放。禁止宽泛捕获异常后确认消息；分类终态记录不另建 Kafka DLT。用户已确认统计按逻辑 Job、从计划到期/即时提交计至 `completed_at` 终态，队列与重试包含在内。网页来源结果已有稳定的 Job→资源 attempt→`source_capability_evidence` 关联，成功/失败关联断言在 [backend CI](https://github.com/StephenQiu30/hotkey-server/actions/runs/35961370391) 的隔离 PostgreSQL 通过（533 passed/16 skipped）；`test_terminal_failure_does_not_block_later_kafka_job` 因 CI 未提供 Kafka 仍未运行。`webpage.collect` SLA 分钟数、内部错误归属、真实 Kafka 证据与 72 小时统计未冻结/验证；G3/G4 与产品 AC 保持未通过。
+031 S03 状态校准（2026-09-24）：009 已实现 `JobExecutionFailure` 类型化分类、有限重试、终态失败与同事务 inbox；047 已实现 Worker 子进程监督与未知崩溃重放。禁止宽泛捕获异常后确认消息；分类终态记录不另建 Kafka DLT。用户已确认统计按逻辑 Job、从计划到期/即时提交计至 `completed_at` 终态，队列与重试包含在内。隔离 backend CI 增加项目固定版本的临时 Kafka 服务后，`test_terminal_failure_does_not_block_later_kafka_job`、网页采集持久结果及 Worker 重投恢复用例均通过，PostgreSQL＋Kafka backend CI 为 537 passed/12 skipped；contract/runtime CI 同提交成功。`webpage.collect` SLA 分钟数、内部错误归属、可靠性统计与 72 小时观察仍未冻结/验证；T01/G3 有实证但未全闭环，G4 与产品 AC 保持未通过。
 
 ## 当前结构
 
@@ -127,7 +127,7 @@ S03-T02 管理器启动现与 WS/context/交互共用 45 秒协作式截止，�
 
 **[035 计划](docs/plans/035-权限与数据隔离计划.md) S00/S01 已完成，S02 当前资源先行输出通过，Plan 保持 in_progress。** 在既有工作区授权上增加主题/任务越权操作矩阵、作品关联失败整笔回滚、连接证据隔离、删除目标引用不展开、混合证据清单整体拒绝及注销后拒绝。修复统一错误响应缺少 no-store 的缓存边界。真实 PostgreSQL 全量 243 tests、前端 22 tests、静态/契约及隔离构建通过；现有 API 已替换为当前代码，原 Web 代理确认禁存头与 request ID 透传，未新增服务/脚本。完整 S02 的评论/事件、实际缓存/异步发布/导出下载及 S03/S04 随业务接入，产品 AC 仍为 0/6，未建立 Acceptance。
 
-**[031 计划](docs/plans/031-可靠执行与幂等计划.md) S00—S02 已完成，S03—S04 保持进行中。** 原子受理、outbox 重发、消费组中断/再均衡、手动 offset、inbox、租约 fencing、checkpoint 恢复、有限调度追赶和 Redis 不可用已有本机 PostgreSQL/Kafka 证据；009 已实现分类失败/有限重试，047 已实现任务监督与未知崩溃重放并登记 `webpage.collect`。用户确认了逻辑 Job 的度量起止点并包含排队/重试；网页来源结果的持久关联已由隔离 PostgreSQL backend CI（533 passed/16 skipped）验证；跨任务 Kafka 用例因 CI 无 Kafka 未执行，`webpage.collect` SLA、内部错误归属、统计与 72 小时观察待完成；产品 AC 仍为 0/6，未建立 Acceptance。
+**[031 计划](docs/plans/031-可靠执行与幂等计划.md) S00—S02 已完成，S03—S04 保持进行中。** 原子受理、outbox 重发、消费组中断/再均衡、手动 offset、inbox、租约 fencing、checkpoint 恢复、有限调度追赶和 Redis 不可用已有本机 PostgreSQL/Kafka 证据；009 已实现分类失败/有限重试，047 已实现任务监督与未知崩溃重放并登记 `webpage.collect`。用户确认了逻辑 Job 的度量起止点并包含排队/重试；跨任务终态失败、网页采集及 Worker 恢复 Kafka 用例已由隔离 PostgreSQL＋Kafka backend CI（537 passed/12 skipped）验证；`webpage.collect` SLA、内部错误归属、可靠性统计与 72 小时观察待完成；T01/G3 部分开放、产品 AC 仍为 0/6，未建立 Acceptance。
 
 **[036 计划](docs/plans/036-数据访问与生命周期计划.md) S00—S02 已完成，Plan 保持 in_progress。** 来源政策、字段最小化、从严保留与缩期、即时读取屏障、幂等删除、Redis/MinIO 在线清理和有限重试已通过本机既有 PostgreSQL 18.4、Redis 与 MinIO；专用 12 tests、后端全量 63 tests 及静态门禁通过。受控样本不代表任何真实平台已授权；没有 HTTP/UI/Worker 变化或真实业务对象接入，S03 的备份/回补和来源状态、S04 及 036 产品 AC 仍为 0/6，未建立 Acceptance。
 
