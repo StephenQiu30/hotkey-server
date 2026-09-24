@@ -197,6 +197,7 @@ def test_internal_job_status_is_readable_after_refresh(
         "completed_at": None,
         "created_at": body["created_at"],
         "source_freshness": freshness,
+        "coverage_windows": [],
     }
     assert freshness == {
         "last_attempt_at": None,
