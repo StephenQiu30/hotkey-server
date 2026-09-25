@@ -286,6 +286,8 @@ def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
         "evidence_deletions",
         "evidence_resources",
         "evidence_retention_policies",
+        "followed_account_aliases",
+        "followed_accounts",
         "identity_sessions",
         "identity_users",
         "job_attempts",
