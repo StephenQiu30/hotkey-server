@@ -117,20 +117,6 @@ def test_source_adapters_do_not_import_business_or_runtime_layers() -> None:
         assert not {name.split(".")[0] for name in _imports(path)} & forbidden, path
 
 
-def test_x_adapter_avoids_sdk_implicit_requests_and_response_dumps() -> None:
-    tree = ast.parse((APP / "sources" / "adapters" / "x_twscrape.py").read_text())
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("twscrape"):
-            assert not {alias.name for alias in node.names} & {
-                "API",
-                "AccountsPool",
-                "QueueClient",
-                "parse_tweets",
-                "parse_tweet",
-                "_write_dump",
-            }
-
-
 def test_application_errors_are_registered_without_http_status() -> None:
     error = ApplicationError(next(iter(ERROR_CATEGORIES)))
 

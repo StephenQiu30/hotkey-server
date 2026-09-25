@@ -273,6 +273,11 @@ class SourcePost(_ContractModel):
     quote_external_id: str | None = Field(default=None, min_length=1, max_length=512)
     repost_external_id: str | None = Field(default=None, min_length=1, max_length=512)
     text_scope: Literal["full", "truncated", "media_only"] | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=2000)
+    author_name: str | None = Field(default=None, min_length=1, max_length=256)
+    view_count: int | None = Field(default=None, ge=0)
+    play_count: int | None = Field(default=None, ge=0)
+    danmaku_count: int | None = Field(default=None, ge=0)
 
     @field_validator(
         "external_id",
@@ -308,6 +313,8 @@ class SourceComment(_ContractModel):
     published_at: datetime | None
     text: str | None = Field(max_length=_MAX_TEXT_LENGTH)
     like_count: int | None = Field(ge=0)
+    author_name: str | None = Field(default=None, min_length=1, max_length=256)
+    canonical_url: str | None = Field(default=None, max_length=2048)
 
     @field_validator(
         "external_id",

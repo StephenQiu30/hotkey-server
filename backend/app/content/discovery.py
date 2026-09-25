@@ -441,7 +441,11 @@ class KeywordDiscoveryPageCommitService:
             )
             content = ContentService(self._session, clock=self._clock)
             for item in candidates:
-                if item.text is None or not evaluate_monitor_rules(topic_rules, item.text).matched:
+                matched_text = "\n".join(part for part in (item.title, item.text) if part)
+                if (
+                    not matched_text
+                    or not evaluate_monitor_rules(topic_rules, matched_text).matched
+                ):
                     filtered_items += 1
                     continue
                 admission = policy.admit_payload_in_transaction(
@@ -509,13 +513,21 @@ class KeywordDiscoveryPageCommitService:
             "like_count": post.like_count,
             "comment_count": post.comment_count,
             "repost_count": post.repost_count,
+            "view_count": post.view_count,
+            "play_count": post.play_count,
+            "danmaku_count": post.danmaku_count,
         }
         if post.canonical_url is not None:
             fields["canonical_url"] = post.canonical_url
         if post.author_external_id is not None:
             fields["author_external_id"] = post.author_external_id
-        if post.text is not None:
-            fields["body"] = post.text
+        if post.author_name is not None:
+            fields["author_name"] = post.author_name
+        if post.title is not None:
+            fields["title"] = post.title
+        if post.text is not None or post.title is not None:
+            if post.text is not None:
+                fields["body"] = post.text
             fields["text_scope"] = post.text_scope or "full"
             fields["text_origin"] = "source"
             if post.text_scope == "truncated":

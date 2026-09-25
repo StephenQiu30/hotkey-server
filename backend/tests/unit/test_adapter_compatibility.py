@@ -337,3 +337,41 @@ def test_adapter_uses_structural_contract_without_framework_inheritance() -> Non
     )
 
     assert result.state is SourcePageState.EMPTY
+
+
+def test_items_carry_optional_display_and_reach_fields() -> None:
+    post = _post(
+        title="新版发布",
+        author_name="官方账号",
+        view_count=1200,
+        play_count=None,
+        danmaku_count=3,
+    )
+    comment = _comment(author_name="网友", canonical_url="https://example.com/c/2")
+
+    assert (post.title, post.author_name, post.view_count, post.danmaku_count) == (
+        "新版发布",
+        "官方账号",
+        1200,
+        3,
+    )
+    assert _post().title is None
+    assert (comment.author_name, comment.canonical_url) == ("网友", "https://example.com/c/2")
+    with pytest.raises(ValidationError):
+        _post(view_count=-1)
+    with pytest.raises(ValidationError):
+        _post(author_name="")
+
+
+def test_keyword_payload_forwards_title_author_name_and_reach_metrics() -> None:
+    from content.discovery import KeywordDiscoveryPageCommitService
+
+    payload = KeywordDiscoveryPageCommitService._payload(
+        _post(title="标题", author_name="作者", view_count=10, play_count=20, danmaku_count=0)
+    )
+
+    assert payload["title"] == "标题"
+    assert payload["author_name"] == "作者"
+    assert (payload["view_count"], payload["play_count"], payload["danmaku_count"]) == (10, 20, 0)
+    assert payload["text_scope"] == "full"
+    assert "author_name" not in KeywordDiscoveryPageCommitService._payload(_post())
