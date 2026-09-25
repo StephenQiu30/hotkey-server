@@ -53,7 +53,7 @@ M0 的外部准入结论可能仍为“未就绪”。这不阻止 M1 和受控�
 - [x] BL-M1-01：042 S01 已建立最小运行、唯一 schema.sql、隔离依赖、架构门禁、OpenAPI/客户端及前端验证入口。
 - [ ] BL-M1-02：身份、所有者授权、秘密保护、预算、关联日志和删除标记契约在新资料入库前可用。
 - [ ] BL-M1-03：真实 PostgreSQL/Redis/Kafka 下确认响应丢失、重复投递和进程中断有证据；受控任务可取消/恢复。
-- [x] BL-M1-04：032 S01/S02 已建立同快照候选归档、证据引用清单、失败保护及隔离数据库恢复验证；独立介质、MinIO 内容恢复及 B0 演练仍保持未完成。
+- [x] BL-M1-04：032 S01/S02 已建立同快照候选归档、证据引用清单、失败保护及隔离数据库恢复验证；MinIO 内容归档/随机前缀回读子片通过，但完整数据库+MinIO 验证、独立介质与 B0 演练仍未完成。
 
 ### M2 checklist
 
@@ -133,7 +133,7 @@ M0 的外部准入结论可能仍为“未就绪”。这不阻止 M1 和受控�
 | BL-029 | [时效与数据新鲜度](docs/plans/029-时效与数据新鲜度计划.md) | P0 | M1 准备 → M5 | 后端＋质量验证＋前端 | 042 S01、039 S01 | in_progress | 0/6 | S00/S01 时间事实与整数微秒口径、S02 owner/来源能力/配置版本限定的最近尝试/完整成功/延期 API/UI 已完成；S02 隔离 PostgreSQL backend CI 530 passed/15 skipped，contract/runtime 成功。S03 覆盖缺口/陈旧传播与 B0、S04 和产品 AC 待执行；真实目标周期/陈旧阈值仍未冻结，不以候选“两周期”作默认 |
 | BL-030 | [交互与检索性能](docs/plans/030-交互与检索性能计划.md) | P0 | M1 准备 → M5 | 后端＋前端＋性能验证 | 042 S01、039 S01 | planned | 0/6 | 无；全部待执行 |
 | BL-031 | [可靠执行与幂等](docs/plans/031-可靠执行与幂等计划.md) | P0 | M1 准备 → M5 | 后端＋可靠性验证 | 042 S01 | in_progress | 0/6 | S00—S02 持久受理、消息恢复、租约/检查点和有限追赶通过真实 PostgreSQL/Kafka；S03 Worker 监督/重放由 047 验证，分类失败/有限重试复用 009；逻辑 Job 时钟、保守归属和 `webpage.collect` 30 分钟 SLA 已冻结；T02 统计与 CLI、T03 边界复核通过隔离 CI（backend 549 passed/12 skipped，contract/runtime 全绿）。本机唯一 `hotkey-server` schema 可读，但 owner_count=0、job_count=0，CLI 因无 owner 返回 `identity_uninitialized`，且 HotKey Worker 未运行；72 小时观察、S04 与产品 AC 未完成 |
-| BL-032 | [备份与恢复](docs/plans/032-备份与恢复计划.md) | P0 | M1 准备 → M5 | 运维＋后端＋恢复验证 | 042 S01、034 S01、036 S01 | in_progress | 0/6 | S00/S01 完成，S02 数据库子片的坏候选保护、31 表隔离恢复与计时已通过；上一完整有效副本晋升、独立介质、MinIO 内容、删除重放、B0 RPO/RTO 及 S02 总门禁/S03/S04/产品 AC 待执行 |
+| BL-032 | [备份与恢复](docs/plans/032-备份与恢复计划.md) | P0 | M1 准备 → M5 | 运维＋后端＋恢复验证 | 042 S01、034 S01、036 S01 | in_progress | 0/6 | S00/S01 完成，S02 数据库子片已有坏候选保护、31 表隔离恢复与计时证据；2026-09-25 MinIO 内容归档/随机前缀回读子片 Red/Green 通过（单测 9 passed、MinIO 集成 1 passed），但完整数据库+MinIO 集成因本机无专用 HOTKEY_TEST_DATABASE_URL 未运行，CHK-032-G4-002 不关闭；上一完整有效副本晋升、独立介质、删除重放、B0 RPO/RTO、S03/S04 与产品 AC 待执行 |
 | BL-033 | [故障隔离与降级](docs/plans/033-故障隔离与降级计划.md) | P0 | M1 准备 → M5 | 后端＋故障验证＋前端 | 031 S02、037 S02、039 S01 | in_progress | 0/6 | S00 与 S01 来源/能力分项运行状态内部子片通过；S01 Worker 公平派发仍待冻结来源隔离 lane 与真实 topic 分区拓扑（本机 accepted topic 不存在、当前仅注册网页处理器）；熔断恢复、UI、真实故障注入及全部产品 AC 未通过 |
 | BL-034 | [凭据与应用安全](docs/plans/034-凭据与应用安全计划.md) | P0 | M1 准备 → M5 | 后端＋前端＋安全验证 | 042 S01 | in_progress | 0/6 | S00/S01 已完成；S02a 当前内容页链接技术子片已通过（前端 43 tests、静态/构建门禁及合成数据浏览器验证）；完整 S02—S04、Acceptance 与产品 AC 待执行 |
 | BL-035 | [权限与数据隔离](docs/plans/035-权限与数据隔离计划.md) | P0 | M1 准备 → M5 | 后端＋安全验证 | 034 S01 | in_progress | 0/6 | S00/S01 已完成；S02 当前主题/任务/作品/证据越权矩阵、事务回滚与错误禁存通过；完整 S02、S03/S04 与产品 AC 仍待业务接齐 |
@@ -444,3 +444,4 @@ B09、B10、B11 互不强制串行；B10 中模型服务先行，后续三项按
 | 2026-09-25 | 验证 Firecrawl 日志补丁双服务部署 | 独立 Firecrawl `main` 保持干净于 `a25f95b`；logger 与代理选项测试各 3 项通过，API/Playwright 镜像构建成功，仅以 `--no-deps --force-recreate` 原位替换现有两个服务。readiness `ok`；容器内 Basic/Bearer/token 合成输入均脱敏，代理目标主机名保留。无外部抓取、数据库或依赖服务改动；共享 Squid 对合成 DNS `2001:2::/48` 的 ACL 仍待核验，故不关闭 038/047 的验收门禁或产品 AC。 |
 | 2026-09-25 | 修复 Firecrawl 共享出口合成 DNS 策略 | 复用既有 Video Squid，仅更新合成地址精确允许项；Red/Green 配置用例、Ruff/format、Squid 配置检查通过，原位重建既有代理。公网代理/Firecrawl 无持久化采集返回 200，loopback 与合成段字面量返回 403；没有重启 API/Web/数据库或启动第二套依赖。当前没有 fdfe 主机名实测或 DNS 重绑定证据；不改变 038 S02、047 G4-002/EV-047-005—007 或产品 AC。 |
 | 2026-09-25 | 完成 M0-03 来源准入证据登记 | 复核 X 官方 v2 访问/计费资料并同步 002/037 Design、Plan；047 保留国内平台准入及候选许可/版本快照。BL-M0-03 标记完成仅表示研究证据和未知项/动作可核查；X App/Token/账期上限、国内平台授权/会话/样本未具备，真实调用预算 `$0`、无平台请求，M0/产品验收仍未关闭。 |
+| 2026-09-25 | 推进 032 S02 MinIO 内容归档与回读子片 | Red 用例先因缺少恢复验证器失败；Green 后单测 9 passed、复用现有 MinIO 的随机前缀内容归档/回读/清理集成 1 passed，定向 10 passed/4 skipped，后端全量 387 passed/195 skipped，Ruff/format/mypy 通过。未配置 HOTKEY_TEST_DATABASE_URL 的数据库用例安全跳过，未写唯一 `hotkey-server` 库、未创建第二库或启动依赖服务；S02 完整 G4 仍开放，产品 AC 0/6 不变。 |

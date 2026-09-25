@@ -74,14 +74,14 @@ uv run --env-file .env python -m cli connections record-probe \
 
 命令只登记 probe 事实，不读取连接秘密、不发起外部请求，也不会将能力标为可用。`--connection-version` 必须使用探测实际执行的版本，不可在登记时改成新版本；连接停用或版本已变更会拒绝新增证据，已提交的同一事实重放仍返回原记录。失败结果必须另传 `--stop-reason`；只有后续采集用例持久业务记录后才能登记 persisted read 成功。
 
-维护者可在现有本机环境显式指定一个已存在的受控目录，生成 PostgreSQL custom-format 候选归档和 MinIO 证据引用清单：
+维护者可在现有本机环境显式指定一个已存在的受控目录，生成 PostgreSQL custom-format 候选归档、MinIO 证据对象内容和引用清单：
 
 ```bash
 PYTHONPATH=app uv run --env-file .env python -m cli backup create-candidate \
   --destination /absolute/protected/backup-root
 ```
 
-命令不创建服务、不修改数据库，也不把凭据写入参数或候选包。可在同一 PostgreSQL 服务中，以单独维护库的连接环境变量运行实际恢复验证：
+命令不创建服务、不修改数据库，也不把凭据写入参数或候选包。可在同一 PostgreSQL 服务中，以单独维护库的连接环境变量运行实际恢复验证；MinIO 内容会写到随机临时对象名前缀、回读校验后清理：
 
 ```bash
 PYTHONPATH=app uv run --env-file .env python -m cli backup verify-restore \
@@ -89,7 +89,7 @@ PYTHONPATH=app uv run --env-file .env python -m cli backup verify-restore \
   --isolation-url-env HOTKEY_TEST_DATABASE_URL
 ```
 
-隔离连接不能指向业务库；命令创建并清理唯一临时数据库，核对逐表行数和受控读写，输出完整验证耗时。MinIO 仍仅核对引用而不复制对象，`manifest.json` 保持 `restore_verified=false`；独立介质、删除重放及 B0 RPO/RTO 演练前不能称为完整已验证备份。
+隔离连接不能指向业务库；命令创建并清理唯一临时数据库，核对逐表行数和受控读写，MinIO 对象在同一 bucket 的随机前缀验证内容后清理，输出完整验证耗时。`manifest.json` 保持 `restore_verified=false`；独立介质、删除重放及 B0 RPO/RTO 演练前不能称为完整已验证备份。
 
 业务接口统一使用 `/api` 命名空间，例如存活检查 `/api/health`、就绪检查 `/api/ready`。采集任务使用 `POST /api/jobs` 持久受理，按响应 `Location` 读取 `GET /api/jobs/{job_id}`，并以 `POST /api/jobs/{job_id}/cancel` 登记取消；详情返回持久阶段、已发请求、已保存数量及取消截止。当前没有真实采集处理器，不得把受控 Worker 验证当作来源接入。接口文档入口为 Swagger UI `/docs`、Scalar `/scalar`，共用 `/openapi.json`。
 

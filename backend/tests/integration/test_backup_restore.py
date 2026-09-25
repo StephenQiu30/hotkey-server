@@ -15,11 +15,20 @@ from minio import Minio
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
-from backups.adapters.minio import MinioObjectInventory
+from backups.adapters.minio import MinioEvidenceRestoreVerifier, MinioObjectInventory
 from backups.adapters.postgres import BackupToolError, PostgresDumpAdapter
 from backups.restore import BackupRestoreError, BackupRestoreService
-from backups.schemas import BackupManifest, EvidenceBackupMode, EvidenceObjectState
-from backups.services import BackupError, BackupService
+from backups.schemas import (
+    REQUIRED_BACKUP_SETTINGS,
+    BackupDatabaseManifest,
+    BackupManifest,
+    BackupState,
+    BackupTableCount,
+    EvidenceBackupMode,
+    EvidenceObjectInventory,
+    EvidenceObjectState,
+)
+from backups.services import BackupError, BackupService, archive_evidence_objects
 
 
 @pytest.fixture
@@ -157,16 +166,96 @@ def backup_environment() -> Iterator[tuple[str, Minio, str, str]]:
         engine.dispose()
 
 
+def test_minio_evidence_content_archive_and_restore_round_trip(tmp_path: Path) -> None:
+    endpoint = os.getenv("HOTKEY_TEST_MINIO_ENDPOINT")
+    access_key = os.getenv("HOTKEY_TEST_MINIO_ACCESS_KEY")
+    secret_key = os.getenv("HOTKEY_TEST_MINIO_SECRET_KEY")
+    bucket = os.getenv("HOTKEY_TEST_MINIO_BUCKET")
+    if not all((endpoint, access_key, secret_key, bucket)):
+        pytest.skip("MinIO test settings are required for evidence content verification")
+    minio = Minio(
+        endpoint,
+        access_key=access_key,
+        secret_key=secret_key,
+        secure=os.getenv("HOTKEY_TEST_MINIO_SECURE", "false").lower() == "true",
+    )
+    assert minio.bucket_exists(bucket)
+    object_store = MinioObjectInventory(minio, bucket)
+    object_name = f"backup-tests/{uuid4()}/source.bin"
+    content = b"hotkey isolated evidence content restore"
+    upload = minio.put_object(bucket, object_name, BytesIO(content), len(content))
+    now = datetime.now(UTC)
+    resource_id = uuid4()
+    try:
+        metadata = object_store.stat(object_name)
+        assert metadata is not None
+        inventory = EvidenceObjectInventory(
+            resource_record_id=resource_id,
+            object_name=object_name,
+            expires_at=now + timedelta(days=30),
+            state=EvidenceObjectState.PRESENT,
+            checked_at=now,
+            size_bytes=metadata.size_bytes,
+            etag=metadata.etag,
+            version_id=metadata.version_id,
+            last_modified_at=metadata.last_modified_at,
+        )
+        evidence_objects = archive_evidence_objects(
+            (inventory,),
+            archiver=object_store,
+            directory=tmp_path / "evidence",
+        )
+        manifest = BackupManifest(
+            format_version="hotkey.backup.v1",
+            backup_id=uuid4(),
+            state=BackupState.CANDIDATE,
+            consistency_at=now - timedelta(seconds=1),
+            created_at=now + timedelta(seconds=1),
+            database=BackupDatabaseManifest(
+                archive_path="database.dump",
+                archive_sha256="a" * 64,
+                archive_size_bytes=1,
+                schema_sha256="b" * 64,
+                server_version="18.4",
+                pg_dump_version="pg_dump (PostgreSQL) 18.4",
+                tables=(BackupTableCount(name="identity_users", row_count=0),),
+            ),
+            evidence_mode=EvidenceBackupMode.CONTENT_ARCHIVED,
+            evidence_bucket=bucket,
+            evidence_objects=evidence_objects,
+            required_settings=REQUIRED_BACKUP_SETTINGS,
+            secrets_included=False,
+            restore_verified=False,
+        )
+
+        assert (tmp_path / evidence_objects[0].archive_path).read_bytes() == content
+        assert (
+            MinioEvidenceRestoreVerifier(minio, bucket).verify(
+                manifest=manifest,
+                candidate=tmp_path,
+            )
+            == 1
+        )
+        assert minio.stat_object(bucket, object_name).size == len(content)
+    finally:
+        if upload.version_id:
+            minio.remove_object(bucket, object_name, version_id=upload.version_id)
+        else:
+            minio.remove_object(bucket, object_name)
+
+
 def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
     backup_environment: tuple[str, Minio, str, str],
     tmp_path: Path,
 ) -> None:
     database_url, minio, bucket, object_name = backup_environment
     engine = create_engine(database_url)
+    object_store = MinioObjectInventory(minio, bucket)
     service = BackupService(
         engine=engine,
         archive_writer=PostgresDumpAdapter(database_url),
-        object_inspector=MinioObjectInventory(minio, bucket),
+        object_inspector=object_store,
+        object_archiver=object_store,
         evidence_bucket=bucket,
         schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
     )
@@ -182,7 +271,7 @@ def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
     table_counts = {item.name: item.row_count for item in manifest.database.tables}
 
     assert result.manifest == manifest
-    assert manifest.evidence_mode is EvidenceBackupMode.INVENTORY_ONLY
+    assert manifest.evidence_mode is EvidenceBackupMode.CONTENT_ARCHIVED
     assert manifest.restore_verified is False
     assert manifest.secrets_included is False
     assert set(table_counts) == {
@@ -224,11 +313,23 @@ def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
     assert manifest.evidence_objects[0].object_name == object_name
     assert manifest.evidence_objects[0].state is EvidenceObjectState.PRESENT
     assert manifest.evidence_objects[0].size_bytes == len(b"hotkey-backup-evidence")
+    assert manifest.evidence_objects[0].archive_path is not None
+    assert (
+        manifest.evidence_objects[0].content_sha256
+        == hashlib.sha256(b"hotkey-backup-evidence").hexdigest()
+    )
+    assert (
+        result.directory / manifest.evidence_objects[0].archive_path
+    ).read_bytes() == b"hotkey-backup-evidence"
     assert manifest.database.archive_sha256 == hashlib.sha256(archive_path.read_bytes()).hexdigest()
     assert stat.S_IMODE(result.directory.stat().st_mode) == 0o700
     assert stat.S_IMODE(manifest_path.stat().st_mode) == 0o600
     assert stat.S_IMODE(archive_path.stat().st_mode) == 0o600
-    assert not (result.directory / "evidence").exists()
+    assert stat.S_IMODE((result.directory / "evidence").stat().st_mode) == 0o700
+    assert (
+        stat.S_IMODE((result.directory / manifest.evidence_objects[0].archive_path).stat().st_mode)
+        == 0o600
+    )
 
     parsed_url = make_url(database_url)
     secrets = [
@@ -245,11 +346,13 @@ def test_restore_candidate_in_isolated_database_and_remove_it(
 ) -> None:
     database_url, minio, bucket, _ = backup_environment
     engine = create_engine(database_url)
+    object_store = MinioObjectInventory(minio, bucket)
     try:
         candidate = BackupService(
             engine=engine,
             archive_writer=PostgresDumpAdapter(database_url),
-            object_inspector=MinioObjectInventory(minio, bucket),
+            object_inspector=object_store,
+            object_archiver=object_store,
             evidence_bucket=bucket,
             schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
         ).create_candidate(tmp_path)
@@ -265,16 +368,19 @@ def test_restore_candidate_in_isolated_database_and_remove_it(
                 source_database_url=database_url,
                 isolation_database_url=database_url,
                 schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
+                evidence_restore_verifier=MinioEvidenceRestoreVerifier(minio, bucket),
             ).verify(candidate.directory)
         result = BackupRestoreService(
             source_database_url=database_url,
             isolation_database_url=make_url(database_url).set(database="postgres"),
             schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
+            evidence_restore_verifier=MinioEvidenceRestoreVerifier(minio, bucket),
         ).verify(candidate.directory)
         assert result.backup_id == candidate.manifest.backup_id
         assert result.table_count == len(candidate.manifest.database.tables)
         assert result.duration_seconds > 0
         assert result.database_restored is True
+        assert result.evidence_objects_verified == 1
         with engine.connect() as connection:
             after = {
                 row[0]
@@ -300,11 +406,13 @@ def test_corrupt_candidate_rejected_without_changing_existing_backup(
 ) -> None:
     database_url, minio, bucket, _ = backup_environment
     engine = create_engine(database_url)
+    object_store = MinioObjectInventory(minio, bucket)
     try:
         candidate = BackupService(
             engine=engine,
             archive_writer=PostgresDumpAdapter(database_url),
-            object_inspector=MinioObjectInventory(minio, bucket),
+            object_inspector=object_store,
+            object_archiver=object_store,
             evidence_bucket=bucket,
             schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
         ).create_candidate(tmp_path)
@@ -336,11 +444,13 @@ def test_failed_new_candidate_preserves_previous_candidate(
     database_url, minio, bucket, _ = backup_environment
     engine = create_engine(database_url)
     schema_path = Path(__file__).resolve().parents[2] / "database" / "schema.sql"
+    object_store = MinioObjectInventory(minio, bucket)
     try:
         previous = BackupService(
             engine=engine,
             archive_writer=PostgresDumpAdapter(database_url),
-            object_inspector=MinioObjectInventory(minio, bucket),
+            object_inspector=object_store,
+            object_archiver=object_store,
             evidence_bucket=bucket,
             schema_path=schema_path,
         ).create_candidate(tmp_path)
@@ -355,7 +465,8 @@ def test_failed_new_candidate_preserves_previous_candidate(
             BackupService(
                 engine=engine,
                 archive_writer=FailedWriter(),
-                object_inspector=MinioObjectInventory(minio, bucket),
+                object_inspector=object_store,
+                object_archiver=object_store,
                 evidence_bucket=bucket,
                 schema_path=schema_path,
             ).create_candidate(tmp_path)

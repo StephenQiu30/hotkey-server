@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
@@ -13,6 +14,7 @@ from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import URL, Engine, make_url
 from sqlalchemy.exc import ArgumentError, SQLAlchemyError
 
+from backups.adapters.minio import ObjectArchiveError
 from backups.adapters.postgres import BackupToolError, PostgresDumpAdapter
 from backups.schemas import BackupManifest
 from db.metadata import metadata
@@ -22,12 +24,17 @@ class BackupRestoreError(RuntimeError):
     """A candidate could not be safely verified in an isolated database."""
 
 
+class EvidenceRestoreVerifier(Protocol):
+    def verify(self, *, manifest: BackupManifest, candidate: Path) -> int: ...
+
+
 @dataclass(frozen=True, slots=True)
 class BackupRestoreResult:
     backup_id: UUID
     table_count: int
     duration_seconds: float
     database_restored: bool
+    evidence_objects_verified: int
 
 
 class BackupRestoreService:
@@ -37,6 +44,7 @@ class BackupRestoreService:
         source_database_url: str | URL,
         isolation_database_url: str | URL,
         schema_path: Path,
+        evidence_restore_verifier: EvidenceRestoreVerifier | None = None,
     ) -> None:
         try:
             self._source_url = make_url(source_database_url)
@@ -49,6 +57,7 @@ class BackupRestoreService:
         ):
             raise BackupRestoreError("PostgreSQL source and isolation databases are required")
         self._schema_path = schema_path
+        self._evidence_restore_verifier = evidence_restore_verifier
 
     def verify(self, candidate: Path) -> BackupRestoreResult:
         started = time.monotonic()
@@ -60,6 +69,9 @@ class BackupRestoreService:
             raise BackupRestoreError(
                 "isolation connection must use another database on the source server"
             )
+        evidence_count = sum(item.archive_path is not None for item in manifest.evidence_objects)
+        if evidence_count and self._evidence_restore_verifier is None:
+            raise BackupRestoreError("MinIO evidence restore verification is required")
 
         database_name = f"hotkey_restore_{uuid4().hex}"
         admin_engine = create_engine(self._isolation_url)
@@ -79,11 +91,21 @@ class BackupRestoreService:
                 self._check_restored_data(target_engine, manifest)
             finally:
                 target_engine.dispose()
+            evidence_objects_verified = 0
+            if evidence_count and self._evidence_restore_verifier is not None:
+                try:
+                    evidence_objects_verified = self._evidence_restore_verifier.verify(
+                        manifest=manifest,
+                        candidate=candidate,
+                    )
+                except ObjectArchiveError as error:
+                    raise BackupRestoreError(str(error)) from error
             return BackupRestoreResult(
                 backup_id=manifest.backup_id,
                 table_count=len(manifest.database.tables),
                 duration_seconds=time.monotonic() - started,
                 database_restored=True,
+                evidence_objects_verified=evidence_objects_verified,
             )
         except (BackupToolError, SQLAlchemyError, OSError) as error:
             raise BackupRestoreError(
@@ -128,6 +150,38 @@ class BackupRestoreService:
                 raise BackupRestoreError("candidate archive digest does not match manifest")
             if [item.name for item in manifest.database.tables] != sorted(metadata.tables):
                 raise BackupRestoreError("candidate table inventory is incomplete")
+            expected_archive_paths = {
+                item.archive_path
+                for item in manifest.evidence_objects
+                if item.archive_path is not None
+            }
+            expected_root_entries = {"manifest.json", "database.dump"}
+            if expected_archive_paths:
+                evidence_directory = candidate / "evidence"
+                directory_status = evidence_directory.lstat()
+                if (
+                    not stat.S_ISDIR(directory_status.st_mode)
+                    or stat.S_IMODE(directory_status.st_mode) != 0o700
+                ):
+                    raise BackupRestoreError("candidate evidence directory is invalid")
+                expected_names = {Path(item).name for item in expected_archive_paths}
+                if {path.name for path in evidence_directory.iterdir()} != expected_names:
+                    raise BackupRestoreError("candidate evidence inventory is incomplete")
+                for item in manifest.evidence_objects:
+                    if item.archive_path is None:
+                        continue
+                    evidence_file = candidate / item.archive_path
+                    evidence_status = evidence_file.lstat()
+                    if (
+                        not stat.S_ISREG(evidence_status.st_mode)
+                        or stat.S_IMODE(evidence_status.st_mode) != 0o600
+                        or evidence_status.st_size != item.size_bytes
+                        or self._sha256(evidence_file) != item.content_sha256
+                    ):
+                        raise BackupRestoreError("candidate evidence content is invalid")
+                expected_root_entries.add("evidence")
+            if {path.name for path in candidate.iterdir()} != expected_root_entries:
+                raise BackupRestoreError("candidate contains unexpected files")
             PostgresDumpAdapter(
                 self._isolation_url.render_as_string(hide_password=False)
             ).check_archive(archive)

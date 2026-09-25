@@ -21,6 +21,7 @@ from backups.schemas import (
     BackupManifest,
     BackupState,
     BackupTableCount,
+    EvidenceArchiveMetadata,
     EvidenceBackupMode,
     EvidenceDeletionStatus,
     EvidenceObjectInventory,
@@ -40,6 +41,16 @@ class BackupArchiveWriter(Protocol):
 
 class EvidenceObjectInspector(Protocol):
     def stat(self, object_name: str) -> EvidenceObjectMetadata | None: ...
+
+
+class EvidenceObjectArchiver(Protocol):
+    def archive(
+        self,
+        object_name: str,
+        *,
+        metadata: EvidenceObjectMetadata,
+        target: Path,
+    ) -> EvidenceArchiveMetadata: ...
 
 
 class BackupError(RuntimeError):
@@ -101,6 +112,47 @@ def inventory_evidence_objects(
     return tuple(inventory)
 
 
+def archive_evidence_objects(
+    inventory: Sequence[EvidenceObjectInventory],
+    *,
+    archiver: EvidenceObjectArchiver,
+    directory: Path,
+) -> tuple[EvidenceObjectInventory, ...]:
+    present = [item for item in inventory if item.state is EvidenceObjectState.PRESENT]
+    if not present:
+        return tuple(inventory)
+    directory.mkdir(mode=0o700)
+    directory.chmod(0o700)
+    archived: list[EvidenceObjectInventory] = []
+    for item in inventory:
+        if item.state is not EvidenceObjectState.PRESENT:
+            archived.append(item)
+            continue
+        if item.size_bytes is None or item.etag is None or item.last_modified_at is None:
+            raise BackupError("present evidence inventory is incomplete")
+        archive_key = hashlib.sha256(
+            f"{item.resource_record_id}\0{item.object_name}".encode()
+        ).hexdigest()
+        relative_path = f"evidence/{archive_key}.blob"
+        target = directory / f"{archive_key}.blob"
+        result = archiver.archive(
+            item.object_name,
+            metadata=EvidenceObjectMetadata(
+                size_bytes=item.size_bytes,
+                etag=item.etag,
+                version_id=item.version_id,
+                last_modified_at=item.last_modified_at,
+            ),
+            target=target,
+        )
+        if result.size_bytes != item.size_bytes:
+            raise BackupError("archived evidence size does not match its inventory")
+        archived.append(
+            item.model_copy(update={"archive_path": relative_path, "content_sha256": result.sha256})
+        )
+    return tuple(archived)
+
+
 class BackupService:
     def __init__(
         self,
@@ -110,11 +162,13 @@ class BackupService:
         object_inspector: EvidenceObjectInspector,
         evidence_bucket: str,
         schema_path: Path,
+        object_archiver: EvidenceObjectArchiver | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._engine = engine
         self._archive_writer = archive_writer
         self._object_inspector = object_inspector
+        self._object_archiver = object_archiver
         self._evidence_bucket = evidence_bucket
         self._schema_path = schema_path
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -137,6 +191,14 @@ class BackupService:
                 inspector=self._object_inspector,
                 checked_at=checked_at,
             )
+            evidence_mode = EvidenceBackupMode.INVENTORY_ONLY
+            if self._object_archiver is not None:
+                evidence_objects = archive_evidence_objects(
+                    evidence_objects,
+                    archiver=self._object_archiver,
+                    directory=staging / "evidence",
+                )
+                evidence_mode = EvidenceBackupMode.CONTENT_ARCHIVED
             manifest = BackupManifest(
                 format_version=BACKUP_FORMAT_VERSION,
                 backup_id=backup_id,
@@ -152,7 +214,7 @@ class BackupService:
                     pg_dump_version=pg_dump_version,
                     tables=tables,
                 ),
-                evidence_mode=EvidenceBackupMode.INVENTORY_ONLY,
+                evidence_mode=evidence_mode,
                 evidence_bucket=self._evidence_bucket,
                 evidence_objects=evidence_objects,
                 required_settings=REQUIRED_BACKUP_SETTINGS,

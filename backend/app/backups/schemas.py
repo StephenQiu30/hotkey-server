@@ -24,6 +24,7 @@ class BackupState(StrEnum):
 
 class EvidenceBackupMode(StrEnum):
     INVENTORY_ONLY = "inventory_only"
+    CONTENT_ARCHIVED = "content_archived"
 
 
 class EvidenceObjectState(StrEnum):
@@ -61,6 +62,13 @@ class EvidenceObjectMetadata(BaseModel):
         return value
 
 
+class EvidenceArchiveMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    size_bytes: int = Field(ge=0)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class EvidenceObjectInventory(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
@@ -74,6 +82,8 @@ class EvidenceObjectInventory(BaseModel):
     etag: str | None = Field(default=None, min_length=1, max_length=256)
     version_id: str | None = Field(default=None, min_length=1, max_length=256)
     last_modified_at: datetime | None = None
+    archive_path: str | None = Field(default=None, pattern=r"^evidence/[0-9a-f]{64}\.blob$")
+    content_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def validate_state(self) -> EvidenceObjectInventory:
@@ -92,6 +102,10 @@ class EvidenceObjectInventory(BaseModel):
             and self.deletion_status is not EvidenceDeletionStatus.COMPLETED
         ):
             raise ValueError("excluded evidence objects require completed deletion")
+        if (self.archive_path is None) != (self.content_sha256 is None):
+            raise ValueError("evidence archive path and digest must be provided together")
+        if self.archive_path is not None and self.state is not EvidenceObjectState.PRESENT:
+            raise ValueError("only present evidence objects may have archived content")
         return self
 
 
@@ -154,4 +168,14 @@ class BackupManifest(BaseModel):
             raise ValueError("evidence objects must be sorted")
         if len(object_keys) != len(set(object_keys)):
             raise ValueError("evidence objects must be unique")
+        archive_paths = [item.archive_path for item in self.evidence_objects if item.archive_path]
+        if len(archive_paths) != len(set(archive_paths)):
+            raise ValueError("evidence archive paths must be unique")
+        for item in self.evidence_objects:
+            has_archive = item.archive_path is not None
+            if self.evidence_mode is EvidenceBackupMode.CONTENT_ARCHIVED:
+                if item.state is EvidenceObjectState.PRESENT and not has_archive:
+                    raise ValueError("present evidence objects require archived content")
+            elif has_archive:
+                raise ValueError("inventory-only evidence cannot reference archived content")
         return self

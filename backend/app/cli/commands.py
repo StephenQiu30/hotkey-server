@@ -10,7 +10,12 @@ from playwright.async_api import Error as PlaywrightError
 from pydantic import ValidationError
 from redis import Redis
 
-from backups.adapters.minio import MinioObjectInventory, ObjectInventoryError
+from backups.adapters.minio import (
+    MinioEvidenceRestoreVerifier,
+    MinioObjectInventory,
+    ObjectArchiveError,
+    ObjectInventoryError,
+)
 from backups.adapters.postgres import BackupToolError, PostgresDumpAdapter
 from backups.restore import BackupRestoreError, BackupRestoreService
 from backups.services import BackupError, BackupService
@@ -279,7 +284,7 @@ def create_backup_candidate(
         ),
     ],
 ) -> None:
-    """Create a database archive and evidence-object inventory candidate."""
+    """Create a database and evidence-content candidate bundle."""
     settings = get_settings()
     engine = create_db_engine(settings)
     minio = Minio(
@@ -288,15 +293,17 @@ def create_backup_candidate(
         secret_key=settings.minio_secret_key,
         secure=settings.minio_secure,
     )
+    object_store = MinioObjectInventory(minio, settings.minio_bucket)
     try:
         result = BackupService(
             engine=engine,
             archive_writer=PostgresDumpAdapter(settings.database_url.get_secret_value()),
-            object_inspector=MinioObjectInventory(minio, settings.minio_bucket),
+            object_inspector=object_store,
+            object_archiver=object_store,
             evidence_bucket=settings.minio_bucket,
             schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
         ).create_candidate(destination)
-    except (BackupError, BackupToolError, ObjectInventoryError) as error:
+    except (BackupError, BackupToolError, ObjectArchiveError, ObjectInventoryError) as error:
         typer.echo(f"Backup candidate failed: {error}", err=True)
         raise typer.Exit(code=1) from error
     finally:
@@ -331,19 +338,28 @@ def verify_backup_restore(
     if not isolation_url:
         typer.echo("Restore verification failed: isolation database URL is missing", err=True)
         raise typer.Exit(code=1)
+    settings = get_settings()
+    minio = Minio(
+        settings.minio_endpoint,
+        access_key=settings.minio_access_key,
+        secret_key=settings.minio_secret_key,
+        secure=settings.minio_secure,
+    )
     try:
         result = BackupRestoreService(
-            source_database_url=get_settings().database_url.get_secret_value(),
+            source_database_url=settings.database_url.get_secret_value(),
             isolation_database_url=isolation_url,
             schema_path=Path(__file__).resolve().parents[2] / "database" / "schema.sql",
+            evidence_restore_verifier=MinioEvidenceRestoreVerifier(minio, settings.minio_bucket),
         ).verify(candidate)
     except BackupRestoreError as error:
         typer.echo(f"Restore verification failed: {error}", err=True)
         raise typer.Exit(code=1) from error
     typer.echo(
         f"Database restore verified: {result.backup_id}; tables: {result.table_count}; "
+        f"evidence objects round-trip verified: {result.evidence_objects_verified}; "
         f"duration seconds: {result.duration_seconds:.3f}; "
-        "evidence objects: inventory only; complete backup verified: false"
+        "complete backup verified: false"
     )
 
 
