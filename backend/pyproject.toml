@@ -7,6 +7,7 @@ dependencies = [
     "beautifulsoup4>=4.15,<5",
     "confluent-kafka>=2.11,<3",
     "fastapi[standard]>=0.116,<1",
+    "feedparser>=6.0,<7",
     "httpx>=0.28,<1",
     "minio>=7.2,<8",
     "playwright==1.63.0",
@@ -54,5 +55,9 @@ warn_unreachable = true
 
 [[tool.mypy.overrides]]
 module = ["confluent_kafka.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["feedparser.*"]
 ignore_missing_imports = true
 
