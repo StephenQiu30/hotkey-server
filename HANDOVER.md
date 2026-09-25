@@ -5,9 +5,9 @@
 ## 当前状态
 
 - **方向**：2026-09-25 按代码评审转向 v2.0，目标是日报、周报、知识库。需求、设计、计划见 [docs/README.md](docs/README.md)。
-- **分支**：文档整理在 `docs/pivot-daily-report`，尚未提交。
-- **产品验收**：v2.0 AC 0/9；尚无真实社交来源数据，尚无分析、报告、推送、知识库代码。
-- **测试**：后端单元测试 357 passed（2026-09-25，`uv run pytest tests/unit`）。
+- **分支**：`docs/pivot-daily-report`；文档整理已提交 `e25d4440`，P1-T01/T02/T04 未提交。
+- **产品验收**：v2.0 AC 0/9；评论线程已可入库，但尚无采集处理器、分析、报告、推送、知识库代码。
+- **测试**：2026-09-25 后端全量 540 passed / 17 skipped（隔离库 `hotkey_test`，Kafka/MinIO/live 用例跳过）；Ruff、mypy 通过。
 
 ## 已实现（可复用）
 
@@ -27,7 +27,18 @@
 
 ## 已知缺口（Design 001 第 2 节）
 
-Worker 只有 `webpage.collect`；评论无法入库；无周期调度；无模型/分析/事件/报告/推送/知识库；来源契约缺标题、昵称、浏览量、热榜；无全文与向量索引。
+Worker 只有 `webpage.collect`；无周期调度；无模型/分析/事件/报告/推送/知识库；无热榜能力；无全文与向量索引。
+
+## 本地采集栈（DEC-001-107）
+
+| 服务 | 地址 | 启动 |
+|---|---|---|
+| Firecrawl + playwright-service | `127.0.0.1:3002` | 独立部署 `~/Desktop/StephenQiu/Firecrawl`；其 `.env` 已设 `SEARXNG_ENDPOINT=http://host.docker.internal:8888` |
+| SearXNG | `127.0.0.1:8888` | `HOTKEY_POSTGRES_PASSWORD=unused docker compose --profile crawlers up -d rsshub searxng`（本机开发用 Homebrew PostgreSQL，密码仅供插值） |
+| RSSHub | `127.0.0.1:1200` | 同上 |
+| Codex app-server | stdio | 宿主机 `codex`；ChatGPT 账号需显式模型 `gpt-5.6-luna` |
+
+2026-09-25 冒烟：RSSHub `/zhihu/hot` 返回热榜；SearXNG JSON 新闻搜索 75 条；Firecrawl `/v2/search` 走 SearXNG 成功；Codex 结构化情感判断约 7 秒。
 
 ## 运行
 

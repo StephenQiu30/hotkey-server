@@ -260,6 +260,51 @@ services:
           memory: 256M
           pids: 64
 
+  rsshub:
+    image: diygod/rsshub:chromium-bundled-2026-09-24
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: memory
+      CACHE_EXPIRE: "300"
+      REQUEST_TIMEOUT: "20000"
+    ports:
+      - "127.0.0.1:${HOTKEY_RSSHUB_PORT:-1200}:1200"
+    profiles: ["crawlers"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:1200/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1024M
+
+  searxng:
+    image: searxng/searxng:2026.9.25-487f51922
+    environment:
+      SEARXNG_SECRET: ${HOTKEY_SEARXNG_SECRET:?set HOTKEY_SEARXNG_SECRET to a random value when using the crawlers profile}
+      SEARXNG_BASE_URL: http://127.0.0.1:${HOTKEY_SEARXNG_PORT:-8888}/
+    volumes:
+      - type: bind
+        source: ./crawlers/searxng/settings.yml
+        target: /etc/searxng/settings.yml
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - "127.0.0.1:${HOTKEY_SEARXNG_PORT:-8888}:8080"
+    profiles: ["crawlers"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
   cli:
     <<: *backend-service
     entrypoint: ["/srv/backend/.venv/bin/python", "-m", "cli"]
