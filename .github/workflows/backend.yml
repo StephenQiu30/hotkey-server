@@ -87,6 +87,29 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install PostgreSQL 17 client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Verify PostgreSQL 17 client tools
+        run: |
+          pg_dump_version="$(pg_dump --version)"
+          pg_restore_version="$(pg_restore --version)"
+          printf '%s\n' "$pg_dump_version" "$pg_restore_version"
+          case "$pg_dump_version" in
+            "pg_dump (PostgreSQL) 17."*) ;;
+            *) exit 1 ;;
+          esac
+          case "$pg_restore_version" in
+            "pg_restore (PostgreSQL) 17."*) ;;
+            *) exit 1 ;;
+          esac
+
       - uses: actions/setup-go@v7
         with:
           go-version: "1.24.8"
