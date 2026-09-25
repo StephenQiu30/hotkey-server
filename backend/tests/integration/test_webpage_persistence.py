@@ -70,7 +70,8 @@ from worker.messaging import create_producer, decode_job_message, publish_outbox
 
 _TABLES = (
     "content_version_relations, content_visibility_observations, content_observations, "
-    "content_versions, content_discoveries, content_records, source_capability_evidence, "
+    "content_versions, content_discoveries, content_threads, content_records, "
+    "source_capability_evidence, "
     "source_connection_versions, source_connections, provenance_manifest_inputs, "
     "provenance_manifests, evidence_cleanup_targets, evidence_deletions, "
     "evidence_resources, evidence_retention_policies, source_access_policies, "

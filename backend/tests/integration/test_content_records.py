@@ -38,7 +38,7 @@ _PASSWORD = "correct horse battery staple"
 _TRUNCATE = (
     "TRUNCATE content_version_relations, content_visibility_observations, "
     "content_observations, content_versions, "
-    "content_discoveries, content_records, "
+    "content_discoveries, content_threads, content_records, "
     "source_capability_evidence, source_connection_versions, source_connections, "
     "provenance_manifest_inputs, provenance_manifests, evidence_cleanup_targets, "
     "evidence_deletions, evidence_resources, evidence_retention_policies, "
@@ -1013,3 +1013,206 @@ def test_concurrent_writes_reuse_the_same_native_content_identity(
             )
         ).one()
     assert tuple(counts) == (1, 2, 2)
+
+
+def _seed_comment_context(
+    client: TestClient, owner_id: UUID, connection_id: UUID
+) -> tuple[UUID, UUID, UUID]:
+    policy_id = uuid4()
+    retention_id = uuid4()
+    job_id = uuid4()
+    now = datetime.now(UTC)
+    fields = {
+        "object_type": "评论类型",
+        "external_id": "评论身份",
+        "post_external_id": "所属作品",
+        "parent_comment_external_id": "父评论",
+        "canonical_url": "评论入口",
+        "author_external_id": "公开作者身份",
+        "author_name": "公开作者昵称",
+        "published_at": "发布时间",
+        "like_count": "点赞观察",
+        "text_scope": "正文完整度",
+        "text_origin": "正文来源",
+        "body": "评论正文",
+    }
+    factory = client.app.state.session_factory
+    with factory() as session, session.begin():
+        session.execute(
+            text(
+                "INSERT INTO source_access_policies "
+                "(id, owner_id, source_key, capability, status, enabled, access_basis, "
+                "terms_reference, processing_purpose, component_name, component_version, "
+                "component_license, field_purposes, reviewed_at, review_expires_at, "
+                "policy_version, created_at, updated_at) VALUES "
+                "(:id, :owner_id, 'x', 'comments', 'approved', true, 'official_api', "
+                "'https://developer.x.com/terms', '受控评论资料验证', 'controlled-collector', "
+                "'1', 'MIT', CAST(:fields AS jsonb), :now, NULL, 1, :now, :now)"
+            ),
+            {
+                "id": policy_id,
+                "owner_id": owner_id,
+                "fields": json.dumps(fields, ensure_ascii=False),
+                "now": now,
+            },
+        )
+        session.execute(
+            text(
+                "INSERT INTO evidence_retention_policies "
+                "(id, owner_id, source_policy_id, source_policy_version, data_class, "
+                "requested_days, source_max_days, effective_days, policy_version, "
+                "created_at, updated_at) VALUES "
+                "(:id, :owner_id, :policy_id, 1, 'structured', 30, NULL, 30, 1, :now, :now)"
+            ),
+            {"id": retention_id, "owner_id": owner_id, "policy_id": policy_id, "now": now},
+        )
+        session.execute(
+            text(
+                "INSERT INTO jobs "
+                "(id, owner_id, operation_id, kind, configuration_ref, "
+                "configuration_version, source_key, source_capability, scope, "
+                "request_fingerprint, status, created_at, updated_at) VALUES "
+                "(:id, :owner_id, :operation_id, 'source.comments', 'topic:controlled-comments', "
+                "1, 'x', 'comments', '{}'::jsonb, :fingerprint, 'queued', :now, :now)"
+            ),
+            {
+                "id": job_id,
+                "owner_id": owner_id,
+                "operation_id": uuid4(),
+                "fingerprint": bytes([9]) * 32,
+                "now": now,
+            },
+        )
+    del connection_id
+    return policy_id, retention_id, job_id
+
+
+def _comment_command(
+    *,
+    owner_id: UUID,
+    connection_id: UUID,
+    policy_id: UUID,
+    retention_id: UUID,
+    job_id: UUID,
+    external_id: str,
+    post_external_id: str | None,
+    parent_comment_external_id: str | None = None,
+    author_name: str | None = "楼主",
+) -> PersistContentPostInput:
+    observed_at = datetime.now(UTC) - timedelta(minutes=1)
+    fields: dict[str, object] = {
+        "object_type": "comment",
+        "external_id": external_id,
+        "author_external_id": "commenter-1",
+        "author_name": author_name,
+        "published_at": "2026-09-22T08:00:00Z",
+        "like_count": 3,
+        "text_scope": "full",
+        "text_origin": "source",
+        "body": f"评论 {external_id}",
+    }
+    if post_external_id is not None:
+        fields["post_external_id"] = post_external_id
+    if parent_comment_external_id is not None:
+        fields["parent_comment_external_id"] = parent_comment_external_id
+    return PersistContentPostInput(
+        job_id=job_id,
+        source_operation_id=uuid4(),
+        connection_id=connection_id,
+        connection_version=1,
+        entry_point=SourceEntryPoint.MANUAL,
+        component_name="controlled-collector",
+        component_version="1",
+        native_scope=None,
+        admission=AdmittedSourcePayload(
+            policy_id=policy_id,
+            policy_version=1,
+            owner_id=owner_id,
+            source_key="x",
+            capability=SourceCapability.COMMENTS,
+            retention_policy_id=retention_id,
+            retention_policy_version=1,
+            data_class=DataClass.STRUCTURED,
+            collected_at=observed_at,
+            expires_at=observed_at + timedelta(days=30),
+            fields=fields,
+        ),
+    )
+
+
+def _thread_rows(client: TestClient, owner_id: UUID) -> dict[str, tuple[str, str | None]]:
+    factory = client.app.state.session_factory
+    with factory() as session:
+        rows = session.execute(
+            text(
+                "SELECT c.external_id, p.external_id, pa.external_id "
+                "FROM content_threads t "
+                "JOIN content_records c ON c.owner_id = t.owner_id AND c.id = t.content_id "
+                "JOIN content_records p ON p.owner_id = t.owner_id AND p.id = t.post_content_id "
+                "LEFT JOIN content_records pa "
+                "ON pa.owner_id = t.owner_id AND pa.id = t.parent_content_id "
+                "WHERE t.owner_id = :owner_id"
+            ),
+            {"owner_id": owner_id},
+        ).all()
+    return {row[0]: (row[1], row[2]) for row in rows}
+
+
+def test_comments_keep_post_and_parent_links_even_when_reply_arrives_first(
+    content_client: TestClient,
+) -> None:
+    owner_id = _initialize(content_client)
+    connection_id, *_ = _seed_context(content_client, owner_id)
+    policy_id, retention_id, job_id = _seed_comment_context(content_client, owner_id, connection_id)
+    factory = content_client.app.state.session_factory
+
+    def persist(**kwargs: object) -> None:
+        with factory() as session:
+            ContentService(session).persist_comment(
+                owner_id=owner_id,
+                command=_comment_command(
+                    owner_id=owner_id,
+                    connection_id=connection_id,
+                    policy_id=policy_id,
+                    retention_id=retention_id,
+                    job_id=job_id,
+                    **kwargs,  # type: ignore[arg-type]
+                ),
+            )
+
+    persist(external_id="reply-1", post_external_id="post-9", parent_comment_external_id="c-1")
+    assert _thread_rows(content_client, owner_id) == {"reply-1": ("post-9", "c-1")}
+
+    persist(external_id="c-1", post_external_id="post-9")
+    persist(external_id="reply-1", post_external_id="post-9", parent_comment_external_id="c-1")
+    assert _thread_rows(content_client, owner_id) == {
+        "reply-1": ("post-9", "c-1"),
+        "c-1": ("post-9", None),
+    }
+
+    with factory() as session:
+        counts = dict(
+            session.execute(
+                text(
+                    "SELECT object_type, count(*) FROM content_records "
+                    "WHERE owner_id = :owner_id GROUP BY object_type"
+                ),
+                {"owner_id": owner_id},
+            ).all()
+        )
+        author_names = set(
+            session.scalars(
+                text(
+                    "SELECT author_name FROM content_observations "
+                    "WHERE owner_id = :owner_id AND author_name IS NOT NULL"
+                ),
+                {"owner_id": owner_id},
+            )
+        )
+    assert counts == {"post": 1, "comment": 2}
+    assert author_names == {"楼主"}
+
+    with pytest.raises(ValueError, match="thread"):
+        persist(external_id="reply-1", post_external_id="post-other")
+    with pytest.raises(ValueError, match="post_external_id"):
+        persist(external_id="orphan", post_external_id=None)

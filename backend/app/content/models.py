@@ -256,6 +256,10 @@ class ContentObservation(Base):
             name="content_observations_author_check",
         ),
         CheckConstraint(
+            "author_name IS NULL OR author_name <> ''",
+            name="content_observations_author_name_check",
+        ),
+        CheckConstraint(
             "(published_at IS NULL AND published_at_fractional_digits IS NULL) OR "
             "(published_at IS NOT NULL AND published_at_fractional_digits BETWEEN 0 AND 6)",
             name="content_observations_published_precision_check",
@@ -292,12 +296,51 @@ class ContentObservation(Base):
     canonical_url: Mapped[str | None] = mapped_column(String(2048))
     final_url: Mapped[str | None] = mapped_column(String(2048))
     author_external_id: Mapped[str | None] = mapped_column(String(512))
+    author_name: Mapped[str | None] = mapped_column(String(256))
     like_count: Mapped[int | None] = mapped_column(BigInteger)
     comment_count: Mapped[int | None] = mapped_column(BigInteger)
     repost_count: Mapped[int | None] = mapped_column(BigInteger)
     view_count: Mapped[int | None] = mapped_column(BigInteger)
     play_count: Mapped[int | None] = mapped_column(BigInteger)
     danmaku_count: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class ContentThread(Base):
+    """Links a comment to its post and, for replies, to its parent comment."""
+
+    __tablename__ = "content_threads"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "content_id"],
+            ["content_records.owner_id", "content_records.id"],
+            ondelete="CASCADE",
+            name="content_threads_owner_content_fkey",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "post_content_id"],
+            ["content_records.owner_id", "content_records.id"],
+            ondelete="CASCADE",
+            name="content_threads_owner_post_fkey",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "parent_content_id"],
+            ["content_records.owner_id", "content_records.id"],
+            ondelete="CASCADE",
+            name="content_threads_owner_parent_fkey",
+        ),
+        CheckConstraint(
+            "content_id <> post_content_id "
+            "AND (parent_content_id IS NULL OR parent_content_id <> content_id)",
+            name="content_threads_distinct_check",
+        ),
+        Index("content_threads_post_idx", "owner_id", "post_content_id", "content_id"),
+    )
+
+    owner_id: Mapped[UUID] = mapped_column(primary_key=True)
+    content_id: Mapped[UUID] = mapped_column(primary_key=True)
+    post_content_id: Mapped[UUID]
+    parent_content_id: Mapped[UUID | None]
+    created_at: Mapped[datetime]
 
 
 class ContentVisibilityObservation(Base):

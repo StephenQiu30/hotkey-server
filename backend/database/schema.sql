@@ -940,6 +940,7 @@ CREATE TABLE content_observations (
     author_external_id VARCHAR(512) CHECK (
         author_external_id IS NULL OR author_external_id <> ''
     ),
+    author_name VARCHAR(256) CHECK (author_name IS NULL OR author_name <> ''),
     like_count BIGINT CHECK (like_count IS NULL OR like_count >= 0),
     comment_count BIGINT CHECK (comment_count IS NULL OR comment_count >= 0),
     repost_count BIGINT CHECK (repost_count IS NULL OR repost_count >= 0),
@@ -974,6 +975,31 @@ CREATE INDEX content_observations_latest_idx
         received_at,
         id
     );
+
+CREATE TABLE content_threads (
+    owner_id UUID NOT NULL,
+    content_id UUID NOT NULL,
+    post_content_id UUID NOT NULL,
+    parent_content_id UUID,
+    created_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (owner_id, content_id),
+    CONSTRAINT content_threads_owner_content_fkey
+        FOREIGN KEY (owner_id, content_id)
+        REFERENCES content_records (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT content_threads_owner_post_fkey
+        FOREIGN KEY (owner_id, post_content_id)
+        REFERENCES content_records (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT content_threads_owner_parent_fkey
+        FOREIGN KEY (owner_id, parent_content_id)
+        REFERENCES content_records (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT content_threads_distinct_check CHECK (
+        content_id <> post_content_id
+        AND (parent_content_id IS NULL OR parent_content_id <> content_id)
+    )
+);
+
+CREATE INDEX content_threads_post_idx
+    ON content_threads (owner_id, post_content_id, content_id);
 
 CREATE TABLE content_visibility_observations (
     id UUID PRIMARY KEY,

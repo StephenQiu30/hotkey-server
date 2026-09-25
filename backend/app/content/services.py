@@ -23,6 +23,7 @@ from content.models import (
     ContentDiscovery,
     ContentObservation,
     ContentRecord,
+    ContentThread,
     ContentVersion,
     ContentVersionRelation,
     ContentVisibilityObservation,
@@ -66,6 +67,9 @@ _ALLOWED_FIELDS = frozenset(
         "external_id",
         "canonical_url",
         "author_external_id",
+        "author_name",
+        "post_external_id",
+        "parent_comment_external_id",
         "published_at",
         "like_count",
         "comment_count",
@@ -426,35 +430,136 @@ class ContentService:
     ) -> ContentRecordDetailView:
         """Persist an admitted social post within the caller's page transaction."""
         now = self._clock()
-        if now.utcoffset() is None:
-            raise ValueError("clock must return a timezone-aware datetime")
-        if command.admission.owner_id != owner_id:
-            raise ApplicationError("resource_not_found")
-        if command.admission.collected_at > now:
-            raise ValueError("collected_at cannot be in the future")
-        fields = dict(command.admission.fields)
-        unknown_fields = set(fields) - _ALLOWED_FIELDS
-        if unknown_fields:
-            raise ValueError("admitted payload contains fields outside the S01 contract")
-        object_type = fields.get("object_type", "post")
-        if object_type != "post":
-            raise ValueError("S01 only accepts post objects")
-        external_id = _optional_identifier(fields, "external_id")
-        if external_id is None:
-            raise ValueError("external_id is required")
-        values = self._observation_values(fields)
-        version_values = _content_version_values(fields)
-
+        fields, external_id = self._admitted_social_fields(
+            owner_id=owner_id, command=command, now=now, object_type="post"
+        )
+        if "post_external_id" in fields or "parent_comment_external_id" in fields:
+            raise ValueError("posts cannot declare comment thread fields")
         return self._persist_admitted_content_in_transaction(
             owner_id=owner_id,
             command=command,
             object_type="post",
             native_scope=command.native_scope,
             external_id=external_id,
-            observation_values=values,
-            version_values=version_values,
+            observation_values=self._observation_values(fields),
+            version_values=_content_version_values(fields),
             now=now,
         )
+
+    def persist_comment(
+        self,
+        *,
+        owner_id: UUID,
+        command: PersistContentPostInput,
+    ) -> ContentRecordDetailView:
+        self._session.rollback()
+        with self._session.begin():
+            return self.persist_comment_in_transaction(owner_id=owner_id, command=command)
+
+    def persist_comment_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: PersistContentPostInput,
+    ) -> ContentRecordDetailView:
+        """Persist an admitted comment and link it to its post and parent comment.
+
+        The post and the parent comment may arrive later than the comment, so their
+        records are created as identity-only placeholders when missing.
+        """
+        now = self._clock()
+        fields, external_id = self._admitted_social_fields(
+            owner_id=owner_id, command=command, now=now, object_type="comment"
+        )
+        post_external_id = _optional_identifier(fields, "post_external_id")
+        if post_external_id is None:
+            raise ValueError("post_external_id is required for comments")
+        parent_external_id = _optional_identifier(fields, "parent_comment_external_id")
+        if parent_external_id == external_id:
+            raise ValueError("a comment cannot be its own parent")
+        observation_fields = {
+            name: value
+            for name, value in fields.items()
+            if name not in {"post_external_id", "parent_comment_external_id"}
+        }
+        saved = self._persist_admitted_content_in_transaction(
+            owner_id=owner_id,
+            command=command,
+            object_type="comment",
+            native_scope=command.native_scope,
+            external_id=external_id,
+            observation_values=self._observation_values(observation_fields),
+            version_values=_content_version_values(observation_fields),
+            now=now,
+        )
+        source_key = command.admission.source_key
+        post = self._find_or_create_content(
+            owner_id=owner_id,
+            source_key=source_key,
+            object_type="post",
+            native_scope=command.native_scope,
+            external_id=post_external_id,
+            created_at=now,
+        )
+        parent = (
+            None
+            if parent_external_id is None
+            else self._find_or_create_content(
+                owner_id=owner_id,
+                source_key=source_key,
+                object_type="comment",
+                native_scope=command.native_scope,
+                external_id=parent_external_id,
+                created_at=now,
+            )
+        )
+        parent_id = parent.id if parent is not None else None
+        inserted = self._session.scalar(
+            insert(ContentThread)
+            .values(
+                owner_id=owner_id,
+                content_id=saved.id,
+                post_content_id=post.id,
+                parent_content_id=parent_id,
+                created_at=now,
+            )
+            .on_conflict_do_nothing(index_elements=["owner_id", "content_id"])
+            .returning(ContentThread.content_id)
+        )
+        if inserted is None:
+            existing = self._session.get(ContentThread, (owner_id, saved.id))
+            if (
+                existing is None
+                or existing.post_content_id != post.id
+                or existing.parent_content_id != parent_id
+            ):
+                raise ValueError("comment thread conflicts with the stored thread")
+        return saved
+
+    def _admitted_social_fields(
+        self,
+        *,
+        owner_id: UUID,
+        command: PersistContentPostInput,
+        now: datetime,
+        object_type: str,
+    ) -> tuple[dict[str, object], str]:
+        if now.utcoffset() is None:
+            raise ValueError("clock must return a timezone-aware datetime")
+        if command.admission.owner_id != owner_id:
+            raise ApplicationError("resource_not_found")
+        if command.admission.collected_at > now:
+            raise ValueError("collected_at cannot be in the future")
+        fields: dict[str, object] = dict(command.admission.fields)
+        unknown_fields = set(fields) - _ALLOWED_FIELDS
+        if unknown_fields:
+            raise ValueError("admitted payload contains fields outside the S01 contract")
+        if fields.get("object_type", "post") != object_type:
+            raise ValueError(f"expected a {object_type} object")
+        external_id = _optional_identifier(fields, "external_id")
+        if external_id is None:
+            raise ValueError("external_id is required")
+        return fields, external_id
 
     def persist_document_in_transaction(
         self,
@@ -802,6 +907,7 @@ class ContentService:
             "canonical_url": _optional_url(fields),
             "final_url": _optional_url(fields, "final_url"),
             "author_external_id": _optional_identifier(fields, "author_external_id"),
+            "author_name": _optional_text(fields, "author_name", max_length=256),
             "published_at": published_at,
             "published_at_fractional_digits": published_at_fractional_digits,
             **{name: _optional_metric(fields, name) for name in _METRIC_FIELDS},
