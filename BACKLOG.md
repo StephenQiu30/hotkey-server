@@ -9,7 +9,7 @@
 | 阶段 | 目标 | 卡片完成 | 状态 |
 |---|---|---|---|
 | P0 | 评审、需求、设计、计划统一 | 3/3 | done |
-| P1 | HN 竖切 → 调度 → 分析 → 日报 + Obsidian → 飞书/邮件 → 3 天验收 | 0/19 | doing |
+| P1 | HN 竖切 → 调度 → 分析 → 日报 + Obsidian → 飞书/邮件 → 3 天验收 | 11/19 | doing（暂停） |
 | P2 | MediaCrawler（B 站、微博）、热榜、事件、事件笔记 | 0/6 | todo |
 | P3 | 周报、主题笔记、问答、导出 | 0/4 | todo |
 | P4 | 告警、账号追踪、Reddit/小红书/抖音/公众号/X | 0/7 | todo |
@@ -32,33 +32,34 @@
 
 ## 2. 当前迭代
 
-目标：完成 AC-001-100（Hacker News 竖切）。
+**状态：已暂停派发（用户要求）。** 已实现的 11 张卡已通过全量测试并合入 main（`b7a330ea`、`13068ce1`）。剩余 P1 卡待用户指示再继续。
+
+下一步候选（待确认）：
 
 | 顺序 | 卡 | 内容 | 执行方 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| 1 | A2 | 适配器加主机白名单与重定向校验，提交已写的 HN/RSS/SearXNG 适配器 | Codex | doing | 代码已在工作区，缺白名单 |
-| 1 | C1 | Codex 最小环境变量、`ai_calls`、预算门禁、验证能否关闭 shell 工具 | Codex | doing | 客户端已在工作区；`test_ai_calls.py` 为失败测试 |
-| 1 | A1 | 来源预设 CLI + 连接版本 `config` | Codex | todo | 可与 A2、C1 并行 |
-| 2 | A3 | 注册 `keyword.search`；无发布时间按发现时间；按任务类型截止 | Codex | todo | 依赖 A1、A2 |
-| 3 | A4 | `source.comments` 处理器 | Codex | todo | 依赖 A3 |
-| 4 | A5 | 竖切验收记录 | Claude | todo | 依赖 A4 |
+| 1 | A5 | HN 竖切真实验收：应用预设 → 手动搜索 → 评论 → Worker 重启重放 | Claude | todo | 需启动本机 Kafka、Worker |
+| 2 | D2 | 日报模型润色与引用校验 | Codex | todo | |
+| 2 | D3 | Obsidian 日报导出 | Codex | todo | |
+| 2 | D4 | Web 报告页 | Codex | todo | |
+| 2 | E1 | 飞书推送 | Codex | todo | 需你-1 |
 
 ## 3. P1 全部任务卡
 
 | 卡 | 内容 | 依赖 | 状态 | 提交 |
 |---|---|---|---|---|
-| A1 | 来源预设与连接配置 | — | todo | |
-| A2 | 适配器安全修正并提交 | — | doing | |
-| A3 | `keyword.search` 处理器、时间口径、任务截止 | A1、A2 | todo | |
-| A4 | `source.comments` 处理器 | A3 | todo | |
+| A1 | 来源预设与连接配置 | — | done | `13068ce1` |
+| A2 | 适配器安全修正并提交 | — | done | `b7a330ea` |
+| A3 | `keyword.search` 处理器、时间口径、任务截止 | A1、A2 | done | `13068ce1` |
+| A4 | `source.comments` 处理器 | A3 | done | `13068ce1` |
 | A5 | HN 竖切验收（AC-001-100） | A4 | todo | |
-| A6 | Google News、SearXNG、行业 RSS 预设 | A3 | todo | |
-| B1 | 主题设置（来源、频率、报告时间、推送目标）与调度表 | A1 | todo | |
-| B2 | 调度进程 `python -m worker.scheduler` 与采集扫描 | B1、A3 | todo | |
-| B3 | 评论扫描 | B2、A4 | todo | |
-| C1 | AI 领域：隔离、调用记录、门禁 | — | doing | |
-| C2 | `analysis.annotate` 批量标注与分析扫描 | C1、B2 | todo | |
-| D1 | 日报：冻结输入、确定性取数、模板版 | C2 | todo | |
+| A6 | Google News、SearXNG、行业 RSS 预设 | A3 | done | `13068ce1` |
+| B1 | 主题设置（来源、频率、报告时间、推送目标）与调度表 | A1 | done | `13068ce1` |
+| B2 | 调度进程 `python -m worker.scheduler` 与采集扫描 | B1、A3 | done | `13068ce1` |
+| B3 | 评论扫描 | B2、A4 | done | `13068ce1` |
+| C1 | AI 领域：隔离、调用记录、门禁 | A1（同改 schema） | done | `13068ce1` |
+| C2 | `analysis.annotate` 批量标注与分析扫描 | C1、B2 | done | `13068ce1` |
+| D1 | 日报：冻结输入、确定性取数、模板版 | C2 | done | `13068ce1` |
 | D2 | 日报模型润色与引用校验 | D1、C1 | todo | |
 | D3 | Obsidian 日报导出 | D1 | todo | |
 | D4 | Web 报告页 | D1 | todo | |
@@ -108,7 +109,7 @@
 |---|---|---|
 | OPEN-001-104 | X 官方 API | P4 决定 |
 | OPEN-001-107 | 知乎走 MediaCrawler 还是 RSSHub | P2-4 实测 |
-| RSK-001-207 | 提示注入诱导 Codex 读本机文件 | C1：最小环境变量、空目录、尝试关闭 shell 工具 |
+| RSK-001-207 | 提示注入诱导 Codex 读本机文件 | C1 已关闭 shell/代码执行/插件/浏览器/联网工具，最小环境变量、每次空目录（待验证） |
 | RSK-001-206 | Codex 账号限流 | 批量标注、限流延后、日报可降级 |
 | RSK-001-201 | 国内平台反爬与登录态失效 | P2 适配器隔离、每日冒烟 |
 
@@ -123,7 +124,8 @@
 | 2026-09-25 | 来源契约字段、移除 twscrape | `12fdc334` |
 | 2026-09-25 | 本地 RSSHub、SearXNG；Firecrawl 接 SearXNG | `795ffa8e` |
 | 2026-09-25 | 统一需求、设计与任务卡规划 | `71a90d88` |
-| 2026-09-25 | Codex 默认模型改为 `gpt-5.6-sol` + `high`；移除 Claude Code 的 DeepSeek 配置（本机配置，不入库） | — |
+| 2026-09-26 | P1 代码（A1—A4、A6、B1—B3、C1、C2、D1）合入 main；全量 635 passed | `b7a330ea`、`13068ce1` |
+| 2026-09-26 | Codex CLI 升级到 0.157.0（PATH 中 `~/.local` 版本），默认 `gpt-6-sol` + `high` 可用；移除 Claude Code 的 DeepSeek 配置（本机配置，不入库） | — |
 
 ## 8. 冻结与取消
 
