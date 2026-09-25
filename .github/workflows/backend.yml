@@ -64,6 +64,13 @@ jobs:
     env:
       HOTKEY_TEST_DATABASE_URL: postgresql+psycopg://hotkey_test:identity_test_only@127.0.0.1:5432/hotkey_test
       HOTKEY_TEST_KAFKA_BOOTSTRAP_SERVERS: 127.0.0.1:9092
+      HOTKEY_TEST_MINIO_ENDPOINT: 127.0.0.1:9000
+      HOTKEY_TEST_MINIO_ACCESS_KEY: hotkey_test
+      HOTKEY_TEST_MINIO_SECRET_KEY: hotkey_minio_test_only
+      HOTKEY_TEST_MINIO_BUCKET: hotkey-test-evidence
+      HOTKEY_TEST_MINIO_SECURE: "false"
+      MINIO_ROOT_USER: hotkey_test
+      MINIO_ROOT_PASSWORD: hotkey_minio_test_only
     defaults:
       run:
         working-directory: backend
@@ -80,8 +87,42 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.24.8"
+          cache: false
+
       - name: Install dependencies
         run: uv sync --locked
+
+      - name: Build pinned MinIO test server from official source
+        run: go install -v github.com/minio/minio@RELEASE.2025-10-15T17-29-55Z
+
+      - name: Start isolated MinIO for integration tests
+        shell: bash
+        run: |
+          minio_data_dir="$RUNNER_TEMP/hotkey-minio-data"
+          minio_log_path="$RUNNER_TEMP/hotkey-minio.log"
+          mkdir -p "$minio_data_dir"
+          "$(go env GOPATH)/bin/minio" server "$minio_data_dir" \
+            --address 127.0.0.1:9000 \
+            --console-address 127.0.0.1:9001 \
+            >"$minio_log_path" 2>&1 &
+          minio_pid=$!
+          printf 'HOTKEY_CI_MINIO_PID=%s\n' "$minio_pid" >> "$GITHUB_ENV"
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$minio_log_path"
+          exit 1
+
+      - name: Create isolated MinIO test bucket
+        run: >-
+          uv run --no-sync python -c
+          'import os; from minio import Minio; client = Minio(os.environ["HOTKEY_TEST_MINIO_ENDPOINT"], access_key=os.environ["HOTKEY_TEST_MINIO_ACCESS_KEY"], secret_key=os.environ["HOTKEY_TEST_MINIO_SECRET_KEY"], secure=False); client.make_bucket(os.environ["HOTKEY_TEST_MINIO_BUCKET"])'
 
       - name: Initialize the isolated PostgreSQL schema
         run: docker exec -i ${{ job.services.postgres.id }} psql -X --set ON_ERROR_STOP=on --username hotkey_test --dbname hotkey_test < database/schema.sql
@@ -97,3 +138,11 @@ jobs:
 
       - name: Test (pytest)
         run: uv run pytest
+
+      - name: Stop isolated MinIO
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${HOTKEY_CI_MINIO_PID:-}" ]]; then
+            kill "$HOTKEY_CI_MINIO_PID" 2>/dev/null || true
+          fi
