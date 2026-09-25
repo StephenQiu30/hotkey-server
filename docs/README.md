@@ -59,7 +59,7 @@
 | 029 | [时效与数据新鲜度](prd/029-时效与数据新鲜度.md) · [Design](design/029-时效与数据新鲜度设计.md) accepted | NFR-001-003 | P0 | draft | [计划](plans/029-时效与数据新鲜度计划.md) · in_progress（S00/S01 完成，0/6 AC） |
 | 030 | [交互与检索性能](prd/030-交互与检索性能.md) | NFR-001-004 | P0 | draft | [计划](plans/030-交互与检索性能计划.md) · planned |
 | 031 | [可靠执行与幂等](prd/031-可靠执行与幂等.md) · [Design](design/031-可靠执行与幂等设计.md) accepted | NFR-001-005 | P0 | draft | [计划](plans/031-可靠执行与幂等计划.md) · in_progress（S00—S02 完成，0/6 AC） |
-| 032 | [备份与恢复](prd/032-备份与恢复.md) · [Design](design/032-备份与恢复设计.md) accepted | NFR-001-006 | P0 | draft | [计划](plans/032-备份与恢复计划.md) · in_progress（S00/S01 完成，0/6 AC） |
+| 032 | [备份与恢复](prd/032-备份与恢复.md) · [Design](design/032-备份与恢复设计.md) accepted | NFR-001-006 | P0 | draft | [计划](plans/032-备份与恢复计划.md) · in_progress（S00—S02 技术子片已验证，0/6 AC） |
 | 033 | [故障隔离与降级](prd/033-故障隔离与降级.md) | NFR-001-007 | P0 | draft | [设计](design/033-故障隔离与降级设计.md) · accepted（S00/内部分项）；[计划](plans/033-故障隔离与降级计划.md) · in_progress（S00/内部分项，0/6 AC） |
 | 034 | [凭据与应用安全](prd/034-凭据与应用安全.md) · [Design](design/034-凭据与应用安全设计.md) accepted | NFR-001-008 | P0 | draft | [计划](plans/034-凭据与应用安全计划.md) · in_progress（S00/S01 完成，0/6 AC） |
 | 035 | [权限与数据隔离](prd/035-权限与数据隔离.md) · [Design](design/035-权限与数据隔离设计.md) accepted | NFR-001-009 | P0 | draft | [计划](plans/035-权限与数据隔离计划.md) · in_progress（S00/S01 完成，S02 当前资源通过，完整切片待接入，0/6 AC） |
