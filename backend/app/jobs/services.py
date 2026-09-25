@@ -457,6 +457,13 @@ class ContentJobContext:
 
 
 @dataclass(frozen=True, slots=True)
+class RecentCommentJobTarget:
+    owner_id: UUID
+    source_key: str
+    post_external_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class JobExecutionConfiguration:
     job_id: UUID
     owner_id: UUID
@@ -465,6 +472,38 @@ class JobExecutionConfiguration:
     started_at: datetime | None
     observation: JobObservationContext
     scope: dict[str, OutboxValue]
+
+
+def load_recent_comment_job_targets_in_transaction(
+    session: Session,
+    *,
+    since: datetime,
+) -> frozenset[RecentCommentJobTarget]:
+    """Return posts with a comments Job newer than the supplied eligibility boundary."""
+    if not session.in_transaction():
+        raise RuntimeError("recent comment job reads require the caller's transaction")
+    if since.tzinfo is None:
+        raise ValueError("recent comment job boundary must be timezone-aware")
+    post_external_id = Job.scope["post_external_id"].as_string()
+    rows = session.execute(
+        select(Job.owner_id, Job.source_key, post_external_id)
+        .where(
+            Job.kind == "source.comments",
+            Job.created_at > since,
+            Job.source_key.is_not(None),
+            post_external_id.is_not(None),
+        )
+        .order_by(Job.owner_id, Job.source_key, post_external_id)
+    ).all()
+    return frozenset(
+        RecentCommentJobTarget(
+            owner_id=owner_id,
+            source_key=source_key,
+            post_external_id=external_id,
+        )
+        for owner_id, source_key, external_id in rows
+        if isinstance(source_key, str) and isinstance(external_id, str)
+    )
 
 
 def load_job_execution_configuration(
@@ -656,59 +695,91 @@ class ResourceBudgetService:
         owner_id: UUID,
         command: ComponentPolicyInput,
     ) -> ComponentPolicyView:
-        now = self._clock()
         self._session.rollback()
         with self._session.begin():
-            statement = insert(ResourceComponentPolicy).values(
-                id=uuid4(),
-                owner_id=owner_id,
-                component_key=command.component_key,
-                component_version=command.component_version,
-                cost_class=command.cost_class.value,
-                enabled_for_core=command.enabled_for_core,
-                terms_reference=command.terms_reference,
-                reviewed_at=command.reviewed_at,
-                policy_version=1,
-                created_at=now,
-                updated_at=now,
+            return self.save_component_policy_in_transaction(
+                owner_id=owner_id, command=command
             )
-            policy_id = self._session.scalar(
-                statement.on_conflict_do_update(
-                    constraint="resource_component_policies_owner_component_key",
-                    set_={
-                        "component_version": statement.excluded.component_version,
-                        "cost_class": statement.excluded.cost_class,
-                        "enabled_for_core": statement.excluded.enabled_for_core,
-                        "terms_reference": statement.excluded.terms_reference,
-                        "reviewed_at": statement.excluded.reviewed_at,
-                        "policy_version": ResourceComponentPolicy.policy_version + 1,
-                        "updated_at": now,
-                    },
-                    where=or_(
-                        ResourceComponentPolicy.component_version
-                        != statement.excluded.component_version,
-                        ResourceComponentPolicy.cost_class != statement.excluded.cost_class,
-                        ResourceComponentPolicy.enabled_for_core
-                        != statement.excluded.enabled_for_core,
-                        ResourceComponentPolicy.terms_reference
-                        != statement.excluded.terms_reference,
-                        ResourceComponentPolicy.reviewed_at != statement.excluded.reviewed_at,
-                    ),
-                ).returning(ResourceComponentPolicy.id)
-            )
-            if policy_id is None:
-                model = self._session.scalar(
-                    select(ResourceComponentPolicy).where(
-                        ResourceComponentPolicy.owner_id == owner_id,
-                        ResourceComponentPolicy.component_key == command.component_key,
-                    )
+
+    def save_component_policy_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: ComponentPolicyInput,
+    ) -> ComponentPolicyView:
+        """Save one component policy without ending the caller's transaction."""
+        now = self._clock()
+        statement = insert(ResourceComponentPolicy).values(
+            id=uuid4(),
+            owner_id=owner_id,
+            component_key=command.component_key,
+            component_version=command.component_version,
+            cost_class=command.cost_class.value,
+            enabled_for_core=command.enabled_for_core,
+            terms_reference=command.terms_reference,
+            reviewed_at=command.reviewed_at,
+            policy_version=1,
+            created_at=now,
+            updated_at=now,
+        )
+        policy_id = self._session.scalar(
+            statement.on_conflict_do_update(
+                constraint="resource_component_policies_owner_component_key",
+                set_={
+                    "component_version": statement.excluded.component_version,
+                    "cost_class": statement.excluded.cost_class,
+                    "enabled_for_core": statement.excluded.enabled_for_core,
+                    "terms_reference": statement.excluded.terms_reference,
+                    "reviewed_at": statement.excluded.reviewed_at,
+                    "policy_version": ResourceComponentPolicy.policy_version + 1,
+                    "updated_at": now,
+                },
+                where=or_(
+                    ResourceComponentPolicy.component_version
+                    != statement.excluded.component_version,
+                    ResourceComponentPolicy.cost_class != statement.excluded.cost_class,
+                    ResourceComponentPolicy.enabled_for_core
+                    != statement.excluded.enabled_for_core,
+                    ResourceComponentPolicy.terms_reference
+                    != statement.excluded.terms_reference,
+                    ResourceComponentPolicy.reviewed_at != statement.excluded.reviewed_at,
+                ),
+            ).returning(ResourceComponentPolicy.id)
+        )
+        model = (
+            self._session.get(ResourceComponentPolicy, policy_id)
+            if policy_id is not None
+            else self._session.scalar(
+                select(ResourceComponentPolicy).where(
+                    ResourceComponentPolicy.owner_id == owner_id,
+                    ResourceComponentPolicy.component_key == command.component_key,
                 )
-            else:
-                model = self._session.get(ResourceComponentPolicy, policy_id)
-            if model is None:
-                raise RuntimeError("saved component policy is not visible")
-            view = self._component_policy_view(model)
-        return view
+            )
+        )
+        if model is None:
+            raise RuntimeError("saved component policy is not visible")
+        return self._component_policy_view(model)
+
+    def component_policy_matches_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: ComponentPolicyInput,
+    ) -> bool:
+        model = self._session.scalar(
+            select(ResourceComponentPolicy).where(
+                ResourceComponentPolicy.owner_id == owner_id,
+                ResourceComponentPolicy.component_key == command.component_key,
+            )
+        )
+        return (
+            model is not None
+            and model.component_version == command.component_version
+            and model.cost_class == command.cost_class.value
+            and model.enabled_for_core == command.enabled_for_core
+            and model.terms_reference == command.terms_reference
+            and model.reviewed_at == command.reviewed_at
+        )
 
     def begin_attempt(
         self,
@@ -935,6 +1006,17 @@ class ResourceBudgetService:
         owner_id: UUID,
         command: BudgetPolicyInput,
     ) -> BudgetPolicyView:
+        self._session.rollback()
+        with self._session.begin():
+            return self.save_budget_policy_in_transaction(owner_id=owner_id, command=command)
+
+    def save_budget_policy_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: BudgetPolicyInput,
+    ) -> BudgetPolicyView:
+        """Save one budget policy without ending the caller's transaction."""
         if (
             command.metric == BudgetMetric.X_API_USD_MICROS
             and command.scope_kind is BudgetScopeKind.SOURCE
@@ -943,64 +1025,84 @@ class ResourceBudgetService:
             raise ValueError("x api spend policy requires x source")
         now = self._clock()
         self._require_aware_clock(now)
-        self._session.rollback()
-        with self._session.begin():
-            model = self._session.scalar(
-                select(ResourceBudgetPolicy)
-                .where(
-                    ResourceBudgetPolicy.owner_id == owner_id,
-                    ResourceBudgetPolicy.budget_key == command.budget_key,
-                )
-                .with_for_update()
+        model = self._session.scalar(
+            select(ResourceBudgetPolicy)
+            .where(
+                ResourceBudgetPolicy.owner_id == owner_id,
+                ResourceBudgetPolicy.budget_key == command.budget_key,
             )
-            inserted = False
-            if model is None:
-                policy_id = uuid4()
-                inserted_id = self._session.scalar(
-                    insert(ResourceBudgetPolicy)
-                    .values(
-                        id=policy_id,
-                        owner_id=owner_id,
-                        budget_key=command.budget_key,
-                        metric=command.metric.value,
-                        scope_kind=command.scope_kind.value,
-                        scope_reference=command.scope_reference,
-                        limit_units=command.limit_units,
-                        window_seconds=command.window_seconds,
-                        window_anchor_at=command.window_anchor_at,
-                        enabled=command.enabled,
-                        policy_version=1,
-                        created_at=now,
-                        updated_at=now,
-                    )
-                    .on_conflict_do_nothing(constraint="resource_budget_policies_owner_key")
-                    .returning(ResourceBudgetPolicy.id)
+            .with_for_update()
+        )
+        inserted = False
+        if model is None:
+            policy_id = uuid4()
+            inserted_id = self._session.scalar(
+                insert(ResourceBudgetPolicy)
+                .values(
+                    id=policy_id,
+                    owner_id=owner_id,
+                    budget_key=command.budget_key,
+                    metric=command.metric.value,
+                    scope_kind=command.scope_kind.value,
+                    scope_reference=command.scope_reference,
+                    limit_units=command.limit_units,
+                    window_seconds=command.window_seconds,
+                    window_anchor_at=command.window_anchor_at,
+                    enabled=command.enabled,
+                    policy_version=1,
+                    created_at=now,
+                    updated_at=now,
                 )
-                inserted = inserted_id is not None
-                model = (
-                    self._session.get(ResourceBudgetPolicy, inserted_id)
-                    if inserted_id is not None
-                    else self._session.scalar(
-                        select(ResourceBudgetPolicy)
-                        .where(
-                            ResourceBudgetPolicy.owner_id == owner_id,
-                            ResourceBudgetPolicy.budget_key == command.budget_key,
-                        )
-                        .with_for_update()
+                .on_conflict_do_nothing(constraint="resource_budget_policies_owner_key")
+                .returning(ResourceBudgetPolicy.id)
+            )
+            inserted = inserted_id is not None
+            model = (
+                self._session.get(ResourceBudgetPolicy, inserted_id)
+                if inserted_id is not None
+                else self._session.scalar(
+                    select(ResourceBudgetPolicy)
+                    .where(
+                        ResourceBudgetPolicy.owner_id == owner_id,
+                        ResourceBudgetPolicy.budget_key == command.budget_key,
                     )
+                    .with_for_update()
                 )
-            if model is None:
-                raise RuntimeError("saved budget policy is not visible")
-            self._require_same_budget_structure(model, command)
-            if not inserted and (
-                model.limit_units != command.limit_units or model.enabled != command.enabled
-            ):
-                model.limit_units = command.limit_units
-                model.enabled = command.enabled
-                model.policy_version += 1
-                model.updated_at = now
-            view = self._budget_policy_view(model)
-        return view
+            )
+        if model is None:
+            raise RuntimeError("saved budget policy is not visible")
+        self._require_same_budget_structure(model, command)
+        if not inserted and (
+            model.limit_units != command.limit_units or model.enabled != command.enabled
+        ):
+            model.limit_units = command.limit_units
+            model.enabled = command.enabled
+            model.policy_version += 1
+            model.updated_at = now
+        return self._budget_policy_view(model)
+
+    def budget_policy_matches_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: BudgetPolicyInput,
+    ) -> bool:
+        model = self._session.scalar(
+            select(ResourceBudgetPolicy).where(
+                ResourceBudgetPolicy.owner_id == owner_id,
+                ResourceBudgetPolicy.budget_key == command.budget_key,
+            )
+        )
+        return (
+            model is not None
+            and model.metric == command.metric.value
+            and model.scope_kind == command.scope_kind.value
+            and model.scope_reference == command.scope_reference
+            and model.limit_units == command.limit_units
+            and model.window_seconds == command.window_seconds
+            and model.window_anchor_at == command.window_anchor_at
+            and model.enabled == command.enabled
+        )
 
     def budget_usage_snapshot(self, *, owner_id: UUID) -> tuple[BudgetWindowUsageView, ...]:
         """Project persisted budget usage without creating or changing budget rows."""

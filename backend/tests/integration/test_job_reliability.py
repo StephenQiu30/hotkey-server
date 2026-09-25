@@ -81,6 +81,8 @@ def job_context() -> Iterator[JobTestContext]:
                 "resource_budget_policies, resource_usage_attempts, "
                 "resource_component_policies, "
                 "job_stage_attempts, processed_messages, job_attempts, "
+                "ai_calls, "
+                "content_annotations, reports, monitor_schedules, "
                 "outbox_messages, coverage_windows, "
                 "jobs, followed_account_aliases, followed_accounts, "
                 "monitor_topic_versions, monitor_topics, "
@@ -112,6 +114,8 @@ def job_context() -> Iterator[JobTestContext]:
                     "resource_budget_policies, resource_usage_attempts, "
                     "resource_component_policies, "
                     "job_stage_attempts, processed_messages, job_attempts, "
+                    "ai_calls, "
+                    "content_annotations, reports, monitor_schedules, "
                     "outbox_messages, coverage_windows, "
                     "jobs, followed_account_aliases, followed_accounts, "
                     "monitor_topic_versions, monitor_topics, "
@@ -393,7 +397,7 @@ def test_reliability_snapshot_uses_logical_start_and_durable_source_evidence(
         connection.execute(
             text(
                 "INSERT INTO source_connection_versions "
-                "(connection_id, version, owner_id, auth_kind, secret_ref, configuration, "
+                "(connection_id, version, owner_id, auth_kind, secret_ref, config, "
                 "created_by, created_at) VALUES (:id, 1, :owner_id, 'none', NULL, '{}'::jsonb, "
                 ":owner_id, :now)"
             ),

@@ -81,6 +81,9 @@ APPLICATION_ERRORS: Mapping[str, PublicError] = {
     "source_target_not_allowed": PublicError(
         422, "source_target_not_allowed", "目标地址不在当前连接允许范围"
     ),
+    "source_preset_not_applied": PublicError(
+        409, "source_preset_not_applied", "所选来源尚未应用预设或不支持关键词搜索"
+    ),
     "topic_archived": PublicError(409, "topic_archived", "已归档主题不能再修改"),
     "topic_not_ready": PublicError(409, "topic_not_ready", "主题来源尚未就绪"),
     "topic_version_conflict": PublicError(409, "topic_version_conflict", "主题已被其他修改更新"),

@@ -12,7 +12,60 @@ from connections.schemas import SourceEntryPoint
 from core.schemas import InputModel, OutputModel
 from evidence.schemas import AdmittedSourcePayload, DataClass
 from jobs.schemas import CollectionScanKind
-from sources.contracts import SearchRequest, SourceCapability
+from sources.contracts import CommentsRequest, SearchRequest, SourceCapability
+
+
+class CommentCollectionRunInput(InputModel):
+    """Frozen input for accepting one bounded comments collection job."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        strict=True,
+        str_strip_whitespace=False,
+    )
+
+    operation_id: UUID
+    configuration_ref: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9_.:-]{0,127}$",
+    )
+    configuration_version: int = Field(ge=1)
+    source_key: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z][a-z0-9_-]{0,63}$",
+    )
+    connection_id: UUID
+    connection_version: int = Field(ge=1)
+    post_external_id: str
+    entry_point: SourceEntryPoint
+    starts_at: datetime
+    ends_at: datetime
+    scheduled_for_at: datetime | None = None
+    page_size: int = Field(default=100, ge=1, le=100)
+    max_pages: int = Field(default=10, ge=1, le=32)
+    max_requests: int = Field(default=10, ge=1, le=100)
+    max_seconds: int = Field(default=90, ge=1, le=90)
+    scan_kind: CollectionScanKind = CollectionScanKind.REFRESH
+
+    @model_validator(mode="after")
+    def validate_comments_snapshot(self) -> Self:
+        if (
+            self.starts_at.utcoffset() != timedelta(0)
+            or self.ends_at.utcoffset() != timedelta(0)
+            or not self.starts_at < self.ends_at <= self.starts_at + timedelta(days=1)
+        ):
+            raise ValueError("comments require an ordered UTC window of at most one day")
+        if self.scheduled_for_at is not None and self.scheduled_for_at.utcoffset() is None:
+            raise ValueError("scheduled_for_at must be timezone-aware")
+        CommentsRequest(
+            source_key=self.source_key,
+            post_external_id=self.post_external_id,
+            page_size=self.page_size,
+        )
+        return self
 
 
 class KeywordDiscoveryRunInput(InputModel):
@@ -40,6 +93,8 @@ class KeywordDiscoveryRunInput(InputModel):
     top_max_pages: int = Field(ge=1, le=20)
     top_max_requests: int = Field(ge=1, le=100)
     max_seconds: int = Field(ge=1, le=90)
+    entry_point: SourceEntryPoint = SourceEntryPoint.MANUAL
+    scheduled_for_at: datetime | None = None
 
     @model_validator(mode="after")
     def validate_search_snapshot(self) -> Self:
@@ -49,6 +104,8 @@ class KeywordDiscoveryRunInput(InputModel):
             or not self.starts_at < self.ends_at <= self.starts_at + timedelta(days=30)
         ):
             raise ValueError("search requires an ordered UTC window of at most 30 days")
+        if self.scheduled_for_at is not None and self.scheduled_for_at.utcoffset() is None:
+            raise ValueError("scheduled_for_at must be timezone-aware")
         queries = (self.primary_query, *self.upstream_aliases)
         for query in queries:
             SearchRequest(source_key=self.source_key, query=query, page_size=self.page_size)
@@ -308,3 +365,20 @@ class ContentRecordDetailView(ContentRecordSummaryView):
     discoveries: list[ContentDiscoveryView]
     version_history: list[ContentVersionHistoryView]
     visibility_history: list[ContentVisibilityView]
+
+
+class AnalysisPostContentView(OutputModel):
+    """Owner-scoped immutable post text exposed to the analysis domain."""
+
+    content_id: UUID
+    content_version_id: UUID
+    title: str | None
+    body: str | None
+
+
+class AnalysisCommentContentView(OutputModel):
+    """Latest immutable text for one comment attached to a post."""
+
+    post_content_id: UUID
+    comment_content_id: UUID
+    text: str

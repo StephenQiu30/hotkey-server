@@ -67,6 +67,15 @@ class IdentityService:
     def session_ttl_seconds(self) -> int:
         return self._settings.session_ttl_seconds
 
+    def initialized_owner_id(self) -> UUID:
+        """Return the singleton owner without retaining a read transaction."""
+        self._session.rollback()
+        owner_id = self._session.scalar(select(IdentityUser.id))
+        self._session.rollback()
+        if owner_id is None:
+            raise ApplicationError("identity_not_initialized")
+        return owner_id
+
     def initialize_owner(
         self,
         *,

@@ -105,8 +105,13 @@ class SourceConnectionVersion(Base):
             name="source_connection_versions_auth_secret_check",
         ),
         CheckConstraint(
-            "jsonb_typeof(configuration) = 'object'",
-            name="source_connection_versions_configuration_check",
+            "jsonb_typeof(config) = 'object'",
+            name="source_connection_versions_config_object_check",
+        ),
+        CheckConstraint(
+            "config - 'feed_url_template' - 'base_url' - 'engines' - 'allowed_hosts' "
+            "= '{}'::jsonb",
+            name="source_connection_versions_config_keys_check",
         ),
         Index(
             "source_connection_versions_created_by_idx",
@@ -119,7 +124,7 @@ class SourceConnectionVersion(Base):
     owner_id: Mapped[UUID]
     auth_kind: Mapped[str] = mapped_column(String(32), server_default=text("'server_credential'"))
     secret_ref: Mapped[str | None] = mapped_column(String(256))
-    configuration: Mapped[dict[str, object]] = mapped_column(
+    config: Mapped[dict[str, object]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb")
     )
     created_by: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id", ondelete="RESTRICT"))

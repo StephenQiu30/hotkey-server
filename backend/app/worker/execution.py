@@ -74,7 +74,15 @@ class JobProcessSupervisor:
         *,
         cancellation_requested: Callable[[], bool],
         stopping: Event,
+        execution_timeout_seconds: float | None = None,
     ) -> IsolatedProcessResult:
+        execution_timeout = (
+            self._execution_timeout_seconds
+            if execution_timeout_seconds is None
+            else execution_timeout_seconds
+        )
+        if execution_timeout <= 0:
+            raise ValueError("process execution timeout must be positive")
         context = multiprocessing.get_context("spawn")
         receiver, sender = context.Pipe(duplex=False)
         process = context.Process(
@@ -84,7 +92,7 @@ class JobProcessSupervisor:
         process.daemon = True
         started_at = time.monotonic()
         startup_deadline = started_at + self._startup_timeout_seconds
-        execution_deadline = startup_deadline + self._execution_timeout_seconds
+        execution_deadline = startup_deadline + execution_timeout
         ready = False
 
         try:

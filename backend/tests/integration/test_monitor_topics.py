@@ -8,6 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
+from connections.presets import SOURCE_PRESETS
+from connections.services import SourcePresetService
 from core.config import Settings
 from core.errors import ApplicationError
 from jobs.schemas import JobAcceptanceInput
@@ -29,7 +31,7 @@ _TRUNCATE = (
     "resource_budget_reservations, resource_budget_windows, resource_budget_policies, "
     "resource_usage_attempts, resource_component_policies, job_stage_attempts, "
     "processed_messages, job_attempts, "
-    "outbox_messages, coverage_windows, "
+    "ai_calls, content_annotations, reports, monitor_schedules, outbox_messages, coverage_windows, "
     "jobs, followed_account_aliases, followed_accounts, "
     "monitor_topic_versions, monitor_topics, "
     "identity_sessions, identity_users"
@@ -351,10 +353,16 @@ def test_topic_lifecycle_is_idempotent_and_resume_requires_ready_source(
     assert resumed.json()["code"] == "topic_not_ready"
     factory = monitor_topic_client.app.state.session_factory
     with factory.begin() as session:
-        session.execute(
-            text("UPDATE monitor_topics SET readiness_status = 'ready' WHERE id = :topic_id"),
-            {"topic_id": created.json()["id"]},
+        owner_id = session.execute(text("SELECT id FROM identity_users")).scalar_one()
+        SourcePresetService(session).apply_in_transaction(
+            owner_id=owner_id, preset=SOURCE_PRESETS["hackernews"]
         )
+    selected = monitor_topic_client.patch(
+        location,
+        headers=_csrf_headers(monitor_topic_client),
+        json={**_topic_payload(), "expected_version": 1, "source_keys": ["hackernews"]},
+    )
+    assert selected.status_code == 200
     resumed_ready = monitor_topic_client.post(
         f"{location}/resume",
         headers=_csrf_headers(monitor_topic_client),

@@ -19,7 +19,7 @@ export async function listMonitorTopics(
   });
 }
 
-/** 创建监控主题 保存本地匹配规则版本; 来源未选定时主题保持暂停。 POST /api/topics */
+/** 创建监控主题 保存本地匹配规则和主题运行设置; 所选来源必须已应用预设并支持搜索。新主题保持暂停, 来源选择会生成停用的搜索调度行。 POST /api/topics */
 export async function createMonitorTopic(
   body: HotKeyAPI.MonitorTopicCreateInput,
   options?: import("@/request").RequestOptions,
@@ -34,7 +34,7 @@ export async function createMonitorTopic(
   });
 }
 
-/** 读取监控主题 按当前会话 owner 读取主题和当前不可变规则版本。 GET /api/topics/${param0} */
+/** 读取监控主题 按当前会话 owner 读取主题、当前不可变规则版本、来源选择和运行设置。 GET /api/topics/${param0} */
 export async function getMonitorTopic(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.getMonitorTopicParams,
@@ -48,7 +48,7 @@ export async function getMonitorTopic(
   });
 }
 
-/** 编辑监控主题 使用 expected_version 防止覆盖并发修改; 规则变化创建新版本。 PATCH /api/topics/${param0} */
+/** 编辑监控主题 使用 expected_version 防止覆盖并发修改; 规则变化创建新版本; 来源与运行设置直接更新主题和搜索调度行。 PATCH /api/topics/${param0} */
 export async function updateMonitorTopic(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.updateMonitorTopicParams,
@@ -67,7 +67,7 @@ export async function updateMonitorTopic(
   });
 }
 
-/** 归档监控主题 归档主题并保留规则历史; 不删除资料; 不假报在途任务已取消。 POST /api/topics/${param0}/archive */
+/** 归档监控主题 归档主题、停用调度并保留规则历史; 不删除资料; 不假报在途任务已取消。 POST /api/topics/${param0}/archive */
 export async function archiveMonitorTopic(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.archiveMonitorTopicParams,
@@ -81,7 +81,7 @@ export async function archiveMonitorTopic(
   });
 }
 
-/** 复制监控主题 复制当前规则为新主题版本 1; 新主题固定暂停且不复制旧任务。 POST /api/topics/${param0}/clone */
+/** 复制监控主题 复制当前规则与运行设置为新主题版本 1; 新主题固定暂停且不复制旧任务。 POST /api/topics/${param0}/clone */
 export async function cloneMonitorTopic(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.cloneMonitorTopicParams,
@@ -109,7 +109,7 @@ export async function pauseMonitorTopic(
   });
 }
 
-/** 恢复监控主题 仅来源已就绪的暂停主题可恢复; 保存主题本身不启动采集。 POST /api/topics/${param0}/resume */
+/** 恢复监控主题 仅至少选择一个已应用搜索来源的暂停主题可恢复; 恢复会启用其调度行。 POST /api/topics/${param0}/resume */
 export async function resumeMonitorTopic(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.resumeMonitorTopicParams,

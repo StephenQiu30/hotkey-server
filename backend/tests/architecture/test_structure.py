@@ -117,6 +117,32 @@ def test_source_adapters_do_not_import_business_or_runtime_layers() -> None:
         assert not {name.split(".")[0] for name in _imports(path)} & forbidden, path
 
 
+def test_ai_adapters_do_not_import_business_or_runtime_layers() -> None:
+    adapters = sorted((APP / "ai" / "adapters").glob("*.py"))
+    assert APP / "ai" / "adapters" / "codex_app_server.py" in adapters
+    forbidden = {
+        "api",
+        "worker",
+        "cli",
+        "jobs",
+        "content",
+        "monitors",
+        "connections",
+        "evidence",
+        "sqlalchemy",
+        "fastapi",
+    }
+    for path in adapters:
+        assert not {name.split(".")[0] for name in _imports(path)} & forbidden, path
+
+
+def test_analysis_reads_content_through_domain_contracts() -> None:
+    imports = _imports(APP / "analysis" / "services.py")
+
+    assert "content.models" not in imports
+    assert "monitors.models" not in imports
+
+
 def test_application_errors_are_registered_without_http_status() -> None:
     error = ApplicationError(next(iter(ERROR_CATEGORIES)))
 

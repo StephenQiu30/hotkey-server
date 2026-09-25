@@ -14,10 +14,13 @@ from confluent_kafka import Message
 from sqlalchemy.orm import Session, sessionmaker
 from structlog.contextvars import bound_contextvars
 
+from analysis.services import AnalysisAnnotateExecutor
 from content.collection import (
     WebPageCollectionExecutor,
     recover_webpage_collection_usage_in_transaction,
 )
+from content.comments_execution import CommentsExecutor
+from content.discovery_execution import KeywordDiscoveryExecutor
 from core.config import (
     JOB_PROCESS_STARTUP_TIMEOUT_SECONDS,
     JOB_PROCESS_TERMINATE_GRACE_SECONDS,
@@ -41,8 +44,9 @@ from jobs.execution import (
     JobProgress,
     MessageReference,
 )
-from jobs.schemas import JobFailureCategory, JobMessage, JobStatus
+from jobs.schemas import JobFailureCategory, JobMessage, JobStage, JobStatus
 from jobs.services import JOB_ACCEPTED_TOPIC, OutboxService
+from reports.services import DailyReportExecutor
 from sources.adapters.firecrawl import FirecrawlAdapter
 from worker.execution import (
     IsolatedProcessResult,
@@ -235,6 +239,7 @@ def create_job_message_handler(
     clock: Clock | None = None,
     supervisor: JobProcessSupervisor | None = None,
     stopping: Event | None = None,
+    job_execution_timeout_seconds: Callable[[str], float] | None = None,
 ) -> MessageHandler:
     def handle(message: Message) -> None:
         body, reference = decode_job_message(message)
@@ -299,6 +304,11 @@ def create_job_message_handler(
                             clock=clock,
                         ),
                         stopping=stopping,
+                        execution_timeout_seconds=(
+                            job_execution_timeout_seconds(body.kind)
+                            if job_execution_timeout_seconds is not None
+                            else None
+                        ),
                     )
                 except JobProcessShutdownError as error:
                     raise StopProcessingMessageError from error
@@ -509,7 +519,7 @@ def _registered_job_handlers(
     *,
     clock: Clock | None = None,
 ) -> dict[str, JobHandler]:
-    executor = WebPageCollectionExecutor(
+    webpage_executor = WebPageCollectionExecutor(
         sessions,
         lease_seconds=settings.job_lease_seconds,
         timeout_seconds=settings.firecrawl_timeout_seconds,
@@ -522,12 +532,65 @@ def _registered_job_handlers(
             clock=clock,
         ),
     )
+    keyword_executor = KeywordDiscoveryExecutor(
+        sessions,
+        lease_seconds=settings.job_lease_seconds,
+        clock=clock,
+    )
+    comments_executor = CommentsExecutor(
+        sessions,
+        lease_seconds=settings.job_lease_seconds,
+        clock=clock,
+    )
+    analysis_executor = AnalysisAnnotateExecutor(sessions, settings, clock=clock)
+    daily_report_executor = DailyReportExecutor(sessions, clock=clock)
 
     def collect_webpage(context: JobExecutionContext) -> JobCompletion:
-        context.lease = executor.execute(context.message, context.lease)
+        context.lease = webpage_executor.execute(context.message, context.lease)
         return JobCompletion(status=JobStatus.SUCCEEDED)
 
-    return {"webpage.collect": collect_webpage}
+    def search_keyword(context: JobExecutionContext) -> JobCompletion:
+        context.lease, completion = keyword_executor.execute(context.message, context.lease)
+        return completion
+
+    def collect_comments(context: JobExecutionContext) -> JobCompletion:
+        context.lease, completion = comments_executor.execute(context.message, context.lease)
+        return completion
+
+    def annotate_content(context: JobExecutionContext) -> JobCompletion:
+        result = analysis_executor.execute(context.message)
+        context.save_checkpoint(
+            context.lease.checkpoint_sequence + 1,
+            {"processed_items": result.processed_items},
+            progress=JobProgress(
+                stage=JobStage.ANALYSIS,
+                items_saved=result.processed_items,
+            ),
+        )
+        return result.completion
+
+    def generate_daily_report(context: JobExecutionContext) -> JobCompletion:
+        result = daily_report_executor.execute(context.message)
+        context.save_checkpoint(
+            context.lease.checkpoint_sequence + 1,
+            {
+                "report_id": str(result.report_id),
+                "report_version": result.report_version,
+            },
+            progress=JobProgress(
+                stage=JobStage.SAVE,
+                items_saved=1,
+            ),
+        )
+        return result.completion
+
+    return {
+        "analysis.annotate": annotate_content,
+        "keyword.search": search_keyword,
+        "report.daily": generate_daily_report,
+        "source.comments": collect_comments,
+        "webpage.collect": collect_webpage,
+    }
 
 
 def run_worker() -> None:
@@ -553,10 +616,13 @@ def run_worker() -> None:
         lease_seconds=settings.job_lease_seconds,
         supervisor=JobProcessSupervisor(
             startup_timeout_seconds=JOB_PROCESS_STARTUP_TIMEOUT_SECONDS,
-            execution_timeout_seconds=settings.job_process_execution_timeout_seconds,
+            execution_timeout_seconds=settings.job_process_execution_timeout_seconds(
+                "webpage.collect"
+            ),
             terminate_grace_seconds=JOB_PROCESS_TERMINATE_GRACE_SECONDS,
         ),
         stopping=stopping,
+        job_execution_timeout_seconds=settings.job_process_execution_timeout_seconds,
     )
 
     def publish_pending() -> None:

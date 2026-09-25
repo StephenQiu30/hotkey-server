@@ -78,7 +78,7 @@ _TABLES = (
     "resource_budget_reservations, resource_budget_windows, resource_budget_policies, "
     "resource_usage_attempts, resource_component_policies, job_stage_attempts, "
     "processed_messages, job_attempts, "
-    "outbox_messages, coverage_windows, "
+    "ai_calls, content_annotations, reports, monitor_schedules, outbox_messages, coverage_windows, "
     "jobs, followed_account_aliases, followed_accounts, "
     "monitor_topic_versions, monitor_topics, identity_sessions, identity_users"
 )
@@ -145,7 +145,7 @@ def webpage_context() -> Iterator[WebPageContext]:
         connection.execute(
             text(
                 "INSERT INTO source_connection_versions "
-                "(connection_id, version, owner_id, auth_kind, secret_ref, configuration, "
+                "(connection_id, version, owner_id, auth_kind, secret_ref, config, "
                 "created_by, created_at) VALUES "
                 "(:id, 1, :owner_id, 'none', NULL, "
                 "CAST(:configuration AS jsonb), :owner_id, :now)"
@@ -1212,7 +1212,7 @@ def test_worker_persists_connection_replacement_failure_without_source_call(
         connection.execute(
             text(
                 "INSERT INTO source_connection_versions "
-                "(connection_id, version, owner_id, auth_kind, secret_ref, configuration, "
+                "(connection_id, version, owner_id, auth_kind, secret_ref, config, "
                 "created_by, created_at) VALUES "
                 "(:id, 2, :owner_id, 'none', NULL, "
                 "CAST(:configuration AS jsonb), :owner_id, :now)"
@@ -1457,7 +1457,7 @@ def test_connection_replacement_cannot_be_attributed_to_old_version(
         connection.execute(
             text(
                 "INSERT INTO source_connection_versions "
-                "(connection_id, version, owner_id, auth_kind, secret_ref, configuration, "
+                "(connection_id, version, owner_id, auth_kind, secret_ref, config, "
                 "created_by, created_at) VALUES "
                 "(:id, 2, :owner_id, 'none', NULL, "
                 '\'{"allowed_hosts":["example.com"]}\'::jsonb, :owner_id, :now)'

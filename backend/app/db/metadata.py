@@ -1,3 +1,5 @@
+from ai.models import AiCall
+from analysis.models import ContentAnnotation
 from connections.models import (
     SourceCapabilityEvidence,
     SourceConnection,
@@ -7,6 +9,7 @@ from content.models import (
     ContentDiscovery,
     ContentObservation,
     ContentRecord,
+    ContentThread,
     ContentVersion,
     ContentVersionRelation,
     ContentVisibilityObservation,
@@ -38,19 +41,24 @@ from jobs.models import (
 from monitors.models import (
     FollowedAccount,
     FollowedAccountAlias,
+    MonitorSchedule,
     MonitorTopic,
     MonitorTopicVersion,
 )
+from reports.models import Report
 
 # Import each domain's models here for runtime mapping and clean-database verification.
 # DDL ownership remains exclusively in database/schema.sql.
 metadata = Base.metadata
 
 __all__ = [
+    "AiCall",
     "CleanupTarget",
+    "ContentAnnotation",
     "ContentDiscovery",
     "ContentObservation",
     "ContentRecord",
+    "ContentThread",
     "ContentVersion",
     "ContentVersionRelation",
     "ContentVisibilityObservation",
@@ -64,12 +72,14 @@ __all__ = [
     "Job",
     "JobAttempt",
     "JobStageAttempt",
+    "MonitorSchedule",
     "MonitorTopic",
     "MonitorTopicVersion",
     "OutboxMessage",
     "ProcessedMessage",
     "ProvenanceManifest",
     "ProvenanceManifestItem",
+    "Report",
     "ResourceBudgetPolicy",
     "ResourceBudgetReservation",
     "ResourceBudgetWindow",

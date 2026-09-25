@@ -21,12 +21,18 @@ from backups.restore import BackupRestoreError, BackupRestoreService
 from backups.services import BackupError, BackupService
 from cli.jobs import jobs_app
 from connections.adapters.local_secrets import BrowserStateError, BrowserStateStore
+from connections.presets import SOURCE_PRESETS
 from connections.schemas import (
     ConnectionEvidenceOutcome,
     ProbeEvidenceInput,
+    SourceConnectionConfig,
     SourceEntryPoint,
 )
-from connections.services import SourceCapabilityEvidenceService, SourceConnectionService
+from connections.services import (
+    SourceCapabilityEvidenceService,
+    SourceConnectionService,
+    SourcePresetService,
+)
 from content.services import ContentObservationCleanup
 from core.config import get_settings
 from core.errors import ApplicationError
@@ -46,12 +52,14 @@ lifecycle_app = typer.Typer(no_args_is_help=True)
 backup_app = typer.Typer(no_args_is_help=True)
 connections_app = typer.Typer(no_args_is_help=True)
 sources_app = typer.Typer(no_args_is_help=True)
+source_preset_app = typer.Typer(no_args_is_help=True)
 app.add_typer(identity_app, name="identity")
 app.add_typer(lifecycle_app, name="lifecycle")
 app.add_typer(backup_app, name="backup")
 app.add_typer(connections_app, name="connections")
 app.add_typer(jobs_app, name="jobs")
 app.add_typer(sources_app, name="sources")
+sources_app.add_typer(source_preset_app, name="preset")
 
 
 @app.callback()
@@ -63,6 +71,53 @@ def main() -> None:
 def version() -> None:
     """Print the backend version."""
     typer.echo(get_settings().app_version)
+
+
+@source_preset_app.command("list")
+def list_source_presets() -> None:
+    """List built-in source presets without reading runtime credentials."""
+    for preset in SOURCE_PRESETS.values():
+        capabilities = ",".join(item.capability.value for item in preset.capabilities)
+        config = SourceConnectionConfig.model_validate(dict(preset.config))
+        allowed_hosts = ",".join(config.allowed_hosts)
+        typer.echo(
+            f"{preset.source_key}; capabilities: {capabilities}; allowed hosts: {allowed_hosts}"
+        )
+
+
+@source_preset_app.command("apply")
+def apply_source_preset(
+    preset_name: Annotated[str, typer.Argument(metavar="PRESET")],
+) -> None:
+    """Atomically apply one built-in source preset for the initialized owner."""
+    preset = SOURCE_PRESETS.get(preset_name)
+    if preset is None:
+        typer.echo(f"Source preset apply failed: unknown preset: {preset_name}", err=True)
+        raise typer.Exit(code=1)
+
+    settings = get_settings()
+    engine = create_db_engine(settings)
+    session = create_session_factory(engine)()
+    try:
+        owner_id = IdentityService(session, settings).initialized_owner_id()
+        with session.begin():
+            applied = SourcePresetService(session).apply_in_transaction(
+                owner_id=owner_id,
+                preset=preset,
+            )
+    except (ApplicationError, ValidationError, ValueError) as error:
+        code = error.code if isinstance(error, ApplicationError) else "invalid_preset"
+        typer.echo(f"Source preset apply failed: {code}", err=True)
+        raise typer.Exit(code=1) from error
+    finally:
+        session.close()
+        engine.dispose()
+    capabilities = ",".join(item.value for item in applied.capabilities)
+    typer.echo(
+        f"Source preset applied: {applied.source_key}; "
+        f"connection: {applied.connection_id}; version: {applied.connection_version}; "
+        f"capabilities: {capabilities}"
+    )
 
 
 @sources_app.command("probe-webpage")

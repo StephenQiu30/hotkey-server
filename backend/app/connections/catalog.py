@@ -19,6 +19,42 @@ class SourceCatalogEntry:
 
 SOURCE_CATALOG = (
     SourceCatalogEntry(
+        source_key="hackernews",
+        display_name="Hacker News",
+        rollout_role="required",
+        product_restricted=False,
+        restricted_next_action="应用来源预设后执行真实持久读取验证。",
+        capabilities=(SourceCapability.SEARCH, SourceCapability.COMMENTS),
+        auth_kind=SourceConnectionAuthKind.NONE,
+    ),
+    SourceCatalogEntry(
+        source_key="google_news",
+        display_name="Google News",
+        rollout_role="required",
+        product_restricted=False,
+        restricted_next_action="应用来源预设后执行真实搜索 RSS 持久读取验证。",
+        capabilities=(SourceCapability.SEARCH,),
+        auth_kind=SourceConnectionAuthKind.NONE,
+    ),
+    SourceCatalogEntry(
+        source_key="news_search",
+        display_name="新闻网页搜索",
+        rollout_role="required",
+        product_restricted=False,
+        restricted_next_action="启动本地 SearXNG 后执行真实新闻搜索持久读取验证。",
+        capabilities=(SourceCapability.SEARCH,),
+        auth_kind=SourceConnectionAuthKind.NONE,
+    ),
+    SourceCatalogEntry(
+        source_key="rss_36kr",
+        display_name="36Kr RSS",
+        rollout_role="required",
+        product_restricted=False,
+        restricted_next_action="应用来源预设后执行真实行业 RSS 持久读取验证。",
+        capabilities=(SourceCapability.SEARCH,),
+        auth_kind=SourceConnectionAuthKind.NONE,
+    ),
+    SourceCatalogEntry(
         source_key="x",
         display_name="X",
         rollout_role="required",

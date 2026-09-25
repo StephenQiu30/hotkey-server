@@ -1,15 +1,103 @@
 from __future__ import annotations
 
+from datetime import time
+from typing import cast
+
 import pytest
+from pydantic import ValidationError
+from sqlalchemy import ForeignKeyConstraint, PrimaryKeyConstraint, Table, UniqueConstraint
 from sqlalchemy.orm import Session
 
 from core.errors import ApplicationError
-from monitors.schemas import MonitorTopicPreviewInput
+from monitors.models import MonitorSchedule, MonitorTopic
+from monitors.schemas import MonitorTopicCreateInput, MonitorTopicPreviewInput
 from monitors.services import (
     MonitorTopicService,
     evaluate_monitor_rules,
     normalize_monitor_rules,
 )
+
+
+def test_topic_settings_default_to_half_hour_shanghai_daily_report() -> None:
+    command = MonitorTopicCreateInput(
+        name="品牌动态",
+        match_any=["品牌"],
+        match_all=[],
+        exclude=[],
+    )
+
+    assert command.source_keys == []
+    assert command.collection_interval_seconds == 1800
+    assert command.report_time == time(hour=9)
+    assert command.weekly_report_enabled is False
+    assert command.notification_target_names == []
+
+
+@pytest.mark.parametrize("interval_seconds", [599, 86401])
+def test_topic_settings_reject_out_of_range_collection_interval(
+    interval_seconds: int,
+) -> None:
+    with pytest.raises(ValidationError):
+        MonitorTopicCreateInput(
+            name="品牌动态",
+            match_any=["品牌"],
+            match_all=[],
+            exclude=[],
+            collection_interval_seconds=interval_seconds,
+        )
+
+
+def test_topic_settings_reject_invalid_source_keys_and_target_limits() -> None:
+    with pytest.raises(ValidationError):
+        MonitorTopicCreateInput(
+            name="品牌动态",
+            match_any=["品牌"],
+            match_all=[],
+            exclude=[],
+            source_keys=["Not Valid"],
+        )
+
+    with pytest.raises(ValidationError):
+        MonitorTopicCreateInput(
+            name="品牌动态",
+            match_any=["品牌"],
+            match_all=[],
+            exclude=[],
+            notification_target_names=[f"目标 {index}" for index in range(21)],
+        )
+
+    with pytest.raises(ValidationError):
+        MonitorTopicCreateInput(
+            name="品牌动态",
+            match_any=["品牌"],
+            match_all=[],
+            exclude=[],
+            report_time="09:00+08:00",  # type: ignore[arg-type]
+        )
+
+
+def test_monitor_schedule_uses_owner_scoped_topic_identity_and_schedule_key() -> None:
+    schedule_constraints = cast(Table, MonitorSchedule.__table__).constraints
+    topic_constraints = cast(Table, MonitorTopic.__table__).constraints
+
+    assert any(
+        isinstance(constraint, UniqueConstraint)
+        and constraint.name == "monitor_topics_owner_id_key"
+        for constraint in topic_constraints
+    )
+    assert any(
+        isinstance(constraint, ForeignKeyConstraint)
+        and constraint.name == "monitor_schedules_owner_topic_fkey"
+        and tuple(constraint.column_keys) == ("owner_id", "topic_id")
+        for constraint in schedule_constraints
+    )
+    assert any(
+        isinstance(constraint, PrimaryKeyConstraint)
+        and constraint.name == "monitor_schedules_owner_topic_source_capability_key"
+        and tuple(column.name for column in constraint.columns)
+        == ("owner_id", "topic_id", "source_key", "capability")
+        for constraint in schedule_constraints
+    )
 
 
 @pytest.mark.parametrize(

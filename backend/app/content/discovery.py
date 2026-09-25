@@ -291,6 +291,7 @@ def plan_keyword_discovery(run: KeywordDiscoveryRunInput) -> tuple[JobAcceptance
                     operation_id=uuid5(run.run_id, f"{sort.value}:{index}"),
                     kind="keyword.search",
                     observation=observation,
+                    scheduled_for_at=run.scheduled_for_at,
                     scope={
                         "run_id": str(run.run_id),
                         "connection_id": str(run.connection_id),
@@ -308,10 +309,49 @@ def plan_keyword_discovery(run: KeywordDiscoveryRunInput) -> tuple[JobAcceptance
                         "max_seconds": run.max_seconds,
                         "relevance_filter_position": "local",
                         "scan_kind": CollectionScanKind.NEW_SCAN.value,
+                        "entry_point": run.entry_point.value,
                     },
                 )
             )
     return tuple(jobs)
+
+
+def plan_scheduled_keyword_discovery(run: KeywordDiscoveryRunInput) -> JobAcceptanceInput:
+    """Build the single latest-search job represented by one collection schedule window."""
+    if run.entry_point is not SourceEntryPoint.SCHEDULED:
+        raise ValueError("scheduled discovery requires the scheduled entry point")
+    observation = JobObservationContext(
+        configuration_ref=run.configuration_ref,
+        configuration_version=run.configuration_version,
+        source_key=run.source_key,
+        source_capability=SourceCapability.SEARCH,
+    )
+    query = run.primary_query
+    return JobAcceptanceInput(
+        operation_id=run.run_id,
+        kind="keyword.search",
+        observation=observation,
+        scheduled_for_at=run.scheduled_for_at,
+        scope={
+            "run_id": str(run.run_id),
+            "connection_id": str(run.connection_id),
+            "connection_version": run.connection_version,
+            "query": query,
+            "query_role": "primary",
+            "sort_key": SourceSort.LATEST.value,
+            "target_hash": _target_hash(run.configuration_ref, query).hex(),
+            "rule_version": run.configuration_version,
+            "starts_at": run.starts_at.isoformat(),
+            "ends_at": run.ends_at.isoformat(),
+            "page_size": run.page_size,
+            "max_pages": run.latest_max_pages,
+            "max_requests": run.latest_max_requests,
+            "max_seconds": run.max_seconds,
+            "relevance_filter_position": "local",
+            "scan_kind": CollectionScanKind.NEW_SCAN.value,
+            "entry_point": run.entry_point.value,
+        },
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,13 +415,20 @@ class KeywordDiscoveryPageCommitService:
             self._session.rollback()
             raise ValueError("keyword page does not match the accepted search scope")
         query = configuration.scope.get("query")
+        entry_point_value = configuration.scope.get("entry_point")
         if (
             not isinstance(query, str)
             or _target_hash(configuration.observation.configuration_ref, query)
             != window.target_hash
+            or not isinstance(entry_point_value, str)
         ):
             self._session.rollback()
             raise ValueError("keyword query hash does not match the accepted scope")
+        try:
+            entry_point = SourceEntryPoint(entry_point_value)
+        except ValueError:
+            self._session.rollback()
+            raise ValueError("keyword entry point is invalid") from None
         try:
             topic_id = _topic_id_from_configuration_ref(configuration.observation.configuration_ref)
         except ValueError:
@@ -397,8 +444,10 @@ class KeywordDiscoveryPageCommitService:
                 self._session.rollback()
                 raise ValueError("keyword search page can contain only posts")
             if (
-                item.published_at is None
-                or not window.starts_at <= item.published_at < window.ends_at
+                (
+                    item.published_at is not None
+                    and not window.starts_at <= item.published_at < window.ends_at
+                )
                 or item.external_id in seen
             ):
                 filtered_items += 1
@@ -463,7 +512,7 @@ class KeywordDiscoveryPageCommitService:
                         source_operation_id=uuid5(page_operation_id, item.external_id),
                         connection_id=connection_id,
                         connection_version=connection_version,
-                        entry_point=SourceEntryPoint.MANUAL,
+                        entry_point=entry_point,
                         component_name=f"{window.source_key}.search",
                         component_version=page.adapter_version or "unknown",
                         admission=admission,

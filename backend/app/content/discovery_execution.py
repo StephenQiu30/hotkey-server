@@ -7,6 +7,8 @@ from uuid import UUID, uuid5
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from connections.schemas import SourceConnectionConfig
+from connections.services import require_source_connection_version
 from content.discovery import KeywordDiscoveryPageCommitService, KeywordRequestMeter
 from core.errors import ApplicationError
 from evidence.services import RetentionPolicyUnavailableError, SourceAccessUnavailableError
@@ -27,6 +29,9 @@ from jobs.services import (
     JobExecutionConfiguration,
     load_job_execution_configuration,
 )
+from sources.adapters.hackernews import HackerNewsAdapter
+from sources.adapters.rss import RssSourceAdapter
+from sources.adapters.web_search import WebSearchAdapter
 from sources.contracts import (
     SearchRequest,
     SourceAdapter,
@@ -41,6 +46,60 @@ type SearchAdapterFactory = Callable[
 ]
 
 
+class UnsupportedSearchSourceError(ValueError):
+    """The accepted source key has no registered keyword-search adapter."""
+
+
+def build_search_adapter_factory(
+    source_key: str,
+    config: SourceConnectionConfig,
+) -> SearchAdapterFactory:
+    allowed_hosts = frozenset(config.allowed_hosts)
+    if not allowed_hosts:
+        raise ValueError("search adapter requires allowed_hosts")
+    if source_key == "hackernews":
+        if config.base_url is None:
+            raise ValueError("Hacker News adapter requires base_url")
+        base_url = str(config.base_url)
+        return lambda before_request, cancelled, max_requests, max_seconds: HackerNewsAdapter(
+            base_url=base_url,
+            allowed_hosts=allowed_hosts,
+            before_request=before_request,
+            cancelled=cancelled,
+            max_requests=max_requests,
+            max_seconds=max_seconds,
+        )
+    if source_key == "google_news" or source_key.startswith("rss_"):
+        if config.feed_url_template is None:
+            raise ValueError("RSS adapter requires feed_url_template")
+        feed_url_template = config.feed_url_template
+        return lambda before_request, cancelled, max_requests, max_seconds: RssSourceAdapter(
+            source_key=source_key,
+            feed_url_template=feed_url_template,
+            allowed_hosts=allowed_hosts,
+            before_request=before_request,
+            cancelled=cancelled,
+            max_requests=max_requests,
+            max_seconds=max_seconds,
+        )
+    if source_key == "news_search":
+        if config.base_url is None:
+            raise ValueError("web search adapter requires base_url")
+        base_url = str(config.base_url)
+        engines = ",".join(config.engines)
+        return lambda before_request, cancelled, max_requests, max_seconds: WebSearchAdapter(
+            source_key=source_key,
+            base_url=base_url,
+            engines=engines,
+            allowed_hosts=allowed_hosts,
+            before_request=before_request,
+            cancelled=cancelled,
+            max_requests=max_requests,
+            max_seconds=max_seconds,
+        )
+    raise UnsupportedSearchSourceError(source_key)
+
+
 class KeywordDiscoveryExecutor:
     """Run an accepted search against a caller-supplied, bounded source adapter."""
 
@@ -49,8 +108,8 @@ class KeywordDiscoveryExecutor:
         sessions: sessionmaker[Session],
         *,
         lease_seconds: int,
-        component_key: str,
-        adapter_factory: SearchAdapterFactory,
+        component_key: str | None = None,
+        adapter_factory: SearchAdapterFactory | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._sessions = sessions
@@ -85,6 +144,7 @@ class KeywordDiscoveryExecutor:
                 "max_seconds",
                 "relevance_filter_position",
                 "scan_kind",
+                "entry_point",
             }:
                 raise ValueError("search scope fields are incomplete")
             UUID(self._required_str(scope, "run_id"))
@@ -117,6 +177,7 @@ class KeywordDiscoveryExecutor:
                 or configuration.started_at is None
                 or configuration.started_at.utcoffset() is None
                 or query_role not in {"primary", "upstream_alias"}
+                or scope["entry_point"] not in {"manual", "scheduled"}
                 or window.rule_version != configuration.observation.configuration_version
                 or target_hash
                 != hashlib.sha256(
@@ -138,6 +199,28 @@ class KeywordDiscoveryExecutor:
                 "search_scope_invalid",
                 JobFailureCategory.CONFIGURATION_UNAVAILABLE,
                 "重新提交有界的关键词搜索任务",
+            ) from error
+
+        try:
+            adapter_factory = self._adapter_factory or self._configured_adapter_factory(
+                owner_id=configuration.owner_id,
+                source_key=source_key,
+                connection_id=connection_id,
+                connection_version=connection_version,
+            )
+        except UnsupportedSearchSourceError as error:
+            raise self._failure(
+                "search_source_key_unsupported",
+                JobFailureCategory.CONFIGURATION_UNAVAILABLE,
+                "选择已注册关键词搜索适配器的来源",
+                manual_retry_allowed=False,
+            ) from error
+        except (ApplicationError, RuntimeError, ValueError) as error:
+            raise self._failure(
+                "search_adapter_config_invalid",
+                JobFailureCategory.CONFIGURATION_UNAVAILABLE,
+                "修复当前连接版本的关键词搜索配置后重新提交",
+                manual_retry_allowed=False,
             ) from error
 
         assert configuration.started_at is not None
@@ -164,13 +247,13 @@ class KeywordDiscoveryExecutor:
                 source_key=window.source_key,
                 connection_id=connection_id,
                 connection_version=connection_version,
-                component_key=self._component_key,
+                component_key=self._component_key or f"collector.{source_key}",
                 max_requests=max_requests,
                 deadline_at=deadline_at,
                 lease_seconds=self._lease_seconds,
                 clock=self._clock,
             )
-            adapter = self._adapter_factory(
+            adapter = adapter_factory(
                 meter.before_request,
                 lambda: execution.cancellation_requested(lease),
                 max_requests,
@@ -343,6 +426,29 @@ class KeywordDiscoveryExecutor:
                         can_retry=can_retry,
                     )
                 return lease, self._partial(reason)
+
+    def _configured_adapter_factory(
+        self,
+        *,
+        owner_id: UUID,
+        source_key: str,
+        connection_id: UUID,
+        connection_version: int,
+    ) -> SearchAdapterFactory:
+        if not (
+            source_key in {"hackernews", "google_news", "news_search"}
+            or source_key.startswith("rss_")
+        ):
+            raise UnsupportedSearchSourceError(source_key)
+        with self._sessions() as session, session.begin():
+            config = require_source_connection_version(
+                session,
+                owner_id=owner_id,
+                source_key=source_key,
+                connection_id=connection_id,
+                connection_version=connection_version,
+            )
+        return build_search_adapter_factory(source_key, config)
 
     def _stop_if_cancelled(
         self,

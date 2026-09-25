@@ -71,7 +71,10 @@ def list_monitor_topics(
     response_model=MonitorTopicView,
     status_code=status.HTTP_201_CREATED,
     summary="创建监控主题",
-    description="保存本地匹配规则版本; 来源未选定时主题保持暂停。",
+    description=(
+        "保存本地匹配规则和主题运行设置; 所选来源必须已应用预设并支持搜索。"
+        "新主题保持暂停, 来源选择会生成停用的搜索调度行。"
+    ),
     responses=_WRITE_RESPONSES,
 )
 def create_monitor_topic(
@@ -112,7 +115,7 @@ def preview_monitor_topic(
     response_model=MonitorTopicView,
     status_code=status.HTTP_200_OK,
     summary="读取监控主题",
-    description="按当前会话 owner 读取主题和当前不可变规则版本。",
+    description="按当前会话 owner 读取主题、当前不可变规则版本、来源选择和运行设置。",
     responses=_READ_RESPONSES,
 )
 def get_monitor_topic(
@@ -132,7 +135,10 @@ def get_monitor_topic(
     response_model=MonitorTopicView,
     status_code=status.HTTP_200_OK,
     summary="编辑监控主题",
-    description="使用 expected_version 防止覆盖并发修改; 规则变化创建新版本。",
+    description=(
+        "使用 expected_version 防止覆盖并发修改; 规则变化创建新版本; "
+        "来源与运行设置直接更新主题和搜索调度行。"
+    ),
     responses=_WRITE_RESPONSES,
 )
 def update_monitor_topic(
@@ -157,7 +163,7 @@ def update_monitor_topic(
     response_model=MonitorTopicView,
     status_code=status.HTTP_201_CREATED,
     summary="复制监控主题",
-    description="复制当前规则为新主题版本 1; 新主题固定暂停且不复制旧任务。",
+    description="复制当前规则与运行设置为新主题版本 1; 新主题固定暂停且不复制旧任务。",
     responses=_WRITE_RESPONSES,
 )
 def clone_monitor_topic(
@@ -198,7 +204,7 @@ def pause_monitor_topic(
     response_model=MonitorTopicView,
     status_code=status.HTTP_200_OK,
     summary="恢复监控主题",
-    description="仅来源已就绪的暂停主题可恢复; 保存主题本身不启动采集。",
+    description="仅至少选择一个已应用搜索来源的暂停主题可恢复; 恢复会启用其调度行。",
     responses=_WRITE_RESPONSES,
 )
 def resume_monitor_topic(
@@ -218,7 +224,7 @@ def resume_monitor_topic(
     response_model=MonitorTopicView,
     status_code=status.HTTP_200_OK,
     summary="归档监控主题",
-    description="归档主题并保留规则历史; 不删除资料; 不假报在途任务已取消。",
+    description="归档主题、停用调度并保留规则历史; 不删除资料; 不假报在途任务已取消。",
     responses=_WRITE_RESPONSES,
 )
 def archive_monitor_topic(

@@ -53,10 +53,22 @@ CREATE TABLE monitor_topics (
                 'pending_source_readiness',
                 'ready'
             )
-        ),
+    ),
     current_version INTEGER NOT NULL DEFAULT 1 CHECK (current_version >= 1),
+    collection_interval_seconds INTEGER NOT NULL DEFAULT 1800 CHECK (
+        collection_interval_seconds BETWEEN 600 AND 86400
+    ),
+    report_time TIME WITHOUT TIME ZONE NOT NULL DEFAULT '09:00:00',
+    report_timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai' CHECK (
+        report_timezone = 'Asia/Shanghai'
+    ),
+    weekly_report_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    notification_target_names JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (
+        jsonb_typeof(notification_target_names) = 'array'
+    ),
     created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at)
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT monitor_topics_owner_id_key UNIQUE (owner_id, id)
 );
 
 CREATE INDEX monitor_topics_owner_updated_idx ON monitor_topics (owner_id, updated_at);
@@ -74,6 +86,37 @@ CREATE TABLE monitor_topic_versions (
 
 CREATE INDEX monitor_topic_versions_created_by_idx
     ON monitor_topic_versions (created_by);
+
+CREATE TABLE monitor_schedules (
+    owner_id UUID NOT NULL,
+    topic_id UUID NOT NULL,
+    source_key VARCHAR(64) NOT NULL CHECK (
+        source_key ~ '^[a-z][a-z0-9_-]{0,63}$'
+    ),
+    capability VARCHAR(32) NOT NULL CHECK (
+        capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content')
+    ),
+    interval_seconds INTEGER NOT NULL CHECK (
+        interval_seconds BETWEEN 600 AND 86400
+    ),
+    next_run_at TIMESTAMPTZ NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    last_job_id UUID,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT monitor_schedules_owner_topic_source_capability_key PRIMARY KEY (
+        owner_id,
+        topic_id,
+        source_key,
+        capability
+    ),
+    CONSTRAINT monitor_schedules_owner_topic_fkey
+        FOREIGN KEY (owner_id, topic_id)
+        REFERENCES monitor_topics (owner_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX monitor_schedules_enabled_next_run_idx
+    ON monitor_schedules (enabled, next_run_at);
 
 CREATE TABLE followed_accounts (
     id UUID PRIMARY KEY,
@@ -130,9 +173,7 @@ CREATE TABLE source_connection_versions (
         auth_kind IN ('none', 'server_credential', 'browser_state')
     ),
     secret_ref VARCHAR(256),
-    configuration JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (
-        jsonb_typeof(configuration) = 'object'
-    ),
+    config JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_by UUID NOT NULL REFERENCES identity_users (id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (connection_id, version),
@@ -151,6 +192,13 @@ CREATE TABLE source_connection_versions (
                 || replace(connection_id::text, '-', '') || '/'
                 || version::text
         )
+    ),
+    CONSTRAINT source_connection_versions_config_object_check CHECK (
+        jsonb_typeof(config) = 'object'
+    ),
+    CONSTRAINT source_connection_versions_config_keys_check CHECK (
+        config - 'feed_url_template' - 'base_url' - 'engines' - 'allowed_hosts'
+            = '{}'::jsonb
     ),
     CONSTRAINT source_connection_versions_owner_connection_version_key
         UNIQUE (owner_id, connection_id, version),
@@ -701,6 +749,36 @@ CREATE TABLE jobs (
 
 CREATE INDEX jobs_runnable_idx ON jobs (status, lease_expires_at);
 
+CREATE TABLE ai_calls (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    job_id UUID,
+    purpose VARCHAR(128) NOT NULL CHECK (purpose <> ''),
+    provider VARCHAR(64) NOT NULL CHECK (provider <> ''),
+    model VARCHAR(128) NOT NULL CHECK (model <> ''),
+    prompt_version VARCHAR(128) NOT NULL CHECK (prompt_version <> ''),
+    input_fingerprint BYTEA NOT NULL CHECK (octet_length(input_fingerprint) = 32),
+    status VARCHAR(16) NOT NULL CHECK (status IN ('succeeded', 'failed')),
+    failure_code VARCHAR(32) CHECK (
+        failure_code IN ('rate_limited', 'unavailable', 'timeout', 'invalid_output', 'failed')
+    ),
+    input_tokens BIGINT NOT NULL CHECK (input_tokens >= 0),
+    cached_input_tokens BIGINT NOT NULL CHECK (cached_input_tokens >= 0),
+    output_tokens BIGINT NOT NULL CHECK (output_tokens >= 0),
+    reasoning_output_tokens BIGINT NOT NULL CHECK (reasoning_output_tokens >= 0),
+    duration_ms BIGINT NOT NULL CHECK (duration_ms >= 0),
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT ai_calls_owner_id_key UNIQUE (owner_id, id),
+    CONSTRAINT ai_calls_owner_job_fkey
+        FOREIGN KEY (owner_id, job_id) REFERENCES jobs (owner_id, id),
+    CONSTRAINT ai_calls_status_failure_check CHECK (
+        (status = 'succeeded' AND failure_code IS NULL)
+        OR (status = 'failed' AND failure_code IS NOT NULL)
+    )
+);
+
+CREATE INDEX ai_calls_owner_created_idx ON ai_calls (owner_id, created_at);
+
 CREATE TABLE coverage_windows (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
@@ -1048,6 +1126,106 @@ CREATE INDEX content_visibility_observations_latest_idx
         received_at,
         id
     );
+
+CREATE TABLE content_annotations (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    content_id UUID NOT NULL,
+    content_version_id UUID NOT NULL,
+    topic_id UUID NOT NULL,
+    topic_rule_version INTEGER NOT NULL CHECK (topic_rule_version >= 1),
+    prompt_version VARCHAR(128) NOT NULL CHECK (prompt_version <> ''),
+    relevant BOOLEAN,
+    relevance_reason VARCHAR(500),
+    sentiment VARCHAR(16) CHECK (
+        sentiment IS NULL OR sentiment IN ('positive', 'neutral', 'negative')
+    ),
+    summary VARCHAR(60),
+    viewpoints JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (
+        jsonb_typeof(viewpoints) = 'array'
+        AND jsonb_array_length(viewpoints) <= 5
+    ),
+    ai_call_id UUID,
+    status VARCHAR(16) NOT NULL CHECK (
+        status IN ('annotated', 'unanalyzed')
+    ),
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT content_annotations_owner_id_key UNIQUE (owner_id, id),
+    CONSTRAINT content_annotations_owner_version_topic_rule_prompt_key
+        UNIQUE (
+            owner_id,
+            content_version_id,
+            topic_id,
+            topic_rule_version,
+            prompt_version
+        ),
+    CONSTRAINT content_annotations_owner_content_version_fkey
+        FOREIGN KEY (owner_id, content_id, content_version_id)
+        REFERENCES content_versions (owner_id, content_id, id) ON DELETE CASCADE,
+    CONSTRAINT content_annotations_owner_topic_fkey
+        FOREIGN KEY (owner_id, topic_id)
+        REFERENCES monitor_topics (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT content_annotations_topic_rule_version_fkey
+        FOREIGN KEY (topic_id, topic_rule_version)
+        REFERENCES monitor_topic_versions (topic_id, version) ON DELETE CASCADE,
+    CONSTRAINT content_annotations_owner_ai_call_fkey
+        FOREIGN KEY (owner_id, ai_call_id)
+        REFERENCES ai_calls (owner_id, id),
+    CONSTRAINT content_annotations_output_status_check CHECK (
+        (
+            status = 'annotated'
+            AND relevant IS NOT NULL
+            AND relevance_reason IS NOT NULL
+            AND summary IS NOT NULL
+            AND (
+                (relevant AND sentiment IS NOT NULL)
+                OR (NOT relevant AND sentiment IS NULL)
+            )
+        )
+        OR (
+            status = 'unanalyzed'
+            AND relevant IS NULL
+            AND relevance_reason IS NULL
+            AND sentiment IS NULL
+            AND summary IS NULL
+            AND viewpoints = '[]'::jsonb
+        )
+    )
+);
+
+CREATE INDEX content_annotations_topic_created_idx
+    ON content_annotations (owner_id, topic_id, created_at);
+
+CREATE INDEX content_annotations_content_idx
+    ON content_annotations (owner_id, content_id, created_at);
+
+CREATE TABLE reports (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    topic_id UUID NOT NULL,
+    kind VARCHAR(16) NOT NULL CHECK (kind IN ('daily', 'weekly')),
+    window_start TIMESTAMPTZ NOT NULL,
+    window_end TIMESTAMPTZ NOT NULL,
+    cutoff_at TIMESTAMPTZ NOT NULL,
+    version INTEGER NOT NULL CHECK (version >= 1),
+    status VARCHAR(16) NOT NULL CHECK (status IN ('draft', 'final')),
+    generator VARCHAR(16) NOT NULL CHECK (generator IN ('template', 'model')),
+    input_manifest JSONB NOT NULL CHECK (jsonb_typeof(input_manifest) = 'object'),
+    data JSONB NOT NULL CHECK (jsonb_typeof(data) = 'object'),
+    body_markdown TEXT NOT NULL CHECK (body_markdown <> ''),
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT reports_owner_topic_kind_window_version_key
+        UNIQUE (owner_id, topic_id, kind, window_start, version),
+    CONSTRAINT reports_owner_topic_fkey
+        FOREIGN KEY (owner_id, topic_id)
+        REFERENCES monitor_topics (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT reports_window_check CHECK (window_start < window_end),
+    CONSTRAINT reports_cutoff_check CHECK (cutoff_at >= window_end),
+    CONSTRAINT reports_created_cutoff_check CHECK (created_at >= cutoff_at)
+);
+
+CREATE INDEX reports_owner_topic_window_idx
+    ON reports (owner_id, topic_id, kind, window_start, status);
 
 CREATE TABLE provenance_manifests (
     id UUID PRIMARY KEY,

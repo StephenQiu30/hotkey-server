@@ -196,6 +196,17 @@ class SourceAccessPolicyService:
         owner_id: UUID,
         command: SourceAccessPolicyInput,
     ) -> SourceAccessPolicyView:
+        self._session.rollback()
+        with self._session.begin():
+            return self.save_in_transaction(owner_id=owner_id, command=command)
+
+    def save_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: SourceAccessPolicyInput,
+    ) -> SourceAccessPolicyView:
+        """Save one access policy without ending the caller's transaction."""
         now = self._clock()
         if command.enabled and (
             command.reviewed_at is None
@@ -218,33 +229,79 @@ class SourceAccessPolicyService:
             "review_expires_at": command.review_expires_at,
             "updated_at": now,
         }
-        statement = (
-            insert(SourceAccessPolicy)
-            .values(
-                id=uuid4(),
-                owner_id=owner_id,
-                source_key=command.source_key,
-                capability=command.capability.value,
-                policy_version=1,
-                created_at=now,
-                **values,
-            )
-            .on_conflict_do_update(
+        statement = insert(SourceAccessPolicy).values(
+            id=uuid4(),
+            owner_id=owner_id,
+            source_key=command.source_key,
+            capability=command.capability.value,
+            policy_version=1,
+            created_at=now,
+            **values,
+        )
+        policy_id = self._session.scalar(
+            statement.on_conflict_do_update(
                 constraint="source_access_policies_owner_source_capability_key",
                 set_={
                     **values,
                     "policy_version": SourceAccessPolicy.policy_version + 1,
                 },
+                where=or_(
+                    SourceAccessPolicy.status != statement.excluded.status,
+                    SourceAccessPolicy.enabled != statement.excluded.enabled,
+                    SourceAccessPolicy.access_basis.is_distinct_from(
+                        statement.excluded.access_basis
+                    ),
+                    SourceAccessPolicy.terms_reference.is_distinct_from(
+                        statement.excluded.terms_reference
+                    ),
+                    SourceAccessPolicy.processing_purpose
+                    != statement.excluded.processing_purpose,
+                    SourceAccessPolicy.component_name.is_distinct_from(
+                        statement.excluded.component_name
+                    ),
+                    SourceAccessPolicy.component_version.is_distinct_from(
+                        statement.excluded.component_version
+                    ),
+                    SourceAccessPolicy.component_license.is_distinct_from(
+                        statement.excluded.component_license
+                    ),
+                    SourceAccessPolicy.field_purposes.is_distinct_from(
+                        statement.excluded.field_purposes
+                    ),
+                    SourceAccessPolicy.reviewed_at.is_distinct_from(
+                        statement.excluded.reviewed_at
+                    ),
+                    SourceAccessPolicy.review_expires_at.is_distinct_from(
+                        statement.excluded.review_expires_at
+                    ),
+                ),
             )
-            .returning(SourceAccessPolicy)
+            .returning(SourceAccessPolicy.id)
         )
-        self._session.rollback()
-        with self._session.begin():
-            model = self._session.scalar(statement)
-            if model is None:
-                raise RuntimeError("source access policy was not returned")
-            view = self._view(model)
-        return view
+        model = (
+            self._session.get(SourceAccessPolicy, policy_id)
+            if policy_id is not None
+            else self._session.scalar(
+                select(SourceAccessPolicy).where(
+                    SourceAccessPolicy.owner_id == owner_id,
+                    SourceAccessPolicy.source_key == command.source_key,
+                    SourceAccessPolicy.capability == command.capability.value,
+                )
+            )
+        )
+        if model is None:
+            raise RuntimeError("saved source access policy is not visible")
+        return self._view(model)
+
+    def matches_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: SourceAccessPolicyInput,
+    ) -> bool:
+        """Report whether the persisted policy already equals the requested policy."""
+        model = self._find(owner_id, command.source_key, command.capability)
+        return model is not None and self._matches_command(model, command)
 
     def get(
         self,
@@ -410,6 +467,25 @@ class SourceAccessPolicyService:
         )
 
     @staticmethod
+    def _matches_command(
+        model: SourceAccessPolicy, command: SourceAccessPolicyInput
+    ) -> bool:
+        return (
+            model.status == command.status.value
+            and model.enabled == command.enabled
+            and model.access_basis
+            == (command.access_basis.value if command.access_basis else None)
+            and model.terms_reference == command.terms_reference
+            and model.processing_purpose == command.processing_purpose
+            and model.component_name == command.component_name
+            and model.component_version == command.component_version
+            and model.component_license == command.component_license
+            and model.field_purposes == command.field_purposes
+            and model.reviewed_at == command.reviewed_at
+            and model.review_expires_at == command.review_expires_at
+        )
+
+    @staticmethod
     def _view(model: SourceAccessPolicy) -> SourceAccessPolicyView:
         return SourceAccessPolicyView(
             id=model.id,
@@ -444,67 +520,109 @@ class RetentionPolicyService:
         owner_id: UUID,
         command: RetentionPolicyInput,
     ) -> RetentionPolicyView:
-        now = self._clock()
-        effective_days = effective_retention_days(command)
         self._session.rollback()
         with self._session.begin():
-            source_policy = self._session.scalar(
-                select(SourceAccessPolicy)
-                .where(
-                    SourceAccessPolicy.owner_id == owner_id,
-                    SourceAccessPolicy.id == command.source_policy_id,
-                )
-                .with_for_update()
+            return self.save_in_transaction(owner_id=owner_id, command=command)
+
+    def save_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: RetentionPolicyInput,
+    ) -> RetentionPolicyView:
+        """Save one retention policy without ending the caller's transaction."""
+        now = self._clock()
+        effective_days = effective_retention_days(command)
+        source_policy = self._session.scalar(
+            select(SourceAccessPolicy)
+            .where(
+                SourceAccessPolicy.owner_id == owner_id,
+                SourceAccessPolicy.id == command.source_policy_id,
             )
-            if source_policy is None:
-                raise SourceAccessUnavailableError("source access policy is unavailable")
-            model = self._session.scalar(
-                select(RetentionPolicy)
-                .where(
-                    RetentionPolicy.owner_id == owner_id,
-                    RetentionPolicy.source_policy_id == command.source_policy_id,
-                    RetentionPolicy.data_class == command.data_class.value,
-                )
-                .with_for_update()
+            .with_for_update()
+        )
+        if source_policy is None:
+            raise SourceAccessUnavailableError("source access policy is unavailable")
+        model = self._session.scalar(
+            select(RetentionPolicy)
+            .where(
+                RetentionPolicy.owner_id == owner_id,
+                RetentionPolicy.source_policy_id == command.source_policy_id,
+                RetentionPolicy.data_class == command.data_class.value,
             )
-            previous_effective_days: int | None = None
-            if model is None:
-                model = RetentionPolicy(
-                    id=uuid4(),
-                    owner_id=owner_id,
-                    source_policy_id=command.source_policy_id,
-                    source_policy_version=source_policy.policy_version,
-                    data_class=command.data_class.value,
-                    requested_days=command.requested_days,
-                    source_max_days=command.source_max_days,
-                    effective_days=effective_days,
-                    policy_version=1,
-                    created_at=now,
-                    updated_at=now,
-                )
-                self._session.add(model)
-            else:
-                previous_effective_days = model.effective_days
-                model.source_policy_version = source_policy.policy_version
-                model.requested_days = command.requested_days
-                model.source_max_days = command.source_max_days
-                model.effective_days = effective_days
-                model.policy_version += 1
-                model.updated_at = now
-            self._session.flush()
-            if previous_effective_days is not None and effective_days < previous_effective_days:
-                resources = self._session.scalars(
-                    select(EvidenceResource)
-                    .where(EvidenceResource.retention_policy_id == model.id)
-                    .with_for_update()
-                ).all()
-                for resource in resources:
-                    stricter_expiry = resource.collected_at + timedelta(days=effective_days)
-                    if stricter_expiry < resource.expires_at:
-                        resource.expires_at = stricter_expiry
-                        resource.retention_policy_version = model.policy_version
-            view = self._view(model)
-        return view
+            .with_for_update()
+        )
+        previous_effective_days: int | None = None
+        if model is None:
+            model = RetentionPolicy(
+                id=uuid4(),
+                owner_id=owner_id,
+                source_policy_id=command.source_policy_id,
+                source_policy_version=source_policy.policy_version,
+                data_class=command.data_class.value,
+                requested_days=command.requested_days,
+                source_max_days=command.source_max_days,
+                effective_days=effective_days,
+                policy_version=1,
+                created_at=now,
+                updated_at=now,
+            )
+            self._session.add(model)
+        elif (
+            model.source_policy_version != source_policy.policy_version
+            or model.requested_days != command.requested_days
+            or model.source_max_days != command.source_max_days
+            or model.effective_days != effective_days
+        ):
+            previous_effective_days = model.effective_days
+            model.source_policy_version = source_policy.policy_version
+            model.requested_days = command.requested_days
+            model.source_max_days = command.source_max_days
+            model.effective_days = effective_days
+            model.policy_version += 1
+            model.updated_at = now
+        self._session.flush()
+        if previous_effective_days is not None and effective_days < previous_effective_days:
+            resources = self._session.scalars(
+                select(EvidenceResource)
+                .where(EvidenceResource.retention_policy_id == model.id)
+                .with_for_update()
+            ).all()
+            for resource in resources:
+                stricter_expiry = resource.collected_at + timedelta(days=effective_days)
+                if stricter_expiry < resource.expires_at:
+                    resource.expires_at = stricter_expiry
+                    resource.retention_policy_version = model.policy_version
+        return self._view(model)
+
+    def matches_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        command: RetentionPolicyInput,
+    ) -> bool:
+        """Report whether retention already matches the current source policy."""
+        source_policy = self._session.scalar(
+            select(SourceAccessPolicy).where(
+                SourceAccessPolicy.owner_id == owner_id,
+                SourceAccessPolicy.id == command.source_policy_id,
+            )
+        )
+        model = self._session.scalar(
+            select(RetentionPolicy).where(
+                RetentionPolicy.owner_id == owner_id,
+                RetentionPolicy.source_policy_id == command.source_policy_id,
+                RetentionPolicy.data_class == command.data_class.value,
+            )
+        )
+        return (
+            source_policy is not None
+            and model is not None
+            and model.source_policy_version == source_policy.policy_version
+            and model.requested_days == command.requested_days
+            and model.source_max_days == command.source_max_days
+            and model.effective_days == effective_retention_days(command)
+        )
 
     @staticmethod
     def _view(model: RetentionPolicy) -> RetentionPolicyView:

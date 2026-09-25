@@ -450,6 +450,16 @@ declare namespace HotKeyAPI {
     exclude: KeywordInput[];
     /** Name */
     name: string;
+    /** Source Keys */
+    source_keys?: SourceKeyInput[];
+    /** Collection Interval Seconds */
+    collection_interval_seconds?: number;
+    /** Report Time */
+    report_time?: string;
+    /** Weekly Report Enabled */
+    weekly_report_enabled?: boolean;
+    /** Notification Target Names */
+    notification_target_names?: NotificationTargetNameInput[];
   };
 
   type MonitorTopicPreviewInput = {
@@ -484,6 +494,16 @@ declare namespace HotKeyAPI {
     exclude: KeywordInput[];
     /** Name */
     name: string;
+    /** Source Keys */
+    source_keys?: SourceKeyInput[];
+    /** Collection Interval Seconds */
+    collection_interval_seconds?: number;
+    /** Report Time */
+    report_time?: string;
+    /** Weekly Report Enabled */
+    weekly_report_enabled?: boolean;
+    /** Notification Target Names */
+    notification_target_names?: NotificationTargetNameInput[];
     /** Expected Version */
     expected_version: number;
   };
@@ -498,11 +518,25 @@ declare namespace HotKeyAPI {
     /** Current Version */
     current_version: number;
     rules: MonitorRuleSetView;
+    /** Source Keys */
+    source_keys: string[];
+    /** Collection Interval Seconds */
+    collection_interval_seconds: number;
+    /** Report Time */
+    report_time: string;
+    /** Report Timezone */
+    report_timezone: string;
+    /** Weekly Report Enabled */
+    weekly_report_enabled: boolean;
+    /** Notification Target Names */
+    notification_target_names: string[];
     /** Created At */
     created_at: string;
     /** Updated At */
     updated_at: string;
   };
+
+  type NotificationTargetNameInput = string;
 
   type PageViewContentRecordSummaryView_ = {
     /** Items */
@@ -611,6 +645,8 @@ declare namespace HotKeyAPI {
     /** Delay Duration Us */
     delay_duration_us: number | null;
   };
+
+  type SourceKeyInput = string;
 
   type SourcePlatformStatus =
     | "unconfigured"

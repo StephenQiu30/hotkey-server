@@ -82,8 +82,15 @@ class Settings(BaseSettings):
     minio_secret_key: str = ""
     minio_bucket: str = "hotkey-evidence"
 
-    @property
-    def job_process_execution_timeout_seconds(self) -> int:
+    def job_process_execution_timeout_seconds(self, kind: str) -> int:
+        if kind in {"keyword.search", "source.comments"}:
+            return 90
+        if kind in {"analysis.annotate", "report.daily", "report.weekly"}:
+            return 600
+        if kind in {"notification.send", "knowledge.export"}:
+            return 60
+        if kind != "webpage.collect":
+            raise ValueError(f"unsupported job kind: {kind}")
         execution_seconds = self.firecrawl_timeout_seconds if self.firecrawl_enabled else 0
         if self.browser_enabled:
             browser_execution_seconds = (
@@ -152,7 +159,7 @@ class Settings(BaseSettings):
     def validate_execution_deadlines(self) -> Settings:
         required_lease_seconds = (
             JOB_PROCESS_STARTUP_TIMEOUT_SECONDS
-            + self.job_process_execution_timeout_seconds
+            + self.job_process_execution_timeout_seconds("webpage.collect")
             + JOB_PROCESS_TERMINATE_GRACE_SECONDS
             + JOB_COMPLETION_MARGIN_SECONDS
         )
@@ -165,6 +172,11 @@ class Settings(BaseSettings):
         ):
             raise ValueError("Kafka max poll interval must leave margin after the job lease")
         return self
+
+    ai_model: str = "gpt-5.6-luna"
+    ai_command: str = "codex app-server"
+    ai_timeout_seconds: int = Field(default=300, ge=1, le=900)
+    ai_effort: str = "low"
 
 
 @lru_cache

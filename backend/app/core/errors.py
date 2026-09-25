@@ -38,6 +38,7 @@ ERROR_CATEGORIES: Mapping[str, ErrorCategory] = MappingProxyType(
         "keyword_group_conflict": ErrorCategory.INVALID_INPUT,
         "resource_not_found": ErrorCategory.NOT_FOUND,
         "source_target_not_allowed": ErrorCategory.INVALID_INPUT,
+        "source_preset_not_applied": ErrorCategory.CONFLICT,
         "topic_archived": ErrorCategory.CONFLICT,
         "topic_not_ready": ErrorCategory.CONFLICT,
         "topic_version_conflict": ErrorCategory.CONFLICT,

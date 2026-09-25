@@ -24,11 +24,18 @@ import {
   resumeMonitorTopic,
   updateMonitorTopic,
 } from "@/api/jiankongzhuti";
+import { listSourceCapabilities } from "@/api/laiyuannengli";
 import {
   KeywordGroupField,
   parseKeywordLines,
 } from "@/components/monitors/keyword-group-field";
 import { TopicRulePreview } from "@/components/monitors/topic-rule-preview";
+import {
+  parseNotificationTargetNames,
+  selectableTopicSources,
+  TopicSettingsFields,
+  type TopicSourceOption,
+} from "@/components/monitors/topic-settings-fields";
 import { PageState } from "@/components/system/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,9 +45,26 @@ import { ApiRequestError } from "@/request";
 
 type TopicEditorProps = { topicId: string };
 
+type ExpectedTopicSettings = {
+  source_keys: string[];
+  collection_interval_seconds: number;
+  report_time: string;
+  report_timezone: "Asia/Shanghai";
+  weekly_report_enabled: boolean;
+  notification_target_names: string[];
+};
+
+type ExpectedMonitorTopicView = HotKeyAPI.MonitorTopicView &
+  ExpectedTopicSettings;
+
+type ExpectedTopicSettingsInput = Omit<
+  ExpectedTopicSettings,
+  "report_timezone"
+>;
+
 type EditorState =
   | { status: "loading" }
-  | { status: "ready"; topic: HotKeyAPI.MonitorTopicView }
+  | { status: "ready"; topic: ExpectedMonitorTopicView }
   | { status: "not-found" }
   | { status: "error"; message: string; requestId?: string };
 
@@ -70,6 +94,12 @@ function toActionFeedback(error: unknown): ActionFeedback {
         message: "同一个关键词不能同时放在包含组与排除组中。",
       };
     }
+    if (error.code === "source_preset_not_applied") {
+      return {
+        kind: "error",
+        message: "所选来源尚未应用预设，或不支持关键词搜索。",
+      };
+    }
     return {
       kind: "error",
       message: error.message,
@@ -86,24 +116,45 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
   const [matchAny, setMatchAny] = useState("");
   const [matchAll, setMatchAll] = useState("");
   const [exclude, setExclude] = useState("");
+  const [sourceOptions, setSourceOptions] = useState<TopicSourceOption[]>([]);
+  const [sourceKeys, setSourceKeys] = useState<string[]>([]);
+  const [collectionIntervalSeconds, setCollectionIntervalSeconds] =
+    useState(1800);
+  const [reportTime, setReportTime] = useState("09:00");
+  const [weeklyReportEnabled, setWeeklyReportEnabled] = useState(false);
+  const [notificationTargets, setNotificationTargets] = useState("");
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(
     null,
   );
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
   const isBusy = pendingAction !== null;
 
-  const applyTopic = useCallback((topic: HotKeyAPI.MonitorTopicView) => {
+  const applyTopic = useCallback((value: HotKeyAPI.MonitorTopicView) => {
+    const topic = value as ExpectedMonitorTopicView;
     setState({ status: "ready", topic });
     setName(topic.name);
     setMatchAny(topic.rules.match_any.join("\n"));
     setMatchAll(topic.rules.match_all.join("\n"));
     setExclude(topic.rules.exclude.join("\n"));
+    setSourceKeys(topic.source_keys);
+    setCollectionIntervalSeconds(topic.collection_interval_seconds);
+    setReportTime(topic.report_time.slice(0, 5));
+    setWeeklyReportEnabled(topic.weekly_report_enabled);
+    setNotificationTargets(topic.notification_target_names.join("\n"));
   }, []);
 
   const loadTopic = useCallback(async () => {
     setFeedback(null);
     try {
-      applyTopic(await getMonitorTopic({ topic_id: topicId }));
+      const [topic, sourcePage] = await Promise.all([
+        getMonitorTopic({ topic_id: topicId }),
+        listSourceCapabilities(),
+      ]);
+      const expectedTopic = topic as ExpectedMonitorTopicView;
+      setSourceOptions(
+        selectableTopicSources(sourcePage.items, expectedTopic.source_keys),
+      );
+      applyTopic(topic);
     } catch (error) {
       if (isInvalidSession(error)) {
         router.replace("/login");
@@ -126,9 +177,16 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
 
   useEffect(() => {
     let isCurrent = true;
-    void getMonitorTopic({ topic_id: topicId })
-      .then((topic) => {
+    void Promise.all([
+      getMonitorTopic({ topic_id: topicId }),
+      listSourceCapabilities(),
+    ])
+      .then(([topic, sourcePage]) => {
         if (isCurrent) {
+          const expectedTopic = topic as ExpectedMonitorTopicView;
+          setSourceOptions(
+            selectableTopicSources(sourcePage.items, expectedTopic.source_keys),
+          );
           applyTopic(topic);
         }
       })
@@ -175,20 +233,46 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
       });
       return;
     }
+    const targetNames = parseNotificationTargetNames(notificationTargets);
+    if (
+      !Number.isInteger(collectionIntervalSeconds) ||
+      collectionIntervalSeconds < 600 ||
+      collectionIntervalSeconds > 86400
+    ) {
+      setFeedback({
+        kind: "error",
+        message: "采集频率必须是 600—86400 之间的整数秒。",
+      });
+      return;
+    }
+    if (
+      targetNames.length > 20 ||
+      targetNames.some((item) => item.length > 128)
+    ) {
+      setFeedback({
+        kind: "error",
+        message: "推送目标最多 20 个，每个名称不超过 128 个字符。",
+      });
+      return;
+    }
 
     setPendingAction("save");
     setFeedback(null);
     try {
-      const topic = await updateMonitorTopic(
-        { topic_id: topicId },
-        {
-          name,
-          match_any: any,
-          match_all: all,
-          exclude: parseKeywordLines(exclude),
-          expected_version: state.topic.current_version,
-        },
-      );
+      const payload: HotKeyAPI.MonitorTopicUpdateInput &
+        ExpectedTopicSettingsInput = {
+        name,
+        match_any: any,
+        match_all: all,
+        exclude: parseKeywordLines(exclude),
+        expected_version: state.topic.current_version,
+        source_keys: sourceKeys,
+        collection_interval_seconds: collectionIntervalSeconds,
+        report_time: reportTime,
+        weekly_report_enabled: weeklyReportEnabled,
+        notification_target_names: targetNames,
+      };
+      const topic = await updateMonitorTopic({ topic_id: topicId }, payload);
       applyTopic(topic);
       setFeedback({
         kind: "success",
@@ -376,6 +460,21 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                 disabled={isBusy || topic.status === "archived"}
               />
             </section>
+
+            <TopicSettingsFields
+              sourceOptions={sourceOptions}
+              sourceKeys={sourceKeys}
+              onSourceKeysChange={setSourceKeys}
+              collectionIntervalSeconds={collectionIntervalSeconds}
+              onCollectionIntervalSecondsChange={setCollectionIntervalSeconds}
+              reportTime={reportTime}
+              onReportTimeChange={setReportTime}
+              weeklyReportEnabled={weeklyReportEnabled}
+              onWeeklyReportEnabledChange={setWeeklyReportEnabled}
+              notificationTargets={notificationTargets}
+              onNotificationTargetsChange={setNotificationTargets}
+              disabled={isBusy || topic.status === "archived"}
+            />
           </div>
 
           <aside className="lg:sticky lg:top-8 lg:self-start">
@@ -395,7 +494,9 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                 <div className="flex justify-between gap-4">
                   <dt>来源</dt>
                   <dd className="text-foreground">
-                    {topic.readiness_status === "ready" ? "已就绪" : "待选择"}
+                    {sourceKeys.length > 0
+                      ? `${sourceKeys.length} 个`
+                      : "待选择"}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">

@@ -4,7 +4,8 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from content.discovery import plan_keyword_discovery
+from connections.schemas import SourceEntryPoint
+from content.discovery import plan_keyword_discovery, plan_scheduled_keyword_discovery
 from content.schemas import KeywordDiscoveryRunInput
 
 
@@ -26,6 +27,7 @@ def _run(**changes: object) -> KeywordDiscoveryRunInput:
         "top_max_pages": 2,
         "top_max_requests": 4,
         "max_seconds": 30,
+        "entry_point": SourceEntryPoint.MANUAL,
     }
     values.update(changes)
     return KeywordDiscoveryRunInput.model_validate(values)
@@ -48,6 +50,7 @@ def test_plan_freezes_only_explicit_upstream_queries_with_independent_channels()
     }
     assert {job.scope["max_requests"] for job in planned if job.scope["sort_key"] == "top"} == {4}
     assert {job.scope["max_seconds"] for job in planned} == {30}
+    assert {job.scope["entry_point"] for job in planned} == {"manual"}
     assert all(job.kind == "keyword.search" for job in planned)
     assert all(job.observation.configuration_version == 3 for job in planned)
     assert {job.scope["query"] for job in plan_keyword_discovery(_run(upstream_aliases=()))} == {
@@ -60,6 +63,26 @@ def test_same_query_under_different_topics_has_distinct_coverage_target() -> Non
     first = plan_keyword_discovery(_run(configuration_ref="topic:first"))
     second = plan_keyword_discovery(_run(configuration_ref="topic:second"))
     assert first[0].scope["target_hash"] != second[0].scope["target_hash"]
+
+
+def test_scheduled_plan_uses_run_id_as_the_single_operation_and_carries_entry_point() -> None:
+    scheduled_for_at = datetime(2026, 9, 23, tzinfo=UTC)
+    run = _run(
+        entry_point=SourceEntryPoint.SCHEDULED,
+        scheduled_for_at=scheduled_for_at,
+    )
+
+    command = plan_scheduled_keyword_discovery(run)
+
+    assert command.operation_id == run.run_id
+    assert command.scheduled_for_at == scheduled_for_at
+    assert command.scope["entry_point"] == "scheduled"
+    assert command.scope["sort_key"] == "latest"
+
+
+def test_scheduled_plan_rejects_manual_entry_point() -> None:
+    with pytest.raises(ValueError, match="scheduled entry point"):
+        plan_scheduled_keyword_discovery(_run())
 
 
 @pytest.mark.parametrize(

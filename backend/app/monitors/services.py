@@ -9,10 +9,12 @@ from uuid import UUID, uuid4
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
+from connections.services import load_applied_source_presets_in_transaction
 from core.errors import ApplicationError
 from monitors.models import (
     FollowedAccount,
     FollowedAccountAlias,
+    MonitorSchedule,
     MonitorTopic,
     MonitorTopicVersion,
 )
@@ -31,6 +33,7 @@ from monitors.schemas import (
     MonitorTopicUpdateInput,
     MonitorTopicView,
 )
+from sources.contracts import SourceCapability
 
 _MAX_KEYWORDS_PER_GROUP = 50
 _MAX_KEYWORD_LENGTH = 100
@@ -58,6 +61,35 @@ class MonitorRuleMatch:
     matched_any: tuple[str, ...]
     matched_all: tuple[str, ...]
     excluded_by: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DueCollectionSchedule:
+    owner_id: UUID
+    topic_id: UUID
+    topic_version: int
+    search_queries: tuple[str, ...]
+    source_key: str
+    capability: SourceCapability
+    interval_seconds: int
+    next_run_at: datetime
+    last_job_id: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveTopicScan:
+    owner_id: UUID
+    topic_id: UUID
+    topic_version: int
+    rules: NormalizedMonitorRules
+    source_keys: tuple[str, ...]
+
+
+def scheduled_collection_queries(rules: NormalizedMonitorRules) -> tuple[str, ...]:
+    """Keep upstream searches portable while local rules retain final relevance semantics."""
+    if rules.match_any:
+        return rules.match_any
+    return (" ".join(rules.match_all),)
 
 
 def _normalize_text(value: str) -> str:
@@ -125,6 +157,150 @@ def evaluate_monitor_rules(rules: NormalizedMonitorRules, content: str) -> Monit
         matched_all=matched_all,
         excluded_by=excluded_by,
     )
+
+
+class MonitorScheduleService:
+    """Own due-schedule locking and advancement inside scheduler transactions."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def claim_due_collections_in_transaction(
+        self,
+        *,
+        now: datetime,
+    ) -> tuple[DueCollectionSchedule, ...]:
+        if not self._session.in_transaction():
+            raise RuntimeError("collection schedule claims require the caller's transaction")
+        if now.tzinfo is None:
+            raise ValueError("scheduler time must be timezone-aware")
+        rows = self._session.execute(
+            select(MonitorSchedule, MonitorTopic, MonitorTopicVersion)
+            .join(
+                MonitorTopic,
+                and_(
+                    MonitorTopic.owner_id == MonitorSchedule.owner_id,
+                    MonitorTopic.id == MonitorSchedule.topic_id,
+                ),
+            )
+            .join(
+                MonitorTopicVersion,
+                and_(
+                    MonitorTopicVersion.topic_id == MonitorTopic.id,
+                    MonitorTopicVersion.version == MonitorTopic.current_version,
+                ),
+            )
+            .where(
+                MonitorSchedule.enabled.is_(True),
+                MonitorSchedule.next_run_at <= now,
+                MonitorSchedule.capability == SourceCapability.SEARCH.value,
+            )
+            .order_by(
+                MonitorSchedule.next_run_at,
+                MonitorSchedule.owner_id,
+                MonitorSchedule.topic_id,
+                MonitorSchedule.source_key,
+            )
+            .with_for_update(of=MonitorSchedule, skip_locked=True)
+        ).all()
+        return tuple(
+            DueCollectionSchedule(
+                owner_id=schedule.owner_id,
+                topic_id=schedule.topic_id,
+                topic_version=version.version,
+                search_queries=scheduled_collection_queries(
+                    normalize_monitor_rules(
+                        match_any=version.match_any,
+                        match_all=version.match_all,
+                        exclude=version.exclude,
+                    )
+                ),
+                source_key=schedule.source_key,
+                capability=SourceCapability(schedule.capability),
+                interval_seconds=schedule.interval_seconds,
+                next_run_at=schedule.next_run_at,
+                last_job_id=schedule.last_job_id,
+            )
+            for schedule, topic, version in rows
+        )
+
+    def list_active_topics_for_scanning_in_transaction(self) -> tuple[ActiveTopicScan, ...]:
+        """Return active topic snapshots without exposing monitor ORM models cross-domain."""
+        if not self._session.in_transaction():
+            raise RuntimeError("topic scanning requires the caller's transaction")
+        rows = self._session.execute(
+            select(MonitorTopic, MonitorTopicVersion, MonitorSchedule.source_key)
+            .join(
+                MonitorTopicVersion,
+                and_(
+                    MonitorTopicVersion.topic_id == MonitorTopic.id,
+                    MonitorTopicVersion.version == MonitorTopic.current_version,
+                ),
+            )
+            .join(
+                MonitorSchedule,
+                and_(
+                    MonitorSchedule.owner_id == MonitorTopic.owner_id,
+                    MonitorSchedule.topic_id == MonitorTopic.id,
+                ),
+            )
+            .where(
+                MonitorTopic.status == MonitorTopicStatus.ACTIVE.value,
+                MonitorTopic.readiness_status == MonitorTopicReadinessStatus.READY.value,
+                MonitorSchedule.enabled.is_(True),
+                MonitorSchedule.capability == SourceCapability.SEARCH.value,
+            )
+            .order_by(MonitorTopic.owner_id, MonitorTopic.id, MonitorSchedule.source_key)
+        ).all()
+        grouped: dict[tuple[UUID, UUID], tuple[MonitorTopicVersion, list[str]]] = {}
+        for topic, version, source_key in rows:
+            key = (topic.owner_id, topic.id)
+            current = grouped.get(key)
+            if current is None:
+                grouped[key] = (version, [source_key])
+            else:
+                current[1].append(source_key)
+        return tuple(
+            ActiveTopicScan(
+                owner_id=owner_id,
+                topic_id=topic_id,
+                topic_version=version.version,
+                rules=normalize_monitor_rules(
+                    match_any=version.match_any,
+                    match_all=version.match_all,
+                    exclude=version.exclude,
+                ),
+                source_keys=tuple(source_keys),
+            )
+            for (owner_id, topic_id), (version, source_keys) in grouped.items()
+        )
+
+    def advance_collection_in_transaction(
+        self,
+        *,
+        schedule: DueCollectionSchedule,
+        job_id: UUID,
+        next_run_at: datetime,
+        updated_at: datetime,
+    ) -> None:
+        if not self._session.in_transaction():
+            raise RuntimeError("collection schedule advancement requires the caller's transaction")
+        if next_run_at.tzinfo is None or updated_at.tzinfo is None or next_run_at <= updated_at:
+            raise ValueError("next collection run must follow the scheduler time")
+        model = self._session.get(
+            MonitorSchedule,
+            (
+                schedule.owner_id,
+                schedule.topic_id,
+                schedule.source_key,
+                schedule.capability.value,
+            ),
+        )
+        if model is None:
+            raise RuntimeError("claimed collection schedule is no longer visible")
+        model.next_run_at = next_run_at
+        model.last_job_id = job_id
+        model.updated_at = updated_at
 
 
 class FollowedAccountService:
@@ -305,16 +481,30 @@ class MonitorTopicService:
     ) -> MonitorTopicView:
         name = self._normalize_name(command.name)
         rules = self._normalize_command_rules(command)
+        source_keys = self._normalize_source_keys(command.source_keys)
+        notification_target_names = self._normalize_notification_targets(
+            command.notification_target_names
+        )
         now = self._clock()
         self._session.rollback()
         with self._session.begin():
+            self._require_applied_search_sources(owner_id=owner_id, source_keys=source_keys)
             topic = MonitorTopic(
                 id=uuid4(),
                 owner_id=owner_id,
                 name=name,
                 status=MonitorTopicStatus.PAUSED.value,
-                readiness_status=MonitorTopicReadinessStatus.PENDING_SOURCE_SELECTION.value,
+                readiness_status=(
+                    MonitorTopicReadinessStatus.READY.value
+                    if source_keys
+                    else MonitorTopicReadinessStatus.PENDING_SOURCE_SELECTION.value
+                ),
                 current_version=1,
+                collection_interval_seconds=command.collection_interval_seconds,
+                report_time=command.report_time,
+                report_timezone="Asia/Shanghai",
+                weekly_report_enabled=command.weekly_report_enabled,
+                notification_target_names=list(notification_target_names),
                 created_at=now,
                 updated_at=now,
             )
@@ -330,7 +520,8 @@ class MonitorTopicService:
             self._session.add(topic)
             self._session.flush()
             self._session.add(version)
-            view = self._view(topic, version)
+            self._sync_search_schedules(topic=topic, source_keys=source_keys, now=now)
+            view = self._view(topic, version, source_keys=source_keys)
         return view
 
     def preview_topic(self, *, command: MonitorTopicPreviewInput) -> MonitorTopicPreviewView:
@@ -368,7 +559,7 @@ class MonitorTopicService:
         with self._session.begin():
             topic = self._find_topic(owner_id=owner_id, topic_id=topic_id)
             version = self._find_version(topic)
-            view = self._view(topic, version)
+            view = self._view(topic, version, source_keys=self._source_keys(topic))
         return view
 
     def get_topic_rules_in_transaction(
@@ -388,6 +579,23 @@ class MonitorTopicService:
             match_any=version_row.match_any,
             match_all=version_row.match_all,
             exclude=version_row.exclude,
+        )
+
+    def get_current_topic_rules_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        topic_id: UUID,
+    ) -> tuple[int, NormalizedMonitorRules]:
+        """Expose the current immutable rule snapshot without leaking monitor ORM models."""
+        if not self._session.in_transaction():
+            raise RuntimeError("topic rules require the caller's transaction")
+        topic = self._find_topic(owner_id=owner_id, topic_id=topic_id)
+        version = self._find_version(topic)
+        return topic.current_version, normalize_monitor_rules(
+            match_any=version.match_any,
+            match_all=version.match_all,
+            exclude=version.exclude,
         )
 
     def list_topics(
@@ -422,7 +630,10 @@ class MonitorTopicService:
             rows = list(self._session.execute(statement).all())
             has_more = len(rows) > limit
             page_rows = rows[:limit]
-            items = [self._view(topic, version) for topic, version in page_rows]
+            items = [
+                self._view(topic, version, source_keys=self._source_keys(topic))
+                for topic, version in page_rows
+            ]
             next_cursor = str(page_rows[-1][0].id) if has_more else None
         return items, next_cursor
 
@@ -432,13 +643,24 @@ class MonitorTopicService:
         with self._session.begin():
             source = self._find_topic(owner_id=owner_id, topic_id=topic_id)
             source_version = self._find_version(source)
+            source_keys = self._source_keys(source)
+            self._require_applied_search_sources(owner_id=owner_id, source_keys=source_keys)
             clone = MonitorTopic(
                 id=uuid4(),
                 owner_id=owner_id,
                 name=source.name,
                 status=MonitorTopicStatus.PAUSED.value,
-                readiness_status=MonitorTopicReadinessStatus.PENDING_SOURCE_SELECTION.value,
+                readiness_status=(
+                    MonitorTopicReadinessStatus.READY.value
+                    if source_keys
+                    else MonitorTopicReadinessStatus.PENDING_SOURCE_SELECTION.value
+                ),
                 current_version=1,
+                collection_interval_seconds=source.collection_interval_seconds,
+                report_time=source.report_time,
+                report_timezone=source.report_timezone,
+                weekly_report_enabled=source.weekly_report_enabled,
+                notification_target_names=list(source.notification_target_names),
                 created_at=now,
                 updated_at=now,
             )
@@ -454,7 +676,8 @@ class MonitorTopicService:
             self._session.add(clone)
             self._session.flush()
             self._session.add(clone_version)
-            view = self._view(clone, clone_version)
+            self._sync_search_schedules(topic=clone, source_keys=source_keys, now=now)
+            view = self._view(clone, clone_version, source_keys=source_keys)
         return view
 
     def pause_topic(self, *, owner_id: UUID, topic_id: UUID) -> MonitorTopicView:
@@ -487,6 +710,10 @@ class MonitorTopicService:
     ) -> MonitorTopicView:
         name = self._normalize_name(command.name)
         rules = self._normalize_command_rules(command)
+        source_keys = self._normalize_source_keys(command.source_keys)
+        notification_target_names = self._normalize_notification_targets(
+            command.notification_target_names
+        )
         now = self._clock()
         self._session.rollback()
         with self._session.begin():
@@ -499,6 +726,7 @@ class MonitorTopicService:
                 raise ApplicationError("topic_archived")
             if topic.current_version != command.expected_version:
                 raise ApplicationError("topic_version_conflict")
+            self._require_applied_search_sources(owner_id=owner_id, source_keys=source_keys)
             current = self._find_version(topic)
             rules_changed = (
                 tuple(current.match_any) != rules.match_any
@@ -506,6 +734,13 @@ class MonitorTopicService:
                 or tuple(current.exclude) != rules.exclude
             )
             name_changed = topic.name != name
+            settings_changed = (
+                topic.collection_interval_seconds != command.collection_interval_seconds
+                or topic.report_time != command.report_time
+                or topic.weekly_report_enabled != command.weekly_report_enabled
+                or tuple(topic.notification_target_names) != notification_target_names
+                or tuple(self._source_keys(topic)) != source_keys
+            )
             if rules_changed:
                 next_version = topic.current_version + 1
                 current = MonitorTopicVersion(
@@ -519,10 +754,22 @@ class MonitorTopicService:
                 )
                 self._session.add(current)
                 topic.current_version = next_version
-            if name_changed or rules_changed:
+            if name_changed or rules_changed or settings_changed:
                 topic.name = name
+                if not source_keys and topic.status == MonitorTopicStatus.ACTIVE.value:
+                    topic.status = MonitorTopicStatus.PAUSED.value
+                topic.readiness_status = (
+                    MonitorTopicReadinessStatus.READY.value
+                    if source_keys
+                    else MonitorTopicReadinessStatus.PENDING_SOURCE_SELECTION.value
+                )
+                topic.collection_interval_seconds = command.collection_interval_seconds
+                topic.report_time = command.report_time
+                topic.weekly_report_enabled = command.weekly_report_enabled
+                topic.notification_target_names = list(notification_target_names)
                 topic.updated_at = now
-            view = self._view(topic, current)
+                self._sync_search_schedules(topic=topic, source_keys=source_keys, now=now)
+            view = self._view(topic, current, source_keys=source_keys)
         return view
 
     def _transition_topic(
@@ -544,16 +791,22 @@ class MonitorTopicService:
                 if target != MonitorTopicStatus.ARCHIVED:
                     raise ApplicationError("topic_archived")
             elif target == MonitorTopicStatus.ACTIVE:
-                if topic.readiness_status != MonitorTopicReadinessStatus.READY.value:
+                source_keys = self._source_keys(topic)
+                if not source_keys:
                     raise ApplicationError("topic_not_ready")
+                self._require_applied_search_sources(owner_id=owner_id, source_keys=source_keys)
+                topic.readiness_status = MonitorTopicReadinessStatus.READY.value
                 if topic.status != target.value:
                     topic.status = target.value
                     topic.updated_at = now
+                self._set_schedules_enabled(topic=topic, enabled=True, now=now)
             elif topic.status != target.value:
                 topic.status = target.value
                 topic.updated_at = now
+            if target in {MonitorTopicStatus.PAUSED, MonitorTopicStatus.ARCHIVED}:
+                self._set_schedules_enabled(topic=topic, enabled=False, now=now)
             version = self._find_version(topic)
-            view = self._view(topic, version)
+            view = self._view(topic, version, source_keys=self._source_keys(topic))
         return view
 
     def _find_topic(
@@ -583,6 +836,99 @@ class MonitorTopicService:
             raise RuntimeError("monitor topic current version is missing")
         return version
 
+    def _source_keys(self, topic: MonitorTopic) -> tuple[str, ...]:
+        return tuple(
+            self._session.scalars(
+                select(MonitorSchedule.source_key)
+                .where(
+                    MonitorSchedule.owner_id == topic.owner_id,
+                    MonitorSchedule.topic_id == topic.id,
+                    MonitorSchedule.capability == SourceCapability.SEARCH.value,
+                )
+                .order_by(MonitorSchedule.source_key)
+            )
+        )
+
+    def _require_applied_search_sources(
+        self,
+        *,
+        owner_id: UUID,
+        source_keys: tuple[str, ...],
+    ) -> None:
+        applied = load_applied_source_presets_in_transaction(
+            self._session,
+            owner_id=owner_id,
+            source_keys=source_keys,
+        )
+        if set(applied) != set(source_keys) or any(
+            SourceCapability.SEARCH not in preset.capabilities for preset in applied.values()
+        ):
+            raise ApplicationError("source_preset_not_applied")
+
+    def _sync_search_schedules(
+        self,
+        *,
+        topic: MonitorTopic,
+        source_keys: tuple[str, ...],
+        now: datetime,
+    ) -> None:
+        existing = {
+            schedule.source_key: schedule
+            for schedule in self._session.scalars(
+                select(MonitorSchedule)
+                .where(
+                    MonitorSchedule.owner_id == topic.owner_id,
+                    MonitorSchedule.topic_id == topic.id,
+                    MonitorSchedule.capability == SourceCapability.SEARCH.value,
+                )
+                .with_for_update()
+            )
+        }
+        selected = set(source_keys)
+        for source_key, schedule in existing.items():
+            if source_key not in selected:
+                self._session.delete(schedule)
+        for source_key in source_keys:
+            existing_schedule = existing.get(source_key)
+            if existing_schedule is None:
+                self._session.add(
+                    MonitorSchedule(
+                        owner_id=topic.owner_id,
+                        topic_id=topic.id,
+                        source_key=source_key,
+                        capability=SourceCapability.SEARCH.value,
+                        interval_seconds=topic.collection_interval_seconds,
+                        next_run_at=now,
+                        enabled=topic.status == MonitorTopicStatus.ACTIVE.value,
+                        last_job_id=None,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                continue
+            existing_schedule.interval_seconds = topic.collection_interval_seconds
+            existing_schedule.enabled = topic.status == MonitorTopicStatus.ACTIVE.value
+            existing_schedule.updated_at = now
+
+    def _set_schedules_enabled(
+        self,
+        *,
+        topic: MonitorTopic,
+        enabled: bool,
+        now: datetime,
+    ) -> None:
+        for schedule in self._session.scalars(
+            select(MonitorSchedule)
+            .where(
+                MonitorSchedule.owner_id == topic.owner_id,
+                MonitorSchedule.topic_id == topic.id,
+            )
+            .with_for_update()
+        ):
+            if schedule.enabled != enabled:
+                schedule.enabled = enabled
+                schedule.updated_at = now
+
     @staticmethod
     def _normalize_name(value: str) -> str:
         name = _normalize_text(value)
@@ -601,7 +947,28 @@ class MonitorTopicService:
         )
 
     @staticmethod
-    def _view(topic: MonitorTopic, version: MonitorTopicVersion) -> MonitorTopicView:
+    def _normalize_source_keys(values: Iterable[str]) -> tuple[str, ...]:
+        return tuple(sorted(dict.fromkeys(values)))
+
+    @staticmethod
+    def _normalize_notification_targets(values: Iterable[str]) -> tuple[str, ...]:
+        normalized: list[str] = []
+        keys: set[str] = set()
+        for value in values:
+            item = _normalize_text(value)
+            key = _comparison_key(item)
+            if key not in keys:
+                keys.add(key)
+                normalized.append(item)
+        return tuple(normalized)
+
+    @staticmethod
+    def _view(
+        topic: MonitorTopic,
+        version: MonitorTopicVersion,
+        *,
+        source_keys: Iterable[str],
+    ) -> MonitorTopicView:
         return MonitorTopicView(
             id=topic.id,
             name=topic.name,
@@ -613,6 +980,12 @@ class MonitorTopicService:
                 match_all=list(version.match_all),
                 exclude=list(version.exclude),
             ),
+            source_keys=list(source_keys),
+            collection_interval_seconds=topic.collection_interval_seconds,
+            report_time=topic.report_time,
+            report_timezone="Asia/Shanghai",
+            weekly_report_enabled=topic.weekly_report_enabled,
+            notification_target_names=list(topic.notification_target_names),
             created_at=topic.created_at.astimezone(UTC),
             updated_at=topic.updated_at.astimezone(UTC),
         )

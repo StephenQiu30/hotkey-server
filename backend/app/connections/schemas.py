@@ -5,11 +5,19 @@ from enum import StrEnum
 from typing import Self
 from uuid import UUID
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, HttpUrl, field_validator, model_validator
 
 from core.schemas import InputModel, OutputModel
 from sources.adapters.web_targets import normalize_web_host
 from sources.contracts import SourceCapability, SourceStopReason
+
+_LOCAL_SOURCE_CONFIG_HOSTS = frozenset({"127.0.0.1", "localhost"})
+
+
+def _normalize_source_config_host(value: str) -> str:
+    if value in _LOCAL_SOURCE_CONFIG_HOSTS:
+        return value
+    return normalize_web_host(value)
 
 
 class SourceRolloutRole(StrEnum):
@@ -26,6 +34,55 @@ class SourceConnectionAuthKind(StrEnum):
     NONE = "none"
     SERVER_CREDENTIAL = "server_credential"
     BROWSER_STATE = "browser_state"
+
+
+class SourceConnectionConfig(InputModel):
+    feed_url_template: str | None = Field(default=None, min_length=1, max_length=2048)
+    base_url: HttpUrl | None = None
+    engines: tuple[str, ...] = Field(default=(), max_length=16)
+    allowed_hosts: tuple[str, ...] = Field(default=(), max_length=32)
+
+    @field_validator("feed_url_template")
+    @classmethod
+    def validate_feed_url_template(cls, value: str | None) -> str | None:
+        if value is not None and (
+            value != value.strip()
+            or any(ord(character) < 32 or ord(character) == 127 for character in value)
+        ):
+            raise ValueError("feed_url_template cannot contain padding or controls")
+        return value
+
+    @field_validator("engines")
+    @classmethod
+    def validate_engines(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value)
+        if (
+            any(not item or len(item) > 64 for item in normalized)
+            or len(set(normalized)) != len(normalized)
+        ):
+            raise ValueError("engines must contain unique non-empty names")
+        return normalized
+
+    @field_validator("allowed_hosts")
+    @classmethod
+    def validate_config_allowed_hosts(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(sorted(_normalize_source_config_host(item) for item in value))
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("allowed_hosts must contain unique exact domains")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_non_secret_base_url(self) -> Self:
+        if self.base_url is None:
+            return self
+        if self.base_url.username is not None or self.base_url.password is not None:
+            raise ValueError("base_url cannot contain credentials")
+        if self.base_url.host is None:
+            raise ValueError("base_url requires a host")
+        host = _normalize_source_config_host(self.base_url.host)
+        if self.allowed_hosts and host not in self.allowed_hosts:
+            raise ValueError("base_url host must be included in allowed_hosts")
+        return self
 
 
 class SourceEntryPoint(StrEnum):
@@ -54,6 +111,13 @@ class SourceConnectionView(OutputModel):
     version: int
     allowed_hosts: list[str]
     updated_at: datetime
+
+
+class SourcePresetApplyView(OutputModel):
+    source_key: str
+    connection_id: UUID
+    connection_version: int
+    capabilities: tuple[SourceCapability, ...]
 
 
 class ConnectionEvidenceKind(StrEnum):

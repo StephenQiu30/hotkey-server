@@ -53,7 +53,7 @@ _TRUNCATE = (
     "source_access_policies, resource_budget_reservations, resource_budget_windows, "
     "resource_budget_policies, resource_usage_attempts, resource_component_policies, "
     "job_stage_attempts, processed_messages, job_attempts, "
-    "outbox_messages, coverage_windows, "
+    "ai_calls, content_annotations, reports, monitor_schedules, outbox_messages, coverage_windows, "
     "jobs, followed_account_aliases, followed_accounts, "
     "monitor_topic_versions, monitor_topics, "
     "identity_sessions, identity_users"
@@ -182,22 +182,34 @@ def test_capability_catalog_requires_session_and_reports_truthful_defaults(
     assert response.headers["cache-control"] == "no-store"
     assert response.json()["next_cursor"] is None
     platforms = response.json()["items"]
-    assert [platform["source_key"] for platform in platforms] == ["x", "douyin", "web"]
-    assert platforms[0]["status"] == "restricted"
-    assert platforms[0]["rollout_role"] == "required"
-    assert platforms[1]["status"] == "unconfigured"
-    assert platforms[1]["rollout_role"] == "candidate"
-    assert {item["capability"] for item in platforms[1]["capabilities"]} == {
+    assert [platform["source_key"] for platform in platforms] == [
+        "hackernews",
+        "google_news",
+        "news_search",
+        "rss_36kr",
+        "x",
+        "douyin",
+        "web",
+    ]
+    assert _platform(response.json(), "x")["status"] == "restricted"
+    assert _platform(response.json(), "x")["rollout_role"] == "required"
+    assert _platform(response.json(), "douyin")["status"] == "unconfigured"
+    assert _platform(response.json(), "douyin")["rollout_role"] == "candidate"
+    assert {
+        item["capability"] for item in _platform(response.json(), "douyin")["capabilities"]
+    } == {
         "search",
         "author_posts",
         "comments",
         "replies",
     }
-    assert platforms[2]["status"] == "unconfigured"
-    assert platforms[2]["rollout_role"] == "required"
-    assert platforms[2]["credential_configured"] is False
-    assert platforms[2]["has_credentials"] is False
-    assert [item["capability"] for item in platforms[2]["capabilities"]] == ["page_content"]
+    assert _platform(response.json(), "web")["status"] == "unconfigured"
+    assert _platform(response.json(), "web")["rollout_role"] == "required"
+    assert _platform(response.json(), "web")["credential_configured"] is False
+    assert _platform(response.json(), "web")["has_credentials"] is False
+    assert [item["capability"] for item in _platform(response.json(), "web")["capabilities"]] == [
+        "page_content"
+    ]
     assert "secret" not in response.text.lower()
     assert "owner_id" not in response.text
 
@@ -272,7 +284,7 @@ def test_anonymous_web_connection_versions_without_fabricating_credentials(
     with client.app.state.session_factory() as session:
         versions = session.execute(
             text(
-                "SELECT version, auth_kind, secret_ref, configuration "
+                "SELECT version, auth_kind, secret_ref, config "
                 "FROM source_connection_versions "
                 "WHERE owner_id = :owner_id ORDER BY version"
             ),
@@ -607,7 +619,7 @@ def test_changed_connection_rejects_late_evidence_but_preserves_replays(
             {"id": connection_id},
         ).all()
         assert rows == [(1,)]
-    platform = source_connection_client.get("/api/source-capabilities").json()["items"][1]
+    platform = _platform(source_connection_client.get("/api/source-capabilities").json(), "douyin")
     assert _capability(platform, "search")["manual"]["status"] != "available"
 
 
@@ -685,7 +697,7 @@ def test_connection_rotation_disable_and_resume_are_versioned_without_secrets(
     repeated = client.put("/api/source-connections/douyin", headers=headers, json=payload)
     assert repeated.json() == created.json()
     client.app.state.settings.source_credentials = {"douyin": SecretStr(secret + "-rotated")}
-    platform = client.get("/api/source-capabilities").json()["items"][1]
+    platform = _platform(client.get("/api/source-capabilities").json(), "douyin")
     assert platform["credential_update_available"]
     assert platform["status"] == "authentication_required"
     rotated = client.put(
@@ -695,7 +707,7 @@ def test_connection_rotation_disable_and_resume_are_versioned_without_secrets(
     )
     assert rotated.status_code == 200
     assert rotated.json()["version"] == 2
-    platform = client.get("/api/source-capabilities").json()["items"][1]
+    platform = _platform(client.get("/api/source-capabilities").json(), "douyin")
     assert not platform["credential_update_available"]
     assert all(item["manual"]["status"] != "available" for item in platform["capabilities"])
     disabled = client.put(
@@ -796,7 +808,7 @@ def test_connection_auth_failure_propagates_but_capability_denial_is_local(
                 component_version="1",
             ),
         )
-    platform = client.get("/api/source-capabilities").json()["items"][1]
+    platform = _platform(client.get("/api/source-capabilities").json(), "douyin")
     search_status = _capability(platform, "search")["manual"]["status"]
     with client.app.state.session_factory() as session:
         if reason is SourceStopReason.AUTHENTICATION_REQUIRED:
@@ -1219,3 +1231,11 @@ def test_browser_state_maintenance_rotates_disables_and_requires_new_capture(
             connection_version=6,
             store=store,
         )
+
+
+def _platform(payload: dict[str, object], source_key: str) -> dict[str, object]:
+    items = payload["items"]
+    assert isinstance(items, list)
+    matches = [item for item in items if item["source_key"] == source_key]
+    assert len(matches) == 1, source_key
+    return matches[0]

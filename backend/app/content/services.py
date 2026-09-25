@@ -5,20 +5,26 @@ import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from urllib.parse import urlsplit
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
-from sqlalchemy import func, select
+import structlog
+from sqlalchemy import and_, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from connections.schemas import (
     ConnectionEvidenceOutcome,
     PersistedReadEvidenceInput,
+    SourceEntryPoint,
 )
-from connections.services import SourceCapabilityEvidenceService
+from connections.services import (
+    AppliedSourcePreset,
+    SourceCapabilityEvidenceService,
+    load_applied_source_presets_in_transaction,
+)
 from content.models import (
     ContentDiscovery,
     ContentObservation,
@@ -29,6 +35,9 @@ from content.models import (
     ContentVisibilityObservation,
 )
 from content.schemas import (
+    AnalysisCommentContentView,
+    AnalysisPostContentView,
+    CommentCollectionRunInput,
     ContentDiscoveryView,
     ContentMetricView,
     ContentObservationView,
@@ -53,10 +62,19 @@ from evidence.schemas import CleanupTargetKind, CleanupTargetSpec
 from evidence.services import LifecycleService, load_readable_resource_ids
 from jobs.services import (
     ContentJobContext,
+    JobService,
+    RecentCommentJobTarget,
     load_content_job_context,
     load_content_job_contexts,
+    load_recent_comment_job_targets_in_transaction,
+)
+from monitors.services import (
+    ActiveTopicScan,
+    MonitorScheduleService,
+    evaluate_monitor_rules,
 )
 from sources.adapters.web_targets import normalize_web_url
+from sources.contracts import SourceCapability
 
 type Clock = Callable[[], datetime]
 
@@ -114,6 +132,10 @@ _METRIC_FIELDS = (
     "danmaku_count",
 )
 _MAX_BIGINT = 9_223_372_036_854_775_807
+COMMENT_OPERATION_NAMESPACE = UUID("755fda03-92d0-4fa9-afc2-cfacb6d5d0a8")
+_COMMENT_REFRESH_INTERVAL = timedelta(hours=6)
+_COMMENT_POST_LIFETIME = timedelta(hours=24)
+_COMMENT_TOPIC_LIMIT = 20
 _RFC3339_PATTERN = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(\d{1,6}))?(?:Z|[+-]\d{2}:\d{2})$"
 )
@@ -1618,3 +1640,474 @@ class ContentObservationCleanup:
                 version = session.get(ContentVersion, version_id)
                 if version is not None:
                     session.delete(version)
+
+
+@dataclass(frozen=True, slots=True)
+class CommentScanPost:
+    owner_id: UUID
+    content_id: UUID
+    source_key: str
+    external_id: str
+    created_at: datetime
+    title: str | None
+    body: str | None
+    like_count: int | None
+    comment_count: int
+    repost_count: int | None
+
+    @property
+    def interaction_score(self) -> int:
+        return (self.like_count or 0) + 2 * self.comment_count + 3 * (self.repost_count or 0)
+
+    @property
+    def searchable_text(self) -> str:
+        return "\n".join(item for item in (self.title, self.body) if item)
+
+
+@dataclass(frozen=True, slots=True)
+class CommentScanCandidate:
+    post: CommentScanPost
+    topic: ActiveTopicScan
+    preset: AppliedSourcePreset
+
+
+def comment_bucket_start(now: datetime) -> datetime:
+    if now.tzinfo is None:
+        raise ValueError("comment scan time must be timezone-aware")
+    now_utc = now.astimezone(UTC)
+    return now_utc.replace(hour=(now_utc.hour // 6) * 6, minute=0, second=0, microsecond=0)
+
+
+def comment_operation_id(content_id: UUID, bucket_start: datetime) -> UUID:
+    if bucket_start.tzinfo is None:
+        raise ValueError("comment bucket must be timezone-aware")
+    bucket_text = bucket_start.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return uuid5(COMMENT_OPERATION_NAMESPACE, f"comments:{content_id}:{bucket_text}")
+
+
+def _comment_collection_run(
+    candidate: CommentScanCandidate,
+    *,
+    bucket_start: datetime,
+) -> CommentCollectionRunInput:
+    return CommentCollectionRunInput(
+        operation_id=comment_operation_id(candidate.post.content_id, bucket_start),
+        configuration_ref=f"topic:{candidate.topic.topic_id}",
+        configuration_version=candidate.topic.topic_version,
+        source_key=candidate.post.source_key,
+        connection_id=candidate.preset.connection_id,
+        connection_version=candidate.preset.connection_version,
+        post_external_id=candidate.post.external_id,
+        entry_point=SourceEntryPoint.SCHEDULED,
+        starts_at=bucket_start - _COMMENT_REFRESH_INTERVAL,
+        ends_at=bucket_start,
+        scheduled_for_at=bucket_start,
+    )
+
+
+def _rank_comment_posts_for_topic(
+    *,
+    topic: ActiveTopicScan,
+    posts: tuple[CommentScanPost, ...],
+    presets: Mapping[tuple[UUID, str], AppliedSourcePreset],
+    recent_jobs: frozenset[RecentCommentJobTarget],
+) -> tuple[CommentScanCandidate, ...]:
+    matched: list[CommentScanPost] = []
+    for post in posts:
+        key = (post.owner_id, post.source_key)
+        if (
+            post.owner_id != topic.owner_id
+            or post.source_key not in topic.source_keys
+            or post.comment_count <= 0
+            or key not in presets
+            or RecentCommentJobTarget(
+                owner_id=post.owner_id,
+                source_key=post.source_key,
+                post_external_id=post.external_id,
+            )
+            in recent_jobs
+            or not evaluate_monitor_rules(topic.rules, post.searchable_text).matched
+        ):
+            continue
+        matched.append(post)
+    ranked = sorted(matched, key=lambda item: (-item.interaction_score, str(item.content_id)))
+    return tuple(
+        CommentScanCandidate(
+            post=post,
+            topic=topic,
+            preset=presets[(post.owner_id, post.source_key)],
+        )
+        for post in ranked[:_COMMENT_TOPIC_LIMIT]
+    )
+
+
+class CommentScanService:
+    """Own candidate selection and comments Job acceptance for the scheduler."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def enqueue_due_comments_in_transaction(self, *, now: datetime) -> int:
+        if not self._session.in_transaction():
+            raise RuntimeError("comment scanning requires the caller's transaction")
+        if now.tzinfo is None:
+            raise ValueError("comment scan time must be timezone-aware")
+        now_utc = now.astimezone(UTC)
+        topics = MonitorScheduleService(
+            self._session
+        ).list_active_topics_for_scanning_in_transaction()
+        presets = self._comment_presets(topics)
+        posts = self._load_recent_posts(
+            owners={topic.owner_id for topic in topics},
+            source_keys={source_key for _, source_key in presets},
+            since=now_utc - _COMMENT_POST_LIFETIME,
+            until=now_utc,
+        )
+        recent_jobs = load_recent_comment_job_targets_in_transaction(
+            self._session,
+            since=now_utc - _COMMENT_REFRESH_INTERVAL,
+        )
+        unique_candidates: dict[tuple[UUID, UUID], CommentScanCandidate] = {}
+        for topic in topics:
+            for candidate in _rank_comment_posts_for_topic(
+                topic=topic,
+                posts=posts,
+                presets=presets,
+                recent_jobs=recent_jobs,
+            ):
+                unique_candidates.setdefault(
+                    (candidate.post.owner_id, candidate.post.content_id), candidate
+                )
+
+        from content.comments import build_comment_job_acceptance
+
+        accepted = 0
+        bucket_start = comment_bucket_start(now_utc)
+        logger = structlog.get_logger("comment_scan")
+        for candidate in unique_candidates.values():
+            try:
+                with self._session.begin_nested():
+                    JobService(self._session, clock=lambda: now_utc).accept_in_transaction(
+                        owner_id=candidate.post.owner_id,
+                        command=build_comment_job_acceptance(
+                            _comment_collection_run(candidate, bucket_start=bucket_start)
+                        ),
+                    )
+            except Exception as error:
+                logger.warning(
+                    "comment_scan_candidate_failed",
+                    owner_id=str(candidate.post.owner_id),
+                    topic_id=str(candidate.topic.topic_id),
+                    content_id=str(candidate.post.content_id),
+                    source_key=candidate.post.source_key,
+                    error_type=type(error).__name__,
+                    exc_info=True,
+                )
+                continue
+            accepted += 1
+        return accepted
+
+    def _comment_presets(
+        self,
+        topics: tuple[ActiveTopicScan, ...],
+    ) -> dict[tuple[UUID, str], AppliedSourcePreset]:
+        sources_by_owner: dict[UUID, set[str]] = {}
+        for topic in topics:
+            sources_by_owner.setdefault(topic.owner_id, set()).update(topic.source_keys)
+        result: dict[tuple[UUID, str], AppliedSourcePreset] = {}
+        for owner_id in sorted(sources_by_owner, key=str):
+            applied = load_applied_source_presets_in_transaction(
+                self._session,
+                owner_id=owner_id,
+                source_keys=sorted(sources_by_owner[owner_id]),
+            )
+            for source_key, preset in applied.items():
+                if SourceCapability.COMMENTS in preset.capabilities:
+                    result[(owner_id, source_key)] = preset
+        return result
+
+    def _load_recent_posts(
+        self,
+        *,
+        owners: set[UUID],
+        source_keys: set[str],
+        since: datetime,
+        until: datetime,
+    ) -> tuple[CommentScanPost, ...]:
+        if not owners or not source_keys:
+            return ()
+        latest_versions = (
+            select(
+                ContentVersion.owner_id.label("owner_id"),
+                ContentVersion.content_id.label("content_id"),
+                ContentVersion.title.label("title"),
+                ContentVersion.body.label("body"),
+                func.row_number()
+                .over(
+                    partition_by=(ContentVersion.owner_id, ContentVersion.content_id),
+                    order_by=(ContentVersion.created_at.desc(), ContentVersion.id.desc()),
+                )
+                .label("position"),
+            )
+            .subquery()
+        )
+        latest_observations = (
+            select(
+                ContentObservation.owner_id.label("owner_id"),
+                ContentObservation.content_id.label("content_id"),
+                ContentObservation.like_count.label("like_count"),
+                ContentObservation.comment_count.label("comment_count"),
+                ContentObservation.repost_count.label("repost_count"),
+                func.row_number()
+                .over(
+                    partition_by=(ContentObservation.owner_id, ContentObservation.content_id),
+                    order_by=(
+                        ContentObservation.observed_at.desc(),
+                        ContentObservation.received_at.desc(),
+                        ContentObservation.id.desc(),
+                    ),
+                )
+                .label("position"),
+            )
+            .subquery()
+        )
+        rows = self._session.execute(
+            select(
+                ContentRecord.owner_id,
+                ContentRecord.id,
+                ContentRecord.source_key,
+                ContentRecord.external_id,
+                ContentRecord.created_at,
+                latest_versions.c.title,
+                latest_versions.c.body,
+                latest_observations.c.like_count,
+                latest_observations.c.comment_count,
+                latest_observations.c.repost_count,
+            )
+            .join(
+                latest_versions,
+                and_(
+                    latest_versions.c.owner_id == ContentRecord.owner_id,
+                    latest_versions.c.content_id == ContentRecord.id,
+                    latest_versions.c.position == 1,
+                ),
+            )
+            .join(
+                latest_observations,
+                and_(
+                    latest_observations.c.owner_id == ContentRecord.owner_id,
+                    latest_observations.c.content_id == ContentRecord.id,
+                    latest_observations.c.position == 1,
+                ),
+            )
+            .where(
+                ContentRecord.owner_id.in_(owners),
+                ContentRecord.source_key.in_(source_keys),
+                ContentRecord.object_type == "post",
+                ContentRecord.created_at >= since,
+                ContentRecord.created_at <= until,
+                latest_observations.c.comment_count > 0,
+            )
+            .order_by(ContentRecord.owner_id, ContentRecord.id)
+        ).all()
+        return tuple(
+            CommentScanPost(
+                owner_id=owner_id,
+                content_id=content_id,
+                source_key=source_key,
+                external_id=external_id,
+                created_at=(
+                    created_at.replace(tzinfo=UTC)
+                    if created_at.tzinfo is None
+                    else created_at.astimezone(UTC)
+                ),
+                title=title,
+                body=body,
+                like_count=like_count,
+                comment_count=comment_count,
+                repost_count=repost_count,
+            )
+            for (
+                owner_id,
+                content_id,
+                source_key,
+                external_id,
+                created_at,
+                title,
+                body,
+                like_count,
+                comment_count,
+                repost_count,
+            ) in rows
+        )
+
+
+def load_recent_post_versions_for_analysis(
+    session: Session,
+    *,
+    owner_id: UUID,
+    since: datetime,
+) -> tuple[AnalysisPostContentView, ...]:
+    """Read recent post versions without exposing content ORM models cross-domain."""
+    if not session.in_transaction():
+        raise RuntimeError("analysis content reads require the caller's transaction")
+    if since.tzinfo is None:
+        raise ValueError("analysis recency boundary must be timezone-aware")
+    occurred_at = func.coalesce(ContentObservation.published_at, ContentObservation.observed_at)
+    recent_versions = (
+        select(
+            ContentObservation.content_version_id.label("content_version_id"),
+            func.max(occurred_at).label("occurred_at"),
+        )
+        .where(
+            ContentObservation.owner_id == owner_id,
+            ContentObservation.content_version_id.is_not(None),
+            occurred_at >= since,
+        )
+        .group_by(ContentObservation.content_version_id)
+        .subquery()
+    )
+    rows = session.execute(
+        select(ContentVersion, ContentRecord)
+        .join(recent_versions, recent_versions.c.content_version_id == ContentVersion.id)
+        .join(
+            ContentRecord,
+            and_(
+                ContentRecord.owner_id == ContentVersion.owner_id,
+                ContentRecord.id == ContentVersion.content_id,
+            ),
+        )
+        .where(
+            ContentVersion.owner_id == owner_id,
+            ContentRecord.object_type == "post",
+        )
+        .order_by(recent_versions.c.occurred_at.desc(), ContentVersion.id)
+    ).all()
+    return tuple(_analysis_post_view(version, content) for version, content in rows)
+
+
+def load_post_versions_for_analysis(
+    session: Session,
+    *,
+    owner_id: UUID,
+    content_version_ids: set[UUID],
+) -> tuple[AnalysisPostContentView, ...]:
+    """Read exact immutable post versions frozen into an analysis job."""
+    if not session.in_transaction():
+        raise RuntimeError("analysis content reads require the caller's transaction")
+    if not content_version_ids:
+        return ()
+    rows = session.execute(
+        select(ContentVersion, ContentRecord)
+        .join(
+            ContentRecord,
+            and_(
+                ContentRecord.owner_id == ContentVersion.owner_id,
+                ContentRecord.id == ContentVersion.content_id,
+            ),
+        )
+        .where(
+            ContentVersion.owner_id == owner_id,
+            ContentVersion.id.in_(content_version_ids),
+            ContentRecord.object_type == "post",
+        )
+        .order_by(ContentVersion.id)
+    ).all()
+    return tuple(_analysis_post_view(version, content) for version, content in rows)
+
+
+def load_post_comments_for_analysis(
+    session: Session,
+    *,
+    owner_id: UUID,
+    post_content_ids: set[UUID],
+    limit_per_post: int = 50,
+) -> dict[UUID, tuple[AnalysisCommentContentView, ...]]:
+    """Return each post's newest text for at most 50 distinct comments."""
+    if not session.in_transaction():
+        raise RuntimeError("analysis comment reads require the caller's transaction")
+    if not 1 <= limit_per_post <= 50:
+        raise ValueError("analysis comment limit must be between 1 and 50")
+    if not post_content_ids:
+        return {}
+
+    version_rows = (
+        select(
+            ContentThread.post_content_id.label("post_content_id"),
+            ContentVersion.content_id.label("comment_content_id"),
+            ContentVersion.title.label("title"),
+            ContentVersion.body.label("body"),
+            func.row_number()
+            .over(
+                partition_by=(ContentVersion.owner_id, ContentVersion.content_id),
+                order_by=(ContentVersion.created_at.desc(), ContentVersion.id.desc()),
+            )
+            .label("version_position"),
+        )
+        .join(
+            ContentVersion,
+            and_(
+                ContentVersion.owner_id == ContentThread.owner_id,
+                ContentVersion.content_id == ContentThread.content_id,
+            ),
+        )
+        .where(
+            ContentThread.owner_id == owner_id,
+            ContentThread.post_content_id.in_(post_content_ids),
+        )
+        .subquery()
+    )
+    latest_versions = (
+        select(
+            version_rows.c.post_content_id,
+            version_rows.c.comment_content_id,
+            version_rows.c.title,
+            version_rows.c.body,
+            func.row_number()
+            .over(
+                partition_by=version_rows.c.post_content_id,
+                order_by=version_rows.c.comment_content_id,
+            )
+            .label("comment_position"),
+        )
+        .where(version_rows.c.version_position == 1)
+        .subquery()
+    )
+    rows = session.execute(
+        select(
+            latest_versions.c.post_content_id,
+            latest_versions.c.comment_content_id,
+            latest_versions.c.title,
+            latest_versions.c.body,
+        )
+        .where(latest_versions.c.comment_position <= limit_per_post)
+        .order_by(
+            latest_versions.c.post_content_id,
+            latest_versions.c.comment_position,
+        )
+    ).all()
+    comments: dict[UUID, list[AnalysisCommentContentView]] = {}
+    for post_content_id, comment_content_id, title, body in rows:
+        text = "\n".join(part for part in (title, body) if part)
+        if not text:
+            continue
+        comments.setdefault(post_content_id, []).append(
+            AnalysisCommentContentView(
+                post_content_id=post_content_id,
+                comment_content_id=comment_content_id,
+                text=text,
+            )
+        )
+    return {post_id: tuple(items) for post_id, items in comments.items()}
+
+
+def _analysis_post_view(
+    version: ContentVersion,
+    content: ContentRecord,
+) -> AnalysisPostContentView:
+    return AnalysisPostContentView(
+        content_id=content.id,
+        content_version_id=version.id,
+        title=version.title,
+        body=version.body,
+    )

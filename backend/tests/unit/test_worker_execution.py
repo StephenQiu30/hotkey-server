@@ -80,6 +80,29 @@ def test_hard_deadline_terminates_handler_that_never_returns(tmp_path: Path) -> 
     assert not finished.exists()
 
 
+def test_run_can_override_the_default_execution_deadline(tmp_path: Path) -> None:
+    started = tmp_path / "started"
+    finished = tmp_path / "finished"
+
+    supervisor = JobProcessSupervisor(
+        startup_timeout_seconds=2.0,
+        execution_timeout_seconds=10.0,
+        terminate_grace_seconds=0.05,
+        poll_interval_seconds=0.01,
+    )
+    result = supervisor.run(
+        _wait_and_mark,
+        (str(started), str(finished), 3.0),
+        cancellation_requested=lambda: False,
+        stopping=Event(),
+        execution_timeout_seconds=0.1,
+    )
+
+    assert result.outcome is JobProcessOutcome.TIMED_OUT
+    assert started.exists()
+    assert not finished.exists()
+
+
 def test_cancellation_kills_child_which_ignores_terminate(tmp_path: Path) -> None:
     started = tmp_path / "started"
 

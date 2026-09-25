@@ -75,7 +75,7 @@ def test_browser_deadline_fits_job_lease_and_kafka_poll_window() -> None:
     )
 
     assert settings.browser_execution_timeout_seconds == 45
-    assert settings.job_process_execution_timeout_seconds == 65
+    assert settings.job_process_execution_timeout_seconds("webpage.collect") == 65
     assert settings.job_lease_seconds == 75
     assert settings.kafka_max_poll_interval_seconds == 120
 
@@ -109,7 +109,7 @@ def test_disabled_source_runtimes_do_not_reserve_external_deadline_budget() -> N
     )
 
     assert not settings.browser_enabled
-    assert settings.job_process_execution_timeout_seconds == 5
+    assert settings.job_process_execution_timeout_seconds("webpage.collect") == 5
 
 
 def test_firecrawl_timeout_includes_process_and_finalization_margins() -> None:
@@ -119,10 +119,35 @@ def test_firecrawl_timeout_includes_process_and_finalization_margins() -> None:
         job_lease_seconds=35,
     )
 
-    assert settings.job_process_execution_timeout_seconds == 25
+    assert settings.job_process_execution_timeout_seconds("webpage.collect") == 25
     with pytest.raises(ValidationError, match="job lease"):
         Settings(
             database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
             firecrawl_enabled=True,
             job_lease_seconds=34,
         )
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected"),
+    [
+        ("keyword.search", 90),
+        ("source.comments", 90),
+        ("analysis.annotate", 600),
+        ("report.daily", 600),
+        ("report.weekly", 600),
+        ("notification.send", 60),
+        ("knowledge.export", 60),
+    ],
+)
+def test_job_process_deadline_depends_on_job_kind(kind: str, expected: int) -> None:
+    settings = Settings(database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test")
+
+    assert settings.job_process_execution_timeout_seconds(kind) == expected
+
+
+def test_unknown_job_kind_has_no_implicit_process_deadline() -> None:
+    settings = Settings(database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test")
+
+    with pytest.raises(ValueError, match="unsupported job kind"):
+        settings.job_process_execution_timeout_seconds("unknown.task")

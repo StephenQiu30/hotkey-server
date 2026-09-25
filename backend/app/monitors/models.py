@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from uuid import UUID
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
+    PrimaryKeyConstraint,
     String,
+    Time,
     UniqueConstraint,
     text,
 )
@@ -112,9 +115,22 @@ class MonitorTopic(Base):
             name="monitor_topics_current_version_check",
         ),
         CheckConstraint(
+            "collection_interval_seconds BETWEEN 600 AND 86400",
+            name="monitor_topics_collection_interval_check",
+        ),
+        CheckConstraint(
+            "report_timezone = 'Asia/Shanghai'",
+            name="monitor_topics_report_timezone_check",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(notification_target_names) = 'array'",
+            name="monitor_topics_notification_targets_check",
+        ),
+        CheckConstraint(
             "updated_at >= created_at",
             name="monitor_topics_updated_at_check",
         ),
+        UniqueConstraint("owner_id", "id", name="monitor_topics_owner_id_key"),
         Index("monitor_topics_owner_updated_idx", "owner_id", "updated_at"),
     )
 
@@ -127,6 +143,26 @@ class MonitorTopic(Base):
         server_default=text("'pending_source_selection'"),
     )
     current_version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    collection_interval_seconds: Mapped[int] = mapped_column(
+        Integer,
+        server_default=text("1800"),
+    )
+    report_time: Mapped[time] = mapped_column(
+        Time(timezone=False),
+        server_default=text("'09:00:00'"),
+    )
+    report_timezone: Mapped[str] = mapped_column(
+        String(64),
+        server_default=text("'Asia/Shanghai'"),
+    )
+    weekly_report_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        server_default=text("false"),
+    )
+    notification_target_names: Mapped[list[str]] = mapped_column(
+        JSONB,
+        server_default=text("'[]'::jsonb"),
+    )
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
 
@@ -160,3 +196,50 @@ class MonitorTopicVersion(Base):
     match_all: Mapped[list[str]] = mapped_column(JSONB)
     exclude: Mapped[list[str]] = mapped_column(JSONB)
     created_at: Mapped[datetime]
+
+
+class MonitorSchedule(Base):
+    __tablename__ = "monitor_schedules"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "topic_id"],
+            ["monitor_topics.owner_id", "monitor_topics.id"],
+            ondelete="CASCADE",
+            name="monitor_schedules_owner_topic_fkey",
+        ),
+        CheckConstraint(
+            "source_key ~ '^[a-z][a-z0-9_-]{0,63}$'",
+            name="monitor_schedules_source_key_check",
+        ),
+        CheckConstraint(
+            "capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content')",
+            name="monitor_schedules_capability_check",
+        ),
+        CheckConstraint(
+            "interval_seconds BETWEEN 600 AND 86400",
+            name="monitor_schedules_interval_check",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at",
+            name="monitor_schedules_updated_at_check",
+        ),
+        PrimaryKeyConstraint(
+            "owner_id",
+            "topic_id",
+            "source_key",
+            "capability",
+            name="monitor_schedules_owner_topic_source_capability_key",
+        ),
+        Index("monitor_schedules_enabled_next_run_idx", "enabled", "next_run_at"),
+    )
+
+    owner_id: Mapped[UUID]
+    topic_id: Mapped[UUID]
+    source_key: Mapped[str] = mapped_column(String(64))
+    capability: Mapped[str] = mapped_column(String(32))
+    interval_seconds: Mapped[int] = mapped_column(Integer)
+    next_run_at: Mapped[datetime]
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    last_job_id: Mapped[UUID | None]
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]

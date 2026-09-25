@@ -1,16 +1,23 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator
 
 from core.schemas import InputModel, OutputModel
 
 type KeywordInput = Annotated[str, Field(min_length=1, max_length=100)]
 type PreviewSampleInput = Annotated[str, Field(min_length=1, max_length=500)]
+type SourceKeyInput = Annotated[
+    str,
+    Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]{0,63}$"),
+]
+type NotificationTargetNameInput = Annotated[str, Field(min_length=1, max_length=128)]
+
+_DEFAULT_REPORT_TIME = time(hour=9)
 
 
 class MonitorTopicStatus(StrEnum):
@@ -33,6 +40,21 @@ class MonitorRuleSetInput(InputModel):
 
 class MonitorTopicCreateInput(MonitorRuleSetInput):
     name: str = Field(min_length=1, max_length=80)
+    source_keys: list[SourceKeyInput] = Field(default_factory=list, max_length=32)
+    collection_interval_seconds: int = Field(default=1800, ge=600, le=86400)
+    report_time: time = _DEFAULT_REPORT_TIME
+    weekly_report_enabled: bool = False
+    notification_target_names: list[NotificationTargetNameInput] = Field(
+        default_factory=list,
+        max_length=20,
+    )
+
+    @field_validator("report_time")
+    @classmethod
+    def require_local_report_time(cls, value: time) -> time:
+        if value.tzinfo is not None:
+            raise ValueError("report_time must not include an offset")
+        return value
 
 
 class MonitorTopicUpdateInput(MonitorTopicCreateInput):
@@ -108,5 +130,11 @@ class MonitorTopicView(OutputModel):
     readiness_status: MonitorTopicReadinessStatus
     current_version: int = Field(ge=1)
     rules: MonitorRuleSetView
+    source_keys: list[str]
+    collection_interval_seconds: int = Field(ge=600, le=86400)
+    report_time: time
+    report_timezone: Literal["Asia/Shanghai"]
+    weekly_report_enabled: bool
+    notification_target_names: list[str]
     created_at: datetime
     updated_at: datetime

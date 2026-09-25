@@ -19,6 +19,7 @@ from connections.models import (
     SourceConnection,
     SourceConnectionVersion,
 )
+from connections.presets import SOURCE_PRESETS, SourcePreset
 from connections.schemas import (
     ConnectionEvidenceKind,
     ConnectionEvidenceOutcome,
@@ -28,6 +29,7 @@ from connections.schemas import (
     SourceCapabilityStatus,
     SourceCapabilityView,
     SourceConnectionAuthKind,
+    SourceConnectionConfig,
     SourceConnectionStatus,
     SourceConnectionUpdateInput,
     SourceConnectionView,
@@ -35,14 +37,88 @@ from connections.schemas import (
     SourceEntryPointView,
     SourcePlatformStatus,
     SourcePlatformView,
+    SourcePresetApplyView,
     SourceRolloutRole,
 )
 from core.errors import ApplicationError
-from evidence.services import load_source_access_readiness
+from evidence.schemas import (
+    AccessBasis,
+    AccessPolicyStatus,
+    DataClass,
+    RetentionPolicyInput,
+    SourceAccessPolicyInput,
+)
+from evidence.services import (
+    RetentionPolicyService,
+    SourceAccessPolicyService,
+    load_source_access_readiness,
+)
 from sources.adapters.web_targets import normalize_web_url
 from sources.contracts import SourceCapability, SourceStopReason
 
 type Clock = Callable[[], datetime]
+
+
+@dataclass(frozen=True, slots=True)
+class AppliedSourcePreset:
+    source_key: str
+    connection_id: UUID
+    connection_version: int
+    capabilities: tuple[SourceCapability, ...]
+
+
+def load_applied_source_presets_in_transaction(
+    session: Session,
+    *,
+    owner_id: UUID,
+    source_keys: Iterable[str],
+) -> dict[str, AppliedSourcePreset]:
+    """Return requested presets whose current active connection still matches the preset."""
+    if not session.in_transaction():
+        raise RuntimeError("applied source presets require the caller's transaction")
+    requested = tuple(dict.fromkeys(source_keys))
+    if not requested:
+        return {}
+    rows = session.execute(
+        select(SourceConnection, SourceConnectionVersion)
+        .join(
+            SourceConnectionVersion,
+            and_(
+                SourceConnectionVersion.connection_id == SourceConnection.id,
+                SourceConnectionVersion.owner_id == SourceConnection.owner_id,
+                SourceConnectionVersion.version == SourceConnection.current_version,
+            ),
+        )
+        .where(
+            SourceConnection.owner_id == owner_id,
+            SourceConnection.source_key.in_(requested),
+            SourceConnection.status == SourceConnectionStatus.ACTIVE.value,
+        )
+        .with_for_update(of=SourceConnection)
+    ).all()
+    applied: dict[str, AppliedSourcePreset] = {}
+    for connection, version in rows:
+        preset = SOURCE_PRESETS.get(connection.source_key)
+        if preset is None:
+            continue
+        expected_config = SourceConnectionConfig.model_validate(dict(preset.config)).model_dump(
+            mode="json",
+            exclude_defaults=True,
+            exclude_none=True,
+        )
+        if (
+            version.auth_kind != SourceConnectionAuthKind.NONE.value
+            or version.secret_ref is not None
+            or version.config != expected_config
+        ):
+            continue
+        applied[connection.source_key] = AppliedSourcePreset(
+            source_key=connection.source_key,
+            connection_id=connection.id,
+            connection_version=connection.current_version,
+            capabilities=tuple(item.capability for item in preset.capabilities),
+        )
+    return applied
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,6 +415,188 @@ def _next_action(
     }[status]
 
 
+class SourcePresetService:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        clock: Clock | None = None,
+    ) -> None:
+        self._session = session
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def apply_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        preset: SourcePreset,
+    ) -> SourcePresetApplyView:
+        """Apply one complete source preset inside the caller's transaction."""
+        catalog = next(
+            (item for item in SOURCE_CATALOG if item.source_key == preset.source_key), None
+        )
+        if catalog is None or catalog.auth_kind is not SourceConnectionAuthKind.NONE:
+            raise ValueError("source preset is not registered as a credential-free source")
+        preset_capabilities = tuple(item.capability for item in preset.capabilities)
+        if not preset_capabilities or set(preset_capabilities) != set(catalog.capabilities):
+            raise ValueError("source preset capabilities do not match the source catalog")
+
+        now = self._clock()
+        if now.tzinfo is None:
+            raise ValueError("clock must return a timezone-aware datetime")
+        now = now.astimezone(UTC)
+        config = SourceConnectionConfig.model_validate(dict(preset.config)).model_dump(
+            mode="json",
+            exclude_defaults=True,
+            exclude_none=True,
+        )
+        if not config.get("allowed_hosts"):
+            raise ValueError("source preset requires at least one allowed host")
+
+        preset_changed = False
+        access_service = SourceAccessPolicyService(self._session, clock=self._clock)
+        retention_service = RetentionPolicyService(self._session, clock=self._clock)
+        for capability in preset.capabilities:
+            access_command = SourceAccessPolicyInput(
+                source_key=preset.source_key,
+                capability=capability.capability,
+                status=AccessPolicyStatus.APPROVED,
+                enabled=True,
+                access_basis=AccessBasis.PUBLIC_WEB,
+                terms_reference=preset.access_terms_reference,
+                processing_purpose=capability.processing_purpose,
+                component_name=preset.component_name,
+                component_version=preset.component_version,
+                component_license=preset.component_license,
+                field_purposes=dict(capability.field_purposes),
+                reviewed_at=preset.reviewed_at,
+            )
+            preset_changed |= not access_service.matches_in_transaction(
+                owner_id=owner_id, command=access_command
+            )
+            access = access_service.save_in_transaction(
+                owner_id=owner_id, command=access_command
+            )
+            retention_command = RetentionPolicyInput(
+                source_policy_id=access.id,
+                data_class=DataClass.STRUCTURED,
+                requested_days=preset.retention_days,
+                source_max_days=preset.retention_days,
+            )
+            preset_changed |= not retention_service.matches_in_transaction(
+                owner_id=owner_id, command=retention_command
+            )
+            retention_service.save_in_transaction(
+                owner_id=owner_id, command=retention_command
+            )
+
+        from jobs.schemas import (
+            BudgetMetric,
+            BudgetPolicyInput,
+            BudgetScopeKind,
+            ComponentPolicyInput,
+            CostClass,
+        )
+        from jobs.services import ResourceBudgetService
+
+        component_command = ComponentPolicyInput(
+            component_key=preset.component_name,
+            component_version=preset.component_version,
+            cost_class=CostClass(preset.component_cost_class),
+            enabled_for_core=True,
+            terms_reference=preset.component_terms_reference,
+            reviewed_at=preset.reviewed_at,
+        )
+        budget_command = BudgetPolicyInput(
+            budget_key=preset.budget.budget_key,
+            metric=BudgetMetric(preset.budget.metric),
+            scope_kind=BudgetScopeKind(preset.budget.scope_kind),
+            scope_reference=preset.budget.scope_reference,
+            limit_units=preset.budget.limit_units,
+            window_seconds=preset.budget.window_seconds,
+            window_anchor_at=preset.budget.window_anchor_at,
+            enabled=True,
+        )
+        resources = ResourceBudgetService(self._session, clock=self._clock)
+        preset_changed |= not resources.component_policy_matches_in_transaction(
+            owner_id=owner_id, command=component_command
+        )
+        resources.save_component_policy_in_transaction(
+            owner_id=owner_id, command=component_command
+        )
+        preset_changed |= not resources.budget_policy_matches_in_transaction(
+            owner_id=owner_id, command=budget_command
+        )
+        resources.save_budget_policy_in_transaction(owner_id=owner_id, command=budget_command)
+
+        connection = self._session.scalar(
+            select(SourceConnection)
+            .where(
+                SourceConnection.owner_id == owner_id,
+                SourceConnection.source_key == preset.source_key,
+            )
+            .with_for_update()
+        )
+        if connection is None:
+            connection = SourceConnection(
+                id=uuid4(),
+                owner_id=owner_id,
+                source_key=preset.source_key,
+                status=SourceConnectionStatus.ACTIVE.value,
+                current_version=1,
+                created_at=now,
+                updated_at=now,
+            )
+            self._session.add(connection)
+            self._session.add(
+                SourceConnectionVersion(
+                    connection_id=connection.id,
+                    owner_id=owner_id,
+                    version=1,
+                    auth_kind=SourceConnectionAuthKind.NONE.value,
+                    secret_ref=None,
+                    config=config,
+                    created_by=owner_id,
+                    created_at=now,
+                )
+            )
+        else:
+            current = self._session.get(
+                SourceConnectionVersion, (connection.id, connection.current_version)
+            )
+            if current is None:
+                raise RuntimeError("current connection version is not visible")
+            connection_changed = (
+                connection.status != SourceConnectionStatus.ACTIVE.value
+                or current.auth_kind != SourceConnectionAuthKind.NONE.value
+                or current.secret_ref is not None
+                or current.config != config
+            )
+            if preset_changed or connection_changed:
+                connection.current_version += 1
+                connection.status = SourceConnectionStatus.ACTIVE.value
+                connection.updated_at = now
+                self._session.add(
+                    SourceConnectionVersion(
+                        connection_id=connection.id,
+                        owner_id=owner_id,
+                        version=connection.current_version,
+                        auth_kind=SourceConnectionAuthKind.NONE.value,
+                        secret_ref=None,
+                        config=config,
+                        created_by=owner_id,
+                        created_at=now,
+                    )
+                )
+        self._session.flush()
+        return SourcePresetApplyView(
+            source_key=preset.source_key,
+            connection_id=connection.id,
+            connection_version=connection.current_version,
+            capabilities=preset_capabilities,
+        )
+
+
 class SourceConnectionService:
     def __init__(
         self,
@@ -401,9 +659,9 @@ class SourceConnectionService:
                     if catalog.auth_kind is SourceConnectionAuthKind.NONE:
                         if not command.allowed_hosts:
                             raise ApplicationError("invalid_connection_configuration")
-                        configuration = {"allowed_hosts": list(command.allowed_hosts)}
+                        config = {"allowed_hosts": list(command.allowed_hosts)}
                     else:
-                        configuration = {}
+                        config = {}
                     self._session.add(
                         SourceConnectionVersion(
                             connection_id=connection_id,
@@ -411,7 +669,7 @@ class SourceConnectionService:
                             version=1,
                             auth_kind=catalog.auth_kind.value,
                             secret_ref=secret_ref,
-                            configuration=configuration,
+                            config=config,
                             created_by=owner_id,
                             created_at=now,
                         )
@@ -442,25 +700,25 @@ class SourceConnectionService:
             if command.status is SourceConnectionStatus.DISABLED:
                 target_auth_kind = SourceConnectionAuthKind(previous.auth_kind)
                 target_ref = previous.secret_ref
-                target_configuration = dict(previous.configuration)
+                target_config = dict(previous.config)
             else:
                 target_auth_kind = catalog.auth_kind
                 target_ref = secret_ref
                 if target_auth_kind is SourceConnectionAuthKind.NONE:
-                    target_configuration = (
+                    target_config = (
                         {"allowed_hosts": list(command.allowed_hosts)}
                         if command.allowed_hosts
-                        else dict(previous.configuration)
+                        else dict(previous.config)
                     )
-                    if not self._allowed_hosts(target_configuration):
+                    if not self._allowed_hosts(target_config):
                         raise ApplicationError("invalid_connection_configuration")
                 else:
-                    target_configuration = {}
+                    target_config = {}
             unchanged = (
                 connection.status == command.status.value
                 and previous.auth_kind == target_auth_kind.value
                 and previous.secret_ref == target_ref
-                and previous.configuration == target_configuration
+                and previous.config == target_config
             )
             if connection.current_version != command.expected_version:
                 if not (unchanged and connection.current_version == command.expected_version + 1):
@@ -476,7 +734,7 @@ class SourceConnectionService:
                         version=connection.current_version,
                         auth_kind=target_auth_kind.value,
                         secret_ref=target_ref,
-                        configuration=target_configuration,
+                        config=target_config,
                         created_by=owner_id,
                         created_at=now,
                     )
@@ -486,7 +744,7 @@ class SourceConnectionService:
                 source_key=source_key,
                 status=SourceConnectionStatus(connection.status),
                 version=connection.current_version,
-                allowed_hosts=list(self._allowed_hosts(target_configuration)),
+                allowed_hosts=list(self._allowed_hosts(target_config)),
                 updated_at=connection.updated_at.astimezone(UTC),
             )
 
@@ -541,7 +799,7 @@ class SourceConnectionService:
                     version=new_version,
                     auth_kind=SourceConnectionAuthKind.BROWSER_STATE.value,
                     secret_ref=reference,
-                    configuration=dict(previous.configuration),
+                    config=dict(previous.config),
                     created_by=owner_id,
                     created_at=now,
                 )
@@ -575,7 +833,7 @@ class SourceConnectionService:
                     version=new_version,
                     auth_kind=SourceConnectionAuthKind.BROWSER_STATE.value,
                     secret_ref=BrowserStateStore.reference(owner_id, connection_id, new_version),
-                    configuration=dict(previous.configuration),
+                    config=dict(previous.config),
                     created_by=owner_id,
                     created_at=now,
                 )
@@ -615,7 +873,7 @@ class SourceConnectionService:
             source_key=connection.source_key,
             status=SourceConnectionStatus(connection.status),
             version=connection.current_version,
-            allowed_hosts=list(self._allowed_hosts(version.configuration)),
+            allowed_hosts=list(self._allowed_hosts(version.config)),
             updated_at=connection.updated_at.astimezone(UTC),
         )
 
@@ -793,7 +1051,7 @@ class SourceConnectionService:
             and configured_ref is not None
             and not credential_matches,
             allowed_hosts=(
-                list(self._allowed_hosts(current_version.configuration))
+                list(self._allowed_hosts(current_version.config))
                 if current_version is not None
                 else []
             ),
@@ -801,10 +1059,10 @@ class SourceConnectionService:
         )
 
     @staticmethod
-    def _allowed_hosts(configuration: Mapping[str, object]) -> tuple[str, ...]:
-        value = configuration.get("allowed_hosts", [])
+    def _allowed_hosts(config: Mapping[str, object]) -> tuple[str, ...]:
+        value = config.get("allowed_hosts", [])
         if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
-            raise RuntimeError("connection allowed_hosts configuration is invalid")
+            raise RuntimeError("connection allowed_hosts config is invalid")
         return tuple(value)
 
 
@@ -889,7 +1147,7 @@ def _web_connection_execution(
     version = session.get(SourceConnectionVersion, (connection.id, connection_version))
     if version is None or version.auth_kind != SourceConnectionAuthKind.NONE.value:
         raise RuntimeError("web connection version is invalid")
-    allowed_hosts = frozenset(SourceConnectionService._allowed_hosts(version.configuration))
+    allowed_hosts = frozenset(SourceConnectionService._allowed_hosts(version.config))
     try:
         normalized_url = normalize_web_url(target_url, allowed_hosts=allowed_hosts)
     except ValueError as error:
@@ -926,8 +1184,8 @@ def require_source_connection_version(
     source_key: str,
     connection_id: UUID,
     connection_version: int,
-) -> None:
-    """Fence a social page against connection replacement, disable, or auth failure."""
+) -> SourceConnectionConfig:
+    """Fence a source operation and return its immutable non-secret configuration."""
     connection = session.scalar(
         select(SourceConnection)
         .where(
@@ -945,6 +1203,10 @@ def require_source_connection_version(
         raise ApplicationError("connection_version_conflict")
     if _authentication_failed(session, connection):
         raise ApplicationError("connection_authentication_required")
+    version = session.get(SourceConnectionVersion, (connection_id, connection_version))
+    if version is None:
+        raise RuntimeError("source connection version is not visible")
+    return SourceConnectionConfig.model_validate(version.config)
 
 
 def require_browser_state_execution(

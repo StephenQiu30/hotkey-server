@@ -7,11 +7,18 @@ import { ArrowLeftIcon, ArrowRightIcon, LoaderCircleIcon } from "lucide-react";
 
 import { getIdentityWorkspace } from "@/api/identity";
 import { createMonitorTopic } from "@/api/jiankongzhuti";
+import { listSourceCapabilities } from "@/api/laiyuannengli";
 import {
   KeywordGroupField,
   parseKeywordLines,
 } from "@/components/monitors/keyword-group-field";
 import { TopicRulePreview } from "@/components/monitors/topic-rule-preview";
+import {
+  parseNotificationTargetNames,
+  selectableTopicSources,
+  TopicSettingsFields,
+  type TopicSourceOption,
+} from "@/components/monitors/topic-settings-fields";
 import { PageState } from "@/components/system/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,7 +33,7 @@ type SubmissionError = {
 
 type AccessState =
   | { status: "checking" }
-  | { status: "ready" }
+  | { status: "ready"; sourceOptions: TopicSourceOption[] }
   | { status: "error"; message: string; requestId?: string };
 
 function toSubmissionError(error: unknown): SubmissionError {
@@ -37,10 +44,21 @@ function toSubmissionError(error: unknown): SubmissionError {
     if (error.code === "invalid_monitor_rules") {
       return { message: "至少填写一个“任意命中”或“全部包含”关键词。" };
     }
+    if (error.code === "source_preset_not_applied") {
+      return { message: "所选来源尚未应用预设，或不支持关键词搜索。" };
+    }
     return { message: error.message, requestId: error.requestId };
   }
   return { message: "主题保存失败，请稍后重试。" };
 }
+
+type ExpectedTopicSettingsInput = {
+  source_keys: string[];
+  collection_interval_seconds: number;
+  report_time: string;
+  weekly_report_enabled: boolean;
+  notification_target_names: string[];
+};
 
 export function TopicForm() {
   const router = useRouter();
@@ -51,16 +69,25 @@ export function TopicForm() {
   const [matchAny, setMatchAny] = useState("");
   const [matchAll, setMatchAll] = useState("");
   const [exclude, setExclude] = useState("");
+  const [sourceKeys, setSourceKeys] = useState<string[]>([]);
+  const [collectionIntervalSeconds, setCollectionIntervalSeconds] =
+    useState(1800);
+  const [reportTime, setReportTime] = useState("09:00");
+  const [weeklyReportEnabled, setWeeklyReportEnabled] = useState(false);
+  const [notificationTargets, setNotificationTargets] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] =
     useState<SubmissionError | null>(null);
 
   useEffect(() => {
     let isCurrent = true;
-    void getIdentityWorkspace()
-      .then(() => {
+    void Promise.all([getIdentityWorkspace(), listSourceCapabilities()])
+      .then(([, sourcePage]) => {
         if (isCurrent) {
-          setAccessState({ status: "ready" });
+          setAccessState({
+            status: "ready",
+            sourceOptions: selectableTopicSources(sourcePage.items),
+          });
         }
       })
       .catch((error: unknown) => {
@@ -103,16 +130,43 @@ export function TopicForm() {
       });
       return;
     }
+    const targetNames = parseNotificationTargetNames(notificationTargets);
+    if (
+      !Number.isInteger(collectionIntervalSeconds) ||
+      collectionIntervalSeconds < 600 ||
+      collectionIntervalSeconds > 86400
+    ) {
+      setSubmissionError({
+        message: "采集频率必须是 600—86400 之间的整数秒。",
+      });
+      return;
+    }
+    if (
+      targetNames.length > 20 ||
+      targetNames.some((item) => item.length > 128)
+    ) {
+      setSubmissionError({
+        message: "推送目标最多 20 个，每个名称不超过 128 个字符。",
+      });
+      return;
+    }
 
     setIsSubmitting(true);
     setSubmissionError(null);
     try {
-      const topic = await createMonitorTopic({
+      const payload: HotKeyAPI.MonitorTopicCreateInput &
+        ExpectedTopicSettingsInput = {
         name,
         match_any: any,
         match_all: all,
         exclude: parseKeywordLines(exclude),
-      });
+        source_keys: sourceKeys,
+        collection_interval_seconds: collectionIntervalSeconds,
+        report_time: reportTime,
+        weekly_report_enabled: weeklyReportEnabled,
+        notification_target_names: targetNames,
+      };
+      const topic = await createMonitorTopic(payload);
       router.replace(`/monitors/${topic.id}`);
       router.refresh();
     } catch (error) {
@@ -229,6 +283,21 @@ export function TopicForm() {
                 disabled={isSubmitting}
               />
             </section>
+
+            <TopicSettingsFields
+              sourceOptions={accessState.sourceOptions}
+              sourceKeys={sourceKeys}
+              onSourceKeysChange={setSourceKeys}
+              collectionIntervalSeconds={collectionIntervalSeconds}
+              onCollectionIntervalSecondsChange={setCollectionIntervalSeconds}
+              reportTime={reportTime}
+              onReportTimeChange={setReportTime}
+              weeklyReportEnabled={weeklyReportEnabled}
+              onWeeklyReportEnabledChange={setWeeklyReportEnabled}
+              notificationTargets={notificationTargets}
+              onNotificationTargetsChange={setNotificationTargets}
+              disabled={isSubmitting}
+            />
           </div>
 
           <aside className="lg:sticky lg:top-8 lg:self-start">
@@ -241,7 +310,11 @@ export function TopicForm() {
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt>来源</dt>
-                  <dd className="text-foreground">待选择</dd>
+                  <dd className="text-foreground">
+                    {sourceKeys.length > 0
+                      ? `${sourceKeys.length} 个`
+                      : "待选择"}
+                  </dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt>规则版本</dt>
