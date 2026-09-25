@@ -14,7 +14,7 @@
 
 - 每个实现切片开始前先明确技术选择与目录职责，列明新增、修改、移动和生成文件；不先写文件后找目录。
 - 技术选择已有用户决定的直接沿用；影响本片的部署、费用、平台范围或新框架等未决项，先给出选项和影响询问用户，未答复不执行依赖该决定的工作。普通实现细节按已定规范处理，不重复确认已确定的技术栈。
-- 用户已明确：复用现有 MinIO；X 自动采集只走官方 API，开发者凭据与月度上限未确认前禁止真实请求。2026-09-25 起产品按 v2.0 以日报、周报、知识库为目标，来源按 A/B/C 三档交付（PRD 001 第 4 节）。外部大模型是否付费及上限待 OPEN-001-102 确认，确认前不发起付费模型请求，不将 X 预算解释成模型授权。付费来源与模型调用都必须经 037 预算账本设置硬上限。
+- 用户已明确（2026-09-25）：个人/非商业研究；复用现有 MinIO；采集栈为本地 Firecrawl+Playwright、RSSHub、SearXNG、MediaCrawler；模型经本机 Codex app-server（不发起付费模型请求）；推送为飞书与 SMTP；知识库为现有 Obsidian vault 的 `HotKey/` 子目录。X 只走官方 API，凭据与月度上限未确认前禁止真实请求。来源频次与模型调用都经 037 预算账本设置硬上限。
 - 新后端模块、前端功能目录必须登记职责并纳入全源码/依赖检查；门禁重新实现并验证前，不得声称已覆盖新模块。
 - 按业务切片创建目录，不提前创建空模块。来源适配器放sources/adapters，MinIO适配器放evidence/adapters，模型SDK适配器放ai/adapters；业务状态仍由业务模块持有。前端页面使用 `frontend/src/app`，页面专属组件放对应路由的 `components/`，跨页面复用组件按明确功能领域放 `frontend/src/components/<feature>/`，shadcn 基础组件放 `components/ui/`。不创建 `features`、`common`、`patterns` 或 `shared` 层；生成客户端固定在 `src/api`，Axios 封装固定在 `src/request.ts`。
 
@@ -68,7 +68,7 @@
 - 不因“异步更先进”将同步psycopg调用放进`async def`路由。只有整条调用链非阻塞且有独立并发/连接池验证时才引入AsyncSession，并保证每个并发task独立Session。
 
 - `sources/` 的适配器不依赖 API、ORM、Worker 或 CLI；业务来源契约不导入 HTTP 客户端。来源探测只经独立 CLI 显式执行，查询预览不发送网络请求。未通过持久化采集验收前，来源连接状态保持 not_connected。
-- `sources/adapters/x_twscrape.py` 是旧路线的受控实现，保持离线且不得注册 Worker 或使用用户浏览器会话。X 官方 API 新适配器归 `sources/adapters/`，只处理官方端点、只读映射、分页和错误翻译；业务预算/连接执行权由调用方装配，不由适配器操作 ORM。未补 037 的明确付费例外与账期硬上限前，不启用真实请求。
+- X 官方 API 适配器 `sources/adapters/x_api.py` 只处理官方端点、只读映射、分页和错误翻译；业务预算/连接执行权由调用方装配。凭据与月度上限未确认前不启用真实请求。新 HTTP 适配器继承 `sources/adapters/http_source.py`，必须接收主机白名单并校验每一跳重定向。
 - 本地网页/浏览器采集按 [047 Design](docs/design/047-本地网页与浏览器采集设计.md) 执行（原 047 Plan 已并入 Plan 001）；S00/S01 与 S02 公开网页业务闭环、S03 浏览器基础，以及 S03-T03 Worker 单任务硬截止/取消回收/未知退出重放共享边界已有实现和技术验证。不得把公开网页闭环或运行时探针当作平台接入成功；Browser 业务处理器仍未接入 Worker，G4-002 的凭据隔离/换版旧写端到端验证及四平台真实准入仍待完成。Firecrawl 内置渲染器不等于完整交互服务。`connections/adapters/local_secrets.py` 只管理受控浏览器状态文件，运行时不得接收不可信文件路径；本地 CLI 捕获文件也需拒绝符号链接、宽权限及超限内容。`browser_state` 引用必须与版本行身份一致，执行前由 `connections` 服务判定当前版本、停用及认证失效，不由文件存在性代替；无适配器时不在目录新增假来源。外采适配器保持无 ORM，业务编排归 content，执行权和预算归 jobs；不新增第二套队列或任务数据库。跨仓库 Firecrawl 修复单独检查差异，不混入 HotKey 提交。
 - S03 浏览器固定 Playwright Python/Server `1.63.0` 原生 WS；browser 构建 target、必要的 `server.js` 入口与 seccomp 置于 `backend/`。browser 只接 Worker 共享的 WS 内网及专用代理内网，只有 HotKey 自有 Squid 代理接公网桥接网；初始代理仅放行 `example.com` 探针，不放行真实平台。控制面 WS 路径使用本机私有配置的不可猜测 `/ws/` 令牌，browser 与调用方必须一致，禁用公开根路径及日志回显。适配器管理器启动、建连、context 与交互共用协作式截止；各关闭步骤有界请求清理，但不能冒充业务任务硬截止。CLI 的无网络探针和代理通路仅证明运行基础，不得据此声明平台能力；真实平台出口/请求计量须经后续专门验证。不得安装 Scrapling、CDP 服务、第二套依赖栈或把浏览器二进制加入 API 镜像。
 - 评论与回复按 Design 001 第 4.1、5.4 节存入 `content_threads`，并以 [008 Design](docs/design/008-评论与回复采集设计.md) 的身份与父链规则为输入；逐平台验证帖子定位、线程关系、一级/楼中楼分页和旧帖新回复。候选爬虫先核对固定源码/许可/运行边界，不能照 README 的“全量”或单页结果声明完整；各平台评论不依赖 X 先就绪。
@@ -86,7 +86,8 @@
 | 对象存储 | MinIO，适配器归 `evidence/adapters/` |
 | 工具 | Ruff、mypy、pytest、HTTPX；依赖精确版本随锁文件提交 |
 | API 入口 | 在 `backend/app/` 执行 `uvicorn main:create_app --factory` |
-| Worker 入口 | 在 `backend/app/` 执行 `python -m worker` |
+| Worker 入口 | 在 `backend/app/` 执行 `python -m worker`（P1 只在宿主机运行一个） |
+| 调度入口 | 在 `backend/app/` 执行 `python -m worker.scheduler`（扫表创建 Job） |
 | CLI 入口 | 在 `backend/app/` 执行 `python -m cli` |
 
 后端依赖统一使用 uv、`pyproject.toml` 和 `uv.lock`，作为普通应用管理，不构建安装包。CI 和镜像使用 `uv sync --locked`；精确版本在底座初始化时解析、验证并提交，不手工编辑锁文件。
@@ -191,7 +192,7 @@ backend/
 | `events/` | 事件归并、热度快照、人工合并/拆分（计划 P2） |
 | `reports/` | 日报/周报生成、校验、存档（计划 P1） |
 | `notifications/` | 推送渠道、订阅、发送记录（计划 P1） |
-| `knowledge/` | 索引分块、全文/向量检索、问答（计划 P3） |
+| `knowledge/` | Obsidian 导出（P1 起）、`pg_trgm` 检索与问答（P3） |
 | `audit/` | 跨领域审计记录 |
 
 新增领域必须先在切片 Design 登记主责、依赖和目标目录，再更新本表；不得把业务代码堆入 `core/`、全局 `utils/` 或全局 `models/`。

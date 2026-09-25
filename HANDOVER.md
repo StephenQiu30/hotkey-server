@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-- **方向**：2026-09-25 按代码评审转向 v2.0，目标是日报、周报、知识库。需求、设计、计划见 [docs/README.md](docs/README.md)。
-- **分支**：`docs/pivot-daily-report`；文档整理已提交 `e25d4440`，P1-T01/T02/T04 未提交。
-- **产品验收**：v2.0 AC 0/9；评论线程已可入库，但尚无采集处理器、分析、报告、推送、知识库代码。
+- **方向**：日报、周报、Obsidian 知识库；个人/非商业研究。需求 v2.1、设计 v3.0、计划 v3.0（任务卡）见 [docs/README.md](docs/README.md)。
+- **分支**：`docs/pivot-daily-report`，未推送。已提交到 `795ffa8e`；工作区有 A2/C1 的未提交代码（见 Plan 001 第 3 节）。
+- **产品验收**：AC 0/11；下一步是 A 组 Hacker News 竖切。
 - **测试**：2026-09-25 后端全量 540 passed / 17 skipped（隔离库 `hotkey_test`，Kafka/MinIO/live 用例跳过）；Ruff、mypy 通过。
 
 ## 已实现（可复用）
@@ -36,7 +36,8 @@ Worker 只有 `webpage.collect`；无周期调度；无模型/分析/事件/报�
 | Firecrawl + playwright-service | `127.0.0.1:3002` | 独立部署 `~/Desktop/StephenQiu/Firecrawl`；其 `.env` 已设 `SEARXNG_ENDPOINT=http://host.docker.internal:8888` |
 | SearXNG | `127.0.0.1:8888` | `HOTKEY_POSTGRES_PASSWORD=unused docker compose --profile crawlers up -d rsshub searxng`（本机开发用 Homebrew PostgreSQL，密码仅供插值） |
 | RSSHub | `127.0.0.1:1200` | 同上 |
-| Codex app-server | stdio | 宿主机 `codex`；ChatGPT 账号需显式模型 `gpt-5.6-luna` |
+| Codex app-server | stdio | 宿主机 `codex`，ChatGPT Pro 登录；默认 `gpt-5.6-sol` + `high`（`gpt-6-*` 不可用）；HotKey 分析用 `gpt-5.6-luna` |
+| Obsidian vault | `~/Desktop/Markdown/Obsidian` | HotKey 只写 `HotKey/` 子目录（D3 起） |
 
 2026-09-25 冒烟：RSSHub `/zhihu/hot` 返回热榜；SearXNG JSON 新闻搜索 75 条；Firecrawl `/v2/search` 走 SearXNG 成功；Codex 结构化情感判断约 7 秒。
 
@@ -49,6 +50,6 @@ Worker 只有 `webpage.collect`；无周期调度；无模型/分析/事件/报�
 
 ## 下一步
 
-1. 用户确认 OPEN-001-101/102/106。
-2. 提交本次文档整理。
-3. 从 P1-T01—T05 开始（不依赖模型预算），并行推进 P1-T06 选型。
+1. 提交本次统一规划文档。
+2. 按 BACKLOG 顺序把任务卡交给 Codex 执行：先 A1、A2、C1 并行。
+3. `~/.claude/settings.json` 的 DeepSeek 配置已于 2026-09-25 移除（备份 `settings.json.bak-20260925`），`/codex:rescue` 子代理可正常启动（需新会话生效）。
