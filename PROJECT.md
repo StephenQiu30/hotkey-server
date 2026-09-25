@@ -11,7 +11,7 @@ HotKey/
 ├── hotkey-server/
 │   ├── PROJECT.md        # 本文：技术与架构约束
 │   ├── AGENTS.md         # 实现门禁与验证命令
-│   ├── BACKLOG.md        # 阶段与任务状态（≤ 5 KB）
+│   ├── BACKLOG.md        # 唯一进度看板（≤ 10 KB）
 │   ├── HANDOVER.md       # 当前实现快照（≤ 5 KB）
 │   ├── backend/          # Python API、Worker、CLI
 │   ├── frontend/         # Next.js Web 工作台
@@ -212,4 +212,4 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 
 ## 6. 维护
 
-PROJECT.md 是技术、架构、目录、API 契约和数据库约束的事实源；AGENTS.md 只补充实现门禁和命令，两者不得冲突。产品需求只在 PRD 001 维护，任务只在 Plan 001 维护；BACKLOG 与 HANDOVER 各保持 ≤ 5 KB，不追加流水账。
+PROJECT.md 是技术、架构、目录、API 契约和数据库约束的事实源；AGENTS.md 只补充实现门禁和命令，两者不得冲突。产品需求只在 PRD 001 维护，任务只在 Plan 001 维护；BACKLOG 是唯一进度看板（≤ 10 KB），HANDOVER 保持 ≤ 5 KB，均不追加流水账。
