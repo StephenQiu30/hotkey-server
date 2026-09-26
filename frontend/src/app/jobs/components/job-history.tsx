@@ -51,6 +51,8 @@ function jobKindLabel(kind: string): string {
       return "监控采集";
     case "webpage.collect":
       return "网页采集";
+    case "source.hotlist":
+      return "热榜采集";
     default:
       return kind;
   }
@@ -68,6 +70,8 @@ function capabilityLabel(capability: HotKeyAPI.SourceCapability): string {
       return "回复";
     case "page_content":
       return "页面正文";
+    case "hotlist":
+      return "热榜";
   }
 }
 

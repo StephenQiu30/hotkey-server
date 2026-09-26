@@ -208,6 +208,12 @@ declare namespace HotKeyAPI {
     content_id: string;
   };
 
+  type getHotlistSnapshotParams = {
+    source_key: string;
+    cursor?: number | null;
+    limit?: number;
+  };
+
   type getMonitorTopicParams = {
     topic_id: string;
   };
@@ -219,6 +225,51 @@ declare namespace HotKeyAPI {
   type HealthView = {
     /** Status */
     status: "ok" | "ready";
+  };
+
+  type HotlistEntryView = {
+    /** Rank */
+    rank: number;
+    /** Title */
+    title: string;
+    /** Url */
+    url: string;
+    /** Summary */
+    summary: string | null;
+    /** Heat */
+    heat: string | null;
+    /** Published At */
+    published_at: string | null;
+    /** Content Id */
+    content_id: string | null;
+    /** Rank Change */
+    rank_change: "new" | "up" | "down" | "same";
+    /** Matched */
+    matched: boolean;
+    /** Matched Topic Names */
+    matched_topic_names: string[];
+  };
+
+  type HotlistSnapshotView = {
+    /** Snapshot Id */
+    snapshot_id: string;
+    /** Source Key */
+    source_key: string;
+    /** Observed At */
+    observed_at: string;
+    /** Entry Count */
+    entry_count: number;
+    /** Items */
+    items: HotlistEntryView[];
+    /** Next Cursor */
+    next_cursor: number | null;
+  };
+
+  type HotlistSourceView = {
+    /** Source Key */
+    source_key: string;
+    /** Latest Observed At */
+    latest_observed_at: string | null;
   };
 
   type IdentityCredentialsInput = {
@@ -558,6 +609,13 @@ declare namespace HotKeyAPI {
     next_cursor: string | null;
   };
 
+  type PageViewHotlistSourceView_ = {
+    /** Items */
+    items: HotlistSourceView[];
+    /** Next Cursor */
+    next_cursor: string | null;
+  };
+
   type PageViewJobHistoryItemView_ = {
     /** Items */
     items: JobHistoryItemView[];
@@ -654,7 +712,12 @@ declare namespace HotKeyAPI {
   };
 
   type SourceCapability =
-    "search" | "author_posts" | "comments" | "replies" | "page_content";
+    | "search"
+    | "author_posts"
+    | "comments"
+    | "replies"
+    | "page_content"
+    | "hotlist";
 
   type SourceCapabilityStatus =
     | "unconfigured"
