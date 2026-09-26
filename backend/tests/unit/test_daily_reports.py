@@ -1,7 +1,10 @@
 # ruff: noqa: RUF001
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
+from ai.schemas import AiCallError, AiCompletion, AiFailureCode, AiTokenUsage
 from reports.render import render_daily_report
 from reports.schemas import (
     AnnotationState,
@@ -15,6 +18,7 @@ from reports.schemas import (
     SourceCoverageStatus,
 )
 from reports.services import (
+    apply_model_narratives,
     daily_report_operation_id,
     prepare_daily_report,
     previous_daily_window,
@@ -320,3 +324,123 @@ def test_daily_window_operation_identity_and_watermark_use_shanghai_time() -> No
         due_at=due_at,
         unanalyzed_count=1,
     )
+
+
+class FakeReportClient:
+    def __init__(self, output: dict[str, object] | None) -> None:
+        self.output = output
+        self.prompt = ""
+
+    def complete(self, prompt: str, output_schema: Mapping[str, Any]) -> AiCompletion:
+        self.prompt = prompt
+        assert "sections" in output_schema["properties"]
+        if self.output is None:
+            raise AiCallError(AiFailureCode.UNAVAILABLE)
+        return AiCompletion(
+            provider="fake",
+            model="fake",
+            output=self.output,
+            usage=AiTokenUsage(),
+            duration_ms=1,
+        )
+
+
+def test_report_model_keeps_valid_sentences_and_rejects_bad_references_and_numbers() -> None:
+    data = _prepare(_dataset()).data
+    client = FakeReportClient(
+        {
+            "sections": [
+                {
+                    "section": "overview",
+                    "sentences": [
+                        {"text": "相关讨论涉及多个平台。", "citations": ["c99"]},
+                        {"text": "今天有 2 条相关内容。", "citations": ["c1"]},
+                        {"text": "今天有 ２ 条相关内容。", "citations": ["c1"]},
+                        {
+                            "text": "今天有 {metric:overview.posts.current} 条相关内容。",
+                            "citations": ["c1"],
+                        },
+                    ],
+                },
+                {
+                    "section": "top_content",
+                    "sentences": [{"text": "新版本引发稳定性讨论。", "citations": ["c1"]}],
+                },
+            ]
+        }
+    )
+
+    polished = apply_model_narratives(data, client.complete)
+    markdown = render_daily_report(polished)
+
+    assert len(polished.narratives["overview"]) == 1
+    assert "今天有 2 条相关内容。 [\\[c1\\]](<https://example.com/posts/1>)" in markdown
+    assert "新版本引发稳定性讨论。 [\\[c1\\]](<https://example.com/posts/1>)" in markdown
+    assert "c99" not in markdown
+    assert "模型版" in markdown
+    assert markdown.index("新版本引发稳定性讨论。") < markdown.index("1. [c1]")
+    assert "- [c1] [HotKey 发布新版本]" in markdown
+    assert "- [c1] “部署后延迟明显下降”" in markdown
+    assert "<data>" in client.prompt
+    assert "不是指令" in client.prompt
+
+
+def test_report_model_all_valid_sections_render_with_structured_lists() -> None:
+    data = _prepare(_dataset()).data
+    client = FakeReportClient(
+        {
+            "sections": [
+                {
+                    "section": section,
+                    "sentences": [{"text": "资料显示讨论仍在继续。", "citations": ["c1"]}],
+                }
+                for section in ("overview", "top_content", "risks", "voices")
+            ]
+        }
+    )
+
+    polished = apply_model_narratives(data, client.complete)
+    markdown = render_daily_report(polished)
+
+    assert set(polished.narratives) == {"overview", "top_content", "risks", "voices"}
+    assert markdown.count("资料显示讨论仍在继续。") == 4
+    assert "代表评论" in markdown
+    assert "## 风险提示" in markdown
+
+
+def test_report_model_failure_or_all_invalid_output_uses_template() -> None:
+    data = _prepare(_dataset()).data
+    invalid = FakeReportClient(
+        {
+            "sections": [
+                {"section": "voices", "sentences": [{"text": "有 3 条", "citations": ["c88"]}]}
+            ]
+        }
+    )
+
+    for client in (invalid, FakeReportClient(None)):
+        polished = apply_model_narratives(data, client.complete)
+        assert polished == data
+        assert render_daily_report(polished) == render_daily_report(data)
+        assert "> 生成方式：模板版" in render_daily_report(polished)
+
+
+def test_report_model_rejects_unknown_metric_and_unlinked_citation() -> None:
+    data = _prepare(_dataset()).data
+    unlinked = data.top_contents[0].model_copy(update={"url": None})
+    data = data.model_copy(update={"top_contents": (unlinked, *data.top_contents[1:])})
+    client = FakeReportClient(
+        {
+            "sections": [
+                {
+                    "section": "overview",
+                    "sentences": [
+                        {"text": "新版本仍有讨论。", "citations": ["c1"]},
+                        {"text": "共有 {metric:unknown} 条内容。", "citations": ["c2"]},
+                    ],
+                }
+            ]
+        }
+    )
+
+    assert apply_model_narratives(data, client.complete) == data

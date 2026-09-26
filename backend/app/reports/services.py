@@ -12,6 +12,9 @@ from sqlalchemy import bindparam, select, text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session, sessionmaker
 
+from ai.schemas import AiCallError, AiCompletion
+from ai.services import AiService, create_ai_client
+from core.config import get_settings
 from jobs.execution import JobCompletion
 from jobs.schemas import (
     JobAcceptanceInput,
@@ -22,6 +25,12 @@ from jobs.schemas import (
 )
 from jobs.services import JobService, load_job_execution_configuration
 from reports.models import Report
+from reports.prompts import (
+    REPORT_OUTPUT_SCHEMA,
+    REPORT_PROMPT_VERSION,
+    build_report_prompt,
+    validated_report_narratives,
+)
 from reports.render import render_daily_report
 from reports.schemas import (
     AnnotationState,
@@ -315,7 +324,7 @@ def prepare_daily_report(
         version = previous.version + 1
         cutoff_at = previous.cutoff_at
         manifest = previous.input_manifest
-        data = previous.data
+        data = previous.data.model_copy(update={"narratives": {}})
     else:
         version = 1
         manifest = _manifest(dataset)
@@ -339,6 +348,21 @@ def prepare_daily_report(
         data=data,
         body_markdown=render_daily_report(data),
     )
+
+
+def apply_model_narratives(
+    data: DailyReportData,
+    complete: Callable[[str, Mapping[str, Any]], AiCompletion],
+) -> DailyReportData:
+    """Use only linked, checked sentences; keep deterministic data on AI failure."""
+    if not any(item.url is not None for item in data.top_contents):
+        return data
+    try:
+        completion = complete(build_report_prompt(data), REPORT_OUTPUT_SCHEMA)
+    except AiCallError:
+        return data
+    narratives = validated_report_narratives(completion.output, data)
+    return data.model_copy(update={"narratives": narratives}) if narratives else data
 
 
 class ReportService:
@@ -443,6 +467,7 @@ class ReportService:
         window_start: datetime,
         window_end: datetime,
         cutoff_at: datetime,
+        narrate: Callable[[DailyReportData], DailyReportData] | None = None,
     ) -> ReportView:
         """Generate once for a job; redelivery returns the existing final version."""
         return self._generate_daily_in_transaction(
@@ -452,6 +477,7 @@ class ReportService:
             window_end=window_end,
             cutoff_at=cutoff_at,
             regenerate=False,
+            narrate=narrate,
         )
 
     def regenerate_daily_in_transaction(
@@ -482,6 +508,7 @@ class ReportService:
         window_end: datetime,
         cutoff_at: datetime,
         regenerate: bool,
+        narrate: Callable[[DailyReportData], DailyReportData] | None = None,
     ) -> ReportView:
         if not self._session.in_transaction():
             raise RuntimeError("report generation requires the caller's transaction")
@@ -525,6 +552,7 @@ class ReportService:
             dataset=dataset,
             previous=previous,
         )
+        data = narrate(prepared.data) if narrate is not None else prepared.data
         created_at = max(self._clock().astimezone(UTC), prepared.cutoff_at)
         model = Report(
             id=uuid4(),
@@ -536,10 +564,12 @@ class ReportService:
             cutoff_at=prepared.cutoff_at,
             version=prepared.version,
             status=ReportStatus.FINAL.value,
-            generator=ReportGenerator.TEMPLATE.value,
+            generator=(
+                ReportGenerator.MODEL if data.narratives else ReportGenerator.TEMPLATE
+            ).value,
             input_manifest=prepared.input_manifest.model_dump(mode="json"),
-            data=prepared.data.model_dump(mode="json"),
-            body_markdown=prepared.body_markdown,
+            data=data.model_dump(mode="json"),
+            body_markdown=render_daily_report(data),
             created_at=created_at,
         )
         self._session.add(model)
@@ -1002,13 +1032,41 @@ class DailyReportExecutor:
             scope = DailyReportJobScope.from_job_scope(configuration.scope)
             if message.configuration_ref != f"topic:{scope.topic_id}":
                 raise ValueError("daily report topic does not match the job configuration")
-            report = ReportService(session, clock=lambda: cutoff_at).generate_daily_in_transaction(
-                owner_id=message.owner_id,
-                topic_id=scope.topic_id,
-                window_start=scope.window_start,
-                window_end=scope.window_end,
-                cutoff_at=cutoff_at,
-            )
+            try:
+                client = create_ai_client(get_settings())
+            except Exception:
+                client = None
+            try:
+
+                def narrate(data: DailyReportData) -> DailyReportData:
+                    if client is None:
+                        return data
+                    ai_service = AiService(session, client, clock=self._clock)
+                    return apply_model_narratives(
+                        data,
+                        lambda prompt, schema: ai_service.complete(
+                            owner_id=message.owner_id,
+                            job_id=message.job_id,
+                            purpose="report.daily",
+                            prompt_version=REPORT_PROMPT_VERSION,
+                            prompt=prompt,
+                            output_schema=schema,
+                        ),
+                    )
+
+                report = ReportService(
+                    session, clock=lambda: cutoff_at
+                ).generate_daily_in_transaction(
+                    owner_id=message.owner_id,
+                    topic_id=scope.topic_id,
+                    window_start=scope.window_start,
+                    window_end=scope.window_end,
+                    cutoff_at=cutoff_at,
+                    narrate=narrate,
+                )
+            finally:
+                if client is not None:
+                    client.close()
         return DailyReportExecutionResult(
             completion=JobCompletion(status=JobStatus.SUCCEEDED),
             report_id=report.id,

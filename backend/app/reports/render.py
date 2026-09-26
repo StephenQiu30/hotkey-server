@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from reports.schemas import (
     DailyReportData,
+    ReportSection,
     ReportSentiment,
     SourceCoverageStatus,
 )
@@ -55,6 +56,19 @@ def _distribution(values: dict[str, int]) -> str:
     return "、".join(f"{key} {values[key]}" for key in sorted(values))
 
 
+def _narrative(data: DailyReportData, section: ReportSection) -> list[str]:
+    urls = {item.citation: item.url for item in data.top_contents}
+    lines: list[str] = []
+    for sentence in data.narratives.get(section, ()):
+        references = " ".join(
+            _link(f"[{citation}]", urls[citation]) for citation in sentence.citations
+        )
+        lines.append(f"{_inline(sentence.text)} {references}")
+    if lines:
+        lines.append("")
+    return lines
+
+
 def render_daily_report(data: DailyReportData) -> str:
     """Render the frozen structured report without consulting mutable state."""
     window_label = (
@@ -68,10 +82,11 @@ def render_daily_report(data: DailyReportData) -> str:
         "",
         window_label,
         f"> 截止时间：{_local_minute(data.cutoff_at)}（Asia/Shanghai）",
-        "> 生成方式：模板版",
+        f"> 生成方式：{'模型版' if data.narratives else '模板版'}",
         "",
         "## 今日概览",
         "",
+        *_narrative(data, "overview"),
         f"- 相关帖子：{data.overview.posts.current}（较前一日 {posts_comparison}）",
         f"- 评论：{data.overview.comments.current}（较前一日 {comments_comparison}）",
         f"- 平台分布：{_distribution(data.overview.platform_distribution)}",
@@ -87,6 +102,7 @@ def render_daily_report(data: DailyReportData) -> str:
         "",
         "## 重点内容 Top 10",
         "",
+        *_narrative(data, "top_content"),
     ]
     if not data.top_contents:
         lines.append("- 本时间窗暂无已分析的相关内容")
@@ -106,7 +122,7 @@ def render_daily_report(data: DailyReportData) -> str:
                 f"     - {_inline(comment.text)}" for comment in item.representative_comments
             )
 
-    lines.extend(("", "## 风险提示", ""))
+    lines.extend(("", "## 风险提示", "", *_narrative(data, "risks")))
     if data.risks:
         lines.extend(
             f"- [{item.citation}] {_link(item.title, item.url)}："
@@ -116,7 +132,7 @@ def render_daily_report(data: DailyReportData) -> str:
     else:
         lines.append("- 本时间窗暂无负面高互动内容")
 
-    lines.extend(("", "## 值得关注的声音", ""))
+    lines.extend(("", "## 值得关注的声音", "", *_narrative(data, "voices")))
     if data.voices:
         lines.extend(
             f"- [{item.citation}] “{_inline(item.excerpt)}” — {_link('原帖', item.url)}"

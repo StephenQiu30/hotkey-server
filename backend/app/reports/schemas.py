@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -247,6 +247,16 @@ class ReportCoverage(BaseModel):
     disclaimer: str = "样本观察，不代表全网"  # noqa: RUF001
 
 
+type ReportSection = Literal["overview", "top_content", "risks", "voices"]
+
+
+class ReportNarrativeSentence(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    text: str = Field(min_length=1, max_length=500)
+    citations: tuple[str, ...] = Field(min_length=1, max_length=10)
+
+
 class DailyReportData(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -260,6 +270,9 @@ class DailyReportData(BaseModel):
     risks: tuple[ReportRiskItem, ...]
     voices: tuple[ReportVoiceItem, ...]
     coverage: ReportCoverage
+    narratives: dict[ReportSection, tuple[ReportNarrativeSentence, ...]] = Field(
+        default_factory=dict
+    )
 
     @field_validator("window_start", "window_end", "cutoff_at")
     @classmethod
