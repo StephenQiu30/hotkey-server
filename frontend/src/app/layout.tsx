@@ -18,17 +18,19 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "HotKey · 热点事件监控工作台",
-    template: "%s · HotKey",
+    default: "知微见澜 Ripplesight · 从一个关键词，看见正在发生的变化",
+    template: "%s · 知微见澜 Ripplesight",
   },
-  description: "面向公开信息的热点发现、证据整理与研判工作台。",
-  applicationName: "HotKey",
+  description:
+    "设定你关心的品牌、产品或话题，持续汇集相关讨论，沿着来源和时间看清变化如何发生。",
+  applicationName: "知微见澜 Ripplesight",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="zh-CN"
+      data-scroll-behavior="smooth"
       className={`${geistSans.variable} ${geistMono.variable}`}
     >
       <body>{children}</body>

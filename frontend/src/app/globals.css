@@ -131,33 +131,49 @@
 }
 
 @layer components {
-  .hero-mesh {
+  .hero-wash {
     background:
-      radial-gradient(circle at 16% 34%, rgb(0 223 216 / 42%), transparent 28%),
-      radial-gradient(circle at 42% 18%, rgb(0 124 240 / 40%), transparent 30%),
+      radial-gradient(circle at 34% 32%, rgb(0 223 216 / 10%), transparent 34%),
+      radial-gradient(circle at 63% 20%, rgb(0 124 240 / 14%), transparent 38%),
       radial-gradient(
-        circle at 72% 26%,
-        rgb(121 40 202 / 34%),
-        transparent 30%
+        circle at 78% 34%,
+        rgb(121 40 202 / 18%),
+        transparent 34%
       ),
-      radial-gradient(circle at 88% 52%, rgb(255 0 128 / 30%), transparent 28%),
-      radial-gradient(circle at 58% 80%, rgb(249 203 40 / 28%), transparent 32%);
-    filter: saturate(112%);
+      radial-gradient(circle at 89% 50%, rgb(255 0 128 / 14%), transparent 31%),
+      radial-gradient(circle at 66% 75%, rgb(249 203 40 / 12%), transparent 32%);
   }
 
-  .hero-grid {
-    background-image:
-      linear-gradient(
-        to right,
-        rgb(23 23 23 / 4%) calc(var(--spacing) / 4),
-        transparent calc(var(--spacing) / 4)
-      ),
-      linear-gradient(
-        to bottom,
-        rgb(23 23 23 / 4%) calc(var(--spacing) / 4),
-        transparent calc(var(--spacing) / 4)
-      );
-    background-size: calc(var(--spacing) * 8) calc(var(--spacing) * 8);
-    mask-image: linear-gradient(to bottom, black, transparent 88%);
+  .hero-ripple {
+    border: 1px solid rgb(255 255 255 / 55%);
+    box-shadow: 0 0 1px rgb(121 40 202 / 6%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero-ripple {
+    animation: ripple-breathe 12s ease-in-out infinite alternate;
+  }
+
+  .hero-ripple:nth-child(even) {
+    animation-delay: -6s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+@keyframes ripple-breathe {
+  from {
+    opacity: 0.65;
+    transform: scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1.02);
   }
 }

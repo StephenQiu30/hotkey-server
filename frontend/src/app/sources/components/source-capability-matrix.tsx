@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RotateCcwIcon } from "lucide-react";
 
 import { listSourceCapabilities } from "@/api/laiyuannengli";
+import { BrandLockup } from "@/components/brand/brand-lockup";
 import { PageState } from "@/components/system/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -282,19 +283,14 @@ export function SourceCapabilityMatrix() {
 
   return (
     <div className="bg-background min-h-screen">
-      <header className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8 xl:px-0">
-        <Link href="/events" className="flex items-center gap-2.5 font-medium">
-          <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg font-mono text-xs">
-            HK
-          </span>
-          <span>HotKey</span>
-        </Link>
+      <header className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8 xl:px-16 2xl:px-0">
+        <BrandLockup href="/events" />
         <Button asChild variant="ghost" size="navigation">
-          <Link href="/events">返回事件</Link>
+          <Link href="/events">返回工作台</Link>
         </Button>
       </header>
 
-      <main className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-16 xl:px-0">
+      <main className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-16 xl:px-16 2xl:px-0">
         <p className="text-muted-foreground font-mono text-xs tracking-wider uppercase">
           Sources
         </p>

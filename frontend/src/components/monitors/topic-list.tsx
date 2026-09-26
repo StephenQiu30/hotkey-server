@@ -86,10 +86,7 @@ export function TopicList() {
     <section className="mt-10" aria-labelledby="monitor-topics-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-muted-foreground font-mono text-xs tracking-wider uppercase">
-            Monitors
-          </p>
-          <h2 id="monitor-topics-heading" className="mt-2 text-xl font-medium">
+          <h2 id="monitor-topics-heading" className="text-xl font-semibold">
             监控主题
           </h2>
         </div>
@@ -148,33 +145,27 @@ export function TopicList() {
       ) : null}
 
       {state.status === "ready" && state.topics.length > 0 ? (
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-6 grid gap-5 md:grid-cols-2">
           {state.topics.map((topic) => (
             <Link
               key={topic.id}
               href={`/monitors/${topic.id}`}
-              className="bg-muted hover:bg-accent focus-visible:ring-ring rounded-2xl p-5 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+              className="bg-muted hover:bg-accent focus-visible:ring-ring rounded-2xl p-7 transition-colors focus-visible:ring-2 focus-visible:outline-none"
             >
-              <div className="flex items-center justify-between gap-3">
-                <Badge
-                  variant={
-                    topic.status === "archived" ? "outline" : "secondary"
-                  }
-                >
-                  {topic.status === "archived"
-                    ? "已归档"
-                    : topic.status === "active"
-                      ? "运行中"
-                      : "已暂停"}
-                </Badge>
-                <span className="text-muted-foreground text-xs">
-                  v{topic.current_version}
-                </span>
-              </div>
-              <h3 className="mt-4 font-medium">{topic.name}</h3>
-              <p className="text-muted-foreground mt-2 text-xs leading-5">
-                {topic.rules.match_any.length + topic.rules.match_all.length}{" "}
-                个包含词 · {topic.rules.exclude.length} 个排除词
+              <Badge
+                variant={topic.status === "archived" ? "outline" : "secondary"}
+              >
+                {topic.status === "archived"
+                  ? "已归档"
+                  : topic.status === "active"
+                    ? "运行中"
+                    : "已暂停"}
+              </Badge>
+              <h3 className="mt-8 text-2xl font-semibold tracking-tight">
+                {topic.name}
+              </h3>
+              <p className="text-muted-foreground mt-5 text-sm">
+                查看关键词与来源 →
               </p>
             </Link>
           ))}

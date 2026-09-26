@@ -1,61 +1,43 @@
-import {
-  ChartNoAxesCombinedIcon,
-  MessageSquareTextIcon,
-  RadarIcon,
-} from "lucide-react";
-
-import {
-  Card,
-  CardAction,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
-const capabilities = [
+const steps = [
   {
-    title: "发现公开线索",
-    description: "集中查看公开来源中的热点、作品与讨论线索。",
-    icon: RadarIcon,
+    number: "01",
+    title: "定义关注范围",
+    description: "用关键词设定品牌、产品或话题。",
   },
   {
-    title: "整理事件脉络",
-    description: "按时间、来源与讨论关系组织事件信息。",
-    icon: MessageSquareTextIcon,
+    number: "02",
+    title: "汇集相关讨论",
+    description: "按可用来源汇集相关讨论与线索。",
   },
   {
-    title: "形成可读结论",
-    description: "汇总趋势、观点与证据，保持结论可追溯。",
-    icon: ChartNoAxesCombinedIcon,
+    number: "03",
+    title: "沿来源回看",
+    description: "顺着时间与原始内容理解变化。",
   },
 ];
 
 export function CapabilityOverview() {
   return (
     <section
-      id="capabilities"
-      className="bg-muted px-5 py-20 sm:px-8 sm:py-28 xl:px-0 2xl:py-32"
+      id="how-it-works"
+      className="px-5 pb-24 sm:px-8 sm:pb-32 xl:px-16 2xl:px-0"
     >
-      <div className="mx-auto max-w-7xl">
-        <div className="max-w-2xl">
-          <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            从线索到结论，保持信息完整。
-          </h2>
-        </div>
-
-        <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:gap-6">
-          {capabilities.map(({ title, description, icon: Icon }) => (
-            <Card key={title}>
-              <CardHeader>
-                <CardTitle>{title}</CardTitle>
-                <CardDescription>{description}</CardDescription>
-                <CardAction>
-                  <span className="bg-secondary text-secondary-foreground flex size-9 items-center justify-center rounded-lg">
-                    <Icon aria-hidden="true" className="size-4" />
-                  </span>
-                </CardAction>
-              </CardHeader>
-            </Card>
+      <div className="border-border mx-auto max-w-7xl border-t pt-9">
+        <h2 className="sr-only">如何追踪一个主题</h2>
+        <p className="text-muted-foreground bg-secondary inline-flex rounded-full px-4 py-2 text-sm">
+          品牌动态 · 产品反馈 · 行业议题
+        </p>
+        <div className="mt-24 grid gap-12 md:grid-cols-2 md:gap-16 lg:grid-cols-3">
+          {steps.map(({ number, title, description }) => (
+            <div key={number} className="flex flex-col gap-4">
+              <span className="text-muted-foreground font-mono text-xs">
+                {number}
+              </span>
+              <h3 className="text-xl font-semibold tracking-tight">{title}</h3>
+              <p className="text-muted-foreground text-sm leading-7">
+                {description}
+              </p>
+            </div>
           ))}
         </div>
       </div>

@@ -6,6 +6,7 @@ import { type FormEvent, useState } from "react";
 import { ArrowLeftIcon, ArrowRightIcon, LoaderCircleIcon } from "lucide-react";
 
 import { createIdentitySession } from "@/api/identity";
+import { BrandMark } from "@/components/brand/brand-lockup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,9 +73,7 @@ export function LoginForm() {
         </Button>
 
         <div className="bg-muted mt-8 rounded-2xl p-6 sm:p-8">
-          <div className="bg-primary text-primary-foreground flex size-9 items-center justify-center rounded-lg font-mono text-xs">
-            HK
-          </div>
+          <BrandMark />
           <h1 className="mt-6 text-3xl font-semibold tracking-tight">
             登录工作台
           </h1>

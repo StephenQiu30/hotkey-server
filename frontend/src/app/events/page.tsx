@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { EventsWorkspace } from "@/app/events/components/events-workspace";
 
 export const metadata: Metadata = {
-  title: "事件",
+  title: "工作台",
   robots: {
     index: false,
     follow: false,

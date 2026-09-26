@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { deleteIdentitySession, getIdentityWorkspace } from "@/api/identity";
+import { BrandLockup } from "@/components/brand/brand-lockup";
 import { TopicList } from "@/components/monitors/topic-list";
 import { PageState } from "@/components/system/page-state";
 import { Button } from "@/components/ui/button";
@@ -143,13 +144,8 @@ export function EventsWorkspace() {
 
   return (
     <div className="bg-background min-h-screen">
-      <header className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8 xl:px-0">
-        <Link href="/events" className="flex items-center gap-2.5 font-medium">
-          <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg font-mono text-xs">
-            HK
-          </span>
-          <span className="hidden sm:inline">HotKey</span>
-        </Link>
+      <header className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8 xl:px-16 2xl:px-0">
+        <BrandLockup href="/events" compactOnMobile />
         <div className="flex items-center gap-2">
           <Button
             asChild
@@ -210,28 +206,30 @@ export function EventsWorkspace() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-16 xl:px-0">
-        <p className="text-muted-foreground font-mono text-xs tracking-wider uppercase">
-          Events
-        </p>
-        <div className="mt-3 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            事件
-          </h1>
-          <Button asChild>
+      <main className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-16 xl:px-16 2xl:px-0">
+        <div className="flex flex-col gap-8 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-2xl">
+            <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
+              从关键词开始关注
+            </h1>
+            <p className="text-muted-foreground mt-5 leading-7">
+              创建你关心的品牌、产品或话题，按可用来源汇集相关讨论。
+            </p>
+          </div>
+          <Button asChild size="lg">
             <Link href="/monitors/new">
               <PlusIcon data-icon="inline-start" />
               新建监控主题
             </Link>
           </Button>
         </div>
-        <section className="bg-muted mt-10 rounded-2xl px-6 py-16 text-center sm:px-10 sm:py-24">
-          <h2 className="text-xl font-medium">尚无事件</h2>
-          <p className="text-muted-foreground mx-auto mt-3 max-w-md text-sm leading-6">
-            完成监控配置后，发现的热点事件会汇总到这里。
+        <TopicList />
+        <section className="border-border mt-24 border-t pt-8">
+          <h2 className="text-xl font-semibold tracking-tight">事件脉络</h2>
+          <p className="text-muted-foreground mt-3 max-w-2xl text-sm leading-7">
+            事件归并仍在建设中。后续可沿时间与来源查看同一主题下的事件发展。
           </p>
         </section>
-        <TopicList />
         {signOutError ? (
           <p role="alert" className="text-destructive mt-4 text-sm">
             {signOutError}
