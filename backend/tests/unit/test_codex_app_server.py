@@ -91,6 +91,9 @@ def test_complete_returns_structured_output_usage_and_safe_thread_settings(
     assert second.output == {"sentiment": "negative"}
     requests = _requests(log)
     assert [r.get("method") for r in requests].count("initialize") == 1
+    initialize = next(r for r in requests if r.get("method") == "initialize")
+    # Codex >= 0.157 rejects thread/start.environments unless experimentalApi is declared.
+    assert initialize["params"]["capabilities"] == {"experimentalApi": True}
     thread_start = next(r for r in requests if r.get("method") == "thread/start")
     params = thread_start["params"]
     assert isinstance(params, dict)

@@ -116,7 +116,12 @@ def test_hackernews_preset_matches_catalog_and_config_allowlist() -> None:
             "http://127.0.0.1:8888",
             ("duckduckgo news",),
         ),
-        (RSS_36KR_PRESET, {SourceCapability.SEARCH}, "https://36kr.com/feed", ()),
+        (
+            RSS_36KR_PRESET,
+            {SourceCapability.SEARCH},
+            "http://127.0.0.1:1200/36kr/newsflashes",
+            (),
+        ),
     ],
 )
 def test_a_tier_preset_matches_catalog_and_config_allowlist(
@@ -247,5 +252,5 @@ def test_source_preset_cli_lists_built_in_presets() -> None:
         "hackernews; capabilities: search,comments; allowed hosts: hn.algolia.com\n"
         "google_news; capabilities: search; allowed hosts: news.google.com\n"
         "news_search; capabilities: search; allowed hosts: 127.0.0.1\n"
-        "rss_36kr; capabilities: search; allowed hosts: 36kr.com\n"
+        "rss_36kr; capabilities: search; allowed hosts: 127.0.0.1\n"
     )

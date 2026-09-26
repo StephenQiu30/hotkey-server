@@ -127,6 +127,8 @@ class Settings(BaseSettings):
             raise ValueError("Obsidian root must be a single safe directory name")
         return value
 
+    collection_lookback_seconds: int = Field(default=86_400, ge=0, le=7 * 86_400)
+
     def job_process_execution_timeout_seconds(self, kind: str) -> int:
         if kind in {"keyword.search", "source.comments"}:
             return 90

@@ -244,24 +244,25 @@ RSS_36KR_PRESET = SourcePreset(
     source_key="rss_36kr",
     config=MappingProxyType(
         {
-            "feed_url_template": "https://36kr.com/feed",
-            "allowed_hosts": ("36kr.com",),
+            # 36kr.com/feed now answers with an HTML challenge page; read it via local RSSHub.
+            "feed_url_template": "http://127.0.0.1:1200/36kr/newsflashes",
+            "allowed_hosts": ("127.0.0.1",),
         }
     ),
     capabilities=(
         SourceCapabilityPreset(
             capability=SourceCapability.SEARCH,
-            processing_purpose="从 36Kr 官方 RSS 订阅中筛选与主题相关的公开行业资讯",
+            processing_purpose="经本地 RSSHub 读取 36Kr 快讯并筛选与主题相关的公开行业资讯",
             field_purposes=_RSS_POST_FIELD_PURPOSES,
         ),
     ),
     retention_days=90,
     component_name="collector.rss_36kr",
-    component_version="rss/feedparser-6",
-    component_license="BSD-2-Clause",
+    component_version="rsshub/36kr-newsflashes",
+    component_license="AGPL-3.0",
     component_cost_class="zero_price",
-    component_terms_reference="https://36kr.com/feed",
-    access_terms_reference="https://36kr.com/feed",
+    component_terms_reference="https://docs.rsshub.app/routes/new-media#36kr",
+    access_terms_reference="https://36kr.com/newsflashes",
     reviewed_at=_A_TIER_REVIEWED_AT,
     budget=SourceBudgetPreset(
         budget_key="source.rss_36kr.network.daily",

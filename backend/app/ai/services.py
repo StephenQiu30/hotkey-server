@@ -32,7 +32,7 @@ from jobs.schemas import (
 )
 from jobs.services import ResourceBudgetService
 
-_AI_COMPONENT_KEY = "codex.app-server"
+AI_COMPONENT_KEY = "codex.app-server"
 _AI_USAGE_STAGE = "analysis.call"
 
 
@@ -194,7 +194,7 @@ class AiService:
                     command=UsageAttemptInput(
                         attempt_id=attempt_id,
                         operation_id=operation_id,
-                        component_key=_AI_COMPONENT_KEY,
+                        component_key=AI_COMPONENT_KEY,
                         usage_kind=UsageKind.ANALYSIS_ATTEMPT,
                         stage=_AI_USAGE_STAGE,
                         started_at=started_at,

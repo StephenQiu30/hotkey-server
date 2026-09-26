@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4, uuid5
 
+import pytest
 from sqlalchemy.dialects import postgresql
 
 from content.services import (
@@ -140,6 +141,20 @@ def test_collection_window_starts_at_previous_end_or_one_interval_before_now() -
     )
 
 
+def test_collection_window_reaches_back_by_the_lookback_to_catch_late_posts() -> None:
+    now = datetime(2026, 9, 25, 1, tzinfo=UTC)
+    previous_end = datetime(2026, 9, 25, 0, 50, tzinfo=UTC)
+
+    assert collection_window_start(
+        now, interval_seconds=600, previous_end=None, lookback_seconds=86_400
+    ) == now - timedelta(minutes=10, days=1)
+    assert collection_window_start(
+        now, interval_seconds=600, previous_end=previous_end, lookback_seconds=86_400
+    ) == previous_end - timedelta(days=1)
+    with pytest.raises(ValueError, match="lookback"):
+        collection_window_start(now, interval_seconds=600, previous_end=None, lookback_seconds=-1)
+
+
 def test_collection_claim_uses_skip_locked() -> None:
     class EmptyRows:
         @staticmethod
@@ -210,3 +225,25 @@ def test_each_registered_scan_uses_an_independent_session_and_failure_does_not_b
     assert results == {"succeeded": 2}
     assert seen == created
     assert len({id(session) for session in seen}) == 2
+
+
+def test_scheduler_process_registers_every_orm_model() -> None:
+    """The scheduler runs as its own process; every mapper must resolve its foreign keys."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    app_dir = Path(__file__).resolve().parents[2] / "app"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import worker.scheduler; from sqlalchemy.orm import configure_mappers; "
+            "configure_mappers()",
+        ],
+        cwd=app_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]

@@ -20,6 +20,9 @@ from content.schemas import KeywordDiscoveryRunInput
 from content.services import CommentScanService
 from core.config import get_settings
 from core.logging import configure_logging
+
+# The scheduler is its own process; import the canonical registry to resolve ORM foreign keys.
+from db.metadata import metadata as _registered_metadata  # noqa: F401
 from db.session import create_db_engine, create_session_factory
 from jobs.services import JobService, load_job_execution_configuration
 from knowledge.services import KnowledgeExportService
@@ -78,18 +81,27 @@ def collection_window_start(
     *,
     interval_seconds: int,
     previous_end: datetime | None,
+    lookback_seconds: int = 0,
 ) -> datetime:
+    """Start where the last window ended, reaching back to catch late-indexed posts.
+
+    Sources publish and index with delays, so a window judged by publish time must
+    overlap earlier ones; re-seen posts are deduplicated when they are saved.
+    """
     if now.tzinfo is None or not 600 <= interval_seconds <= 86_400:
         raise ValueError("collection window requires an aware time and valid interval")
+    if lookback_seconds < 0:
+        raise ValueError("collection lookback cannot be negative")
     now_utc = now.astimezone(UTC)
     if previous_end is None:
-        return now_utc - timedelta(seconds=interval_seconds)
-    if previous_end.tzinfo is None:
-        raise ValueError("previous collection window end must be timezone-aware")
-    previous_utc = previous_end.astimezone(UTC)
-    if previous_utc >= now_utc:
-        raise ValueError("previous collection window end must precede the current scan")
-    return previous_utc
+        base = now_utc - timedelta(seconds=interval_seconds)
+    else:
+        if previous_end.tzinfo is None:
+            raise ValueError("previous collection window end must be timezone-aware")
+        base = previous_end.astimezone(UTC)
+        if base >= now_utc:
+            raise ValueError("previous collection window end must precede the current scan")
+    return base - timedelta(seconds=lookback_seconds)
 
 
 def _previous_collection_end(
@@ -138,6 +150,7 @@ def _accept_collection_schedule(
         now,
         interval_seconds=schedule.interval_seconds,
         previous_end=_previous_collection_end(session, schedule=schedule),
+        lookback_seconds=get_settings().collection_lookback_seconds,
     )
     schedule_operation_id = collection_operation_id(schedule, window_start)
     accepted_ids: list[UUID] = []

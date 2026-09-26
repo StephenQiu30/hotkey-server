@@ -202,7 +202,11 @@ class CodexAppServerClient:
             args=(process, self._messages),
             daemon=True,
         ).start()
-        self._request("initialize", {"clientInfo": _CLIENT_INFO}, deadline)
+        self._request(
+            "initialize",
+            {"clientInfo": _CLIENT_INFO, "capabilities": {"experimentalApi": True}},
+            deadline,
+        )
         self._send({"method": "initialized", "params": {}})
 
     @staticmethod
