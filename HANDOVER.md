@@ -1,55 +1,30 @@
 # HotKey Server 交接
 
-更新日期：2026-09-25。本文件只记录当前实现快照，≤ 5 KB。v1.x 的详细交接日志见 Git 提交 `3a72611a`。
+更新日期：2026-09-26。本文件只记录当前实现快照（≤5 KB）；需求见 [PRD 001 v5.0](docs/prd/001-热点舆情监控平台需求.md)，设计见 [Design 001 v4.0](docs/design/001-热点舆情监控平台总体设计.md)，任务与证据见 [Plan 001 v6.0](docs/plan/001-热点舆情监控平台总计划.md) 和 [BACKLOG](BACKLOG.md)。状态为**文档修订完成，实现暂停，待用户确认恢复**。本次文档工作未授权代码实施、提交或推送。
 
-## 当前状态
+## 当前边界
 
-- **方向**：日报、周报、Obsidian 知识库；个人/非商业研究。需求 v2.1、设计 v3.0、计划 v3.0（任务卡）见 [docs/README.md](docs/README.md)。
-- **分支**：P1 代码已合入 `main` 并推送；工作分支 `docs/pivot-daily-report` 保留。
-- **产品验收**：P1 已实现 11/19 张卡（采集、评论、调度、分析、日报模板版），全量测试 635 passed；真实端到端验收（A5、F）未做。派发已按用户要求暂停。
-- **测试**：2026-09-25 后端全量 540 passed / 17 skipped（隔离库 `hotkey_test`，Kafka/MinIO/live 用例跳过）；Ruff、mypy 通过。
+- 信息获取是当前核心：四关键词来源 HN Algolia、Google News 搜索 RSS、本机 SearXNG `duckduckgo news`、本机 RSSHub `/36kr/newsflashes`；六个 RSSHub 公开热榜；HN 评论父链、来源 × 能力 × 时间窗覆盖和本机 Codex 相关性。M1 须同窗连续 72 小时真实验收。日报/周报、Obsidian 与推送各自后验，飞书暂缓。
+- 单 owner 登录、主题、连接、内容、Outbox/Kafka/Worker、预算、备份、统一错误契约及 Web 工作台已有代码。宿主机单 Worker 已注册 `webpage.collect`、`keyword.search`、`source.comments`、`source.hotlist`、`analysis.annotate`、`report.daily`、`notification.send`、`knowledge.export`；独立调度进程已存在。事件归并、SMTP 与统一覆盖查询仍待实现，旧“Worker 只有网页处理器”的记录已过期。
+- 本人账号来源本轮仅 B 站试点。MediaCrawler 固定补丁及独立 CDP 资料记录在 `~/Desktop/Docker/mediacrawler-start-local/`，HotKey 从宿主机启动子进程；评论只读同轮缓存的一级评论每帖 ≤20 条。修复前真实尝试失败，修复后尚未真实采集，开关关闭。未知非零退出误归认证失效、组件三类版本证据、停用和人工恢复仍需修复/验收；不把离线回放称为接入成功。
 
-## 已实现（可复用）
+## 证据快照
 
-| 能力 | 位置 | 说明 |
-|---|---|---|
-| 单 owner 登录、会话、CSRF | `identity/`、`api/` | 首次初始化需 `HOTKEY_BOOTSTRAP_TOKEN` |
-| 主题与关键词规则 | `monitors/` | any/all/exclude、版本、预览；Web `/monitors` |
-| 来源连接与秘密 | `connections/` | Web `/sources` |
-| 持久任务执行 | `jobs/`、`worker/` | Outbox → Kafka → Worker；重试、取消、租约、恢复；Web `/jobs` |
-| 内容存储 | `content/` | 帖子身份、版本、指标观察；Web `/content` |
-| 关键词搜索执行器 | `content/discovery_execution.py` | 已写好，未注册到 Worker |
-| 网页正文采集 | `sources/adapters/firecrawl.py` | 唯一已注册的处理器 `webpage.collect` |
-| 浏览器服务 | `backend/browser/`、Compose `browser` | Playwright 1.63.0；出口代理只放行 `example.com` |
-| X 官方 API | `sources/adapters/x_api.py` | 仅 MockTransport；无 Token，未发真实请求 |
-| 预算账本 | `jobs/`（resource_budget_*） | 可复用为模型与付费来源的成本上限 |
-| 备份 | `backups/` | PostgreSQL + MinIO 备份与隔离恢复 |
+2026-09-26 的可重建开发库 `hotkey_p1` 约 4 小时运行：四来源分别入库 Google News 365、SearXNG 94、HN 61、36Kr 8；六榜 59 快照，最近两小时 23 成功、1 失败；Codex 738 标注中相关字段为空 3 条。HN 45 线程来自较早且已重建的库，不可与当前库合并。四来源和六榜尚无连续 72 小时产品验收；开发库结果仅证明所述真实运行范围。B 站新建库离线回放与旧失败运行均不满足 AC-113/115/122。
 
-## 已知缺口（Design 001 第 2 节）
+## 本地运行与数据门槛
 
-Worker 只有 `webpage.collect`；无周期调度；无模型/分析/事件/报告/推送/知识库；无热榜能力；无全文与向量索引。
+| 组件 | 入口/边界 |
+|---|---|
+| HotKey | 根 `docker-compose.yml`；API `127.0.0.1:8867`，Web `127.0.0.1:3000`；在 `backend/app/` 下运行 `uvicorn main:create_app --factory`、`python -m worker`、`python -m worker.scheduler` |
+| RSSHub、SearXNG | 分别在 `~/Desktop/Docker/rsshub-start-local/`、`~/Desktop/Docker/searxng-start-local/` 独立 Compose；端口 `1200`、`8888` |
+| Firecrawl | 独立本地编排；公开网页业务结果单独验收 |
+| MediaCrawler | `~/Desktop/Docker/mediacrawler-start-local/` 保留补丁、资料和运行说明；HotKey B 站入口是宿主机子进程、`127.0.0.1` 独立 CDP 端口 |
+| Codex | 本机 app-server，分析模型由 `HOTKEY_AI_MODEL` 配置，不发付费模型请求 |
+| Obsidian | 现有 `~/Desktop/Markdown/Obsidian`，只写 `HotKey/`；真实写入另验 |
 
-## 本地采集栈（DEC-001-107）
-
-| 服务 | 地址 | 启动 |
-|---|---|---|
-| Firecrawl + playwright-service | `127.0.0.1:3002` | 独立部署 `~/Desktop/StephenQiu/Firecrawl`；其 `.env` 已设 `SEARXNG_ENDPOINT=http://host.docker.internal:8888` |
-| SearXNG | `127.0.0.1:8888` | 进入 `~/Desktop/Docker/searxng-start-local/`，执行 `docker compose up -d` |
-| RSSHub | `127.0.0.1:1200` | 进入 `~/Desktop/Docker/rsshub-start-local/`，执行 `docker compose up -d` |
-| Codex app-server | stdio | 宿主机 `codex` 0.157.0（`~/.local/bin`），ChatGPT Pro 登录；默认 `gpt-6-sol` + `high`；HotKey 分析模型由 `HOTKEY_AI_MODEL` 配置（代码默认 `gpt-5.6-luna`） |
-| Obsidian vault | `~/Desktop/Markdown/Obsidian` | HotKey 只写 `HotKey/` 子目录（D3 起） |
-
-2026-09-25 冒烟：RSSHub `/zhihu/hot` 返回热榜；SearXNG JSON 新闻搜索 75 条；Firecrawl `/v2/search` 走 SearXNG 成功；Codex 结构化情感判断约 7 秒。
-
-## 运行
-
-- 编排：根 `docker-compose.yml`（PostgreSQL 17.11、Redis 7.2.16、Kafka 4.1.2、backend、worker、frontend、browser、browser-egress）。API 端口 8867，Web 端口 3000。
-- 本机开发：未跟踪的 `backend/.env`、`frontend/.env.local` 复用本机 Homebrew PostgreSQL（`127.0.0.1:5432`，库名 `hotkey-server`）、Redis、Kafka、MinIO。该库 owner_count=0、job_count=0，可按规则重建。不要对旧库 `hotkey`、`hotkey_dev`、`hotkey_test` 执行 `schema.sql`。
-- 入口（在 `backend/app/` 下）：`uvicorn main:create_app --factory`、`python -m worker`、`python -m cli`。
-- 检查：后端 `uv run ruff check`、`uv run mypy`、`uv run pytest`；前端 `pnpm lint`、`pnpm typecheck`、`pnpm build`、`pnpm openapi:check`。
+可丢弃开发库可按完整 `schema.sql` 新建；M1 连续运行库或正式库需保留数据时，先备份并实际验证恢复，再新建库、原子应用完整 Schema、导入并核对核心表、身份/外键、连接版本、Job/Outbox/offset、覆盖和预算，旧库保留回退。不得就地执行完整 Schema 或把开发库重建后的测试算作旧运行证据。
 
 ## 下一步
 
-1. 提交本次统一规划文档。
-2. 按 BACKLOG 顺序把任务卡交给 Codex 执行：先 A1、A2、C1 并行。
-3. `~/.claude/settings.json` 的 DeepSeek 配置已于 2026-09-25 移除（备份 `settings.json.bak-20260925`），`/codex:rescue` 子代理可正常启动（需新会话生效）。
+按 BACKLOG 的建议顺序先处理 M1 覆盖/空榜/失败桶/标注异常/时效与 HN 重放，并按 Design 002 第 3.1 节/Design 001 第 6.2 节 重新评估 stash `paused: partial P2-2b + A7b implementation (2026-09-26)`；再进行 M1 72 小时运行。M2 版本与风控门槛可并行评估，本人账号登录和产品决策由用户承担。所有代码提交、推送须先有用户明确授权。

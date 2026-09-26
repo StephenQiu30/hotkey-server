@@ -4,17 +4,17 @@
 
 `PROJECT.md` 是项目技术、架构、目录、API 契约和数据库事实源；本文件负责实现执行门禁、工具命令和验证要求。发生冲突时以 PROJECT.md 的架构决策为准。模块 README 记录使用方式，HANDOVER 记录实现状态；这些文件不得定义冲突的架构规则。变更架构或目录时必须先更新 PROJECT.md、对应 Design 和本文件，再修改代码。
 
-产品需求、总体设计和执行计划各只有一份：[PRD 001](docs/prd/001-热点舆情监控平台需求.md)、[Design 001](docs/design/001-热点舆情监控平台总体设计.md)、[Plan 001](docs/plans/001-热点舆情监控平台总计划.md)。任务开工前在 Plan 001 对应任务下补一段说明（做什么、改哪些文件、怎么验收），不再为单个切片新建 Research/PRD/Design/Plan/Acceptance；架构或数据库变化同步更新 Design 001。阶段验收通过后在 `docs/acceptance/` 写简短记录。文档索引见 `docs/README.md`，格式见 `docs/TEMPLATE.md`。
+总设计为 [Design 001](docs/design/001-热点舆情监控平台总体设计.md)，M1—M6 设计见 [Design 002—007](docs/README.md#1-现行文档与阶段路径)；现行需求为[总需求 PRD 001](docs/prd/001-热点舆情监控平台需求.md)与里程碑 PRD 002—007；执行计划为[总计划 Plan 001](docs/plan/001-热点舆情监控平台总计划.md)与同号的里程碑 Plan 002—007；计划统一位于 `docs/plan/`。新里程碑或独立专项按 `docs/README.md` 台账续编号。任务开工前在对应里程碑 Plan 的 TASK 下补说明（做什么、改哪些文件、怎么验收）；架构或数据库变化同步更新 Design 001。阶段验收通过后在 `docs/acceptance/` 写简短记录。文档索引见 `docs/README.md`，格式见 `docs/TEMPLATE.md`。
 
 ## 任务开始前的目录与选型门禁
 
-- 统一异常、响应和状态契约按 [046 Design](docs/design/046-全局异常与响应契约设计.md) 执行；除 [046 前置修复计划](docs/plans/046-全局异常与响应契约前置计划.md) 本身外，任何 Plan 进入实现前必须有 046 S03 的真实通过证据。范围/研究/设计可先准备；已有 in_progress 不豁免。此门禁不额外要求逐项用户批准普通实现细节。
+- 统一异常、响应和状态契约按本文件与 PROJECT.md 的现行规则执行；旧 Design 046 全局异常与响应契约、旧 Plan 046 前置计划已删除，见 Git 历史。除旧 046 前置计划本身外，任何 Plan 进入实现前必须有 046 S03 的真实通过证据。范围/研究/设计可先准备；已有 in_progress 不豁免。此门禁不额外要求逐项用户批准普通实现细节。
 - API 层映射无 HTTP 状态的应用错误；统一 ErrorView、类型化成功/分页/受理响应，禁止全局 body 改写。检查请求 ID、5xx/校验脱敏、必要头、运行响应与 OpenAPI 422 一致、生成客户端和非 JSON/网络/取消路径。不得用所有路由统一声明所有错误码、手改生成代码或宽泛测试忽略绕过检查。
 - Web/App 不手写服务端 DTO，不按 message 判断状态，不在传输拦截器全局弹提示或自动重试写请求。Worker 的持久状态、重试和连续 offset 仍由 009/031 实现与真实验证，HTTP 契约通过不能替代。
 
 - 每个实现切片开始前先明确技术选择与目录职责，列明新增、修改、移动和生成文件；不先写文件后找目录。
 - 技术选择已有用户决定的直接沿用；影响本片的部署、费用、平台范围或新框架等未决项，先给出选项和影响询问用户，未答复不执行依赖该决定的工作。普通实现细节按已定规范处理，不重复确认已确定的技术栈。
-- 用户已明确（2026-09-25）：个人/非商业研究；复用现有 MinIO；采集栈为本地 Firecrawl+Playwright、RSSHub、SearXNG、MediaCrawler；模型经本机 Codex app-server（不发起付费模型请求）；推送为飞书与 SMTP；知识库为现有 Obsidian vault 的 `HotKey/` 子目录。X 只走官方 API，凭据与月度上限未确认前禁止真实请求。来源频次与模型调用都经 037 预算账本设置硬上限。
+- 用户已明确（2026-09-26）：个人/非商业研究；当前核心是四个关键词来源、六个公开热榜的信息获取、覆盖查询与本机 Codex 相关性，按 M1 连续 72 小时验收。本人账号来源本轮仅 B 站试点；MediaCrawler 为宿主机子进程，补丁和独立 CDP 资料记录在 `~/Desktop/Docker/mediacrawler-start-local/`。遇验证、登录失效或访问频繁立即停用并由本人核查后人工恢复。复用现有 MinIO；本地 Firecrawl+Playwright、RSSHub、SearXNG；模型不发起付费请求。日报、周报、Obsidian `HotKey/` 和推送分别后验；飞书暂缓，SMTP 待实现。X 只走官方 API，凭据与月度上限未确认前禁止真实请求。来源频次与模型调用经来源预设及 037 预算账本设置硬上限。
 - 新后端模块、前端功能目录必须登记职责并纳入全源码/依赖检查；门禁重新实现并验证前，不得声称已覆盖新模块。
 - 按业务切片创建目录，不提前创建空模块。来源适配器放sources/adapters，MinIO适配器放evidence/adapters，模型SDK适配器放ai/adapters；业务状态仍由业务模块持有。前端页面使用 `frontend/src/app`，页面专属组件放对应路由的 `components/`，跨页面复用组件按明确功能领域放 `frontend/src/components/<feature>/`，shadcn 基础组件放 `components/ui/`。不创建 `features`、`common`、`patterns` 或 `shared` 层；生成客户端固定在 `src/api`，Axios 封装固定在 `src/request.ts`。
 
@@ -27,7 +27,7 @@
 - Web 设计固定为组件优先的无边框系统：路由组合页面组件、按功能领域分类的复用组件与 ui 组件，默认信息表面不用装饰性边框；输入、焦点、错误与浮层保留必要轮廓。布局只使用 Tailwind 命名尺度和 `sm/md/lg/xl/2xl` 响应式层级，禁止原始像素值和任意布局尺寸。前端不建立独立 `scripts/` 目录，使用 ESLint、TypeScript、Prettier、生产构建和代码审查维护这些约束。
 - 每个前端切片必须在 Design 阶段列出组件名称、所属 feature、复用范围、目标路径、数据来源和状态覆盖。页面专属组件不得提前放入公共目录；只有至少两个页面存在稳定复用时才迁移到 `components/<feature>/`。
 - 唯一 HTTP 契约由 FastAPI 路由装饰器、类型注解和 Pydantic 模型自动生成，通过 `/openapi.json` 提供；前端端点函数与类型全部由 `@umijs/openapi` 读取该地址生成。禁止手写契约 JSON/YAML、端点请求及生成类型。
-- `docs/` 保存 Research、PRD、Design、Plan、Acceptance、Operations。历史实现从 Git 查询，不在工作树中归档。目标能力不得描述为已完成。
+- `docs/` 保存 Research、PRD、Design、Plan、Acceptance、Operations。被替代的文档直接删除，编号去向记入 `docs/README.md` 历史编号表；历史原文从 Git 查询。目标能力不得描述为已完成。
 - 修改前阅读相关设计和测试。行为变化先验证失败，再实现；修复需针对实际故障验证。
 - API 路由负责协议、认证和验证；业务服务负责事务；SQLAlchemy 模型负责持久化。禁止路由直接执行 SQL 或发布消息。
 - Session 不跨线程或任务共享。同步数据库端点使用同步路由；各 API/Worker 进程独立拥有连接池和消息客户端，禁止跨进程继承连接。
@@ -36,7 +36,7 @@
 - `backend/database/schema.sql` 是唯一数据库 DDL 事实源；SQLAlchemy Model 只负责运行时映射。禁止 Alembic、revision 目录、`metadata.create_all`、应用启动建表和第二份 DDL。
 - `schema.sql` 只用于全新空库，必须通过 `psql -X --set ON_ERROR_STOP=on --single-transaction` 原子执行。当前不支持存量库自动就地演进；需要保留数据时先验证备份，再新建数据库、应用完整 Schema 并导入校验后的数据。禁止对旧系统库直接执行。
 - 业务状态与 Outbox 同事务提交。Outbox 发布到 Kafka，消费者在业务事务提交后提交连续完成位置的 offset，允许重投并通过消息 ID、epoch、fencing、租约和唯一约束保证幂等。Kafka 事务不等于与 PostgreSQL 的跨系统原子提交。Redis 只承担缓存、限流及可重建临时状态，不保存唯一业务事实；关键执行权以 PostgreSQL 为准。不再采用 RabbitMQ/Celery，不以 Redis 另建任务队列。
-- HotKey 应用的唯一运行编排为根 `docker-compose.yml`。RSSHub、SearXNG 由同级 `Docker/rsshub-start-local`、`Docker/searxng-start-local` 的 `docker-compose.yml` 管理；Firecrawl、按需运行的 MediaCrawler 各在 `StephenQiu` 下维护 `docker-compose.yml`。不得在 HotKey 根编排复制这些服务或删除用户持久卷。生产差异仍通过 `-f` 文件叠加。
+- HotKey 应用的唯一运行编排为根 `docker-compose.yml`。RSSHub、SearXNG 由同级 `Docker/rsshub-start-local`、`Docker/searxng-start-local` 的 `docker-compose.yml` 管理；Firecrawl 独立编排，`~/Desktop/Docker/mediacrawler-start-local/` 保存 MediaCrawler 固定补丁、独立 CDP 资料与按需容器构建记录，但 HotKey 的 B 站调用固定为宿主机子进程，不走该容器。不得在 HotKey 根编排复制这些服务或删除用户持久卷。生产差异仍通过 `-f` 文件叠加。
 - 认证信息不入日志或 Git；配置使用 `HOTKEY_` 前缀。公开错误只含稳定错误码、面向用户的消息和请求 ID；输入校验可附带脱敏字段详情，不回显敏感请求体。
 - HTTP完成日志只记录request_id、方法、路由模板、状态码和耗时；禁止记录原始URL/query、请求/响应正文、Cookie、Token或连接字符串。未处理异常记录类型与堆栈，但不回显给客户端。
 - 锁定依赖；运行 Ruff、mypy、pytest、OpenAPI 漂移检查及前端类型检查/构建。数据库和消息行为必须用真实 PostgreSQL/Redis/Kafka 验证，UI 必须用浏览器验证。
@@ -59,7 +59,7 @@
 - 后端工程及 Compose HTTP 服务均为 `backend`，作为普通应用运行，不构建独立安装包；禁止恢复 `server/` 别名。部署入口为 `main:create_app`。
 - 应用代码统一放在 `backend/app/`；禁止在 app 下增加 hotkey 或 app 包装层；`main.py` 只做应用工厂和 lifespan 装配；`api/router.py` 汇总路由，`api/routers/*.py` 按资源组织，依赖和 HTTP 横切逻辑分别在 dependencies.py、middleware.py、exception_handlers.py。
 - 已登记的 `identity/`、`monitors/`、`jobs/`、`connections/`、`content/` 领域在对应切片落地时拥有各自 models.py、schemas.py、services.py。models 定义 SQLAlchemy 持久结构，schemas 定义 Pydantic 契约，services 拥有事务和业务行为。禁止预先创建空领域包；也禁止用通用 Workspace/BaseService 聚合无关领域或为每个简单查询增加无意义仓储层。
-- `core/` 只放配置、通用错误、输入输出基类和时间函数，不反向依赖业务模块。`db/` 拥有 DeclarativeBase、连接池及元数据注册；`audit/` 承载跨领域审计。`jobs/execution.py` 维护执行状态机，`worker/messaging.py` 对接 Kafka，`worker/execution.py` 监督单个任务子进程的总截止与有界终止；`worker/app.py` 装配消费者和父进程数据库终结，Kafka Consumer/offset 仅属于父进程。任务子进程使用 multiprocessing `spawn` 并自行创建数据库资源，禁止传入父进程的 Session、Engine、Kafka Consumer 或网络连接。运行目录为 backend/app，拟定 Worker 入口为 `python -m worker`（由 `worker/__main__.py` 承接）；不得沿用 Celery 启动命令。
+- `core/` 只放配置、通用错误、输入输出基类和时间函数，不反向依赖业务模块。`db/` 拥有 DeclarativeBase、连接池及元数据注册；`audit/` 承载跨领域审计。`jobs/execution.py` 维护执行状态机，`worker/messaging.py` 对接 Kafka，`worker/execution.py` 监督单个任务子进程的总截止与有界终止；`worker/app.py` 装配消费者和父进程数据库终结，Kafka Consumer/offset 仅属于父进程。任务子进程使用 multiprocessing `spawn` 并自行创建数据库资源，禁止传入父进程的 Session、Engine、Kafka Consumer 或网络连接。运行目录为 backend/app，Worker 入口为 `python -m worker`（由 `worker/__main__.py` 承接）；不得沿用 Celery 启动命令。
 - 路由禁止导入 SQLAlchemy、业务 models、services 实现、执行器或消息组件；只能通过 `api/dependencies.py` 注入服务。禁止经 request.app.state 在路由中绕过业务服务读写数据库或发布任务。服务、模型、Schema 不导入 FastAPI/Starlette/HTTP 路由；Schema 不导入 ORM 或数据库资源。
 - 每个HTTP操作必须有唯一人工`operation_id`、tag、成功状态和Pydantic响应模型；错误响应按操作显式声明，不在应用级虚报所有状态码。输入继承严格Input并给集合、字符串、页大小和正文设置上限。游标不得泄漏内部数据，应有明确的校验和分页边界。
 - Python 文件、目录、函数使用 snake_case，类使用 PascalCase，常量使用 UPPER_SNAKE_CASE；同类职责文件统一使用 models.py / schemas.py / services.py。绝对导入；`__init__.py` 仅标识包或说明包，不放业务代码和重导出别名。
@@ -69,10 +69,10 @@
 
 - `sources/` 的适配器不依赖 API、ORM、Worker 或 CLI；业务来源契约不导入 HTTP 客户端。来源探测只经独立 CLI 显式执行，查询预览不发送网络请求。未通过持久化采集验收前，来源连接状态保持 not_connected。
 - X 官方 API 适配器 `sources/adapters/x_api.py` 只处理官方端点、只读映射、分页和错误翻译；业务预算/连接执行权由调用方装配。凭据与月度上限未确认前不启用真实请求。新 HTTP 适配器继承 `sources/adapters/http_source.py`，必须接收主机白名单并校验每一跳重定向。
-- 本地网页/浏览器采集按 [047 Design](docs/design/047-本地网页与浏览器采集设计.md) 执行（原 047 Plan 已并入 Plan 001）；S00/S01 与 S02 公开网页业务闭环、S03 浏览器基础，以及 S03-T03 Worker 单任务硬截止/取消回收/未知退出重放共享边界已有实现和技术验证。不得把公开网页闭环或运行时探针当作平台接入成功；Browser 业务处理器仍未接入 Worker，G4-002 的凭据隔离/换版旧写端到端验证及四平台真实准入仍待完成。Firecrawl 内置渲染器不等于完整交互服务。`connections/adapters/local_secrets.py` 只管理受控浏览器状态文件，运行时不得接收不可信文件路径；本地 CLI 捕获文件也需拒绝符号链接、宽权限及超限内容。`browser_state` 引用必须与版本行身份一致，执行前由 `connections` 服务判定当前版本、停用及认证失效，不由文件存在性代替；无适配器时不在目录新增假来源。外采适配器保持无 ORM，业务编排归 content，执行权和预算归 jobs；不新增第二套队列或任务数据库。跨仓库 Firecrawl 修复单独检查差异，不混入 HotKey 提交。
-- S03 浏览器固定 Playwright Python/Server `1.63.0` 原生 WS；browser 构建 target、必要的 `server.js` 入口与 seccomp 置于 `backend/`。browser 只接 Worker 共享的 WS 内网及专用代理内网，只有 HotKey 自有 Squid 代理接公网桥接网；初始代理仅放行 `example.com` 探针，不放行真实平台。控制面 WS 路径使用本机私有配置的不可猜测 `/ws/` 令牌，browser 与调用方必须一致，禁用公开根路径及日志回显。适配器管理器启动、建连、context 与交互共用协作式截止；各关闭步骤有界请求清理，但不能冒充业务任务硬截止。CLI 的无网络探针和代理通路仅证明运行基础，不得据此声明平台能力；真实平台出口/请求计量须经后续专门验证。不得安装 Scrapling、CDP 服务、第二套依赖栈或把浏览器二进制加入 API 镜像。
-- 评论与回复按 Design 001 第 4.1、5.4 节存入 `content_threads`，并以 [008 Design](docs/design/008-评论与回复采集设计.md) 的身份与父链规则为输入；逐平台验证帖子定位、线程关系、一级/楼中楼分页和旧帖新回复。候选爬虫先核对固定源码/许可/运行边界，不能照 README 的“全量”或单页结果声明完整；各平台评论不依赖 X 先就绪。
-- 010 增量范围按 [010 Design](docs/design/010-增量更新与历史回补设计.md) 执行：Job 检查点不充当跨轮次确认水位，`SourcePage.COMPLETE/EMPTY` 不单独证明有界时间窗覆盖；半批失败和未知尾段保留缺口。S01 的持久范围表、ORM、服务与受控测试已同批进入；S02 时间标记要求范围 Job 显式固定 `scan_kind`，旧任务缺失类型时不默认为追新。现有开发库未就地迁移、无真实多页处理器；内部样本不标记真实来源可用。逐来源重叠/旧帖周期须有真实样本后才固定，不创建无处理器的回补路由或页面。
+- 本地网页/浏览器采集遵守下述边界；旧 Design 047 本地网页与浏览器采集已删除，见 Git 历史（原 047 Plan 已并入 Plan 001）。S00/S01 与 S02 公开网页业务闭环、S03 浏览器基础，以及 S03-T03 Worker 单任务硬截止/取消回收/未知退出重放共享边界已有实现和技术验证。不得把公开网页闭环或运行时探针当作平台接入成功；通用 Browser 业务处理器仍未接入 Worker，G4-002 的凭据隔离/换版旧写端到端验证仍待完成。本人账号 B 站采用 [Design 003 第 3 节](docs/design/003-本人账号B站试点设计.md)的宿主机 MediaCrawler 与独立 CDP 资料，其真实修复后采集仍未验收；其他登录平台不得据此称已接入。Firecrawl 内置渲染器不等于完整交互服务。`connections/adapters/local_secrets.py` 只管理受控浏览器状态文件，运行时不得接收不可信文件路径；本地 CLI 捕获文件也需拒绝符号链接、宽权限及超限内容。`browser_state` 引用必须与版本行身份一致，执行前由 `connections` 服务判定当前版本、停用及认证失效，不由文件存在性代替；无适配器时不在目录新增假来源。外采适配器保持无 ORM，业务编排归 content，执行权和预算归 jobs；不新增第二套队列或任务数据库。跨仓库 Firecrawl 修复单独检查差异，不混入 HotKey 提交。
+- S03 通用浏览器服务固定 Playwright Python/Server `1.63.0` 原生 WS；browser 构建 target、必要的 `server.js` 入口与 seccomp 置于 `backend/`。browser 只接 Worker 共享的 WS 内网及专用代理内网，只有 HotKey 自有 Squid 代理接公网桥接网；初始代理仅放行 `example.com` 探针，不放行真实平台。控制面 WS 路径使用本机私有配置的不可猜测 `/ws/` 令牌，browser 与调用方必须一致，禁用公开根路径及日志回显。适配器管理器启动、建连、context 与交互共用协作式截止；各关闭步骤有界请求清理，但不能冒充业务任务硬截止。CLI 的无网络探针和代理通路仅证明运行基础，不得据此声明平台能力；真实平台出口/请求计量须经后续专门验证。不得为通用服务安装 Scrapling、第二套依赖栈或把浏览器二进制加入 API 镜像；本人账号 B 站的宿主机独立 CDP 资料按 [Design 003 第 3 节](docs/design/003-本人账号B站试点设计.md)执行。
+- 评论与回复按 [Design 002 第 3.4 节](docs/design/002-信息获取主链路设计.md)与[Design 003 第 3 节](docs/design/003-本人账号B站试点设计.md)存入 `content_threads`；旧 Design 008 评论与回复采集已删除，见 Git 历史。评论 ID 保留原生不透明字符串，作品、线程根、直接父节点和回复目标分别记录；关系未知或父节点缺失时保留缺口，不猜测父链。HN 验证一级/楼中楼分页和旧帖新回复，B 站本轮只验同轮缓存的一级评论每帖 ≤20 条，不宣称楼中楼覆盖。候选爬虫先核对固定源码/许可/运行边界，不能照 README 的“全量”或单页结果声明完整；评论不依赖 X 先就绪。
+- 010 增量范围遵守下述现行规则；旧 Design 010 增量更新与历史回补已删除，见 Git 历史。Job 检查点不充当跨轮次确认水位，`SourcePage.COMPLETE/EMPTY` 不单独证明有界时间窗覆盖；半批失败和未知尾段保留缺口。S01 的持久范围表、ORM、服务与受控测试已同批进入；S02 时间标记要求范围 Job 显式固定 `scan_kind`，旧任务缺失类型时不默认为追新。现有开发库未就地迁移、无真实多页处理器；内部样本不标记真实来源可用。逐来源重叠/旧帖周期须有真实样本后才固定，不创建无处理器的回补路由或页面。
 
 ### 固定技术与运行入口
 
@@ -86,7 +86,7 @@
 | 对象存储 | MinIO，适配器归 `evidence/adapters/` |
 | 工具 | Ruff、mypy、pytest、HTTPX；依赖精确版本随锁文件提交 |
 | API 入口 | 在 `backend/app/` 执行 `uvicorn main:create_app --factory` |
-| Worker 入口 | 在 `backend/app/` 执行 `python -m worker`（P1 只在宿主机运行一个） |
+| Worker 入口 | 在 `backend/app/` 执行 `python -m worker`（当前 M1/M2 只在宿主机运行一个） |
 | 调度入口 | 在 `backend/app/` 执行 `python -m worker.scheduler`（扫表创建 Job） |
 | CLI 入口 | 在 `backend/app/` 执行 `python -m cli` |
 
@@ -188,11 +188,11 @@ backend/
 | `sources/` | 来源契约、来源适配器与采集能力 |
 | `evidence/` | 证据元数据、文件与 MinIO 适配器 |
 | `ai/` | 模型调用契约、SDK 适配器、调用记录与成本结算 |
-| `analysis/` | 相关性、摘要、情感与观点标注（计划 P1） |
-| `events/` | 事件归并、热度快照、人工合并/拆分（计划 P2） |
-| `reports/` | 日报/周报生成、校验、存档（计划 P1） |
-| `notifications/` | 推送渠道、订阅、发送记录（计划 P1） |
-| `knowledge/` | Obsidian 导出（P1 起）、`pg_trgm` 检索与问答（P3） |
+| `analysis/` | 相关性、摘要、情感与观点标注（已有代码；M1 相关性、M4 质量验收） |
+| `events/` | 事件归并、热度快照、人工合并/拆分（M3，尚未实现） |
+| `reports/` | 日报/周报生成、校验、存档（日报已有代码；M4 独立验收） |
+| `notifications/` | 推送渠道、订阅、发送记录（飞书已有代码；M5 暂缓，SMTP 待实现） |
+| `knowledge/` | Obsidian 日报导出已有代码；M4 独立验收及 `pg_trgm` 检索与问答 |
 | `audit/` | 跨领域审计记录 |
 
 新增领域必须先在切片 Design 登记主责、依赖和目标目录，再更新本表；不得把业务代码堆入 `core/`、全局 `utils/` 或全局 `models/`。
@@ -242,7 +242,7 @@ frontend/src/
 
 ### 任务说明必须覆盖的内容
 
-以下内容写在 Plan 001 对应任务的说明中；与该任务无关的行可省略。
+以下内容写在对应里程碑 Plan 的 TASK 说明中；与该任务无关的行可省略。
 
 | 内容 | 必须明确 |
 |---|---|

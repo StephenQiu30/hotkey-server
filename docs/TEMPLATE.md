@@ -6,7 +6,7 @@
 
 根目录 `BACKLOG.md` 是唯一进度看板（阶段、验收、任务卡、待办、风险，≤ 10 KB），`HANDOVER.md` 只记录当前实现快照（≤ 5 KB），不占用 doc_no。
 
-**v2.0 轻量流程（2026-09-25 起）**：需求、总体设计、执行计划各只维护一份（001）。新功能不再单独建五件套，而是在 Plan 001 的任务下写一段说明；只有独立调研（如新平台接入可行性）才从 048 起新建文档。下文各层模板仍适用于这些文档与阶段验收记录。
+**里程碑文档流程（2026-09-26 起）**：Design、PRD、Plan 三层同号：001 为总设计/总需求/总计划，M1—M6 分别为 002—007；计划统一位于 `docs/plan/`。新里程碑或独立专项按 `docs/README.md` 台账续编号；任务开工前在对应里程碑 Plan 的 TASK 下写说明。下文各层模板仍适用于这些文档与阶段验收记录。
 
 编号以 `docs/README.md` 的当前文档台账为准。用户要求清理后从空文档基线重建时，从 `001` 登记新交付项，不从已清理的历史文档推算起始编号。同一主题的 Research、PRD、Design、Plan 和 Acceptance 共用编号；独立专项另行登记。未提交草案的编号错误可按用户要求统一纠正，需同步文件名、元数据、内部 ID 与所有引用，并在台账记录映射；不得借纠错改变已有需求含义。
 
@@ -36,7 +36,7 @@
 | 检查 | `CHK-NNN-G0-001` 至 `CHK-NNN-G6-001` | `CHK-005-G5-002` |
 | 证据 | `EV-NNN-001` | `EV-005-004` |
 
-编号一旦使用不得改变含义；拆分大需求时申请新 `doc_no`，不得使用 `001-A` 或 `1.1`。`OPEN` 只用于尚未决策的问题；关闭时保留原条目、结论与日期，并映射到承接结论的 `DEC`、`RSK`、`BR`/`FR`/`NFR`，不得静默删除。
+编号一旦使用不得改变含义；拆分大需求时申请新 `doc_no`，不得使用 `001-A` 或 `1.1`。被替代的文档直接删除，编号去向记入 `docs/README.md` 历史编号表；旧原文从 Git 历史查阅。`OPEN` 只用于尚未决策的问题；关闭时保留原条目、结论与日期，并映射到承接结论的 `DEC`、`RSK`、`BR`/`FR`/`NFR`，不得静默删除。
 
 ## Research
 
@@ -69,7 +69,8 @@ version: v1.0
 owner: HotKey Team
 canonical_path: docs/design/NNN-主题设计.md
 prd: docs/prd/NNN-主题.md
-plan: docs/plans/NNN-主题计划.md
+plan: docs/plan/NNN-主题计划.md
+parent: docs/design/001-热点舆情监控平台总体设计.md # 里程碑 Design
 ---
 ```
 
@@ -98,7 +99,7 @@ version: v1.0
 owner: HotKey Team
 canonical_path: docs/prd/NNN-主题.md
 design: docs/design/NNN-主题设计.md
-plan: docs/plans/NNN-主题计划.md
+plan: docs/plan/NNN-主题计划.md
 ---
 ```
 
@@ -119,7 +120,7 @@ plan: docs/plans/NNN-主题计划.md
 
 ## Plan（含 SPEC 与 CHECKLIST）
 
-所有新建或调整的实施 Plan 均登记 `architecture_prerequisite: "046 S03"`，链接 [统一契约 Design](design/046-全局异常与响应契约设计.md) 与 [前置 Plan](plans/046-全局异常与响应契约前置计划.md)。只有046自身不依赖自己；研究/设计准备不受代码实施门禁阻塞。公共技术前置不新增产品 FR/NFR 分母，领域成功/错误/分页/任务响应必须复用统一契约。该规则随模板传播到后续计划，不能只依赖 BACKLOG 的临时备注。
+所有新建或调整的实施 Plan 均登记 `architecture_prerequisite: "046 S03"`；旧 Design 046 全局异常与响应契约和旧 Plan 046 前置计划已删除，见 Git 历史。除旧 046 前置计划本身外，Plan 进入实现前须有 046 S03 真实通过证据；研究/设计准备不受阻塞。公共技术前置不新增产品 FR/NFR 分母，领域成功/错误/分页/任务响应必须复用 PROJECT.md 规定的类型化契约与稳定 `ErrorView`，运行响应、OpenAPI 和生成客户端一致。该规则随模板传播到后续计划，不能只依赖 BACKLOG 的临时备注。
 
 ```yaml
 ---
@@ -130,9 +131,10 @@ title: 主题计划
 status: planned
 version: v1.0
 owner: HotKey Team
-canonical_path: docs/plans/NNN-主题计划.md
+canonical_path: docs/plan/NNN-主题计划.md
 design: docs/design/NNN-主题设计.md
 prd: docs/prd/NNN-主题.md
+parent: docs/plan/001-热点舆情监控平台总计划.md # 里程碑 Plan
 ---
 ```
 

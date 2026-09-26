@@ -1,10 +1,10 @@
 # HotKey Server 项目与技术选型
 
-更新日期：2026-09-25。本文固定仓库边界、技术栈、后端目录、API 契约和运行约束。产品需求、总体设计和计划分别以 [PRD 001](docs/prd/001-热点舆情监控平台需求.md)、[Design 001](docs/design/001-热点舆情监控平台总体设计.md)、[Plan 001](docs/plans/001-热点舆情监控平台总计划.md) 为准。
+更新日期：2026-09-26。本文固定仓库边界、技术栈、后端目录、API 契约和运行约束。产品需求、总体设计和计划分别以 [PRD 001 v5.0](docs/prd/001-热点舆情监控平台需求.md)、[Design 001 v4.0](docs/design/001-热点舆情监控平台总体设计.md)、[Plan 001 v6.0](docs/plan/001-热点舆情监控平台总计划.md) 为准。
 
 ## 1. 定位与仓库边界
 
-HotKey 按关键词持续收集各平台的帖子和评论，每天、每周自动生成舆情报告推送到飞书和邮箱，并把报告、事件和精选内容沉淀到本地 Obsidian 知识库。2026-09-25 起按 v2 推进，交付物为**日报、周报、Obsidian 知识库**；使用性质为个人/非商业研究。本仓库同时维护 Python 后端与 Web 前端；同级 `hotkey-app`（Flutter）暂停。
+HotKey 当前以**可信的信息获取**为核心：按主题持续取得可追溯的帖子、评论与六个公开热榜，显示来源 × 能力 × 时间窗的覆盖和缺口，并由本机 Codex 判断相关性。日报、周报、Obsidian 知识库和推送是后续分别验收的结果；飞书推送暂缓。使用性质为个人/非商业研究。本仓库同时维护 Python 后端与 Web 前端；同级 `hotkey-app`（Flutter）暂停。
 
 ```text
 HotKey/
@@ -23,22 +23,24 @@ HotKey/
 
 ### 1.1 用户与交付结果
 
-主要用户是负责舆情的产品、市场、公关人员；报告订阅者只通过推送接收日报和周报。首版按单个团队自建部署，沿用单 owner 登录。成功标准是用户每天按时收到可信、可追溯的日报，而不是平台数量或采集条数。
+主要用户是使用本机单 owner 工作台的研究者；报告订阅者属于后续推送的接收方，不需要工作台账号。当前成功标准是逐来源真实采集、可追溯和可核对的连续覆盖；报告与送达另验。
 
-### 1.2 交付阶段
+### 1.2 能力里程碑
 
 | 阶段 | 内容 |
 |---|---|
-| P1（第 1—2 周） | Hacker News 竖切 → Google News/SearXNG/RSS → 调度 → Codex 批量标注 → 日报（可降级）→ Obsidian 日报笔记 → 飞书与邮件 |
-| P2（第 3—4 周） | MediaCrawler（B 站、微博）、RSSHub 热榜、事件归并与热度、Obsidian 事件与帖子笔记 |
-| P3（第 5—6 周） | 周报、Obsidian 主题笔记、问答（`pg_trgm` 检索 + Codex）、导出 |
-| P4（第 7 周起） | 突发告警、账号追踪、C 档来源（X、小红书、抖音、公众号）逐个接入 |
+| M1 | 四个关键词来源、HN 评论父链、六榜、覆盖查询和 Codex 相关性；同窗连续 72 小时验收 |
+| M2 | 本人账号 B 站 MediaCrawler 试点，真实低频采集、风控停止/人工恢复，再无风控运行 72 小时 |
+| M3 | 跨平台事件归并、热度与人工修订 |
+| M4 | 分别验收分析质量、日报/周报、Obsidian 导出与问答 |
+| M5 | SMTP 与暂缓的飞书按渠道分别验收 |
+| M6 | 告警、指定账号、导出增强及后续来源逐项准入 |
 
-### 1.3 当前实现边界（2026-09-25）
+### 1.3 当前实现边界（2026-09-26）
 
 已实现并可复用：单 owner 身份与会话、主题与关键词规则、来源连接、持久任务执行（Outbox/Kafka/Worker、重试、取消、租约、恢复）、内容身份/版本/指标观察、来源契约、网页正文采集、隔离浏览器服务、预算账本、备份恢复、统一错误契约和 Web 工作台框架。
 
-尚未实现：Worker 只注册了 `webpage.collect`；没有来源预设、调度进程、模型调用记录、分析、报告、推送和 Obsidian 导出。评论线程、契约字段、本地 RSSHub/SearXNG 已完成；HN/RSS/SearXNG 适配器与 Codex 客户端已写未提交。修正方案与问题清单见 Design 001 第 2 节。
+宿主机 Worker 已注册 `webpage.collect`、`keyword.search`、`source.comments`、`source.hotlist`、`analysis.annotate`、`report.daily`、`notification.send`、`knowledge.export`；独立调度、四关键词来源、六榜、Codex 调用/标注、日报、Obsidian 日报导出和飞书发送均有代码与受控测试。开发库约 4 小时运行仅证明有限真实范围，M1 连续 72 小时及各产品 AC 未通过。B 站适配器有离线回放，修复后真实采集未做且开关关闭；SMTP 与事件尚未实现。现状和证据等级见 Design 001 第 2 节、Plan 001 第 3/8 节。
 
 
 ## 2. 固定技术栈
@@ -75,7 +77,7 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 | psycopg 3 | PostgreSQL 驱动，默认使用同步 SQLAlchemy Session |
 | SQLAlchemy 2 | 运行时 ORM 映射与事务；不创建或修改数据库结构 |
 | `database/schema.sql` | 唯一 PostgreSQL DDL 事实源；只用于初始化全新空库 |
-| PostgreSQL | 业务事实、权限、任务、进度、幂等记录与 Outbox 的持久存储；P3 起启用 `pg_trgm` 承担问答检索（不引入向量库） |
+| PostgreSQL | 业务事实、权限、任务、进度、幂等记录与 Outbox 的持久存储；M4 问答启用 `pg_trgm` 检索（不引入向量库） |
 | Redis | 缓存、限流和可重建临时状态；关键权限、预算与任务状态仍有数据库依据 |
 | Kafka | 任务事件与异步消息传输，由 Python Worker 消费 |
 | MinIO | 复用既有对象存储，保存有权限与保留期约束的文件及证据 |
@@ -159,7 +161,7 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 
 ### 全局异常与响应处理
 
-统一决策见 [046 全局异常与响应契约设计](docs/design/046-全局异常与响应契约设计.md)。HTTP 状态、稳定错误码、任务状态、页面状态分别建模；应用异常不携带 HTTP 状态，API 边界负责映射。成功响应统一为资源 DTO、`PageView[T]`、`JobAcceptedView` 三类，失败统一 `ErrorView`；不引入全接口 Result 外壳或成功 body 改写中间件。分页固定 `items/next_cursor`；异步受理必须先持久提交；204/304 无 body，文件与流按实际媒体协议处理。
+现行统一决策如下；旧 Design 046 全局异常与响应契约已删除，见 Git 历史。HTTP 状态、稳定错误码、任务状态、页面状态分别建模；应用异常不携带 HTTP 状态，API 边界负责映射。成功响应统一为资源 DTO、`PageView[T]`、`JobAcceptedView` 三类，失败统一 `ErrorView`；不引入全接口 Result 外壳或成功 body 改写中间件。分页固定 `items/next_cursor`；异步受理必须先持久提交；204/304 无 body，文件与流按实际媒体协议处理。
 
 `ErrorView` 的 code/message/request_id 必需，校验错误的 details 只含安全 location/message/type。公共消息来自登记表，自定义 HTTP 5xx detail 和 validator 原始消息不能直接公开。请求 UUID 保存到 scope/state，正常及异常响应头、错误 body 和日志一致，不能回退为 unknown；日志异常链也需脱敏。公开错误码、HTTP 映射、必要响应头、客户端本地传输错误分类按 046 统一登记并验证。
 
@@ -193,15 +195,15 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 ## 4. 产品约束与未决事项
 
 - 只采集公开或获授权的数据；遵守平台频率限制；凭据和登录态只存服务端，不进前端、日志和代码库。
-- 来源按接入难度分三档交付：A 档公开 API/RSS，B 档公开 Web 接口 + 现有 Playwright 浏览器服务，C 档需登录或付费。每个来源分别验收搜索、帖子、评论、热榜能力；不以一个来源接通代表其他来源可用。
-- 付费来源（X 官方 API 等）和外部大模型调用都经 037 预算账本做月度硬上限：80% 提醒，100% 停止付费调用；免费来源不受影响。是否允许付费模型、上限多少见 OPEN-001-102；X 是否启用见 OPEN-001-104。上限确认前不发起真实付费请求。
+- 本轮逐来源验收四个关键词来源（HN Algolia、Google News 搜索 RSS、本机 SearXNG 的 `duckduckgo news`、本机 RSSHub `/36kr/newsflashes`）、六个公开 RSSHub 热榜，以及本人账号 B 站试点。B 站使用宿主机 MediaCrawler 子进程和 `~/Desktop/Docker/mediacrawler-start-local/` 的固定补丁记录、独立 CDP 资料；微博等登录平台后续逐项准入。搜索、帖子、评论、热榜分别验收，不以公开热榜代替登录内容。
+- 来源频次、请求与模型调用经来源预设及 037 预算账本设置硬上限；模型仅经本机 Codex app-server，不发付费模型请求。X 仅用官方 API，凭据与月度上限未确认前禁止真实请求。
 - 模型适配器归 `ai/adapters/`，供应商可替换。报告中的数字一律由数据库计算，模型只负责判断和写作，正文的数字与链接须通过校验。
 - 外部正文按不可信内容处理：进入模型时放入分隔的数据区，模型输出只接受结构化字段。
 - 复用现有 MinIO。不更换 PostgreSQL 镜像，不引入向量库或搜索引擎（DEC-001-208）。
-- 知识库是本地 Obsidian vault（`HOTKEY_OBSIDIAN_VAULT_PATH`，默认 `~/Desktop/Markdown/Obsidian`）的 `HotKey/` 子目录；HotKey 单向写入管理区块，原子写，不覆盖用户区块（Design 001 第 11 节）。
-- 流水线由独立调度进程 `python -m worker.scheduler` 扫表驱动（DEC-001-203）；P1 只在宿主机运行一个 `python -m worker`，Compose 中的 worker 服务不启动（DEC-001-205）。
+- 知识库是本地 Obsidian vault（`HOTKEY_OBSIDIAN_VAULT_PATH`，默认 `~/Desktop/Markdown/Obsidian`）的 `HotKey/` 子目录；HotKey 单向写入管理区块，原子写，不覆盖用户区块（[Design 005 第 3.3 节](docs/design/005-报告与知识库设计.md)）。
+- 流水线由独立调度进程 `python -m worker.scheduler` 扫表驱动（DEC-001-203）；当前 M1/M2 只在宿主机运行一个 `python -m worker`，Compose 中的 worker 服务不启动（DEC-001-205）。
 - 模型经本机 Codex app-server，每个分析 Job 启动一次，只传最小环境变量（DEC-001-207）；模型名必须显式配置。
-- 推送秘密只从环境变量读取（DEC-001-210）。
+- 推送秘密只从环境变量读取（DEC-001-210）；飞书暂缓，SMTP 后续独立实现，渠道送达不阻断信息获取或报告生成。
 - 冻结（保留代码，不再扩展、不作前置门禁）：032 备份 S03+、033 公平派发/熔断、028 S02+、029 S03、039 S02+、040、042 B0、010 历史回补、Flutter App。移出范围：044、045。
 
 ## 5. 实施与验证
