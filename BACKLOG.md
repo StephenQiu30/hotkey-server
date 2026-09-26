@@ -32,15 +32,16 @@
 
 ## 2. 当前迭代
 
-**状态：2026-09-26 恢复派发 D2、D3、D4、E1**（分支 `feat/p1-report-delivery`）。D2、D3、D4、E1 已合入 main（全量 662 passed）；下列真实运行验证待做。
+**状态：2026-09-26 重心转为真实信息获取（用户要求，飞书暂缓）。** 本机 `hotkey_p1` 库真实跑通：4 个来源定时采集 → 入库 → 评论 → Codex 标注。首轮真实运行修复 5 个问题（调度进程未注册 ORM、缺全局预算、Codex 0.157 需 experimentalApi、10 分钟窗口漏采、组件版本含 `/` 导致 RSS/SearXNG 入库全败），36Kr 改走 RSSHub。修复未提交。
 
 | 顺序 | 卡 | 内容 | 执行方 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| 1 | A5 | HN 竖切真实验收：应用预设 → 手动搜索 → 评论 → Worker 重启重放 | Claude | todo | 需启动本机 Kafka、Worker |
+| 1 | A5 | HN 竖切真实验收 | Claude | doing | 已跑通搜索、评论、标注；待验 Worker 重启重放 |
+| 1 | A7 | 首轮真实运行发现的问题 | Claude | todo | ①手动重试时 90 秒预算按首次启动计，重试必然零采集；②子进程内确定性异常要等 ~79 秒硬截止才被发现并重试 3 次；③RSSHub 健康检查用了镜像里没有的 wget；④CI runtime 缺 `HOTKEY_SEARXNG_SECRET` |
 | 2 | D2 | 真实 Codex 调用生成模型版日报 | Claude | todo | 代码 `f67c623d` |
 | 2 | D3 | 真实 vault 写入与“我的笔记”保留 | Claude | todo | 代码 `8c9ac156` |
 | 3 | D4 | 浏览器桌面/窄屏检查 | Claude | todo | 代码 `8feeb69e` |
-| 3 | E1 | 真实群机器人收到日报 | Claude | blocked | 代码 `3ffa523f`；需你-1 |
+| 3 | E1 | 真实群机器人收到日报 | Claude | 暂缓 | 用户要求先做信息获取；需你-1 |
 
 ## 3. P1 全部任务卡
 
