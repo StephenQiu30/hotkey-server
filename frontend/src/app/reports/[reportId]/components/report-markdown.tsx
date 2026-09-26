@@ -105,11 +105,9 @@ export function ReportMarkdown({
           );
         }
         if (text.startsWith("- ")) {
+          const indentation = line.startsWith("   ") ? "pl-8" : "pl-2";
           return (
-            <p
-              key={index}
-              className={`leading-7 ${line.startsWith("   ") ? "pl-8" : "pl-2"}`}
-            >
+            <p key={index} className={`leading-7 ${indentation}`}>
               <span className="mr-2">•</span>
               {inlineContent(text.slice(2), citations)}
             </p>
