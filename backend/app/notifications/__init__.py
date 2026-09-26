@@ -1,0 +1,1 @@
+"""Report notification delivery domain."""

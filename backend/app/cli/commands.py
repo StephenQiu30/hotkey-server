@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -42,6 +43,8 @@ from evidence.adapters.minio import MinioObjectCleanup
 from evidence.schemas import CleanupTargetKind
 from evidence.services import CleanupProcessor, LifecycleService
 from identity.services import IdentityService
+from notifications.schemas import NotificationChannel, TargetInput
+from notifications.services import NotificationTargetService
 from sources.adapters.browser_runtime import BrowserRuntime, BrowserRuntimeDisabledError
 from sources.adapters.firecrawl import FirecrawlAdapter
 from sources.contracts import SourceCapability, SourceStopReason, WebPageRequest
@@ -53,6 +56,8 @@ backup_app = typer.Typer(no_args_is_help=True)
 connections_app = typer.Typer(no_args_is_help=True)
 sources_app = typer.Typer(no_args_is_help=True)
 source_preset_app = typer.Typer(no_args_is_help=True)
+notifications_app = typer.Typer(no_args_is_help=True)
+notification_target_app = typer.Typer(no_args_is_help=True)
 app.add_typer(identity_app, name="identity")
 app.add_typer(lifecycle_app, name="lifecycle")
 app.add_typer(backup_app, name="backup")
@@ -60,6 +65,56 @@ app.add_typer(connections_app, name="connections")
 app.add_typer(jobs_app, name="jobs")
 app.add_typer(sources_app, name="sources")
 sources_app.add_typer(source_preset_app, name="preset")
+app.add_typer(notifications_app, name="notifications")
+notifications_app.add_typer(notification_target_app, name="target")
+
+
+@notification_target_app.command("add")
+def add_notification_target(
+    name: Annotated[str, typer.Argument(metavar="NAME")],
+    channel: Annotated[NotificationChannel, typer.Option()] = NotificationChannel.FEISHU,
+    secret_env: Annotated[
+        str | None, typer.Option(help="Name of a HOTKEY_ secret environment variable.")
+    ] = None,
+) -> None:
+    """Create a named notification target for the initialized owner."""
+    settings = get_settings()
+    engine = create_db_engine(settings)
+    session = create_session_factory(engine)()
+    try:
+        owner_id = IdentityService(session, settings).initialized_owner_id()
+        target = TargetInput(name=name, channel=channel, secret_env=secret_env)
+        with session.begin():
+            created = NotificationTargetService(session).add_in_transaction(
+                owner_id=owner_id, target=target, now=datetime.now(UTC)
+            )
+    except (ApplicationError, ValidationError, ValueError) as error:
+        code = error.code if isinstance(error, ApplicationError) else "invalid_target"
+        typer.echo(f"Notification target add failed: {code}", err=True)
+        raise typer.Exit(code=1) from None
+    finally:
+        session.close()
+        engine.dispose()
+    typer.echo(f"Notification target added: {created.name}; channel: {created.channel.value}")
+
+
+@notification_target_app.command("list")
+def list_notification_targets() -> None:
+    """List named targets without displaying credentials."""
+    settings = get_settings()
+    engine = create_db_engine(settings)
+    session = create_session_factory(engine)()
+    try:
+        owner_id = IdentityService(session, settings).initialized_owner_id()
+        targets = NotificationTargetService(session).list(owner_id=owner_id)
+    except ApplicationError as error:
+        typer.echo(f"Notification target list failed: {error.code}", err=True)
+        raise typer.Exit(code=1) from None
+    finally:
+        session.close()
+        engine.dispose()
+    for target in targets:
+        typer.echo(f"{target.name}; channel: {target.channel.value}; enabled: {target.enabled}")
 
 
 @app.callback()

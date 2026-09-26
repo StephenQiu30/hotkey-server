@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import Event
 from typing import NoReturn
+from uuid import UUID
 
 import structlog
 from confluent_kafka import Message
@@ -45,8 +46,10 @@ from jobs.execution import (
     MessageReference,
 )
 from jobs.schemas import JobFailureCategory, JobMessage, JobStage, JobStatus
-from jobs.services import JOB_ACCEPTED_TOPIC, OutboxService
+from jobs.services import JOB_ACCEPTED_TOPIC, OutboxService, load_job_execution_configuration
 from knowledge.services import KnowledgeExportExecutor
+from notifications.executor import NotificationExecutor
+from notifications.services import mark_interrupted_sending_in_transaction
 from reports.services import DailyReportExecutor
 from sources.adapters.firecrawl import FirecrawlAdapter
 from worker.execution import (
@@ -312,6 +315,8 @@ def create_job_message_handler(
                         ),
                     )
                 except JobProcessShutdownError as error:
+                    if body.kind == "notification.send":
+                        _mark_interrupted_notification(sessions, message=body, now=_now(clock))
                     raise StopProcessingMessageError from error
                 except JobProcessCrashedError as error:
                     _defer_after_child_exit(
@@ -320,6 +325,7 @@ def create_job_message_handler(
                         lease_seconds=lease_seconds,
                         clock=clock,
                         cause=error,
+                        message=body,
                     )
 
                 if result.outcome is JobProcessOutcome.TIMED_OUT:
@@ -348,6 +354,7 @@ def create_job_message_handler(
                                 lease_seconds=lease_seconds,
                                 clock=clock,
                                 cause=error,
+                                message=body,
                             )
                 _finalize_supervised_result(
                     sessions,
@@ -441,7 +448,10 @@ def _defer_after_child_exit(
     lease_seconds: int,
     clock: Clock | None,
     cause: JobProcessCrashedError,
+    message: JobMessage,
 ) -> NoReturn:
+    if message.kind == "notification.send":
+        _mark_interrupted_notification(sessions, message=message, now=_now(clock))
     raise MessageDeferredError(
         _lease_retry_time(
             sessions,
@@ -450,6 +460,19 @@ def _defer_after_child_exit(
             clock=clock,
         )
     ) from cause
+
+
+def _mark_interrupted_notification(
+    sessions: sessionmaker[Session], *, message: JobMessage, now: datetime
+) -> None:
+    with sessions() as session:
+        configuration = load_job_execution_configuration(session, job_id=message.job_id)
+        if configuration is None or configuration.kind != "notification.send":
+            return
+        delivery_id = UUID(str(configuration.scope["delivery_id"]))
+        session.rollback()
+        with session.begin():
+            mark_interrupted_sending_in_transaction(session, delivery_id=delivery_id, now=now)
 
 
 def _validate_child_result(
@@ -480,6 +503,14 @@ def _finalize_supervised_result(
     with sessions() as session:
         session.rollback()
         with session.begin():
+            if message.kind == "notification.send":
+                configuration = load_job_execution_configuration(session, job_id=message.job_id)
+                if configuration is not None:
+                    mark_interrupted_sending_in_transaction(
+                        session,
+                        delivery_id=UUID(str(configuration.scope["delivery_id"])),
+                        now=finished_at,
+                    )
             if message.kind == "webpage.collect":
                 recover_webpage_collection_usage_in_transaction(
                     session,
@@ -546,6 +577,7 @@ def _registered_job_handlers(
     analysis_executor = AnalysisAnnotateExecutor(sessions, settings, clock=clock)
     daily_report_executor = DailyReportExecutor(sessions, clock=clock)
     knowledge_executor = KnowledgeExportExecutor(sessions, settings, clock=clock)
+    notification_executor = NotificationExecutor(sessions, settings, clock=clock)
 
     def collect_webpage(context: JobExecutionContext) -> JobCompletion:
         context.lease = webpage_executor.execute(context.message, context.lease)
@@ -595,10 +627,14 @@ def _registered_job_handlers(
         )
         return completion
 
+    def send_notification(context: JobExecutionContext) -> JobCompletion:
+        return notification_executor.execute(context.message)
+
     return {
         "analysis.annotate": annotate_content,
         "keyword.search": search_keyword,
         "knowledge.export": export_knowledge,
+        "notification.send": send_notification,
         "report.daily": generate_daily_report,
         "source.comments": collect_comments,
         "webpage.collect": collect_webpage,

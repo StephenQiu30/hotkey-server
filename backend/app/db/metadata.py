@@ -46,6 +46,7 @@ from monitors.models import (
     MonitorTopic,
     MonitorTopicVersion,
 )
+from notifications.models import NotificationDelivery, NotificationTarget
 from reports.models import Report
 
 # Import each domain's models here for runtime mapping and clean-database verification.
@@ -77,6 +78,8 @@ __all__ = [
     "MonitorSchedule",
     "MonitorTopic",
     "MonitorTopicVersion",
+    "NotificationDelivery",
+    "NotificationTarget",
     "OutboxMessage",
     "ProcessedMessage",
     "ProvenanceManifest",

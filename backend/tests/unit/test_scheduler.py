@@ -123,6 +123,7 @@ def test_scheduler_registers_collection_comments_and_analysis_scans() -> None:
         "analysis",
         "reports",
         "knowledge",
+        "notifications",
     )
 
 

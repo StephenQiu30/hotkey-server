@@ -1240,6 +1240,42 @@ CREATE TABLE knowledge_exports (
     CONSTRAINT knowledge_exports_owner_relative_path_key UNIQUE (owner_id, relative_path)
 );
 
+CREATE TABLE notification_targets (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    name VARCHAR(80) NOT NULL CHECK (char_length(name) BETWEEN 1 AND 80),
+    channel VARCHAR(16) NOT NULL CHECK (channel IN ('feishu', 'email')),
+    recipients JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(recipients) = 'array'),
+    secret_env VARCHAR(128),
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT notification_targets_secret_env_check CHECK (
+        secret_env IS NULL OR secret_env ~ '^HOTKEY_[A-Z][A-Z0-9_]*$'
+    ),
+    CONSTRAINT notification_targets_owner_name_key UNIQUE (owner_id, name),
+    CONSTRAINT notification_targets_owner_id_key UNIQUE (owner_id, id)
+);
+
+CREATE TABLE notification_deliveries (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    report_id UUID NOT NULL REFERENCES reports (id) ON DELETE CASCADE,
+    report_version INTEGER NOT NULL CHECK (report_version >= 1),
+    target_id UUID NOT NULL,
+    status VARCHAR(16) NOT NULL CHECK (status IN ('pending', 'sending', 'succeeded', 'failed', 'unknown')),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 3),
+    last_error_code VARCHAR(64),
+    sent_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT notification_deliveries_owner_target_fkey
+        FOREIGN KEY (owner_id, target_id)
+        REFERENCES notification_targets (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT notification_deliveries_report_version_target_key
+        UNIQUE (report_id, report_version, target_id)
+);
+
 CREATE TABLE provenance_manifests (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,

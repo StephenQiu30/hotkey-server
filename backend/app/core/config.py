@@ -86,6 +86,35 @@ class Settings(BaseSettings):
     obsidian_root: str = "HotKey"
     obsidian_enabled: bool = False
 
+    feishu_webhook_url: SecretStr | None = None
+    feishu_secret: SecretStr | None = None
+    web_base_url: str = "http://localhost:3000"
+    notifications_enabled: bool = False
+
+    @field_validator("web_base_url")
+    @classmethod
+    def validate_web_base_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("invalid Web base URL")
+        return value.rstrip("/")
+
+    @field_validator("feishu_webhook_url")
+    @classmethod
+    def validate_feishu_webhook_url(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and value.get_secret_value():
+            from notifications.feishu import validate_webhook_url
+
+            validate_webhook_url(value.get_secret_value())
+        return value
+
     @field_validator("obsidian_vault_path")
     @classmethod
     def expand_obsidian_vault_path(cls, value: Path) -> Path:

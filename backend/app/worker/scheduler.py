@@ -24,6 +24,7 @@ from db.session import create_db_engine, create_session_factory
 from jobs.services import JobService, load_job_execution_configuration
 from knowledge.services import KnowledgeExportService
 from monitors.services import DueCollectionSchedule, MonitorScheduleService
+from notifications.services import NotificationService
 
 SCHEDULER_POLL_SECONDS = 30
 COLLECTION_OPERATION_NAMESPACE = UUID("515944a7-070b-4b27-86a4-bc811109031d")
@@ -280,6 +281,14 @@ def _registered_scheduler_scans() -> tuple[SchedulerScan, ...]:
         SchedulerScan(
             name="knowledge",
             run_in_transaction=lambda session, now: KnowledgeExportService(
+                session, get_settings()
+            ).enqueue_due_in_transaction(now=now),
+        )
+    )
+    scans.append(
+        SchedulerScan(
+            name="notifications",
+            run_in_transaction=lambda session, now: NotificationService(
                 session, get_settings()
             ).enqueue_due_in_transaction(now=now),
         )

@@ -55,7 +55,10 @@ def engine() -> Iterator[Engine]:
     engine = create_engine(database_url)
     with engine.begin() as connection:
         connection.execute(
-            text("TRUNCATE knowledge_exports, ai_calls, identity_sessions, identity_users CASCADE")
+            text(
+                "TRUNCATE knowledge_exports, notification_deliveries, "
+                "notification_targets, ai_calls, identity_sessions, identity_users CASCADE"
+            )
         )
     try:
         yield engine
@@ -63,8 +66,8 @@ def engine() -> Iterator[Engine]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE knowledge_exports, "
-                    "ai_calls, "
+                    "TRUNCATE knowledge_exports, notification_deliveries, "
+                    "notification_targets, ai_calls, "
                     "identity_sessions, identity_users CASCADE"
                 )
             )
