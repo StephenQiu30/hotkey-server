@@ -146,16 +146,45 @@ def normalize_monitor_rules(
     )
 
 
+def _is_ascii_word_char(value: str) -> bool:
+    return value.isascii() and value.isalnum()
+
+
+def _contains_keyword(comparable_content: str, keyword: str) -> bool:
+    """Match CJK keywords as substrings, but Latin edges only at word boundaries.
+
+    Without boundaries a short keyword such as "AI" matches inside "daily" or "email".
+    """
+    key = _comparison_key(keyword)
+    start = comparable_content.find(key)
+    while start != -1:
+        end = start + len(key)
+        before_ok = not (
+            _is_ascii_word_char(key[0])
+            and start > 0
+            and _is_ascii_word_char(comparable_content[start - 1])
+        )
+        after_ok = not (
+            _is_ascii_word_char(key[-1])
+            and end < len(comparable_content)
+            and _is_ascii_word_char(comparable_content[end])
+        )
+        if before_ok and after_ok:
+            return True
+        start = comparable_content.find(key, start + 1)
+    return False
+
+
 def evaluate_monitor_rules(rules: NormalizedMonitorRules, content: str) -> MonitorRuleMatch:
     comparable_content = _comparison_key(_normalize_text(content))
     matched_any = tuple(
-        keyword for keyword in rules.match_any if _comparison_key(keyword) in comparable_content
+        keyword for keyword in rules.match_any if _contains_keyword(comparable_content, keyword)
     )
     matched_all = tuple(
-        keyword for keyword in rules.match_all if _comparison_key(keyword) in comparable_content
+        keyword for keyword in rules.match_all if _contains_keyword(comparable_content, keyword)
     )
     excluded_by = tuple(
-        keyword for keyword in rules.exclude if _comparison_key(keyword) in comparable_content
+        keyword for keyword in rules.exclude if _contains_keyword(comparable_content, keyword)
     )
     any_matches = not rules.match_any or bool(matched_any)
     all_matches = len(matched_all) == len(rules.match_all)

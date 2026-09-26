@@ -196,3 +196,25 @@ def test_topic_preview_returns_explanation_for_each_sample_without_database_io()
     assert preview.samples[0].matched_any == ["Brand", "发布"]
     assert preview.samples[0].matched_all == ["新品"]
     assert preview.samples[0].excluded_by == ["招聘"]
+
+
+def test_latin_keywords_match_whole_words_but_chinese_keywords_match_substrings() -> None:
+    rules = normalize_monitor_rules(
+        match_any=["AI", "Claude Code", "人工智能"], match_all=[], exclude=[]
+    )
+
+    assert evaluate_monitor_rules(rules, "有哪些东西是AI完全没可能替代的").matched_any == ("AI",)
+    assert evaluate_monitor_rules(rules, "OpenAI's new AI model").matched_any == ("AI",)
+    assert evaluate_monitor_rules(rules, "Using claude code daily").matched_any == ("Claude Code",)
+    assert evaluate_monitor_rules(rules, "盖茨称人工智能或致十亿人死亡").matched_any == (
+        "人工智能",
+    )
+    assert not evaluate_monitor_rules(rules, "https://www.jfdaily.com/ maintain email").matched
+    assert not evaluate_monitor_rules(rules, "OpenAI 发布新模型").matched
+
+
+def test_latin_exclude_keywords_also_require_word_boundaries() -> None:
+    rules = normalize_monitor_rules(match_any=["模型"], match_all=[], exclude=["ad"])
+
+    assert evaluate_monitor_rules(rules, "大模型 already shipped").matched
+    assert not evaluate_monitor_rules(rules, "大模型 ad 推广").matched
