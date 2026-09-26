@@ -82,6 +82,22 @@ class Settings(BaseSettings):
     minio_secret_key: str = ""
     minio_bucket: str = "hotkey-evidence"
 
+    obsidian_vault_path: Path = Path("~/Desktop/Markdown/Obsidian")
+    obsidian_root: str = "HotKey"
+    obsidian_enabled: bool = False
+
+    @field_validator("obsidian_vault_path")
+    @classmethod
+    def expand_obsidian_vault_path(cls, value: Path) -> Path:
+        return value.expanduser()
+
+    @field_validator("obsidian_root")
+    @classmethod
+    def validate_obsidian_root(cls, value: str) -> str:
+        if value in {"", ".", ".."} or not re.fullmatch(r"[^/\\\x00-\x1f\x7f]+", value):
+            raise ValueError("Obsidian root must be a single safe directory name")
+        return value
+
     def job_process_execution_timeout_seconds(self, kind: str) -> int:
         if kind in {"keyword.search", "source.comments"}:
             return 90

@@ -1227,6 +1227,19 @@ CREATE TABLE reports (
 CREATE INDEX reports_owner_topic_window_idx
     ON reports (owner_id, topic_id, kind, window_start, status);
 
+CREATE TABLE knowledge_exports (
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    object_type VARCHAR(16) NOT NULL CHECK (
+        object_type IN ('daily', 'weekly', 'event', 'topic', 'post', 'qa')
+    ),
+    object_id UUID NOT NULL,
+    relative_path VARCHAR(512) NOT NULL CHECK (relative_path <> ''),
+    content_sha256 VARCHAR(64) NOT NULL CHECK (content_sha256 ~ '^[0-9a-f]{64}$'),
+    exported_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (owner_id, object_type, object_id),
+    CONSTRAINT knowledge_exports_owner_relative_path_key UNIQUE (owner_id, relative_path)
+);
+
 CREATE TABLE provenance_manifests (
     id UUID PRIMARY KEY,
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,

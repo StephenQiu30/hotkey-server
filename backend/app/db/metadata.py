@@ -38,6 +38,7 @@ from jobs.models import (
     ResourceComponentPolicy,
     ResourceUsageAttempt,
 )
+from knowledge.models import KnowledgeExport
 from monitors.models import (
     FollowedAccount,
     FollowedAccountAlias,
@@ -72,6 +73,7 @@ __all__ = [
     "Job",
     "JobAttempt",
     "JobStageAttempt",
+    "KnowledgeExport",
     "MonitorSchedule",
     "MonitorTopic",
     "MonitorTopicVersion",

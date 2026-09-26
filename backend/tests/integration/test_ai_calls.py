@@ -54,12 +54,20 @@ def engine() -> Iterator[Engine]:
         pytest.skip("HOTKEY_TEST_DATABASE_URL is required for PostgreSQL integration tests")
     engine = create_engine(database_url)
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE ai_calls, identity_sessions, identity_users CASCADE"))
+        connection.execute(
+            text("TRUNCATE knowledge_exports, ai_calls, identity_sessions, identity_users CASCADE")
+        )
     try:
         yield engine
     finally:
         with engine.begin() as connection:
-            connection.execute(text("TRUNCATE ai_calls, identity_sessions, identity_users CASCADE"))
+            connection.execute(
+                text(
+                    "TRUNCATE knowledge_exports, "
+                    "ai_calls, "
+                    "identity_sessions, identity_users CASCADE"
+                )
+            )
         engine.dispose()
 
 

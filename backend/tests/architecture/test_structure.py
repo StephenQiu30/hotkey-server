@@ -52,6 +52,12 @@ def test_schema_sql_is_the_only_ddl_source() -> None:
     assert "alembic" not in (BACKEND / "pyproject.toml").read_text().lower()
 
 
+def test_every_persistent_domain_registers_its_models() -> None:
+    model_modules = {f"{path.parent.name}.models" for path in APP.glob("*/models.py")}
+    registered_modules = _imports(APP / "db" / "metadata.py")
+    assert model_modules <= registered_modules
+
+
 def test_runtime_does_not_create_or_drop_schema() -> None:
     runtime_source = "\n".join(path.read_text() for path in APP.rglob("*.py"))
     assert ".create_all(" not in runtime_source

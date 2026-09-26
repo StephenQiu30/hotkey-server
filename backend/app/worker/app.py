@@ -46,6 +46,7 @@ from jobs.execution import (
 )
 from jobs.schemas import JobFailureCategory, JobMessage, JobStage, JobStatus
 from jobs.services import JOB_ACCEPTED_TOPIC, OutboxService
+from knowledge.services import KnowledgeExportExecutor
 from reports.services import DailyReportExecutor
 from sources.adapters.firecrawl import FirecrawlAdapter
 from worker.execution import (
@@ -544,6 +545,7 @@ def _registered_job_handlers(
     )
     analysis_executor = AnalysisAnnotateExecutor(sessions, settings, clock=clock)
     daily_report_executor = DailyReportExecutor(sessions, clock=clock)
+    knowledge_executor = KnowledgeExportExecutor(sessions, settings, clock=clock)
 
     def collect_webpage(context: JobExecutionContext) -> JobCompletion:
         context.lease = webpage_executor.execute(context.message, context.lease)
@@ -584,9 +586,19 @@ def _registered_job_handlers(
         )
         return result.completion
 
+    def export_knowledge(context: JobExecutionContext) -> JobCompletion:
+        completion = knowledge_executor.execute(context.message)
+        context.save_checkpoint(
+            context.lease.checkpoint_sequence + 1,
+            {"exported": True},
+            progress=JobProgress(stage=JobStage.SAVE, items_saved=1),
+        )
+        return completion
+
     return {
         "analysis.annotate": annotate_content,
         "keyword.search": search_keyword,
+        "knowledge.export": export_knowledge,
         "report.daily": generate_daily_report,
         "source.comments": collect_comments,
         "webpage.collect": collect_webpage,

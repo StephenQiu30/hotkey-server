@@ -22,6 +22,7 @@ from core.config import get_settings
 from core.logging import configure_logging
 from db.session import create_db_engine, create_session_factory
 from jobs.services import JobService, load_job_execution_configuration
+from knowledge.services import KnowledgeExportService
 from monitors.services import DueCollectionSchedule, MonitorScheduleService
 
 SCHEDULER_POLL_SECONDS = 30
@@ -275,6 +276,14 @@ def _registered_scheduler_scans() -> tuple[SchedulerScan, ...]:
     report_scan = _optional_report_scan()
     if report_scan is not None:
         scans.append(report_scan)
+    scans.append(
+        SchedulerScan(
+            name="knowledge",
+            run_in_transaction=lambda session, now: KnowledgeExportService(
+                session, get_settings()
+            ).enqueue_due_in_transaction(now=now),
+        )
+    )
     return tuple(scans)
 
 

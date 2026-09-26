@@ -117,7 +117,13 @@ def test_comment_operation_id_uses_six_hour_utc_bucket() -> None:
 def test_scheduler_registers_collection_comments_and_analysis_scans() -> None:
     names = tuple(scan.name for scan in _registered_scheduler_scans())
 
-    assert names == ("collection", "comments", "analysis", "reports")
+    assert names == (
+        "collection",
+        "comments",
+        "analysis",
+        "reports",
+        "knowledge",
+    )
 
 
 def test_collection_window_starts_at_previous_end_or_one_interval_before_now() -> None:
