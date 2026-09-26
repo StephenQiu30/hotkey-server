@@ -279,6 +279,8 @@ def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
     assert manifest.restore_verified is False
     assert manifest.secrets_included is False
     assert set(table_counts) == {
+        "ai_calls",
+        "content_annotations",
         "coverage_windows",
         "content_discoveries",
         "content_observations",
@@ -298,8 +300,12 @@ def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
         "job_attempts",
         "job_stage_attempts",
         "jobs",
+        "knowledge_exports",
+        "monitor_schedules",
         "monitor_topic_versions",
         "monitor_topics",
+        "notification_deliveries",
+        "notification_targets",
         "outbox_messages",
         "processed_messages",
         "provenance_manifest_inputs",
@@ -309,6 +315,7 @@ def test_candidate_backup_uses_real_snapshot_archive_and_minio_inventory(
         "resource_budget_windows",
         "resource_component_policies",
         "resource_usage_attempts",
+        "reports",
         "source_access_policies",
         "source_capability_evidence",
         "source_connection_versions",
