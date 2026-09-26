@@ -182,6 +182,45 @@ HOTLIST_PRESETS: Mapping[str, SourcePreset] = MappingProxyType(
     {key: _hotlist_preset(key, route) for key, route in _HOTLIST_ROUTES.items()}
 )
 
+BILIBILI_PRESET = SourcePreset(
+    source_key="bilibili",
+    config=MappingProxyType(
+        {
+            "base_url": "https://www.bilibili.com",
+            "allowed_hosts": ("www.bilibili.com", "api.bilibili.com"),
+        }
+    ),
+    capabilities=(
+        SourceCapabilityPreset(
+            capability=SourceCapability.SEARCH,
+            processing_purpose="低频发现与已配置主题相关的公开视频",
+            field_purposes=_POST_FIELD_PURPOSES,
+        ),
+        SourceCapabilityPreset(
+            capability=SourceCapability.COMMENTS,
+            processing_purpose="读取同轮搜索暂存的公开一级评论; 不再次访问平台",
+            field_purposes=_COMMENT_FIELD_PURPOSES,
+        ),
+    ),
+    retention_days=30,
+    component_name="collector.bilibili",
+    component_version="mediacrawler-380b426-hotkey-safe",
+    component_license="NON-COMMERCIAL LEARNING LICENSE 1.1",
+    component_cost_class="zero_price",
+    component_terms_reference="https://github.com/NanmiCoder/MediaCrawler/blob/main/LICENSE",
+    access_terms_reference="https://www.bilibili.com/",
+    reviewed_at=_A_TIER_REVIEWED_AT,
+    budget=SourceBudgetPreset(
+        budget_key="source.bilibili.network.daily",
+        metric="network_request",
+        scope_kind="source",
+        scope_reference="bilibili",
+        limit_units=60,
+        window_seconds=86_400,
+        window_anchor_at=datetime(2026, 1, 1, tzinfo=UTC),
+    ),
+)
+
 HACKERNEWS_PRESET = SourcePreset(
     source_key="hackernews",
     config=MappingProxyType(
@@ -337,6 +376,7 @@ SOURCE_PRESETS: Mapping[str, SourcePreset] = MappingProxyType(
         preset.source_key: preset
         for preset in (
             HACKERNEWS_PRESET,
+            BILIBILI_PRESET,
             GOOGLE_NEWS_PRESET,
             NEWS_SEARCH_PRESET,
             RSS_36KR_PRESET,

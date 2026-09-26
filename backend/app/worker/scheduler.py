@@ -8,8 +8,10 @@ from importlib import import_module
 from threading import Event
 from typing import Protocol, cast
 from uuid import UUID, uuid5
+from zoneinfo import ZoneInfo
 
 import structlog
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from analysis.services import AnalysisService
@@ -27,6 +29,7 @@ from core.logging import configure_logging
 # The scheduler is its own process; import the canonical registry to resolve ORM foreign keys.
 from db.metadata import metadata as _registered_metadata  # noqa: F401
 from db.session import create_db_engine, create_session_factory
+from jobs.models import Job
 from jobs.schemas import JobAcceptanceInput, JobObservationContext
 from jobs.services import JobService, load_job_execution_configuration
 from knowledge.services import KnowledgeExportService
@@ -41,6 +44,14 @@ _COLLECTION_PAGE_SIZE = 100
 _COLLECTION_MAX_PAGES = 3
 _COLLECTION_MAX_REQUESTS = 3
 _COLLECTION_MAX_SECONDS = 90
+_BILIBILI_INTERVAL = timedelta(hours=6)
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
+_BILIBILI_SCHEDULE_LOCK = 0x484F544B45594249
+
+
+def _bilibili_quiet(now: datetime) -> bool:
+    return now.astimezone(_SHANGHAI).hour < 8
+
 
 SchedulerScanFunction = Callable[[Session, datetime], int]
 
@@ -200,13 +211,21 @@ def _accept_collection_schedule(
 
     window_start = collection_window_start(
         now,
-        interval_seconds=schedule.interval_seconds,
+        interval_seconds=max(
+            schedule.interval_seconds,
+            int(_BILIBILI_INTERVAL.total_seconds()) if schedule.source_key == "bilibili" else 0,
+        ),
         previous_end=_previous_collection_end(session, schedule=schedule),
         lookback_seconds=get_settings().collection_lookback_seconds,
     )
     schedule_operation_id = collection_operation_id(schedule, window_start)
     accepted_ids: list[UUID] = []
-    for query in schedule.search_queries:
+    queries = (
+        schedule.search_queries[:3]
+        if schedule.source_key == "bilibili"
+        else schedule.search_queries
+    )
+    for query in queries:
         operation_id = uuid5(schedule_operation_id, f"query:{query}")
         command = plan_scheduled_keyword_discovery(
             KeywordDiscoveryRunInput(
@@ -219,12 +238,14 @@ def _accept_collection_schedule(
                 primary_query=query,
                 starts_at=window_start,
                 ends_at=now,
-                page_size=_COLLECTION_PAGE_SIZE,
-                latest_max_pages=_COLLECTION_MAX_PAGES,
-                latest_max_requests=_COLLECTION_MAX_REQUESTS,
+                page_size=5 if schedule.source_key == "bilibili" else _COLLECTION_PAGE_SIZE,
+                latest_max_pages=1 if schedule.source_key == "bilibili" else _COLLECTION_MAX_PAGES,
+                latest_max_requests=(
+                    26 if schedule.source_key == "bilibili" else _COLLECTION_MAX_REQUESTS
+                ),
                 top_max_pages=1,
                 top_max_requests=1,
-                max_seconds=_COLLECTION_MAX_SECONDS,
+                max_seconds=220 if schedule.source_key == "bilibili" else _COLLECTION_MAX_SECONDS,
                 entry_point=SourceEntryPoint.SCHEDULED,
                 scheduled_for_at=now,
             )
@@ -239,7 +260,13 @@ def _accept_collection_schedule(
     MonitorScheduleService(session).advance_collection_in_transaction(
         schedule=schedule,
         job_id=accepted_ids[-1],
-        next_run_at=now + timedelta(seconds=schedule.interval_seconds),
+        next_run_at=now
+        + timedelta(
+            seconds=max(
+                schedule.interval_seconds,
+                int(_BILIBILI_INTERVAL.total_seconds()) if schedule.source_key == "bilibili" else 0,
+            )
+        ),
         updated_at=now,
     )
     return tuple(accepted_ids)
@@ -252,8 +279,31 @@ def enqueue_due_collections_in_transaction(session: Session, now: datetime) -> i
     now_utc = now.astimezone(UTC) if now.tzinfo is not None else now
     schedules = MonitorScheduleService(session).claim_due_collections_in_transaction(now=now_utc)
     accepted = 0
+    bilibili_accepted = False
     logger = structlog.get_logger("scheduler")
     for schedule in schedules:
+        if schedule.source_key == "bilibili":
+            if (
+                not get_settings().mediacrawler_enabled
+                or _bilibili_quiet(now_utc)
+                or bilibili_accepted
+            ):
+                continue
+            # Different scheduler processes may claim different topic rows. One
+            # PostgreSQL transaction lock serializes their source-wide decision.
+            if not session.scalar(select(func.pg_try_advisory_xact_lock(_BILIBILI_SCHEDULE_LOCK))):
+                continue
+            recent = session.scalar(
+                select(Job.id)
+                .where(
+                    Job.source_key == "bilibili",
+                    Job.kind == "keyword.search",
+                    Job.created_at > now_utc - _BILIBILI_INTERVAL,
+                )
+                .limit(1)
+            )
+            if recent is not None:
+                continue
         try:
             with session.begin_nested():
                 accepted_ids = _accept_collection_schedule(session, schedule=schedule, now=now_utc)
@@ -268,11 +318,16 @@ def enqueue_due_collections_in_transaction(session: Session, now: datetime) -> i
             )
             continue
         accepted += len(accepted_ids)
+        if schedule.source_key == "bilibili":
+            bilibili_accepted = True
     return accepted
 
 
 def enqueue_due_comments_in_transaction(session: Session, now: datetime) -> int:
-    return CommentScanService(session).enqueue_due_comments_in_transaction(now=now)
+    return CommentScanService(session).enqueue_due_comments_in_transaction(
+        now=now,
+        skip_bilibili=(not get_settings().mediacrawler_enabled or _bilibili_quiet(now)),
+    )
 
 
 def enqueue_due_analysis_in_transaction(session: Session, now: datetime) -> int:

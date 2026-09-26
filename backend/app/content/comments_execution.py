@@ -13,6 +13,7 @@ from content.comments import (
     CommentRequestMeter,
     comment_target_hash,
 )
+from core.config import get_settings
 from core.errors import ApplicationError
 from evidence.services import RetentionPolicyUnavailableError, SourceAccessUnavailableError
 from jobs.cursor import CursorBudgetExhaustedError, plan_cursor_request
@@ -33,6 +34,7 @@ from jobs.services import (
     load_job_execution_configuration,
 )
 from sources.adapters.hackernews import HackerNewsAdapter
+from sources.adapters.mediacrawler import MediaCrawlerAdapter
 from sources.contracts import (
     CommentsRequest,
     SourceAdapter,
@@ -54,10 +56,25 @@ class UnsupportedCommentsSourceError(ValueError):
 def build_comments_adapter_factory(
     source_key: str,
     config: SourceConnectionConfig,
+    *,
+    owner_id: UUID | None = None,
 ) -> CommentsAdapterFactory:
     allowed_hosts = frozenset(config.allowed_hosts)
     if not allowed_hosts:
         raise ValueError("comments adapter requires allowed_hosts")
+    if source_key == "bilibili":
+        settings = get_settings()
+        if not settings.mediacrawler_enabled or owner_id is None:
+            raise ValueError("MediaCrawler requires enabled host configuration and owner")
+        return lambda before_request, cancelled, max_requests, max_seconds: MediaCrawlerAdapter(
+            crawler_dir=settings.mediacrawler_dir,
+            output_dir=settings.mediacrawler_output_dir,
+            owner_key=owner_id.hex,
+            before_request=before_request,
+            cancelled=cancelled,
+            max_requests=max_requests,
+            max_seconds=max_seconds,
+        )
     if source_key == "hackernews":
         if config.base_url is None:
             raise ValueError("Hacker News adapter requires base_url")
@@ -351,7 +368,7 @@ class CommentsExecutor:
                         connection_id=connection_id,
                         connection_version=connection_version,
                         page=page,
-                        meter=meter,
+                        meter=None if source_key == "bilibili" else meter,
                     )
                 except JobLeaseUnavailableError:
                     meter.fail_pending()
@@ -441,7 +458,7 @@ class CommentsExecutor:
         connection_id: UUID,
         connection_version: int,
     ) -> CommentsAdapterFactory:
-        if source_key != "hackernews":
+        if source_key not in {"hackernews", "bilibili"}:
             raise UnsupportedCommentsSourceError(source_key)
         with self._sessions() as session, session.begin():
             config = require_source_connection_version(
@@ -451,7 +468,7 @@ class CommentsExecutor:
                 connection_id=connection_id,
                 connection_version=connection_version,
             )
-        return build_comments_adapter_factory(source_key, config)
+        return build_comments_adapter_factory(source_key, config, owner_id=owner_id)
 
     def _stop_if_cancelled(
         self,

@@ -192,6 +192,7 @@ def test_capability_catalog_requires_session_and_reports_truthful_defaults(
         "hotlist_bilibili",
         "hotlist_36kr",
         "hotlist_thepaper",
+        "bilibili",
         "hackernews",
         "google_news",
         "news_search",
@@ -202,6 +203,8 @@ def test_capability_catalog_requires_session_and_reports_truthful_defaults(
     ]
     assert _platform(response.json(), "x")["status"] == "restricted"
     assert _platform(response.json(), "x")["rollout_role"] == "required"
+    assert _platform(response.json(), "bilibili")["status"] == "unconfigured"
+    assert _platform(response.json(), "bilibili")["rollout_role"] == "candidate"
     assert _platform(response.json(), "douyin")["status"] == "unconfigured"
     assert _platform(response.json(), "douyin")["rollout_role"] == "candidate"
     assert {

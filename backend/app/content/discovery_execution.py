@@ -8,8 +8,12 @@ from uuid import UUID, uuid5
 from sqlalchemy.orm import Session, sessionmaker
 
 from connections.schemas import SourceConnectionConfig
-from connections.services import require_source_connection_version
+from connections.services import (
+    pause_bilibili_connection_in_transaction,
+    require_source_connection_version,
+)
 from content.discovery import KeywordDiscoveryPageCommitService, KeywordRequestMeter
+from core.config import get_settings
 from core.errors import ApplicationError
 from evidence.services import RetentionPolicyUnavailableError, SourceAccessUnavailableError
 from jobs.cursor import CursorBudgetExhaustedError, plan_cursor_request
@@ -30,6 +34,7 @@ from jobs.services import (
     load_job_execution_configuration,
 )
 from sources.adapters.hackernews import HackerNewsAdapter
+from sources.adapters.mediacrawler import MediaCrawlerAdapter
 from sources.adapters.rss import RssSourceAdapter
 from sources.adapters.web_search import WebSearchAdapter
 from sources.contracts import (
@@ -53,10 +58,25 @@ class UnsupportedSearchSourceError(ValueError):
 def build_search_adapter_factory(
     source_key: str,
     config: SourceConnectionConfig,
+    *,
+    owner_id: UUID | None = None,
 ) -> SearchAdapterFactory:
     allowed_hosts = frozenset(config.allowed_hosts)
     if not allowed_hosts:
         raise ValueError("search adapter requires allowed_hosts")
+    if source_key == "bilibili":
+        settings = get_settings()
+        if not settings.mediacrawler_enabled or owner_id is None:
+            raise ValueError("MediaCrawler requires enabled host configuration and owner")
+        return lambda before_request, cancelled, max_requests, max_seconds: MediaCrawlerAdapter(
+            crawler_dir=settings.mediacrawler_dir,
+            output_dir=settings.mediacrawler_output_dir,
+            owner_key=owner_id.hex,
+            before_request=before_request,
+            cancelled=cancelled,
+            max_requests=max_requests,
+            max_seconds=min(max_seconds, settings.mediacrawler_timeout_seconds),
+        )
     if source_key == "hackernews":
         if config.base_url is None:
             raise ValueError("Hacker News adapter requires base_url")
@@ -171,7 +191,8 @@ class KeywordDiscoveryExecutor:
             if (
                 not 1 <= max_pages <= 20
                 or not 1 <= max_requests <= 100
-                or not 1 <= max_seconds <= 90
+                or not 1 <= max_seconds <= (220 if source_key == "bilibili" else 90)
+                or (source_key == "bilibili" and (page_size > 5 or max_pages != 1))
                 or scope["relevance_filter_position"] != "local"
                 or connection_version < 1
                 or configuration.started_at is None
@@ -388,6 +409,19 @@ class KeywordDiscoveryExecutor:
                     and result.saved_items == 0
                     and page.stop_reason is not SourceStopReason.BUDGET_EXHAUSTED
                 ):
+                    if source_key == "bilibili" and page.stop_reason in {
+                        SourceStopReason.AUTHENTICATION_REQUIRED,
+                        SourceStopReason.RATE_LIMITED,
+                    }:
+                        session.rollback()
+                        with session.begin():
+                            pause_bilibili_connection_in_transaction(
+                                session,
+                                owner_id=configuration.owner_id,
+                                connection_id=connection_id,
+                                connection_version=connection_version,
+                                now=self._clock(),
+                            )
                     can_retry = False
                     if page.stop_reason in {
                         SourceStopReason.RATE_LIMITED,
@@ -436,7 +470,7 @@ class KeywordDiscoveryExecutor:
         connection_version: int,
     ) -> SearchAdapterFactory:
         if not (
-            source_key in {"hackernews", "google_news", "news_search"}
+            source_key in {"hackernews", "google_news", "news_search", "bilibili"}
             or source_key.startswith("rss_")
         ):
             raise UnsupportedSearchSourceError(source_key)
@@ -448,7 +482,7 @@ class KeywordDiscoveryExecutor:
                 connection_id=connection_id,
                 connection_version=connection_version,
             )
-        return build_search_adapter_factory(source_key, config)
+        return build_search_adapter_factory(source_key, config, owner_id=owner_id)
 
     def _stop_if_cancelled(
         self,

@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from cli.commands import app
 from connections.catalog import SOURCE_CATALOG
 from connections.presets import (
+    BILIBILI_PRESET,
     GOOGLE_NEWS_PRESET,
     HACKERNEWS_PRESET,
     NEWS_SEARCH_PRESET,
@@ -102,6 +103,7 @@ def test_hackernews_preset_matches_catalog_and_config_allowlist() -> None:
         "hotlist_36kr",
         "hotlist_thepaper",
         "hackernews",
+        "bilibili",
         "google_news",
         "news_search",
         "rss_36kr",
@@ -112,6 +114,24 @@ def test_hackernews_preset_matches_catalog_and_config_allowlist() -> None:
     }
     assert config.allowed_hosts == ("hn.algolia.com",)
     assert str(config.base_url) == "https://hn.algolia.com/api/v1"
+
+
+def test_bilibili_preset_is_separate_from_hotlist_and_caps_daily_requests() -> None:
+    catalog = next(item for item in SOURCE_CATALOG if item.source_key == "bilibili")
+
+    assert BILIBILI_PRESET.source_key != "hotlist_bilibili"
+    assert BILIBILI_PRESET.component_name == "collector.bilibili"
+    assert BILIBILI_PRESET.component_version == "mediacrawler-380b426-hotkey-safe"
+    assert BILIBILI_PRESET.budget.limit_units == 60
+    assert {item.capability for item in BILIBILI_PRESET.capabilities} == {
+        SourceCapability.SEARCH,
+        SourceCapability.COMMENTS,
+    }
+    assert set(catalog.capabilities) == {
+        SourceCapability.SEARCH,
+        SourceCapability.COMMENTS,
+    }
+    _assert_config_is_allowlisted_and_host_is_covered(BILIBILI_PRESET)
 
 
 @pytest.mark.parametrize(
@@ -269,6 +289,8 @@ def test_source_preset_cli_lists_built_in_presets() -> None:
         "hotlist_36kr; capabilities: hotlist; allowed hosts: 127.0.0.1\n"
         "hotlist_thepaper; capabilities: hotlist; allowed hosts: 127.0.0.1\n"
         "hackernews; capabilities: search,comments; allowed hosts: hn.algolia.com\n"
+        "bilibili; capabilities: search,comments; allowed hosts: "
+        "api.bilibili.com,www.bilibili.com\n"
         "google_news; capabilities: search; allowed hosts: news.google.com\n"
         "news_search; capabilities: search; allowed hosts: 127.0.0.1\n"
         "rss_36kr; capabilities: search; allowed hosts: 127.0.0.1\n"

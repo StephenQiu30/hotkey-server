@@ -38,8 +38,8 @@ class CheckpointConflictError(JobExecutionError):
     """A checkpoint attempted to skip or rewrite durable progress."""
 
 
-@dataclass(frozen=True, slots=True)
-class JobExecutionFailure(Exception):  # noqa: N818 - frozen domain contract name
+@dataclass(slots=True)
+class JobExecutionFailure(Exception):  # noqa: N818 - domain contract name
     error_code: str
     category: JobFailureCategory
     occurred_at: datetime

@@ -5,12 +5,14 @@ import json
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Engine, create_engine, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from connections.presets import BILIBILI_PRESET
 from content.discovery import (
     KeywordDiscoveryPageCommitService,
     KeywordRequestMeter,
@@ -42,7 +44,9 @@ from jobs.schemas import (
 )
 from jobs.services import JobService, ResourceBudgetService
 from monitors.services import MonitorTopicService, evaluate_monitor_rules
+from sources.adapters.mediacrawler import MediaCrawlerAdapter
 from sources.contracts import (
+    CommentsRequest,
     SearchRequest,
     SourceCapability,
     SourcePage,
@@ -51,6 +55,311 @@ from sources.contracts import (
     SourceSort,
     SourceStopReason,
 )
+
+
+def test_job_execution_failure_allows_traceback_assignment() -> None:
+    failure = JobExecutionFailure(
+        error_code="search_policy_unavailable",
+        category=JobFailureCategory.CONFIGURATION_UNAVAILABLE,
+        occurred_at=datetime.now(UTC),
+        next_action="配置预算政策后重试",
+    )
+    failure.__traceback__ = None
+
+
+def test_bilibili_saved_search_output_commits_posts_and_cached_comments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replay the five-video/two-comment JSONL shape without launching a browser."""
+    database_url = os.getenv("HOTKEY_TEST_DATABASE_URL")
+    if database_url is None:
+        pytest.skip("HOTKEY_TEST_DATABASE_URL is required for PostgreSQL integration tests")
+
+    engine = create_engine(database_url)
+    owner_id, connection_id, topic_id, policy_id, retention_id = (uuid4() for _ in range(5))
+    now = datetime.now(UTC)
+    start, end = now - timedelta(days=1), now
+    videos = (
+        ("117335704734360", "Claude DeepSeek", "公开视频简介", 1790401149),
+        ("117335721579544", "DeepSeek 折叠屏", "", 1790401063),
+        ("117335687959822", "DeepSeek 小说", "-", 1790400547),
+        ("117335688023302", "deepseek 心得", "公开视频正文", 1790400534),
+        ("117335671180288", "万众瞩目大肥鱼", "公开视频描述", 1790400393),
+    )
+    comments = (
+        (videos[0][0], "318652179920"),
+        (videos[1][0], "318651673424"),
+    )
+    output = tmp_path / "output"
+    crawler = tmp_path / "crawler"
+    crawler.mkdir()
+    run = KeywordDiscoveryRunInput(
+        run_id=uuid4(),
+        configuration_ref=f"topic:{topic_id}",
+        configuration_version=1,
+        source_key="bilibili",
+        connection_id=connection_id,
+        connection_version=1,
+        primary_query="DeepSeek",
+        starts_at=start,
+        ends_at=end,
+        page_size=5,
+        latest_max_pages=1,
+        latest_max_requests=26,
+        top_max_pages=1,
+        top_max_requests=26,
+        max_seconds=220,
+    )
+    command = plan_keyword_discovery(run)[0]
+
+    def replay(_self: MediaCrawlerAdapter, _request: SearchRequest, run_dir: Path) -> None:
+        jsonl = run_dir / "bili" / "jsonl"
+        jsonl.mkdir(parents=True)
+        (jsonl / "search_contents_fixture.jsonl").write_text(
+            "".join(
+                json.dumps(
+                    {
+                        "video_id": video_id,
+                        "video_url": f"https://www.bilibili.com/video/av{video_id}",
+                        "title": title,
+                        "desc": description,
+                        "create_time": int(now.timestamp()) - (1790401149 - published),
+                        "creator_hash": f"author-{video_id}",
+                        "nickname": "作者",
+                        "liked_count": "1",
+                        "video_play_count": "2",
+                        "video_comment": "1",
+                        "video_share_count": "0",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+                for video_id, title, description, published in videos
+            ),
+            encoding="utf-8",
+        )
+        (jsonl / "search_comments_fixture.jsonl").write_text(
+            "".join(
+                json.dumps(
+                    {
+                        "video_id": video_id,
+                        "comment_id": comment_id,
+                        "parent_comment_id": "0",
+                        "create_time": int(now.timestamp()),
+                        "content": "一级评论",
+                        "like_count": 0,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+                for video_id, comment_id in comments
+            ),
+            encoding="utf-8",
+        )
+        return None
+
+    monkeypatch.setattr(MediaCrawlerAdapter, "_validate_crawler", lambda _self: None)
+    monkeypatch.setattr(MediaCrawlerAdapter, "_run_child", replay)
+    try:
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO identity_users (id, username, password_hash, credential_version, "
+                    "created_at, updated_at) VALUES "
+                    "(:id, :username, 'test-only-hash', 1, :now, :now)"
+                ),
+                {"id": owner_id, "username": f"bilibili-{owner_id}", "now": now},
+            )
+            session.execute(
+                text(
+                    "INSERT INTO monitor_topics (id, owner_id, name, status, readiness_status, "
+                    "current_version, created_at, updated_at) VALUES "
+                    "(:id, :owner_id, 'Bilibili replay', 'paused', 'pending_source_selection', "
+                    "1, :now, :now)"
+                ),
+                {"id": topic_id, "owner_id": owner_id, "now": now},
+            )
+            session.execute(
+                text(
+                    "INSERT INTO monitor_topic_versions (topic_id, version, created_by, "
+                    "match_any, match_all, exclude, created_at) VALUES "
+                    "(:id, 1, :owner_id, CAST(:terms AS jsonb), '[]', '[]', :now)"
+                ),
+                {
+                    "id": topic_id,
+                    "owner_id": owner_id,
+                    "now": now,
+                    "terms": json.dumps(["DeepSeek", "大肥鱼"]),
+                },
+            )
+            session.execute(
+                text(
+                    "INSERT INTO source_connections (id, owner_id, source_key, status, "
+                    "current_version, created_at, updated_at) VALUES "
+                    "(:id, :owner_id, 'bilibili', 'active', 1, :now, :now)"
+                ),
+                {"id": connection_id, "owner_id": owner_id, "now": now},
+            )
+            session.execute(
+                text(
+                    "INSERT INTO source_connection_versions (connection_id, version, owner_id, "
+                    "secret_ref, created_by, created_at) VALUES "
+                    "(:id, 1, :owner_id, 'env:CONTROLLED_FIXTURE', :owner_id, :now)"
+                ),
+                {"id": connection_id, "owner_id": owner_id, "now": now},
+            )
+            session.execute(
+                text(
+                    "INSERT INTO source_access_policies "
+                    "(id, owner_id, source_key, capability, status, enabled, access_basis, "
+                    "terms_reference, processing_purpose, component_name, component_version, "
+                    "component_license, field_purposes, reviewed_at, policy_version, "
+                    "created_at, updated_at) VALUES "
+                    "(:id, :owner_id, 'bilibili', 'search', 'approved', true, 'public_web', "
+                    "'https://example.invalid/terms', '受控重放', 'collector.bilibili', '1', "
+                    "'test', CAST(:fields AS jsonb), :now, 1, :now, :now)"
+                ),
+                {
+                    "id": policy_id,
+                    "owner_id": owner_id,
+                    "now": now,
+                    "fields": json.dumps(
+                        dict(BILIBILI_PRESET.capabilities[0].field_purposes), ensure_ascii=False
+                    ),
+                },
+            )
+            session.execute(
+                text(
+                    "INSERT INTO evidence_retention_policies "
+                    "(id, owner_id, source_policy_id, source_policy_version, data_class, "
+                    "requested_days, source_max_days, effective_days, policy_version, "
+                    "created_at, updated_at) VALUES "
+                    "(:id, :owner_id, :policy_id, 1, 'structured', 30, NULL, 30, 1, :now, :now)"
+                ),
+                {"id": retention_id, "owner_id": owner_id, "policy_id": policy_id, "now": now},
+            )
+            accepted = JobService(session).accept_in_transaction(owner_id=owner_id, command=command)
+        with Session(engine) as session:
+            lease = JobExecutionService(session, lease_seconds=60).acquire(
+                job_id=accepted.id, worker_id="bilibili-replay"
+            )
+        with Session(engine) as session:
+            budget = ResourceBudgetService(session)
+            budget.save_component_policy(
+                owner_id=owner_id,
+                command=ComponentPolicyInput(
+                    component_key="collector.bilibili",
+                    component_version="1",
+                    cost_class=CostClass.LOCAL,
+                    enabled_for_core=True,
+                    terms_reference="https://example.invalid/terms",
+                    reviewed_at=now,
+                ),
+            )
+            budget.save_budget_policy(
+                owner_id=owner_id,
+                command=BudgetPolicyInput(
+                    budget_key="global.bilibili-network.daily",
+                    metric=BudgetMetric.NETWORK_REQUEST,
+                    scope_kind=BudgetScopeKind.GLOBAL,
+                    scope_reference=None,
+                    limit_units=60,
+                    window_seconds=86_400,
+                    window_anchor_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    enabled=True,
+                ),
+            )
+            budget.save_budget_policy(
+                owner_id=owner_id,
+                command=BudgetPolicyInput(
+                    budget_key="source.bilibili.network.daily",
+                    metric=BudgetMetric.NETWORK_REQUEST,
+                    scope_kind=BudgetScopeKind.SOURCE,
+                    scope_reference="bilibili",
+                    limit_units=60,
+                    window_seconds=86_400,
+                    window_anchor_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    enabled=True,
+                ),
+            )
+
+        adapter: MediaCrawlerAdapter | None = None
+
+        def adapter_factory(
+            before_request: Callable[[int], bool],
+            cancelled: Callable[[], bool],
+            max_requests: int,
+            max_seconds: float,
+        ) -> MediaCrawlerAdapter:
+            nonlocal adapter
+            adapter = MediaCrawlerAdapter(
+                crawler_dir=crawler,
+                output_dir=output,
+                owner_key=owner_id.hex,
+                before_request=before_request,
+                cancelled=cancelled,
+                max_requests=max_requests,
+                max_seconds=max_seconds,
+                verify_revision=False,
+            )
+            return adapter
+
+        _, completion = KeywordDiscoveryExecutor(
+            sessionmaker(bind=engine),
+            lease_seconds=60,
+            adapter_factory=adapter_factory,
+        ).execute(_accepted_message(engine, accepted.id), lease)
+        assert completion.status is JobStatus.PARTIALLY_SUCCEEDED
+        assert adapter is not None
+        with Session(engine) as session:
+            records = session.scalars(
+                select(ContentRecord).where(ContentRecord.owner_id == owner_id)
+            ).all()
+            assert {record.external_id for record in records} == {video[0] for video in videos}
+            job = session.get(Job, accepted.id)
+            assert job is not None
+            assert (job.requests_sent, job.items_saved) == (26, 5)
+            assert (
+                session.execute(
+                    text(
+                        "SELECT count(*) FROM resource_usage_attempts WHERE operation_id = :id "
+                        "AND outcome = 'failed'"
+                    ),
+                    {"id": command.operation_id},
+                ).scalar_one()
+                == 26
+            )
+        cached = [
+            adapter.fetch_page(
+                CommentsRequest(source_key="bilibili", post_external_id=video_id, page_size=20)
+            )
+            for video_id, _ in comments
+        ]
+        assert [page.request_count for page in cached] == [0, 0]
+        assert [page.items[0].external_id for page in cached] == [
+            comment_id for _, comment_id in comments
+        ]
+    finally:
+        with engine.begin() as connection:
+            connection.execute(text("SET CONSTRAINTS ALL DEFERRED"))
+            connection.execute(
+                text("DELETE FROM content_records WHERE owner_id = :owner_id"),
+                {"owner_id": owner_id},
+            )
+            connection.execute(
+                text("DELETE FROM source_connection_versions WHERE owner_id = :owner_id"),
+                {"owner_id": owner_id},
+            )
+            connection.execute(
+                text("DELETE FROM monitor_topic_versions WHERE topic_id = :topic_id"),
+                {"topic_id": topic_id},
+            )
+            connection.execute(
+                text("DELETE FROM monitor_topics WHERE id = :topic_id"),
+                {"topic_id": topic_id},
+            )
+            connection.execute(text("DELETE FROM identity_users WHERE id = :id"), {"id": owner_id})
+        engine.dispose()
 
 
 def test_query_plan_persists_independent_jobs_without_leaking_query_to_outbox() -> None:

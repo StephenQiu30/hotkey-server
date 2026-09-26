@@ -19,6 +19,7 @@ from sources.contracts import SourceCapability
 from worker.scheduler import (
     COLLECTION_OPERATION_NAMESPACE,
     SchedulerScan,
+    _bilibili_quiet,
     _registered_scheduler_scans,
     collection_operation_id,
     collection_schedule_id,
@@ -66,6 +67,12 @@ def test_collection_operation_id_is_stable_for_schedule_and_window_start() -> No
     assert collection_operation_id(schedule, start) != collection_operation_id(
         schedule, start + timedelta(minutes=10)
     )
+
+
+def test_bilibili_quiet_hours_use_shanghai_not_utc() -> None:
+    assert _bilibili_quiet(datetime(2026, 9, 25, 16, tzinfo=UTC))
+    assert _bilibili_quiet(datetime(2026, 9, 25, 23, 59, tzinfo=UTC))
+    assert not _bilibili_quiet(datetime(2026, 9, 26, 0, tzinfo=UTC))
 
 
 def test_collection_operation_id_changes_with_schedule_identity() -> None:

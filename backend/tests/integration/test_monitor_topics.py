@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -9,7 +10,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 from connections.presets import SOURCE_PRESETS
-from connections.services import SourcePresetService
+from connections.services import (
+    SourcePresetService,
+    pause_bilibili_connection_in_transaction,
+)
 from core.config import Settings
 from core.errors import ApplicationError
 from jobs.schemas import JobAcceptanceInput
@@ -491,3 +495,36 @@ def test_every_builtin_source_preset_applies_against_the_real_schema(
                 owner_id=owner_id, preset=preset
             )
         assert applied.source_key == preset.source_key
+
+
+def test_bilibili_pause_requires_manual_preset_reapply(
+    monitor_topic_client: TestClient,
+) -> None:
+    _initialize(monitor_topic_client)
+    factory = monitor_topic_client.app.state.session_factory
+    with factory.begin() as session:
+        owner_id = session.execute(text("SELECT id FROM identity_users")).scalar_one()
+        applied = SourcePresetService(session).apply_in_transaction(
+            owner_id=owner_id, preset=SOURCE_PRESETS["bilibili"]
+        )
+    with factory.begin() as session:
+        pause_bilibili_connection_in_transaction(
+            session,
+            owner_id=owner_id,
+            connection_id=applied.connection_id,
+            connection_version=applied.connection_version,
+            now=datetime.now(UTC),
+        )
+    with factory() as session:
+        assert (
+            session.execute(
+                text("SELECT status FROM source_connections WHERE id = :connection_id"),
+                {"connection_id": applied.connection_id},
+            ).scalar_one()
+            == "disabled"
+        )
+    with factory.begin() as session:
+        restored = SourcePresetService(session).apply_in_transaction(
+            owner_id=owner_id, preset=SOURCE_PRESETS["bilibili"]
+        )
+    assert restored.connection_version == applied.connection_version + 1

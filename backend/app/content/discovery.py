@@ -286,10 +286,15 @@ def plan_keyword_discovery(run: KeywordDiscoveryRunInput) -> tuple[JobAcceptance
         source_capability=SourceCapability.SEARCH,
     )
     jobs = []
-    for sort, max_pages, max_requests in (
-        (SourceSort.LATEST, run.latest_max_pages, run.latest_max_requests),
-        (SourceSort.TOP, run.top_max_pages, run.top_max_requests),
-    ):
+    scans = (
+        ((SourceSort.TOP, run.latest_max_pages, run.latest_max_requests),)
+        if run.source_key == "bilibili"
+        else (
+            (SourceSort.LATEST, run.latest_max_pages, run.latest_max_requests),
+            (SourceSort.TOP, run.top_max_pages, run.top_max_requests),
+        )
+    )
+    for sort, max_pages, max_requests in scans:
         for index, query in enumerate((run.primary_query, *run.upstream_aliases)):
             jobs.append(
                 JobAcceptanceInput(
@@ -343,7 +348,9 @@ def plan_scheduled_keyword_discovery(run: KeywordDiscoveryRunInput) -> JobAccept
             "connection_version": run.connection_version,
             "query": query,
             "query_role": "primary",
-            "sort_key": SourceSort.LATEST.value,
+            "sort_key": (
+                SourceSort.TOP.value if run.source_key == "bilibili" else SourceSort.LATEST.value
+            ),
             "target_hash": _target_hash(run.configuration_ref, query).hex(),
             "rule_version": run.configuration_version,
             "starts_at": run.starts_at.isoformat(),
@@ -449,7 +456,8 @@ class KeywordDiscoveryPageCommitService:
                 self._session.rollback()
                 raise ValueError("keyword search page can contain only posts")
             if (
-                item.published_at is not None
+                window.source_key != "bilibili"
+                and item.published_at is not None
                 and not window.starts_at <= item.published_at < window.ends_at
             ) or item.external_id in seen:
                 filtered_items += 1

@@ -38,6 +38,15 @@ SOURCE_CATALOG = (
         )
     ),
     SourceCatalogEntry(
+        source_key="bilibili",
+        display_name="B 站关键词与评论",
+        rollout_role="candidate",
+        product_restricted=False,
+        restricted_next_action="本机 MediaCrawler 登录态与持久化验收通过后人工启用。",
+        capabilities=(SourceCapability.SEARCH, SourceCapability.COMMENTS),
+        auth_kind=SourceConnectionAuthKind.NONE,
+    ),
+    SourceCatalogEntry(
         source_key="hackernews",
         display_name="Hacker News",
         rollout_role="required",

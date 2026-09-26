@@ -1217,6 +1217,32 @@ def require_source_connection_enabled(
         raise ApplicationError("connection_authentication_required")
 
 
+def pause_bilibili_connection_in_transaction(
+    session: Session,
+    *,
+    owner_id: UUID,
+    connection_id: UUID,
+    connection_version: int,
+    now: datetime,
+) -> None:
+    """Fence and disable a local crawler login after auth/rate-limit evidence."""
+    if not session.in_transaction() or now.tzinfo is None:
+        raise RuntimeError("Bilibili pause requires a transaction and aware time")
+    connection = session.scalar(
+        select(SourceConnection)
+        .where(
+            SourceConnection.owner_id == owner_id,
+            SourceConnection.id == connection_id,
+            SourceConnection.source_key == "bilibili",
+        )
+        .with_for_update()
+    )
+    if connection is None or connection.current_version != connection_version:
+        return
+    connection.status = SourceConnectionStatus.DISABLED.value
+    connection.updated_at = now.astimezone(UTC)
+
+
 def require_source_connection_version(
     session: Session,
     *,

@@ -119,7 +119,7 @@ class KeywordDiscoveryRunInput(InputModel):
     latest_max_requests: int = Field(ge=1, le=100)
     top_max_pages: int = Field(ge=1, le=20)
     top_max_requests: int = Field(ge=1, le=100)
-    max_seconds: int = Field(ge=1, le=90)
+    max_seconds: int = Field(ge=1, le=220)
     entry_point: SourceEntryPoint = SourceEntryPoint.MANUAL
     scheduled_for_at: datetime | None = None
 
@@ -133,7 +133,17 @@ class KeywordDiscoveryRunInput(InputModel):
             raise ValueError("search requires an ordered UTC window of at most 30 days")
         if self.scheduled_for_at is not None and self.scheduled_for_at.utcoffset() is None:
             raise ValueError("scheduled_for_at must be timezone-aware")
+        if self.source_key != "bilibili" and self.max_seconds > 90:
+            raise ValueError("search time budget exceeds the source limit")
         queries = (self.primary_query, *self.upstream_aliases)
+        if self.source_key == "bilibili" and (
+            len(queries) > 3
+            or self.page_size > 5
+            or self.latest_max_pages != 1
+            or self.latest_max_requests < 6 + 4 * self.page_size
+            or self.max_seconds > 220
+        ):
+            raise ValueError("Bilibili search must stay within the source risk limits")
         for query in queries:
             SearchRequest(source_key=self.source_key, query=query, page_size=self.page_size)
         if len({normalize("NFKC", query).casefold() for query in queries}) != len(queries):

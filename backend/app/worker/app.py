@@ -56,6 +56,7 @@ from reports.services import DailyReportExecutor
 from sources.adapters.firecrawl import FirecrawlAdapter
 from worker.execution import (
     IsolatedProcessResult,
+    JobProcessChildError,
     JobProcessCrashedError,
     JobProcessOutcome,
     JobProcessShutdownError,
@@ -245,7 +246,7 @@ def create_job_message_handler(
     clock: Clock | None = None,
     supervisor: JobProcessSupervisor | None = None,
     stopping: Event | None = None,
-    job_execution_timeout_seconds: Callable[[str], float] | None = None,
+    job_execution_timeout_seconds: Callable[[str, str | None], float] | None = None,
 ) -> MessageHandler:
     def handle(message: Message) -> None:
         body, reference = decode_job_message(message)
@@ -311,7 +312,7 @@ def create_job_message_handler(
                         ),
                         stopping=stopping,
                         execution_timeout_seconds=(
-                            job_execution_timeout_seconds(body.kind)
+                            job_execution_timeout_seconds(body.kind, body.source_key)
                             if job_execution_timeout_seconds is not None
                             else None
                         ),
@@ -320,6 +321,32 @@ def create_job_message_handler(
                     if body.kind == "notification.send":
                         _mark_interrupted_notification(sessions, message=body, now=_now(clock))
                     raise StopProcessingMessageError from error
+                except JobProcessChildError as error:
+                    failure = _child_exception_failure(error, occurred_at=_now(clock))
+                    _finalize_supervised_result(
+                        sessions,
+                        message=body,
+                        reference=reference,
+                        report=ChildJobResult(
+                            lease=lease,
+                            failure=ChildJobFailure.from_failure(failure),
+                        ),
+                        lease_seconds=lease_seconds,
+                        clock=clock,
+                    )
+                    structlog.get_logger("worker").error(
+                        "job_child_failed",
+                        error_code=failure.error_code,
+                        exception_type=error.exception_type,
+                        failure_category=failure.category.value,
+                        **(
+                            {"error_message": error.error_message[:200]}
+                            if error.exception_type in {"ValueError", "TypeError"}
+                            and error.error_message is not None
+                            else {}
+                        ),
+                    )
+                    return
                 except JobProcessCrashedError as error:
                     _defer_after_child_exit(
                         sessions,
@@ -405,6 +432,37 @@ def create_job_message_handler(
 
 def _now(clock: Clock | None) -> datetime:
     return clock() if clock is not None else datetime.now(UTC)
+
+
+def _child_exception_failure(
+    error: JobProcessChildError, *, occurred_at: datetime
+) -> JobExecutionFailure:
+    if error.error_code == "parse_error":
+        category = JobFailureCategory.PARSE_ERROR
+        next_action = "检查数据格式后手动重试"
+    elif error.error_code == "invalid_response":
+        category = JobFailureCategory.INVALID_RESPONSE
+        next_action = "检查数据契约后手动重试"
+    elif error.error_code == "network_error":
+        return JobExecutionFailure(
+            error_code=error.error_code,
+            category=JobFailureCategory.TRANSIENT,
+            occurred_at=occurred_at,
+            next_action="等待外部服务恢复后自动重试",
+            manual_retry_allowed=True,
+            retry_at=occurred_at + timedelta(seconds=30),
+            max_attempts=3,
+        )
+    else:
+        category = JobFailureCategory.CONFIGURATION_UNAVAILABLE
+        next_action = "检查任务执行异常后手动重试"
+    return JobExecutionFailure(
+        error_code=error.error_code,
+        category=category,
+        occurred_at=occurred_at,
+        next_action=next_action,
+        manual_retry_allowed=True,
+    )
 
 
 def _cancellation_requested(

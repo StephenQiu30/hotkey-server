@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4, uuid5
 
 import structlog
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -1654,6 +1654,7 @@ class CommentScanPost:
     like_count: int | None
     comment_count: int
     repost_count: int | None
+    last_observed_at: datetime | None = None
 
     @property
     def interaction_score(self) -> int:
@@ -1702,6 +1703,9 @@ def _comment_collection_run(
         starts_at=bucket_start - _COMMENT_REFRESH_INTERVAL,
         ends_at=bucket_start,
         scheduled_for_at=bucket_start,
+        page_size=20 if candidate.post.source_key == "bilibili" else 100,
+        max_pages=1 if candidate.post.source_key == "bilibili" else 10,
+        max_requests=1 if candidate.post.source_key == "bilibili" else 10,
     )
 
 
@@ -1747,7 +1751,9 @@ class CommentScanService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def enqueue_due_comments_in_transaction(self, *, now: datetime) -> int:
+    def enqueue_due_comments_in_transaction(
+        self, *, now: datetime, skip_bilibili: bool = False
+    ) -> int:
         if not self._session.in_transaction():
             raise RuntimeError("comment scanning requires the caller's transaction")
         if now.tzinfo is None:
@@ -1757,6 +1763,8 @@ class CommentScanService:
             self._session
         ).list_active_topics_for_scanning_in_transaction()
         presets = self._comment_presets(topics)
+        if skip_bilibili:
+            presets = {key: preset for key, preset in presets.items() if key[1] != "bilibili"}
         posts = self._load_recent_posts(
             owners={topic.owner_id for topic in topics},
             source_keys={source_key for _, source_key in presets},
@@ -1767,6 +1775,20 @@ class CommentScanService:
             self._session,
             since=now_utc - _COMMENT_REFRESH_INTERVAL,
         )
+        # Only a newer Bilibili search refreshes the cached comments. A standalone
+        # comment scan must not replay the same JSONL as a fresh platform read.
+        for post in posts:
+            if post.source_key != "bilibili" or post.last_observed_at is None:
+                continue
+            target = RecentCommentJobTarget(
+                owner_id=post.owner_id,
+                source_key="bilibili",
+                post_external_id=post.external_id,
+            )
+            if target in load_recent_comment_job_targets_in_transaction(
+                self._session, since=post.last_observed_at
+            ):
+                recent_jobs |= frozenset({target})
         unique_candidates: dict[tuple[UUID, UUID], CommentScanCandidate] = {}
         for topic in topics:
             for candidate in _rank_comment_posts_for_topic(
@@ -1854,6 +1876,7 @@ class CommentScanService:
             ContentObservation.like_count.label("like_count"),
             ContentObservation.comment_count.label("comment_count"),
             ContentObservation.repost_count.label("repost_count"),
+            ContentObservation.observed_at.label("observed_at"),
             func.row_number()
             .over(
                 partition_by=(ContentObservation.owner_id, ContentObservation.content_id),
@@ -1877,6 +1900,7 @@ class CommentScanService:
                 latest_observations.c.like_count,
                 latest_observations.c.comment_count,
                 latest_observations.c.repost_count,
+                latest_observations.c.observed_at,
             )
             .join(
                 latest_versions,
@@ -1898,7 +1922,13 @@ class CommentScanService:
                 ContentRecord.owner_id.in_(owners),
                 ContentRecord.source_key.in_(source_keys),
                 ContentRecord.object_type == "post",
-                ContentRecord.created_at >= since,
+                or_(
+                    ContentRecord.created_at >= since,
+                    and_(
+                        ContentRecord.source_key == "bilibili",
+                        latest_observations.c.observed_at >= since,
+                    ),
+                ),
                 ContentRecord.created_at <= until,
                 latest_observations.c.comment_count > 0,
             )
@@ -1920,6 +1950,11 @@ class CommentScanService:
                 like_count=like_count,
                 comment_count=comment_count,
                 repost_count=repost_count,
+                last_observed_at=(
+                    observed_at.replace(tzinfo=UTC)
+                    if observed_at.tzinfo is None
+                    else observed_at.astimezone(UTC)
+                ),
             )
             for (
                 owner_id,
@@ -1932,6 +1967,7 @@ class CommentScanService:
                 like_count,
                 comment_count,
                 repost_count,
+                observed_at,
             ) in rows
         )
 
@@ -1947,11 +1983,21 @@ def load_recent_post_versions_for_analysis(
         raise RuntimeError("analysis content reads require the caller's transaction")
     if since.tzinfo is None:
         raise ValueError("analysis recency boundary must be timezone-aware")
-    occurred_at = func.coalesce(ContentObservation.published_at, ContentObservation.observed_at)
+    occurred_at = case(
+        (ContentRecord.source_key == "bilibili", ContentObservation.observed_at),
+        else_=func.coalesce(ContentObservation.published_at, ContentObservation.observed_at),
+    )
     recent_versions = (
         select(
             ContentObservation.content_version_id.label("content_version_id"),
             func.max(occurred_at).label("occurred_at"),
+        )
+        .join(
+            ContentRecord,
+            and_(
+                ContentRecord.owner_id == ContentObservation.owner_id,
+                ContentRecord.id == ContentObservation.content_id,
+            ),
         )
         .where(
             ContentObservation.owner_id == owner_id,

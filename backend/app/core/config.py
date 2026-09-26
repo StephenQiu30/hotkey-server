@@ -76,6 +76,16 @@ class Settings(BaseSettings):
     )
     browser_state_dir: Path | None = None
 
+    mediacrawler_enabled: bool = False
+    mediacrawler_dir: Path = Path("~/Desktop/StephenQiu/MediaCrawler")
+    mediacrawler_output_dir: Path = _BACKEND_ROOT / "tmp" / "mediacrawler"
+    mediacrawler_timeout_seconds: int = Field(default=220, ge=30, le=220)
+
+    @field_validator("mediacrawler_dir", "mediacrawler_output_dir")
+    @classmethod
+    def expand_mediacrawler_path(cls, value: Path) -> Path:
+        return value.expanduser()
+
     minio_endpoint: str = "127.0.0.1:9000"
     minio_secure: bool = False
     minio_access_key: str = ""
@@ -130,11 +140,13 @@ class Settings(BaseSettings):
     collection_lookback_seconds: int = Field(default=86_400, ge=0, le=7 * 86_400)
     hotlist_interval_seconds: int = Field(default=1800, ge=600, le=86_400)
 
-    def job_process_execution_timeout_seconds(self, kind: str) -> int:
+    def job_process_execution_timeout_seconds(
+        self, kind: str, source_key: str | None = None
+    ) -> int:
         if kind == "source.hotlist":
             return 60
         if kind in {"keyword.search", "source.comments"}:
-            return 90
+            return 240 if self.mediacrawler_enabled and source_key == "bilibili" else 90
         if kind in {"analysis.annotate", "report.daily", "report.weekly"}:
             return 600
         if kind in {"notification.send", "knowledge.export"}:
@@ -212,13 +224,26 @@ class Settings(BaseSettings):
             + max(
                 self.job_process_execution_timeout_seconds("webpage.collect"),
                 self.job_process_execution_timeout_seconds("source.hotlist"),
+                self.job_process_execution_timeout_seconds("keyword.search", "bilibili")
+                if self.mediacrawler_enabled
+                else 0,
             )
             + JOB_PROCESS_TERMINATE_GRACE_SECONDS
             + JOB_COMPLETION_MARGIN_SECONDS
         )
+        if self.mediacrawler_enabled and "job_lease_seconds" not in self.model_fields_set:
+            self.job_lease_seconds = max(self.job_lease_seconds, required_lease_seconds)
         if self.job_lease_seconds < required_lease_seconds:
             raise ValueError(
                 "job lease must include process startup, execution, termination, and completion"
+            )
+        if (
+            self.mediacrawler_enabled
+            and "kafka_max_poll_interval_seconds" not in self.model_fields_set
+        ):
+            self.kafka_max_poll_interval_seconds = max(
+                self.kafka_max_poll_interval_seconds,
+                self.job_lease_seconds + KAFKA_POLL_SAFETY_MARGIN_SECONDS,
             )
         if self.kafka_max_poll_interval_seconds < (
             self.job_lease_seconds + KAFKA_POLL_SAFETY_MARGIN_SECONDS

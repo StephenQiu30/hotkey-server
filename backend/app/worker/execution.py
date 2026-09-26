@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import ast
 import multiprocessing
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from json import JSONDecodeError
 from multiprocessing.connection import Connection
 from multiprocessing.process import BaseProcess
+from pathlib import Path
 from threading import Event
+from xml.etree.ElementTree import ParseError
+
+import httpx
+from pydantic import ValidationError
 
 
 class JobProcessOutcome(StrEnum):
@@ -27,12 +35,33 @@ class _ChildMessage:
     kind: str
     value: object | None = None
     exception_type: str | None = None
+    error_code: str | None = None
+    safe_summary: str | None = None
+    error_message: str | None = None
 
 
 class JobProcessCrashedError(RuntimeError):
     def __init__(self, exception_type: str) -> None:
         self.exception_type = exception_type
         super().__init__(f"job child exited without a typed result ({exception_type})")
+
+
+class JobProcessChildError(RuntimeError):
+    """An exception reported by a live child with only a vetted literal message."""
+
+    def __init__(
+        self,
+        *,
+        exception_type: str,
+        error_code: str,
+        safe_summary: str,
+        error_message: str | None = None,
+    ) -> None:
+        self.exception_type = exception_type
+        self.error_code = error_code
+        self.safe_summary = safe_summary
+        self.error_message = error_message
+        super().__init__(f"{exception_type}: {safe_summary}")
 
 
 class JobProcessShutdownError(RuntimeError):
@@ -129,10 +158,33 @@ class JobProcessSupervisor:
                             outcome=JobProcessOutcome.COMPLETED,
                             value=message.value,
                         )
-                    elif message.kind == "crashed":
-                        exception_type = message.exception_type or "UnknownChildError"
+                    elif message.kind == "failed":
                         self._stop_process(process)
-                        raise JobProcessCrashedError(exception_type)
+                        if (
+                            message.exception_type is None
+                            or message.error_code
+                            not in {
+                                "invalid_response",
+                                "parse_error",
+                                "network_error",
+                                "job_unhandled_exception",
+                            }
+                            or message.safe_summary is None
+                            or (
+                                message.error_message is not None
+                                and (
+                                    not isinstance(message.error_message, str)
+                                    or len(message.error_message) > 200
+                                )
+                            )
+                        ):
+                            raise JobProcessCrashedError("InvalidChildMessage")
+                        raise JobProcessChildError(
+                            exception_type=message.exception_type,
+                            error_code=message.error_code,
+                            safe_summary=message.safe_summary,
+                            error_message=message.error_message,
+                        )
                     else:
                         self._stop_process(process)
                         raise JobProcessCrashedError("InvalidChildMessage")
@@ -180,11 +232,69 @@ def _run_child(
         sender.send(_ChildMessage(kind="ready"))
         try:
             value = target(*args)
-        except BaseException as error:
-            sender.send(_ChildMessage(kind="crashed", exception_type=type(error).__name__))
+        except Exception as error:
+            error_code, safe_summary = _classify_child_exception(error)
+            exception_type = type(error).__name__
+            if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,127}", exception_type) is None:
+                exception_type = "UnknownChildError"
+            sender.send(
+                _ChildMessage(
+                    kind="failed",
+                    exception_type=exception_type,
+                    error_code=error_code,
+                    safe_summary=safe_summary,
+                    error_message=_owned_literal_error_message(error),
+                )
+            )
         else:
             sender.send(_ChildMessage(kind="result", value=value))
     except (BrokenPipeError, EOFError, OSError):
         return
     finally:
         sender.close()
+
+
+def _classify_child_exception(error: Exception) -> tuple[str, str]:
+    if isinstance(error, (JSONDecodeError, UnicodeError, ParseError, SyntaxError)):
+        return "parse_error", "子进程解析数据失败"
+    if isinstance(error, (ValidationError, ValueError)):
+        return "invalid_response", "子进程数据校验失败"
+    if isinstance(error, (httpx.TransportError, TimeoutError, ConnectionError)):
+        return "network_error", "子进程访问外部服务失败"
+    return "job_unhandled_exception", "子进程执行失败"
+
+
+def _owned_literal_error_message(error: Exception) -> str | None:
+    """Expose only a literal raised by our application, never third-party or input text."""
+    if type(error) not in (ValueError, TypeError):
+        return None
+    trace = error.__traceback__
+    if trace is None:
+        return None
+    while trace.tb_next is not None:
+        trace = trace.tb_next
+    path = Path(trace.tb_frame.f_code.co_filename).resolve()
+    if not path.is_relative_to(Path(__file__).resolve().parents[1]) or path.suffix != ".py":
+        return None
+    try:
+        source = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeError):
+        return None
+    for node in ast.walk(source):
+        if not isinstance(node, ast.Raise) or not (
+            node.lineno <= trace.tb_lineno <= (node.end_lineno or node.lineno)
+        ):
+            continue
+        call = node.exc
+        if (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id == type(error).__name__
+            and len(call.args) == 1
+            and not call.keywords
+            and isinstance(call.args[0], ast.Constant)
+            and isinstance(call.args[0].value, str)
+            and str(error) == call.args[0].value
+        ):
+            return call.args[0].value[:200]
+    return None

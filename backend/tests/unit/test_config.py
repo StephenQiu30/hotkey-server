@@ -67,6 +67,52 @@ def test_browser_state_directory_is_optional(monkeypatch) -> None:
     assert settings.browser_state_dir is None
 
 
+def test_mediacrawler_defaults_fit_the_long_process_deadline() -> None:
+    settings = Settings(
+        database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+        mediacrawler_enabled=True,
+    )
+    assert settings.job_lease_seconds == 250
+    assert settings.kafka_max_poll_interval_seconds == 255
+
+
+def test_mediacrawler_requires_a_long_enough_lease_and_poll_window() -> None:
+    with pytest.raises(ValidationError, match="job lease"):
+        Settings(
+            database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+            mediacrawler_enabled=True,
+            job_lease_seconds=249,
+        )
+    with pytest.raises(ValidationError, match="Kafka max poll interval"):
+        Settings(
+            database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+            mediacrawler_enabled=True,
+            kafka_max_poll_interval_seconds=254,
+        )
+    settings = Settings(
+        database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+        mediacrawler_enabled=True,
+        job_lease_seconds=250,
+        kafka_max_poll_interval_seconds=255,
+    )
+    assert settings.job_process_execution_timeout_seconds("keyword.search", "bilibili") == 240
+    assert settings.job_process_execution_timeout_seconds("source.comments", "bilibili") == 240
+    assert settings.job_process_execution_timeout_seconds("keyword.search", "hackernews") == 90
+    assert settings.job_process_execution_timeout_seconds("source.comments", "hackernews") == 90
+
+
+def test_disabled_mediacrawler_keeps_existing_lease_and_source_deadlines() -> None:
+    settings = Settings(database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test")
+    assert settings.job_lease_seconds == 75
+    assert settings.kafka_max_poll_interval_seconds == 120
+    assert settings.job_process_execution_timeout_seconds("keyword.search", "bilibili") == 90
+    with pytest.raises(ValidationError, match="job lease"):
+        Settings(
+            database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+            job_lease_seconds=69,
+        )
+
+
 def test_browser_deadline_fits_job_lease_and_kafka_poll_window() -> None:
     settings = Settings(
         database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
