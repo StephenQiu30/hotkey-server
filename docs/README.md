@@ -42,7 +42,7 @@
 | 037 | [费用与资源约束](design/037-费用与资源约束设计.md) | `jobs/`（budget） | 付费来源与模型的成本上限 |
 | 038 | [可维护与可替换](design/038-可维护与可替换设计.md) | `sources/contracts.py` | 来源契约 |
 | 039 | [可观测与可运维](design/039-可观测与可运维设计.md) | `jobs/`、`cli/` | 运行统计；S02+ 冻结 |
-| 042 | [容量与部署可重复性](design/042-容量与部署可重复性设计.md) | `compose.yaml` | 部署；B0 冻结 |
+| 042 | [容量与部署可重复性](design/042-容量与部署可重复性设计.md) | `docker-compose.yml` | 部署；B0 冻结 |
 | 046 | [全局异常与响应契约](design/046-全局异常与响应契约设计.md) · [Plan](plans/046-全局异常与响应契约前置计划.md) · [Acceptance](acceptance/046-全局异常与响应契约验收.md) | `api/`、`frontend/src/request.ts` | 统一错误契约（completed） |
 | 047 | [本地网页与浏览器采集](design/047-本地网页与浏览器采集设计.md) | `sources/adapters/firecrawl.py`、`browser/` | RSS 正文补抓；B 档浏览器采集 |
 

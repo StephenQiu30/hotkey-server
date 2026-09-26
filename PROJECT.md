@@ -79,7 +79,7 @@ Web 设计固定为组件优先的无边框系统：App Router 页面只组合�
 | Redis | 缓存、限流和可重建临时状态；关键权限、预算与任务状态仍有数据库依据 |
 | Kafka | 任务事件与异步消息传输，由 Python Worker 消费 |
 | MinIO | 复用既有对象存储，保存有权限与保留期约束的文件及证据 |
-| Docker Compose | 根目录唯一运行编排；开发/生产差异通过配置叠加 |
+| Docker Compose | 根 `docker-compose.yml` 编排 HotKey 应用；RSSHub、SearXNG 由同级 `Docker` 服务集合编排，Firecrawl、MediaCrawler 各有本地入口 |
 | Ruff + mypy + pytest | 格式/静态检查、类型、单元/集成/架构验证 |
 | uv | 依赖、虚拟环境与 `uv.lock`，按锁文件安装 |
 | HTTPX + Tenacity | HTTP 客户端与有界重试 |

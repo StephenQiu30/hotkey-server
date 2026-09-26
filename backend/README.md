@@ -39,7 +39,7 @@ psql -X --set ON_ERROR_STOP=on \
 
 当前不支持对存量数据库自动就地升级。需要保留数据时，先完成备份与恢复演练，再新建数据库、应用完整 `schema.sql` 并导入经过校验的数据；禁止对现有旧库直接执行该文件。
 
-仓库根 `compose.yaml` 是唯一编排。复制根 `.env.example` 为未跟踪的 `.env` 并设置 URL-safe 数据库密码后，从根目录执行：
+仓库根 `docker-compose.yml` 是唯一编排。复制根 `.env.example` 为未跟踪的 `.env` 并设置 URL-safe 数据库密码后，从根目录执行：
 
 ```bash
 docker compose config --quiet

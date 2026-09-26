@@ -36,7 +36,7 @@
 - `backend/database/schema.sql` 是唯一数据库 DDL 事实源；SQLAlchemy Model 只负责运行时映射。禁止 Alembic、revision 目录、`metadata.create_all`、应用启动建表和第二份 DDL。
 - `schema.sql` 只用于全新空库，必须通过 `psql -X --set ON_ERROR_STOP=on --single-transaction` 原子执行。当前不支持存量库自动就地演进；需要保留数据时先验证备份，再新建数据库、应用完整 Schema 并导入校验后的数据。禁止对旧系统库直接执行。
 - 业务状态与 Outbox 同事务提交。Outbox 发布到 Kafka，消费者在业务事务提交后提交连续完成位置的 offset，允许重投并通过消息 ID、epoch、fencing、租约和唯一约束保证幂等。Kafka 事务不等于与 PostgreSQL 的跨系统原子提交。Redis 只承担缓存、限流及可重建临时状态，不保存唯一业务事实；关键执行权以 PostgreSQL 为准。不再采用 RabbitMQ/Celery，不以 Redis 另建任务队列。
-- 唯一运行编排为根 Compose。生产差异使用两个 `-f` 文件叠加，无第二套服务栈。不得删除用户持久卷。
+- HotKey 应用的唯一运行编排为根 `docker-compose.yml`。RSSHub、SearXNG 由同级 `Docker/rsshub-start-local`、`Docker/searxng-start-local` 的 `docker-compose.yml` 管理；Firecrawl、按需运行的 MediaCrawler 各在 `StephenQiu` 下维护 `docker-compose.yml`。不得在 HotKey 根编排复制这些服务或删除用户持久卷。生产差异仍通过 `-f` 文件叠加。
 - 认证信息不入日志或 Git；配置使用 `HOTKEY_` 前缀。公开错误只含稳定错误码、面向用户的消息和请求 ID；输入校验可附带脱敏字段详情，不回显敏感请求体。
 - HTTP完成日志只记录request_id、方法、路由模板、状态码和耗时；禁止记录原始URL/query、请求/响应正文、Cookie、Token或连接字符串。未处理异常记录类型与堆栈，但不回显给客户端。
 - 锁定依赖；运行 Ruff、mypy、pytest、OpenAPI 漂移检查及前端类型检查/构建。数据库和消息行为必须用真实 PostgreSQL/Redis/Kafka 验证，UI 必须用浏览器验证。

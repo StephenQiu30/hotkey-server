@@ -34,8 +34,8 @@ Worker 只有 `webpage.collect`；无周期调度；无模型/分析/事件/报�
 | 服务 | 地址 | 启动 |
 |---|---|---|
 | Firecrawl + playwright-service | `127.0.0.1:3002` | 独立部署 `~/Desktop/StephenQiu/Firecrawl`；其 `.env` 已设 `SEARXNG_ENDPOINT=http://host.docker.internal:8888` |
-| SearXNG | `127.0.0.1:8888` | `HOTKEY_POSTGRES_PASSWORD=unused docker compose --profile crawlers up -d rsshub searxng`（本机开发用 Homebrew PostgreSQL，密码仅供插值） |
-| RSSHub | `127.0.0.1:1200` | 同上 |
+| SearXNG | `127.0.0.1:8888` | 进入 `~/Desktop/Docker/searxng-start-local/`，执行 `docker compose up -d` |
+| RSSHub | `127.0.0.1:1200` | 进入 `~/Desktop/Docker/rsshub-start-local/`，执行 `docker compose up -d` |
 | Codex app-server | stdio | 宿主机 `codex` 0.157.0（`~/.local/bin`），ChatGPT Pro 登录；默认 `gpt-6-sol` + `high`；HotKey 分析模型由 `HOTKEY_AI_MODEL` 配置（代码默认 `gpt-5.6-luna`） |
 | Obsidian vault | `~/Desktop/Markdown/Obsidian` | HotKey 只写 `HotKey/` 子目录（D3 起） |
 
@@ -43,7 +43,7 @@ Worker 只有 `webpage.collect`；无周期调度；无模型/分析/事件/报�
 
 ## 运行
 
-- 编排：根 `compose.yaml`（PostgreSQL 17.11、Redis 7.2.16、Kafka 4.1.2、backend、worker、frontend、browser、browser-egress）。API 端口 8867，Web 端口 3000。
+- 编排：根 `docker-compose.yml`（PostgreSQL 17.11、Redis 7.2.16、Kafka 4.1.2、backend、worker、frontend、browser、browser-egress）。API 端口 8867，Web 端口 3000。
 - 本机开发：未跟踪的 `backend/.env`、`frontend/.env.local` 复用本机 Homebrew PostgreSQL（`127.0.0.1:5432`，库名 `hotkey-server`）、Redis、Kafka、MinIO。该库 owner_count=0、job_count=0，可按规则重建。不要对旧库 `hotkey`、`hotkey_dev`、`hotkey_test` 执行 `schema.sql`。
 - 入口（在 `backend/app/` 下）：`uvicorn main:create_app --factory`、`python -m worker`、`python -m cli`。
 - 检查：后端 `uv run ruff check`、`uv run mypy`、`uv run pytest`；前端 `pnpm lint`、`pnpm typecheck`、`pnpm build`、`pnpm openapi:check`。
