@@ -49,7 +49,7 @@ class WebSearchAdapter(HttpSourceAdapter):
     """
 
     capabilities: ClassVar[frozenset[SocialSourceCapability]] = frozenset({SourceCapability.SEARCH})
-    adapter_version: ClassVar[str] = "searxng-json/news"
+    adapter_version: ClassVar[str] = "searxng-json-news"
 
     def __init__(
         self,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from urllib.parse import urlsplit
 
 import httpx
@@ -19,7 +20,9 @@ from connections.presets import (
 )
 from connections.schemas import SourceConnectionConfig
 from content.discovery import KeywordDiscoveryPageCommitService
+from content.schemas import PersistContentPostInput
 from content.services import _ALLOWED_FIELDS
+from sources.adapters.hackernews import HackerNewsAdapter
 from sources.adapters.rss import RssSourceAdapter
 from sources.adapters.web_search import WebSearchAdapter
 from sources.contracts import SearchRequest, SourceCapability, SourcePost
@@ -254,3 +257,25 @@ def test_source_preset_cli_lists_built_in_presets() -> None:
         "news_search; capabilities: search; allowed hosts: 127.0.0.1\n"
         "rss_36kr; capabilities: search; allowed hosts: 127.0.0.1\n"
     )
+
+
+@pytest.mark.parametrize("preset", list(SOURCE_PRESETS.values()))
+def test_preset_component_identity_is_accepted_when_saving_content(preset: SourcePreset) -> None:
+    """Saved posts carry the preset component name and version; both must pass the save schema."""
+    fields = PersistContentPostInput.model_fields
+    for field_name, value in (
+        ("component_name", preset.component_name),
+        ("component_version", preset.component_version),
+    ):
+        pattern = next(
+            item.pattern for item in fields[field_name].metadata if hasattr(item, "pattern")
+        )
+        assert re.fullmatch(pattern, value), f"{preset.source_key} {field_name}={value!r}"
+
+
+@pytest.mark.parametrize("adapter", [HackerNewsAdapter, RssSourceAdapter, WebSearchAdapter])
+def test_adapter_version_is_accepted_when_saving_content(adapter: type) -> None:
+    """Discovery saves each page's adapter_version as the post's component version."""
+    field = PersistContentPostInput.model_fields["component_version"]
+    pattern = next(item.pattern for item in field.metadata if hasattr(item, "pattern"))
+    assert re.fullmatch(pattern, adapter.adapter_version), adapter.adapter_version

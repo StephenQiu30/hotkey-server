@@ -57,7 +57,7 @@ class RssSourceAdapter(HttpSourceAdapter):
     """
 
     capabilities: ClassVar[frozenset[SocialSourceCapability]] = frozenset({SourceCapability.SEARCH})
-    adapter_version: ClassVar[str] = "rss/feedparser-6"
+    adapter_version: ClassVar[str] = "feedparser-6"
 
     def __init__(
         self,
