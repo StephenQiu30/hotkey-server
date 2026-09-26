@@ -4,7 +4,7 @@ scope: issue
 doc_no: "021"
 title: Obsidian 事件与精选帖执行计划
 status: planned
-version: v1.0
+version: v1.1
 date: 2026-09-26
 owner: HotKey Team
 canonical_path: docs/plan/021-Obsidian事件与精选帖执行计划.md
@@ -12,13 +12,26 @@ prd: docs/prd/005-报告与知识库需求.md
 design: docs/design/005-报告与知识库设计.md
 architecture_prerequisite: "046 S03"
 source_task: TASK-005-S04-T01 第二阶段
+depends_on: ["020", "042"]
 ---
 
 # Plan 021：Obsidian 事件与精选帖
 
+## 导出对象与引用顺序
+
+修改 `backend/app/knowledge/schemas.py`、`services.py`、`obsidian.py`，新增 `knowledge/objects.py` 装配只读content/events/reports DTO。只导出被报告或事件实际引用的帖子，保留content_version和来源URL，不把全库批量写进vault；事件使用已确认event_id/revision、热度公式和成员引用。稳定映射type/object_id→relative_path，帖子路径 `HotKey/帖子/<来源>/<净化标题前40字>-<短ID>.md`，事件 `HotKey/事件/<净化标题>-<短ID>.md`。
+
+同一次导出先完成精选帖子并登记hash，再生成引用这些成功目标的事件；最后刷新需要补链的日报管理区块，不能改已存档报告的事实数字/版本。未成功帖子链接原帖并保留export失败，不写悬空双链。合并旧事件笔记保留历史与新事件链接，不删除用户笔记；拆分新事件用新ID/路径，不覆盖旧对象。
+
+- [ ] CHK-021-101 → DATA/OPS：扩展 `backend/tests/unit/test_obsidian_export.py` 验证同名标题、标题变更路径稳定、未引用帖不导出、帖子失败事件不写悬链、合并/拆分映射。
+- [ ] CHK-021-102 → NFR-005-002：`backend/tests/integration/test_knowledge_exports.py` 验证两对象部分成功重试、已有用户区保留、DB记录与文件哈希一致，沿用020并发写保护。
+- [ ] CHK-021-103 → AC-005-006/008：真实M3事件与代表帖子，在现有vault打开目标笔记→事件双链→日报链接，核对原帖/版本/公式和用户区。
+
+运行B；无新增HTTP契约，导出状态沿用Job和后续023展示方式。事件M3产品未通过时只可受控测试，真实事件导出退出保持待验收。证据归M4 Acceptance Plan021。
+
 ## 范围与需求
 
-事件及精选帖子笔记须等 M3 的 Plan 014—016 与 `AC-004-001` 通过，不以现有日报导出或热榜命中替代。本卡承接 [PRD 005](../prd/005-报告与知识库需求.md) `FR-005-006`、`NFR-005-002` 和 `AC-005-006/008` 的事件阶段；仅导出被报告或事件引用的精选帖子，不批量镜像全部内容。文件边界复用 Plan 020。
+事件及精选帖子笔记真实验收须等M3的014—016、042及AC-004-001通过，不以日报导出或热榜命中替代。本卡承接 [PRD005](../prd/005-报告与知识库需求.md) FR-005-006、NFR-005-002及AC-005-006/008的事件阶段；仅导出被报告/事件引用的精选帖子，不批量镜像。文件边界复用020，技术前置消费042读取DTO。
 
 ## SPEC
 

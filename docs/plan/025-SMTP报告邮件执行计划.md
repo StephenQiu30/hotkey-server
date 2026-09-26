@@ -3,8 +3,8 @@ layer: Plan
 scope: issue
 doc_no: "025"
 title: SMTP 报告邮件执行计划
-status: blocked
-version: v1.0
+status: planned
+version: v1.1
 date: 2026-09-26
 owner: HotKey Team
 canonical_path: docs/plan/025-SMTP报告邮件执行计划.md
@@ -12,13 +12,26 @@ prd: docs/prd/006-推送需求.md
 design: docs/design/006-推送设计.md
 architecture_prerequisite: "046 S03"
 source_task: TASK-006-S01-T01
+depends_on: ["024", "044", "019"]
 ---
 
 # Plan 025：SMTP 报告邮件
 
+## 适配器、启用门槛与真实用例
+
+新增 `backend/app/notifications/smtp.py`，使用标准库smtplib和email.message；修改 `notifications/executor.py`、`schemas.py`、`core/config.py`、`.env.example`（只加空值/说明）和Worker装配。secret引用只允许服务器配置白名单的SMTP主机/端口/TLS方式/用户名/密码，严格验证证书，禁止悄悄降级明文。收件人/主题拒绝CRLF；生成text/plain和安全HTML替代内容，包含固定report_id/version/时间窗/真实可访问链接。
+
+外部总调用受60秒Job硬截止，连接/读写各有更短超时。邮件固定Message-ID关联delivery identity，不能依赖SMTP去重保证；DATA前明确拒绝可failed，DATA已发送后断连/超时unknown，部分收件人接受须按接收方独立记录，不能一封批量发后全部重试。SMTP 250仅证明服务器接受，不是接收方已收到。
+
+- [ ] CHK-025-101 → SEC/JOB：新增 `backend/tests/unit/test_smtp_notifications.py`，覆盖TLS失败、认证拒绝、CRLF、DATA前后超时、部分接收、模板版/中文内容和Message-ID稳定性。
+- [ ] CHK-025-102 → DATA：`backend/tests/integration/test_notification_delivery.py` 接受受控SMTP服务器验证状态/回写/重放无重复外部发送，来源/Codex故障/vault只读不影响final报告发送。
+- [ ] CHK-025-103 → AC-006-001：用户明确SMTP主机、凭据配置、获准收件人和发送启用后，连续3自然日日报在各设定时间+15分钟内真实收到，真实周一09:15前收到周报；接收方时间/内容/版本/降级标记留证。未具备条件只完成技术步骤，真实验收明确blocked。
+
+运行B及真实SMTP隔离测试，044页面F门禁复用；结果归M5 Acceptance Plan025，不能将受控邮件服务器计作真实收件箱产品通过。
+
 ## 范围与需求
 
-SMTP 尚未实现，凭据和启用条件待定。本卡承接 [PRD 006](../prd/006-推送需求.md) `FR-006-001/002`、`NFR-001-106/107` 和 `AC-006-001` 的 SMTP 部分；先行 Plan 018/019 的已存档报告和 Plan 024 的投递身份。用户未给出获准接收方和 SMTP 启用条件前只做受控实现，不发送真实邮件。预计新增 `notifications/` SMTP 适配器、配置与 tests，不在路由直接发送。
+本卡承接 [PRD 006](../prd/006-推送需求.md) FR-006-002、NFR-001-106/107和AC-006-001的SMTP部分，配置FR-006-001由044提供。按本文适配器合同实施；用户未明确获准接收方和私有SMTP配置前，只允许受控实现和验证，真实验收阻塞。
 
 ## SPEC
 

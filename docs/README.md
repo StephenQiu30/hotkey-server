@@ -7,20 +7,20 @@
 | 文档 | 作用 | 状态 |
 |---|---|---|
 | [PRD 001 热点舆情监控平台总需求](prd/001-热点舆情监控平台需求.md) | 跨里程碑原则、来源/时间、共享 NFR、产品 DEC/OPEN 与原 ID 全局映射 | approved v5.0 |
-| [PRD 002 M1 信息获取主链路](prd/002-信息获取主链路需求.md) | 四关键词来源、六榜、Codex 相关性与覆盖查询；Issue Plan 001—009 见[计划索引](plan/README.md) | approved v1.0 |
+| [PRD 002 M1 信息获取主链路](prd/002-信息获取主链路需求.md) | 四来源、评论、六榜、分析、覆盖与阅读；Plan001—009、031—041 | approved v1.0 |
 | [PRD 003 M2 本人账号 B 站试点](prd/003-本人账号B站试点需求.md) | 宿主机 MediaCrawler、独立 CDP、风控停用、72 小时运行及 M2 时效；Plan 010—013 | approved v1.0 |
-| [PRD 004 M3 事件与热度](prd/004-事件与热度需求.md) | 跨平台归并、人工修订、热度与升温；Plan 014—016 | approved v1.0 |
-| [PRD 005 M4 报告与知识库](prd/005-报告与知识库需求.md) | 分析质量、日报/周报、Obsidian 与问答；Plan 017—023 | approved v1.0 |
-| [PRD 006 M5 推送](prd/006-推送需求.md) | SMTP 与暂缓的飞书分渠道验收；Plan 024—026 | approved v1.0 |
-| [PRD 007 M6 扩展能力](prd/007-扩展能力需求.md) | 导出、告警、指定账号与后续来源；Plan 027—030 | approved v1.0 |
-| [Design 001 热点舆情监控平台总设计](design/001-热点舆情监控平台总体设计.md) | 架构、跨里程碑约束、共享决策与风险 | accepted v4.0 |
-| [Design 002 M1 信息获取主链路](design/002-信息获取主链路设计.md) | M1 的架构、状态、失败与验收设计 | accepted v1.0 |
-| [Design 003 M2 本人账号B站试点](design/003-本人账号B站试点设计.md) | M2 的架构、状态、失败与验收设计 | accepted v1.0 |
-| [Design 004 M3 事件与热度](design/004-事件与热度设计.md) | M3 的架构、状态、失败与验收设计 | accepted v1.0 |
-| [Design 005 M4 报告与知识库](design/005-报告与知识库设计.md) | M4 的架构、状态、失败与验收设计 | accepted v1.0 |
-| [Design 006 M5 推送](design/006-推送设计.md) | M5 的架构、状态、失败与验收设计 | accepted v1.0 |
-| [Design 007 M6 扩展能力](design/007-扩展能力设计.md) | M6 的架构、状态、失败与验收设计 | accepted v1.0 |
-| [执行 Plan 索引 001—030](plan/README.md) | 一个 Issue 一份 Plan；按 PRD 追踪 SPEC、Checklist、证据和旧卡去向 | planned；M5 启用条件阻断 |
+| [PRD 004 M3 事件与热度](prd/004-事件与热度需求.md) | 归并、修订、热度、事件页面；Plan014—016、042 | approved v1.0 |
+| [PRD 005 M4 报告与知识库](prd/005-报告与知识库需求.md) | 配置/冻结、质量、日报/周报、Obsidian、检索/问答；Plan017—023、043、052 | approved v1.0 |
+| [PRD 006 M5 推送](prd/006-推送需求.md) | 目标/投递页面、状态、SMTP与飞书；Plan024—026、044 | approved v1.0 |
+| [PRD 007 M6 扩展能力](prd/007-扩展能力需求.md) | 导出、告警、账号、后续来源；Plan027—030、045—050、053—054（准入不等于实现） | approved v1.0 |
+| [Design 001 热点舆情监控平台总设计](design/001-热点舆情监控平台总体设计.md) | 架构、跨里程碑约束、共享决策与风险；共享维护Plan051、055—057 | accepted v4.0 |
+| [Design 002 M1 信息获取主链路](design/002-信息获取主链路设计.md) | 到期/预算/计量、接口、分析与验收合同 | accepted v1.1；待实施细则 |
+| [Design 003 M2 本人账号B站试点](design/003-本人账号B站试点设计.md) | 三类版本、同轮缓存、停用/恢复 | accepted v1.1；待实施细则 |
+| [Design 004 M3 事件与热度](design/004-事件与热度设计.md) | 表/事务/接口、公式、并发与事件页面 | accepted v1.1；待实施细则 |
+| [Design 005 M4 报告与知识库](design/005-报告与知识库设计.md) | 两阶段冻结、笔记冲突保护、检索与回答 | accepted v1.1；待实施细则 |
+| [Design 006 M5 推送](design/006-推送设计.md) | 收件身份、unknown审计、目标页面与SMTP | accepted v1.1；待实施细则 |
+| [Design 007 M6 扩展能力](design/007-扩展能力设计.md) | 告警/账号/导出合同与逐来源准入 | accepted v1.1；待实施细则 |
+| [执行 Plan 索引 001—057](plan/README.md) | 逐Issue全量清单、共享底座台账、技术依赖、逐条AC矩阵、文件串行及历史去向 | planned；026/046—050/053—054/057 blocked；真实步骤另按条件 |
 | 旧 Plan 001—007 | 拆分前基线与历史证据，原文从 Git 历史查阅 | historical |
 | [BACKLOG](../BACKLOG.md) | 阶段与任务状态看板 | — |
 | [HANDOVER](../HANDOVER.md) | 当前实现快照 | — |
@@ -65,6 +65,8 @@
 
 ### 2.1 历史 PRD 里程碑编号（同一文档改号，非归档）
 
+以下两表保留首次拆成30卡时的承接范围。当前补充031—057及职责迁移以第1节和[Plan索引](plan/README.md)为准，历史范围不能作为完整执行清单。
+
 | 历史编号/层 | 现行编号与路径 | 关系 |
 |---|---|---|
 | 048 / PRD | [002 信息获取主链路需求](prd/002-信息获取主链路需求.md) | 同一 PRD 改号，非归档；对应 Design/Epic 002，Plan 001—009 |
@@ -101,6 +103,6 @@ Plan 048—053 在阶段 3 与同主题 Design/PRD 对齐，原 `Sxx-Txx`、验�
 
 ## 4. 编号与阶段迁移
 
-- 格式仍按 [TEMPLATE.md](TEMPLATE.md)。现行 Design/Epic 与 PRD 为 001—007，执行 Plan 为独立的 001—030；Plan 001 是主题规则 Issue，不再表示平台总计划。旧 Plan 001—007 已由新 Plan 替代，历史卡与提交从 Git 追溯。源 PRD 的 BR/FR/NFR/AC 编号和产品含义未重编号。
+- 格式按 [TEMPLATE.md](TEMPLATE.md)。Design/Epic与PRD为001—007，执行Plan独立编号001—057，后续取058。Plan001是主题规则Issue；旧里程碑Plan和本轮修改前的30卡从Git追溯。002/007/030按收窄后的职责更名，责任迁移详见Plan索引；源BR/FR/NFR/AC编号及产品含义不变。
 - PRD 048—053 在阶段 2、Plan 048—053 在阶段 3 分别与同主题 002—007 对齐；后续新里程碑或独立专项依本台账续编号。
 - 里程碑验收记录放 `acceptance/`，按源 PRD/Design 的 002—007 编号命名，不按单 Issue Plan 编号；未形成记录的产品 AC 保持待验收。

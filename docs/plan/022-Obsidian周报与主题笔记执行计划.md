@@ -4,7 +4,7 @@ scope: issue
 doc_no: "022"
 title: Obsidian 周报与主题笔记执行计划
 status: planned
-version: v1.0
+version: v1.1
 date: 2026-09-26
 owner: HotKey Team
 canonical_path: docs/plan/022-Obsidian周报与主题笔记执行计划.md
@@ -12,9 +12,22 @@ prd: docs/prd/005-报告与知识库需求.md
 design: docs/design/005-报告与知识库设计.md
 architecture_prerequisite: "046 S03"
 source_task: TASK-005-S04-T01 第三阶段
+depends_on: ["019", "020"]
 ---
 
 # Plan 022：Obsidian 周报与主题笔记
+
+## 具体导出实现
+
+修改 `backend/app/knowledge/objects.py`、`schemas.py`、`services.py`、`obsidian.py`；周报读取已final的report_id/version及043冻结窗口，路径 `HotKey/周报/YYYY-Www <净化主题>-<短ID>.md`，ISO周年份必须用isocalendar年份。主题笔记按topic_id稳定映射 `HotKey/主题/<净化主题>-<短ID>.md`，管理区块列已成功导出的日报/周报与可用事件链接，排序按对象时间和稳定ID；未导出目标显示原始引用或待导出，不写双链。
+
+重生成周报同对象版本更替必须保留审计与用户区，链接按knowledge_exports成功映射检查存在性；目标被用户移动/删除时标missing并停止补链，不从数据库记录推断文件一定存在。021未启用时主题页事件区显示未启用，不能制造占位事件文件。
+
+- [ ] CHK-022-101 → DATA：扩展 `backend/tests/unit/test_obsidian_export.py` 覆盖2027年初属于上一ISO年、同主题多周、同名主题、标题改名与稳定ID。
+- [ ] CHK-022-102 → OPS：`backend/tests/integration/test_knowledge_exports.py` 验证目标文件缺失、导出中断重试、用户编辑冲突、只读vault及主题目录链接顺序。
+- [ ] CHK-022-103 → AC-005-006/008：真实周报和主题笔记从vault互相打开并核对日报链接、管理/用户区，周报数字与019存档相同。
+
+运行B，证据归M4 Acceptance Plan022；回退停对应导出扫描，日报/周报存档继续存在，不删除vault用户内容。
 
 ## 范围与需求
 

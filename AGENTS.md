@@ -4,7 +4,7 @@
 
 `PROJECT.md` 是项目技术、架构、目录、API 契约和数据库事实源；本文件负责实现执行门禁、工具命令和验证要求。发生冲突时以 PROJECT.md 的架构决策为准。模块 README 记录使用方式，HANDOVER 记录实现状态；这些文件不得定义冲突的架构规则。变更架构或目录时必须先更新 PROJECT.md、对应 Design 和本文件，再修改代码。
 
-总设计为 [Design 001](docs/design/001-热点舆情监控平台总体设计.md)，M1—M6 的 Design 002—007 是各能力 Epic；需求为 [PRD 001](docs/prd/001-热点舆情监控平台需求.md) 与 PRD 002—007；[执行计划索引](docs/plan/README.md) 将每个 Issue 映射到从 001 连续编号的单份 Plan。Plan 不承载 Epic。任务开工前在对应 Plan 写清范围、精确文件职责、SPEC、Checklist、测试与验收；架构或数据库变化同步更新对应 Design 及总 Design 001。阶段验收通过后在 `docs/acceptance/` 写记录。文档台账见 `docs/README.md`，格式见 `docs/TEMPLATE.md`。
+总设计为 [Design 001](docs/design/001-热点舆情监控平台总体设计.md)，M1—M6 的 Design 002—007 是各能力 Epic；需求为 [PRD 001](docs/prd/001-热点舆情监控平台需求.md) 与 PRD 002—007；[执行计划索引](docs/plan/README.md) 将每个 Issue 映射到从001连续编号的单份Plan。Plan不承载Epic。计划评审时固定精确文件、接口/数据/调度、SPEC、Checklist、测试与验收；关键契约未定标阻塞，不能交给执行者自行猜测。技术依赖和真实授权条件分别列明。架构/数据库变化同步对应Design及总Design001；证据实际产生后写Acceptance，未通过项如实保留。文档台账见 `docs/README.md`，格式见 `docs/TEMPLATE.md`。计划逐项人工编写和审核，不用脚本生成、批量改写或重编号。
 
 ## 任务开始前的目录与选型门禁
 
@@ -34,7 +34,7 @@
 - 业务服务只能直接导入本领域ORM模型；跨领域读取使用所属模块提供的函数/DTO，跨领域原子写显式传入同一Session。禁止为绕过边界建立全局repository或共享models目录。
 - 顶层模块只在当前切片真实创建时登记；architecture测试不得预先白名单未来模块。新增模块必须先以失败测试证明未登记代码会被拒绝。
 - `backend/database/schema.sql` 是唯一数据库 DDL 事实源；SQLAlchemy Model 只负责运行时映射。禁止 Alembic、revision 目录、`metadata.create_all`、应用启动建表和第二份 DDL。
-- `schema.sql` 只用于全新空库，必须通过 `psql -X --set ON_ERROR_STOP=on --single-transaction` 原子执行。当前不支持存量库自动就地演进；需要保留数据时先验证备份，再新建数据库、应用完整 Schema 并导入校验后的数据。禁止对旧系统库直接执行。
+- `schema.sql` 只用于全新空库，文件自身以 `BEGIN`/`COMMIT` 包住完整 DDL；直接 `psql -X --set ON_ERROR_STOP=on -f backend/database/schema.sql`、CI stdin 导入和 Compose 官方 entrypoint 挂载均依赖该文件内事务保证原子性，也可额外使用 `--single-transaction`，但不得以其代替文件内事务。三种入口均须在空库执行并在失败后确认无部分业务表。当前不支持存量库自动就地演进；需要保留数据时先验证备份，再新建数据库、应用完整 Schema 并导入校验后的数据。禁止对旧系统库直接执行。
 - 业务状态与 Outbox 同事务提交。Outbox 发布到 Kafka，消费者在业务事务提交后提交连续完成位置的 offset，允许重投并通过消息 ID、epoch、fencing、租约和唯一约束保证幂等。Kafka 事务不等于与 PostgreSQL 的跨系统原子提交。Redis 只承担缓存、限流及可重建临时状态，不保存唯一业务事实；关键执行权以 PostgreSQL 为准。不再采用 RabbitMQ/Celery，不以 Redis 另建任务队列。
 - HotKey 应用的唯一运行编排为根 `docker-compose.yml`。RSSHub、SearXNG 由同级 `Docker/rsshub-start-local`、`Docker/searxng-start-local` 的 `docker-compose.yml` 管理；Firecrawl 独立编排，`~/Desktop/Docker/mediacrawler-start-local/` 保存 MediaCrawler 固定补丁、独立 CDP 资料与按需容器构建记录，但 HotKey 的 B 站调用固定为宿主机子进程，不走该容器。不得在 HotKey 根编排复制这些服务或删除用户持久卷。生产差异仍通过 `-f` 文件叠加。
 - 认证信息不入日志或 Git；配置使用 `HOTKEY_` 前缀。公开错误只含稳定错误码、面向用户的消息和请求 ID；输入校验可附带脱敏字段详情，不回显敏感请求体。

@@ -190,7 +190,7 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 5. `worker/` 维护 Kafka 客户端和消费者生命周期，`jobs/` 维护任务状态机；入口 `python -m worker`。031 已实现 outbox、手动 offset、inbox、租约/checkpoint 和有限调度恢复；039 S01 将受理消息升级为 `hotkey.jobs.accepted.v2`；009 S01—S03 已交付持久受理、owner 隔离读取、进度/取消、结构化失败、有限持久重试、到期 Outbox、重放防重和手动重试。047 S02 已登记固定 `webpage.collect` 处理器并通过真实 Kafka/Firecrawl 持久结果和恢复验证；其他 kind 没有处理器时必须持久失败后确认，不能把排队记录或空 Worker 当作业务执行成功。
 6. API、Worker 各自创建数据库连接池和消息客户端，Session 不跨线程/任务共享。同步数据库调用不直接放入异步路由。
 7. FastAPI 从路由装饰器、类型注解和 Pydantic 模型自动生成 `/openapi.json`。它是唯一 API 契约视图；Swagger UI、Scalar、Umi OpenAPI 和 Flutter 客户端共用该地址，不维护独立契约文件。客户端由生成命令更新，CI 负责自动生成与差异检查。
-8. 数据库结构只由 `backend/database/schema.sql` 定义，SQLAlchemy Model 必须与其同批更新。当前不支持存量库自动就地升级；保留数据时采用备份、全新建库、完整建表和校验后导入流程。
+8. 数据库结构只由 `backend/database/schema.sql` 定义，SQLAlchemy Model 必须与其同批更新。`schema.sql` 自身以 `BEGIN`/`COMMIT` 保证完整 DDL 原子性；CI 的 psql stdin 和 Compose 官方 entrypoint 挂载均依赖此事务，显式 `--single-transaction` 可额外使用。只对全新空库执行，失败后核对没有部分业务表。当前不支持存量库自动就地升级；保留数据时采用备份、全新建库、完整建表和校验后导入流程。
 
 ## 4. 产品约束与未决事项
 
@@ -208,7 +208,9 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 
 ## 5. 实施与验证
 
-按 [Plan 索引](docs/plan/README.md) 的单 Issue 推进：开工前在对应 Plan 补精确文件、SPEC、Checklist 与验收说明 → 失败测试 → 实现 → 回归 → 阶段验收记录。架构或数据库结构变化同步更新所属 Design/Epic、总 Design 001 与本文。
+按 [Plan 索引](docs/plan/README.md) 的单 Issue 推进：计划评审先固定文件/接口/数据/调度/测试与验收合同 → 核对技术依赖和代码漂移 → 失败测试 → 实现 → 回归 → 阶段验收记录。核心契约未定不得列为实施就绪；真实账号/费用/渠道条件仅阻塞对应步骤。架构或数据库变化同步所属Design/Epic、总Design001与本文。
+
+现行逐Issue计划001—057的持久化/任务细则见Design001 §4、子Design及Plan索引：到期窗口与采集周期归jobs，事件事实归events，报告设置唯一读取/写入`monitor_topics.report_time`、`report_timezone`、`weekly_report_enabled`，冻结和导出归reports，不新增`report_schedules`；原始导出归content，告警/投递审计归notifications，账号归monitors，检索投影/回答归knowledge。055—057仅承接共享底座回归/冻结，均不代表产品验收；不创建额外共享层、服务或存储桶。新增router按目标路径独立注册，现有 `/api/v1/reports` 由Plan018统一到 `/api/reports` 并同步生成客户端。新任务硬截止见Design001，真实依赖和保留库恢复仍按既有门槛验证。
 
 交付前执行后端 Ruff、mypy、pytest、OpenAPI 漂移与客户端生成检查，以及前端 ESLint、Prettier、类型检查、生产构建和浏览器验证。数据库和消息行为用隔离的真实 PostgreSQL/Redis/Kafka 验证。适配器用固定样本做契约测试，并以一次真实请求冒烟；模拟数据不能算采集成功。
 

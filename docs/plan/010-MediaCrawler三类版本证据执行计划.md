@@ -4,7 +4,7 @@ scope: issue
 doc_no: "010"
 title: MediaCrawler 三类版本证据执行计划
 status: planned
-version: v1.0
+version: v1.1
 date: 2026-09-26
 owner: HotKey Team
 canonical_path: docs/plan/010-MediaCrawler三类版本证据执行计划.md
@@ -12,13 +12,25 @@ prd: docs/prd/003-本人账号B站试点需求.md
 design: docs/design/003-本人账号B站试点设计.md
 architecture_prerequisite: "046 S03"
 source_task: TASK-003-S01-T01
+depends_on: ["002"]
 ---
 
 # Plan 010：MediaCrawler 三类版本证据
 
+## 固定字段与实施路径
+
+修改 `backend/app/sources/adapters/mediacrawler.py`、`connections/presets.py`、`jobs/schemas.py`、`jobs/models.py` 与唯一schema。上游 `380b426000aac3d612837ed72c99808347dc94c9`、补丁提交 `fb4e6c57ade1c7a2b3a61e69abc4fd4130047eb2`、适配器 `mediacrawler-fb4e6c5-hotkey-safe` 分别写入固定Job配置/执行证据字段；组件策略存基线与补丁引用，实际运行证据关联operation_id、job_id、connection_version。旧历史只有component_version时标版本证据不完整，不反填虚假三版本。
+
+校验固定目录realpath、HEAD和tracked diff，先于子进程/任何平台请求；错误稳定分类为 `mediacrawler_revision_mismatch`、`mediacrawler_worktree_dirty`、`mediacrawler_version_evidence_missing`，失败不映射认证失效。只允许已配置固定根，未受控可执行文件/未跟踪代码可能影响执行时同样拒绝，runtime私有输出按明确白名单隔离，不修改外部工作树或自动打补丁。
+
+- [ ] CHK-010-101 → SEC/JOB：`backend/tests/unit/test_mediacrawler_adapter.py` 使用临时受控Git夹具验证错HEAD、dirty、越界路径及额外可执行文件，断言子进程启动计数0。
+- [ ] CHK-010-102 → DATA：新增 `backend/tests/integration/test_mediacrawler_evidence.py`，断言三字段分别持久、换版旧Job不变、失败Job也可定位版本检查结果。
+
+运行B门禁；真实固定工作树只读检查，实际账号请求归012。结果归M2 Acceptance Plan010；不因外部工作树存在就宣称来源接入。
+
 ## 范围与需求
 
-旧 B 站预设的 `component_version` 仍是旧值；离线回放不能证明实际运行工作树版本。本卡按 [PRD 003](../prd/003-本人账号B站试点需求.md) `FR-003-002`、`NFR-003-001` 和 `AC-003-001/002/003`，分开固定 MediaCrawler 上游基线、补丁后提交及 HotKey 适配器版本，并关联每个 Job。Plan 002 的节奏契约先确定；仅版本只读核查可并行。预计检查宿主机固定补丁工作树、`backend/app/connections/{presets,services}.py`、B 站适配器、Job 版本字段和测试；与 Plan 011 共用文件时串行修改。
+旧B站预设component_version与固定补丁不一致。本卡按 [PRD 003](../prd/003-本人账号B站试点需求.md) FR-003-002、NFR-003-001和AC-003-001/002/003分别保存三类版本与Job关联；依赖002版本策略，具体字段/文件与校验顺序已在本文定义，与011共用文件的修改按依赖顺序进行。
 
 ## SPEC
 
