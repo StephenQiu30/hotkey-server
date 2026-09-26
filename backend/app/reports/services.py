@@ -3,18 +3,19 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, cast
 from uuid import UUID, uuid4, uuid5
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import bindparam, select, text
+from sqlalchemy import and_, bindparam, or_, select, text
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, aliased, sessionmaker
 
 from ai.schemas import AiCallError, AiCompletion
 from ai.services import AiService, create_ai_client
 from core.config import get_settings
+from core.errors import ApplicationError
 from jobs.execution import JobCompletion
 from jobs.schemas import (
     JobAcceptanceInput,
@@ -38,10 +39,12 @@ from reports.schemas import (
     DailyReportJobScope,
     PreparedDailyReport,
     ReportBuildDataset,
+    ReportCitationView,
     ReportCommentInput,
     ReportComparison,
     ReportContentItem,
     ReportCoverage,
+    ReportDetailView,
     ReportGenerator,
     ReportInputManifest,
     ReportKind,
@@ -54,6 +57,7 @@ from reports.schemas import (
     ReportSentiment,
     ReportSourceCoverage,
     ReportStatus,
+    ReportSummaryView,
     ReportView,
     ReportVoiceItem,
     SourceCoverageStatus,
@@ -374,6 +378,105 @@ class ReportService:
     ) -> None:
         self._session = session
         self._clock = clock or (lambda: datetime.now(UTC))
+
+    def list_reports(
+        self,
+        *,
+        owner_id: UUID,
+        topic_id: UUID | None,
+        date_from: date | None,
+        date_to: date | None,
+        kind: ReportKind,
+        cursor: UUID | None,
+        limit: int,
+    ) -> tuple[list[ReportSummaryView], str | None]:
+        """Read only the newest final version of each owner/topic/window."""
+        if date_from is not None and date_to is not None and date_from > date_to:
+            raise ValueError("report date_from must not exceed date_to")
+        previous = aliased(Report)
+        latest_version = (
+            select(previous.version)
+            .where(
+                previous.owner_id == Report.owner_id,
+                previous.topic_id == Report.topic_id,
+                previous.kind == Report.kind,
+                previous.window_start == Report.window_start,
+                previous.status == ReportStatus.FINAL.value,
+            )
+            .order_by(previous.version.desc())
+            .limit(1)
+            .correlate(Report)
+            .scalar_subquery()
+        )
+        filters = [
+            Report.owner_id == owner_id,
+            Report.status == ReportStatus.FINAL.value,
+            Report.kind == kind.value,
+            Report.version == latest_version,
+        ]
+        if topic_id is not None:
+            filters.append(Report.topic_id == topic_id)
+        if date_from is not None:
+            start = datetime.combine(date_from, time.min, tzinfo=REPORT_TIMEZONE)
+            filters.append(Report.window_start >= start.astimezone(UTC))
+        if date_to is not None and date_to < date.max:
+            end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=REPORT_TIMEZONE)
+            filters.append(Report.window_start < end.astimezone(UTC))
+        if cursor is not None:
+            anchor = self._session.scalars(
+                select(Report).where(*filters, Report.id == cursor)
+            ).first()
+            if anchor is None:
+                raise ApplicationError("resource_not_found")
+            filters.append(
+                or_(
+                    Report.window_start < anchor.window_start,
+                    and_(Report.window_start == anchor.window_start, Report.id < anchor.id),
+                )
+            )
+        rows = self._session.scalars(
+            select(Report)
+            .where(*filters)
+            .order_by(Report.window_start.desc(), Report.id.desc())
+            .limit(limit + 1)
+        ).all()
+        page = rows[:limit]
+        return [self._summary(row) for row in page], str(page[-1].id) if len(rows) > limit else None
+
+    def get_report(self, *, owner_id: UUID, report_id: UUID) -> ReportDetailView:
+        model = self._session.scalars(
+            select(Report).where(
+                Report.id == report_id,
+                Report.owner_id == owner_id,
+                Report.status == ReportStatus.FINAL.value,
+            )
+        ).first()
+        if model is None:
+            raise ApplicationError("resource_not_found")
+        data = DailyReportData.model_validate(model.data)
+        return ReportDetailView(
+            **self._summary(model).model_dump(),
+            cutoff_at=model.cutoff_at,
+            body_markdown=model.body_markdown,
+            citations=[
+                ReportCitationView(citation=item.citation, title=item.title, url=item.url)
+                for item in data.top_contents
+            ],
+        )
+
+    @staticmethod
+    def _summary(model: Report) -> ReportSummaryView:
+        data = DailyReportData.model_validate(model.data)
+        return ReportSummaryView(
+            id=model.id,
+            topic_id=model.topic_id,
+            topic_name=data.topic_name,
+            kind=ReportKind(model.kind),
+            window_start=model.window_start,
+            window_end=model.window_end,
+            version=model.version,
+            generator=ReportGenerator(model.generator),
+        )
 
     def enqueue_due_in_transaction(self, *, now: datetime) -> tuple[JobView, ...]:
         """Accept daily report jobs after the topic time and watermark wait."""

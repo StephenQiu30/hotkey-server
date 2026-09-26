@@ -212,6 +212,10 @@ declare namespace HotKeyAPI {
     topic_id: string;
   };
 
+  type getReportParams = {
+    report_id: string;
+  };
+
   type HealthView = {
     /** Status */
     status: "ok" | "ready";
@@ -406,6 +410,15 @@ declare namespace HotKeyAPI {
     limit?: number;
   };
 
+  type listReportsParams = {
+    topic_id?: string | null;
+    date_from?: string | null;
+    date_to?: string | null;
+    kind?: ReportKind;
+    cursor?: string | null;
+    limit?: number;
+  };
+
   type MonitorExpansionPreviewView = {
     /** Local Alias External Queries */
     local_alias_external_queries: number;
@@ -559,6 +572,13 @@ declare namespace HotKeyAPI {
     next_cursor: string | null;
   };
 
+  type PageViewReportSummaryView_ = {
+    /** Items */
+    items: ReportSummaryView[];
+    /** Next Cursor */
+    next_cursor: string | null;
+  };
+
   type PageViewSourcePlatformView_ = {
     /** Items */
     items: SourcePlatformView[];
@@ -571,6 +591,59 @@ declare namespace HotKeyAPI {
   };
 
   type PreviewSampleInput = string;
+
+  type ReportCitationView = {
+    /** Citation */
+    citation: string;
+    /** Title */
+    title: string;
+    /** Url */
+    url: string | null;
+  };
+
+  type ReportDetailView = {
+    /** Id */
+    id: string;
+    /** Topic Id */
+    topic_id: string;
+    /** Topic Name */
+    topic_name: string;
+    kind: ReportKind;
+    /** Window Start */
+    window_start: string;
+    /** Window End */
+    window_end: string;
+    /** Version */
+    version: number;
+    generator: ReportGenerator;
+    /** Cutoff At */
+    cutoff_at: string;
+    /** Body Markdown */
+    body_markdown: string;
+    /** Citations */
+    citations: ReportCitationView[];
+  };
+
+  type ReportGenerator = "template" | "model";
+
+  type ReportKind = "daily" | "weekly";
+
+  type ReportSummaryView = {
+    /** Id */
+    id: string;
+    /** Topic Id */
+    topic_id: string;
+    /** Topic Name */
+    topic_name: string;
+    kind: ReportKind;
+    /** Window Start */
+    window_start: string;
+    /** Window End */
+    window_end: string;
+    /** Version */
+    version: number;
+    generator: ReportGenerator;
+  };
 
   type resumeMonitorTopicParams = {
     topic_id: string;

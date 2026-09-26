@@ -34,7 +34,9 @@ export function proxy(request: NextRequest): NextResponse {
   const contentSecurityPolicy = createContentSecurityPolicy(nonce);
   const isProtectedWorkbench =
     request.nextUrl.pathname === "/events" ||
-    request.nextUrl.pathname.startsWith("/events/");
+    request.nextUrl.pathname.startsWith("/events/") ||
+    request.nextUrl.pathname === "/reports" ||
+    request.nextUrl.pathname.startsWith("/reports/");
 
   if (isProtectedWorkbench && !request.cookies.has("hotkey_session")) {
     return setSecurityHeaders(

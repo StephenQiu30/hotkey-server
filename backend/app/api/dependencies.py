@@ -16,6 +16,7 @@ from core.errors import DependencyUnavailableError
 from identity.services import AuthenticatedIdentity, IdentityService
 from jobs.services import JobService
 from monitors.services import MonitorTopicService
+from reports.services import ReportService
 
 
 def get_session(request: Request) -> Generator[Session, None, None]:
@@ -95,6 +96,13 @@ def get_content_service(session: SessionDependency) -> ContentService:
 
 
 ContentServiceDependency = Annotated[ContentService, Depends(get_content_service)]
+
+
+def get_report_service(session: SessionDependency) -> ReportService:
+    return ReportService(session)
+
+
+ReportServiceDependency = Annotated[ReportService, Depends(get_report_service)]
 
 _SESSION_COOKIE = APIKeyCookie(
     name="hotkey_session",

@@ -5,6 +5,7 @@ from api.routers.content_records import router as content_records_router
 from api.routers.health import router as health_router
 from api.routers.identity import router as identity_router
 from api.routers.monitor_topics import router as monitor_topics_router
+from api.routers.reports import router as reports_router
 from api.routers.source_capabilities import router as source_capabilities_router
 from api.routers.source_connections import router as source_connections_router
 
@@ -14,5 +15,6 @@ api_router.include_router(identity_router)
 api_router.include_router(collection_jobs_router)
 api_router.include_router(content_records_router)
 api_router.include_router(monitor_topics_router)
+api_router.include_router(reports_router)
 api_router.include_router(source_capabilities_router)
 api_router.include_router(source_connections_router)

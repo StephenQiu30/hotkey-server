@@ -350,3 +350,30 @@ class ReportView(BaseModel):
     data: DailyReportData
     body_markdown: str
     created_at: datetime
+
+
+class ReportSummaryView(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: UUID
+    topic_id: UUID
+    topic_name: str
+    kind: ReportKind
+    window_start: datetime
+    window_end: datetime
+    version: int
+    generator: ReportGenerator
+
+
+class ReportCitationView(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    citation: str = Field(pattern=r"^c[1-9][0-9]*$")
+    title: str
+    url: str | None
+
+
+class ReportDetailView(ReportSummaryView):
+    cutoff_at: datetime
+    body_markdown: str
+    citations: list[ReportCitationView]

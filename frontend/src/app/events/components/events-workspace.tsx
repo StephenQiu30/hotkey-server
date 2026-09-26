@@ -7,6 +7,7 @@ import {
   FileTextIcon,
   ListChecksIcon,
   LogOutIcon,
+  NewspaperIcon,
   PlusIcon,
   RadioIcon,
   RotateCcwIcon,
@@ -147,7 +148,7 @@ export function EventsWorkspace() {
           <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg font-mono text-xs">
             HK
           </span>
-          <span>HotKey</span>
+          <span className="hidden sm:inline">HotKey</span>
         </Link>
         <div className="flex items-center gap-2">
           <Button
@@ -181,6 +182,17 @@ export function EventsWorkspace() {
             <Link href="/jobs">
               <ListChecksIcon className="sm:hidden" aria-hidden="true" />
               <span className="sr-only sm:not-sr-only">任务记录</span>
+            </Link>
+          </Button>
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="sm:h-11 sm:w-auto sm:px-3 md:h-8 md:px-2.5"
+          >
+            <Link href="/reports">
+              <NewspaperIcon className="sm:hidden" aria-hidden="true" />
+              <span className="sr-only sm:not-sr-only">日报</span>
             </Link>
           </Button>
           <span className="text-muted-foreground hidden text-sm sm:inline">

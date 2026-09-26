@@ -7,6 +7,7 @@ import * as identity from "./identity";
 import * as caijirenwu from "./caijirenwu";
 import * as zuopinziliao from "./zuopinziliao";
 import * as jiankongzhuti from "./jiankongzhuti";
+import * as ribao from "./ribao";
 import * as laiyuannengli from "./laiyuannengli";
 export default {
   xitongzhuangtai,
@@ -14,5 +15,6 @@ export default {
   caijirenwu,
   zuopinziliao,
   jiankongzhuti,
+  ribao,
   laiyuannengli,
 };
