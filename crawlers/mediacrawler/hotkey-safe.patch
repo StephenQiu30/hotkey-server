@@ -1,0 +1,175 @@
+From 8988d5bd9a2a4e11481a91f096d2568da339a8ce Mon Sep 17 00:00:00 2001
+From: HotKey <noreply@hotkey.local>
+Date: Sat, 26 Sep 2026 11:59:39 +0800
+Subject: [PATCH] HotKey safe mode: no stealth, no captcha solving, loopback
+ CDP, slow pacing
+
+---
+ config/base_config.py           | 8 ++++----
+ media_platform/bilibili/core.py | 2 +-
+ media_platform/douyin/core.py   | 4 ++--
+ media_platform/douyin/login.py  | 3 +++
+ media_platform/kuaishou/core.py | 2 +-
+ media_platform/weibo/core.py    | 2 +-
+ media_platform/xhs/core.py      | 2 +-
+ media_platform/zhihu/core.py    | 2 +-
+ tools/browser_launcher.py       | 2 +-
+ 9 files changed, 15 insertions(+), 12 deletions(-)
+
+diff --git a/config/base_config.py b/config/base_config.py
+index cf6823c..1b56351 100644
+--- a/config/base_config.py
++++ b/config/base_config.py
+@@ -80,7 +80,7 @@ BROWSER_LAUNCH_TIMEOUT = 60
+ # 用户需要在 Chrome 中开启远程调试：chrome://inspect/#remote-debugging
+ # 或者使用命令行参数启动 Chrome：--remote-debugging-port=9222
+ # 这种方式反检测效果最好，因为直接使用用户真实浏览器的所有 Cookie、扩展和浏览历史
+-CDP_CONNECT_EXISTING = True
++CDP_CONNECT_EXISTING = False  # HotKey: launch a dedicated profile; never attach to the everyday browser
+ 
+ # 程序结束时是否自动关闭浏览器
+ # 设置为 False 可以保持浏览器运行，方便调试
+@@ -99,7 +99,7 @@ USER_DATA_DIR = "%s_user_data_dir"  # %s will be replaced by platform name
+ START_PAGE = 1
+ 
+ # Control the number of crawled videos/posts
+-CRAWLER_MAX_NOTES_COUNT = 15
++CRAWLER_MAX_NOTES_COUNT = 10  # HotKey: low volume on the owner's own accounts
+ 
+ # Controlling the number of concurrent crawlers
+ MAX_CONCURRENCY_NUM = 1
+@@ -114,7 +114,7 @@ ENABLE_GET_MEDIA = False
+ ENABLE_GET_COMMENTS = True
+ 
+ # Control the number of crawled first-level comments (single video/post)
+-CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 10
++CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 20
+ 
+ # Whether to enable the mode of crawling second-level comments. By default, crawling of second-level comments is not enabled.
+ # If the old version of the project uses db, you need to refer to schema/tables.sql line 287 to add table fields.
+@@ -137,7 +137,7 @@ STOP_WORDS_FILE = "./docs/hit_stopwords.txt"
+ FONT_PATH = "./docs/STZHONGS.TTF"
+ 
+ # Crawl interval
+-CRAWLER_MAX_SLEEP_SEC = 2
++CRAWLER_MAX_SLEEP_SEC = 8  # HotKey: slow, human-scale pacing between requests
+ 
+ # 是否禁用 SSL 证书验证。仅在使用企业代理、Burp Suite、mitmproxy 等会注入自签名证书的中间人代理时设为 True。
+ # 警告：禁用 SSL 验证将使所有流量暴露于中间人攻击风险，请勿在生产环境中开启。
+diff --git a/media_platform/bilibili/core.py b/media_platform/bilibili/core.py
+index b34cfde..fa931d3 100644
+--- a/media_platform/bilibili/core.py
++++ b/media_platform/bilibili/core.py
+@@ -94,7 +94,7 @@ class BilibiliCrawler(AbstractCrawler):
+                 chromium = playwright.chromium
+                 self.browser_context = await self.launch_browser(chromium, None, self.user_agent, headless=config.HEADLESS)
+                 # stealth.min.js is a js script to prevent the website from detecting the crawler.
+-                await self.browser_context.add_init_script(path="libs/stealth.min.js")
++                pass  # HotKey: no anti-detection script injection
+ 
+             self.context_page = await self.browser_context.new_page()
+             await self.context_page.goto(self.index_url)
+diff --git a/media_platform/douyin/core.py b/media_platform/douyin/core.py
+index 10380a6..360fbb5 100644
+--- a/media_platform/douyin/core.py
++++ b/media_platform/douyin/core.py
+@@ -95,7 +95,7 @@ class DouYinCrawler(AbstractCrawler):
+                     headless=config.HEADLESS,
+                 )
+                 # stealth.min.js is a js script to prevent the website from detecting the crawler.
+-                await self.browser_context.add_init_script(path="libs/stealth.min.js")
++                pass  # HotKey: no anti-detection script injection
+ 
+             self.context_page = await self.browser_context.new_page()
+             await self.context_page.goto(self.index_url)
+@@ -378,7 +378,7 @@ class DouYinCrawler(AbstractCrawler):
+             )
+ 
+             # Add anti-detection script
+-            await self.cdp_manager.add_stealth_script()
++            pass  # HotKey: no anti-detection script injection
+ 
+             # Show browser information
+             browser_info = await self.cdp_manager.get_browser_info()
+diff --git a/media_platform/douyin/login.py b/media_platform/douyin/login.py
+index 4b76d11..8e4f2ac 100644
+--- a/media_platform/douyin/login.py
++++ b/media_platform/douyin/login.py
+@@ -180,6 +180,9 @@ class DouYinLogin(AbstractLogin):
+         except PlaywrightTimeoutError:  # No slider verification, return directly
+             return
+ 
++        # HotKey: never solve verification challenges automatically; stop and let the owner decide.
++        utils.logger.error("[DouYinLogin.check_page_display_slider] verification challenge shown; stopping")
++        raise RuntimeError("platform verification challenge shown; automatic solving is disabled")
+         gap_selector = 'xpath=//*[@id="captcha_container"]/div/div[2]/img[2]'
+         max_slider_try_times = 20
+         slider_verify_success = False
+diff --git a/media_platform/kuaishou/core.py b/media_platform/kuaishou/core.py
+index d290689..13b2046 100644
+--- a/media_platform/kuaishou/core.py
++++ b/media_platform/kuaishou/core.py
+@@ -97,7 +97,7 @@ class KuaishouCrawler(AbstractCrawler):
+                     chromium, None, self.user_agent, headless=config.HEADLESS
+                 )
+                 # stealth.min.js is a js script to prevent the website from detecting the crawler.
+-                await self.browser_context.add_init_script(path="libs/stealth.min.js")
++                pass  # HotKey: no anti-detection script injection
+ 
+ 
+             self.context_page = await self.browser_context.new_page()
+diff --git a/media_platform/weibo/core.py b/media_platform/weibo/core.py
+index 6a35056..4e17dcf 100644
+--- a/media_platform/weibo/core.py
++++ b/media_platform/weibo/core.py
+@@ -93,7 +93,7 @@ class WeiboCrawler(AbstractCrawler):
+                 self.browser_context = await self.launch_browser(chromium, None, self.mobile_user_agent, headless=config.HEADLESS)
+ 
+                 # stealth.min.js is a js script to prevent the website from detecting the crawler.
+-                await self.browser_context.add_init_script(path="libs/stealth.min.js")
++                pass  # HotKey: no anti-detection script injection
+ 
+ 
+             self.context_page = await self.browser_context.new_page()
+diff --git a/media_platform/xhs/core.py b/media_platform/xhs/core.py
+index 8110907..95ea704 100644
+--- a/media_platform/xhs/core.py
++++ b/media_platform/xhs/core.py
+@@ -98,7 +98,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
+                     headless=config.HEADLESS,
+                 )
+                 # stealth.min.js is a js script to prevent the website from detecting the crawler.
+-                await self.browser_context.add_init_script(path="libs/stealth.min.js")
++                pass  # HotKey: no anti-detection script injection
+ 
+             self.context_page = await self.browser_context.new_page()
+             await self.context_page.goto(self.index_url)
+diff --git a/media_platform/zhihu/core.py b/media_platform/zhihu/core.py
+index 7b21e3b..c123721 100644
+--- a/media_platform/zhihu/core.py
++++ b/media_platform/zhihu/core.py
+@@ -98,7 +98,7 @@ class ZhihuCrawler(AbstractCrawler):
+                     chromium, None, self.user_agent, headless=config.HEADLESS
+                 )
+                 # stealth.min.js is a js script to prevent the website from detecting the crawler.
+-                await self.browser_context.add_init_script(path="libs/stealth.min.js")
++                pass  # HotKey: no anti-detection script injection
+ 
+             self.context_page = await self.browser_context.new_page()
+             await self.context_page.goto(self.index_url, wait_until="domcontentloaded")
+diff --git a/tools/browser_launcher.py b/tools/browser_launcher.py
+index 6d272bd..48533ac 100644
+--- a/tools/browser_launcher.py
++++ b/tools/browser_launcher.py
+@@ -125,7 +125,7 @@ class BrowserLauncher:
+         args = [
+             browser_path,
+             f"--remote-debugging-port={debug_port}",
+-            "--remote-debugging-address=0.0.0.0",  # Allow remote access
++            "--remote-debugging-address=127.0.0.1",  # HotKey: never expose the logged-in browser
+             "--no-first-run",
+             "--no-default-browser-check",
+             "--disable-background-timer-throttling",
+-- 
+2.54.0 (Apple Git-157)
+

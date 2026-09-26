@@ -37,6 +37,8 @@
 | 顺序 | 卡 | 内容 | 执行方 | 状态 | 备注 |
 |---|---|---|---|---|---|
 | 1 | A5 | HN 竖切真实验收 | Claude | doing | 已跑通搜索、评论、标注；待验 Worker 重启重放 |
+| 2 | P2-3 | RSSHub 热榜采集（微博、百度、知乎、B 站、36Kr、澎湃） | Codex | review | 真实运行 6 榜 180 条、命中 12 条、Codex 判相关 7 条；修复预设配置键 CHECK、拉丁关键词误命中；未提交 |
+| 3 | P2-1 | MediaCrawler 本机部署（安全补丁、独立资料扫码） | Claude | doing | B 站已登录并试采；微博、小红书、抖音待扫码；需核实条数上限 |
 | 1 | A7 | 首轮真实运行发现的问题 | Claude | todo | ①手动重试时 90 秒预算按首次启动计，重试必然零采集；②子进程内确定性异常要等 ~79 秒硬截止才被发现并重试 3 次；③RSSHub 健康检查用了镜像里没有的 wget；④CI runtime 缺 `HOTKEY_SEARXNG_SECRET` |
 | 2 | D2 | 真实 Codex 调用生成模型版日报 | Claude | todo | 代码 `f67c623d` |
 | 2 | D3 | 真实 vault 写入与“我的笔记”保留 | Claude | todo | 代码 `8c9ac156` |
@@ -71,9 +73,9 @@
 
 | 卡 | 内容 | 依赖 | 状态 |
 |---|---|---|---|
-| P2-1 | MediaCrawler 部署（固定提交、容器、登录态存服务端） | P1、你-3 | todo |
+| P2-1 | MediaCrawler 部署（固定提交、安全补丁、独立资料扫码登录） | P1 | doing |
 | P2-2 | `mediacrawler.py`；B 站、微博搜索、评论、楼中楼 | P2-1 | todo |
-| P2-3 | `HOTLIST` 能力 + RSSHub 热榜预设 | P1 | todo |
+| P2-3 | `HOTLIST` 能力 + RSSHub 热榜预设 | P1 | review |
 | P2-4 | 知乎接入方式实测（关闭 OPEN-001-107） | P2-1 | todo |
 | P2-5 | 事件归并（`pg_trgm` 候选 + Codex 确认）与热度 | C2 | todo |
 | P2-6 | 日报事件区块；Obsidian 事件与帖子笔记 | P2-5、D3 | todo |
@@ -95,7 +97,7 @@
 |---|---|---|---|---|
 | 你-1 | 创建飞书群自定义机器人，提供 Webhook（和签名密钥）写入本机环境变量 | 你 | E1 前 | todo |
 | 你-2 | 准备发信邮箱的 SMTP 主机、端口、账号、授权码与收件人 | 你 | E2 前 | todo |
-| 你-3 | 准备 B 站、微博（后续小红书、抖音）采集用小号，用于 MediaCrawler 扫码登录 | 你 | P2-1 前 | todo |
+| 你-3 | 用本人账号在 MediaCrawler 独立资料中扫码登录 B 站、微博、小红书、抖音（用户确认可用本人账号，需低频不触发风控） | 你 | P2-1 | doing（B 站完成） |
 | 你-4 | 注册 Reddit 开发者应用（OAuth） | 你 | P4-3 前 | todo |
 | 你-5 | 决定是否申请 X 官方 API 与月度上限 | 你 | P4 | todo |
 | 运-1 | 新开会话验证 `/codex:rescue` 子代理可启动（DeepSeek 配置已移除） | Claude | 下次会话 | todo |
