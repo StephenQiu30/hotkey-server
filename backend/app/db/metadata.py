@@ -13,6 +13,8 @@ from content.models import (
     ContentVersion,
     ContentVersionRelation,
     ContentVisibilityObservation,
+    HotlistEntryRecord,
+    HotlistSnapshot,
 )
 from db.base import Base
 from evidence.models import (
@@ -69,6 +71,8 @@ __all__ = [
     "EvidenceResource",
     "FollowedAccount",
     "FollowedAccountAlias",
+    "HotlistEntryRecord",
+    "HotlistSnapshot",
     "IdentitySession",
     "IdentityUser",
     "Job",

@@ -119,6 +119,7 @@ def test_scheduler_registers_collection_comments_and_analysis_scans() -> None:
     names = tuple(scan.name for scan in _registered_scheduler_scans())
 
     assert names == (
+        "hotlists",
         "collection",
         "comments",
         "analysis",

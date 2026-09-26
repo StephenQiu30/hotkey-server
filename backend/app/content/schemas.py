@@ -15,6 +15,33 @@ from jobs.schemas import CollectionScanKind
 from sources.contracts import CommentsRequest, SearchRequest, SourceCapability
 
 
+class HotlistSourceView(OutputModel):
+    source_key: str
+    latest_observed_at: datetime | None
+
+
+class HotlistEntryView(OutputModel):
+    rank: int
+    title: str
+    url: str
+    summary: str | None
+    heat: str | None
+    published_at: datetime | None
+    content_id: UUID | None
+    rank_change: Literal["new", "up", "down", "same"]
+    matched: bool
+    matched_topic_names: tuple[str, ...]
+
+
+class HotlistSnapshotView(OutputModel):
+    snapshot_id: UUID
+    source_key: str
+    observed_at: datetime
+    entry_count: int
+    items: tuple[HotlistEntryView, ...]
+    next_cursor: int | None
+
+
 class CommentCollectionRunInput(InputModel):
     """Frozen input for accepting one bounded comments collection job."""
 

@@ -772,7 +772,23 @@ class ReportService:
                       ON discovery_job.owner_id = cd.owner_id
                      AND discovery_job.id = cd.job_id
                     WHERE cd.owner_id = :owner_id
-                      AND discovery_job.configuration_ref = :configuration_ref
+                      AND (
+                          discovery_job.configuration_ref = :configuration_ref
+                          OR (
+                              discovery_job.kind = 'source.hotlist'
+                              AND EXISTS (
+                                  SELECT 1
+                                  FROM hotlist_snapshots AS snapshot
+                                  JOIN hotlist_entries AS entry
+                                    ON entry.owner_id = snapshot.owner_id
+                                   AND entry.snapshot_id = snapshot.id
+                                  WHERE snapshot.owner_id = cd.owner_id
+                                    AND snapshot.job_id = cd.job_id
+                                    AND entry.content_id = cd.content_id
+                                    AND entry.matched_topic_ids ? :topic_id_text
+                              )
+                          )
+                      )
                       AND cd.first_observed_at <= :cutoff_at
                     GROUP BY cd.content_id
                 ),
@@ -847,6 +863,7 @@ class ReportService:
             {
                 "owner_id": owner_id,
                 "topic_id": topic_id,
+                "topic_id_text": str(topic_id),
                 "configuration_ref": f"topic:{topic_id}",
                 "previous_start": window_start - timedelta(days=1),
                 "window_start": window_start,

@@ -128,8 +128,11 @@ class Settings(BaseSettings):
         return value
 
     collection_lookback_seconds: int = Field(default=86_400, ge=0, le=7 * 86_400)
+    hotlist_interval_seconds: int = Field(default=1800, ge=600, le=86_400)
 
     def job_process_execution_timeout_seconds(self, kind: str) -> int:
+        if kind == "source.hotlist":
+            return 60
         if kind in {"keyword.search", "source.comments"}:
             return 90
         if kind in {"analysis.annotate", "report.daily", "report.weekly"}:
@@ -206,7 +209,10 @@ class Settings(BaseSettings):
     def validate_execution_deadlines(self) -> Settings:
         required_lease_seconds = (
             JOB_PROCESS_STARTUP_TIMEOUT_SECONDS
-            + self.job_process_execution_timeout_seconds("webpage.collect")
+            + max(
+                self.job_process_execution_timeout_seconds("webpage.collect"),
+                self.job_process_execution_timeout_seconds("source.hotlist"),
+            )
             + JOB_PROCESS_TERMINATE_GRACE_SECONDS
             + JOB_COMPLETION_MARGIN_SECONDS
         )

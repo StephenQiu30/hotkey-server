@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.base import Base
@@ -88,6 +89,65 @@ class ContentDiscovery(Base):
     job_id: Mapped[UUID]
     first_observed_at: Mapped[datetime]
     created_at: Mapped[datetime]
+
+
+class HotlistSnapshot(Base):
+    __tablename__ = "hotlist_snapshots"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "id", name="hotlist_snapshots_owner_id_key"),
+        UniqueConstraint("owner_id", "job_id", name="hotlist_snapshots_owner_job_key"),
+        ForeignKeyConstraint(
+            ["owner_id", "job_id"],
+            ["jobs.owner_id", "jobs.id"],
+            ondelete="RESTRICT",
+            name="hotlist_snapshots_owner_job_fkey",
+        ),
+        CheckConstraint("source_key ~ '^[a-z][a-z0-9_-]{0,63}$'"),
+        CheckConstraint("entry_count BETWEEN 0 AND 100"),
+        Index("hotlist_snapshots_latest_idx", "owner_id", "source_key", "observed_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID]
+    source_key: Mapped[str] = mapped_column(String(64))
+    job_id: Mapped[UUID]
+    observed_at: Mapped[datetime]
+    entry_count: Mapped[int]
+
+
+class HotlistEntryRecord(Base):
+    __tablename__ = "hotlist_entries"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "snapshot_id"],
+            ["hotlist_snapshots.owner_id", "hotlist_snapshots.id"],
+            ondelete="CASCADE",
+            name="hotlist_entries_owner_snapshot_fkey",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "content_id"],
+            ["content_records.owner_id", "content_records.id"],
+            ondelete="SET NULL",
+            name="hotlist_entries_owner_content_fkey",
+        ),
+        CheckConstraint("rank BETWEEN 1 AND 100"),
+        CheckConstraint("title <> ''"),
+        CheckConstraint("url ~ '^https?://'"),
+        CheckConstraint("jsonb_typeof(matched_topic_names) = 'array'"),
+        CheckConstraint("jsonb_typeof(matched_topic_ids) = 'array'"),
+    )
+
+    snapshot_id: Mapped[UUID] = mapped_column(primary_key=True)
+    rank: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[UUID]
+    title: Mapped[str] = mapped_column(String(2000))
+    url: Mapped[str] = mapped_column(String(2048))
+    summary: Mapped[str | None] = mapped_column(Text)
+    heat: Mapped[str | None] = mapped_column(String(256))
+    published_at: Mapped[datetime | None]
+    content_id: Mapped[UUID | None]
+    matched_topic_names: Mapped[list[str]] = mapped_column(JSONB)
+    matched_topic_ids: Mapped[list[str]] = mapped_column(JSONB)
 
 
 class ContentVersion(Base):

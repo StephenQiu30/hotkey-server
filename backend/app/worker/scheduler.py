@@ -14,7 +14,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from analysis.services import AnalysisService
 from connections.schemas import SourceEntryPoint
-from connections.services import load_applied_source_presets_in_transaction
+from connections.services import (
+    list_applied_hotlist_presets_in_transaction,
+    load_applied_source_presets_in_transaction,
+)
 from content.discovery import plan_scheduled_keyword_discovery
 from content.schemas import KeywordDiscoveryRunInput
 from content.services import CommentScanService
@@ -24,13 +27,16 @@ from core.logging import configure_logging
 # The scheduler is its own process; import the canonical registry to resolve ORM foreign keys.
 from db.metadata import metadata as _registered_metadata  # noqa: F401
 from db.session import create_db_engine, create_session_factory
+from jobs.schemas import JobAcceptanceInput, JobObservationContext
 from jobs.services import JobService, load_job_execution_configuration
 from knowledge.services import KnowledgeExportService
 from monitors.services import DueCollectionSchedule, MonitorScheduleService
 from notifications.services import NotificationService
+from sources.contracts import SourceCapability
 
 SCHEDULER_POLL_SECONDS = 30
 COLLECTION_OPERATION_NAMESPACE = UUID("515944a7-070b-4b27-86a4-bc811109031d")
+HOTLIST_OPERATION_NAMESPACE = UUID("192152b2-b0e8-45dd-88db-9624c920e2e0")
 _COLLECTION_PAGE_SIZE = 100
 _COLLECTION_MAX_PAGES = 3
 _COLLECTION_MAX_REQUESTS = 3
@@ -74,6 +80,52 @@ def collection_operation_id(
 ) -> UUID:
     identity = f"collect:{collection_schedule_id(schedule)}:{_utc_text(window_start)}"
     return uuid5(COLLECTION_OPERATION_NAMESPACE, identity)
+
+
+def hotlist_operation_id(
+    owner_id: UUID, source_key: str, now: datetime, interval_seconds: int
+) -> UUID:
+    if now.tzinfo is None or interval_seconds < 600:
+        raise ValueError("hotlist operation requires an aware time and bounded interval")
+    bucket = int(now.astimezone(UTC).timestamp()) // interval_seconds
+    return uuid5(HOTLIST_OPERATION_NAMESPACE, f"{owner_id}:{source_key}:{bucket}")
+
+
+def enqueue_due_hotlists_in_transaction(session: Session, now: datetime) -> int:
+    if not session.in_transaction() or now.tzinfo is None:
+        raise RuntimeError("hotlist scan requires a transaction and aware time")
+    interval = get_settings().hotlist_interval_seconds
+    scheduled_at = datetime.fromtimestamp(
+        (int(now.astimezone(UTC).timestamp()) // interval) * interval, UTC
+    )
+    accepted = 0
+    for preset in list_applied_hotlist_presets_in_transaction(session):
+        command = JobAcceptanceInput(
+            operation_id=hotlist_operation_id(preset.owner_id, preset.source_key, now, interval),
+            kind="source.hotlist",
+            observation=JobObservationContext(
+                configuration_ref=f"source:{preset.source_key}",
+                configuration_version=preset.connection_version,
+                source_key=preset.source_key,
+                source_capability=SourceCapability.HOTLIST,
+            ),
+            scheduled_for_at=scheduled_at,
+            scope={
+                "connection_id": str(preset.connection_id),
+                "connection_version": preset.connection_version,
+                "interval_seconds": interval,
+            },
+        )
+        service = JobService(session, clock=lambda: now)
+        if service.operation_exists_in_transaction(
+            owner_id=preset.owner_id,
+            kind="source.hotlist",
+            operation_id=command.operation_id,
+        ):
+            continue
+        service.accept_in_transaction(owner_id=preset.owner_id, command=command)
+        accepted += 1
+    return accepted
 
 
 def collection_window_start(
@@ -274,6 +326,7 @@ def _optional_report_scan() -> SchedulerScan | None:
 
 def _registered_scheduler_scans() -> tuple[SchedulerScan, ...]:
     scans = [
+        SchedulerScan(name="hotlists", run_in_transaction=enqueue_due_hotlists_in_transaction),
         SchedulerScan(
             name="collection",
             run_in_transaction=enqueue_due_collections_in_transaction,

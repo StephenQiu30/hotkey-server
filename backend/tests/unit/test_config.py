@@ -94,29 +94,37 @@ def test_job_lease_must_leave_kafka_poll_margin() -> None:
     with pytest.raises(ValidationError, match="Kafka max poll interval"):
         Settings(
             database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
-            job_lease_seconds=60,
-            kafka_max_poll_interval_seconds=64,
+            job_lease_seconds=75,
+            kafka_max_poll_interval_seconds=79,
         )
 
 
-def test_disabled_source_runtimes_do_not_reserve_external_deadline_budget() -> None:
+def test_disabled_webpage_runtimes_still_reserve_hotlist_deadline_budget() -> None:
+    with pytest.raises(ValidationError, match="job lease"):
+        Settings(
+            database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
+            firecrawl_enabled=False,
+            browser_enabled=False,
+            job_lease_seconds=15,
+            kafka_max_poll_interval_seconds=30,
+        )
     settings = Settings(
         database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
         firecrawl_enabled=False,
         browser_enabled=False,
-        job_lease_seconds=15,
-        kafka_max_poll_interval_seconds=30,
+        job_lease_seconds=70,
     )
 
     assert not settings.browser_enabled
     assert settings.job_process_execution_timeout_seconds("webpage.collect") == 5
+    assert settings.job_process_execution_timeout_seconds("source.hotlist") == 60
 
 
 def test_firecrawl_timeout_includes_process_and_finalization_margins() -> None:
     settings = Settings(
         database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
         firecrawl_enabled=True,
-        job_lease_seconds=35,
+        job_lease_seconds=70,
     )
 
     assert settings.job_process_execution_timeout_seconds("webpage.collect") == 25
@@ -124,7 +132,7 @@ def test_firecrawl_timeout_includes_process_and_finalization_margins() -> None:
         Settings(
             database_url="postgresql+psycopg://test:test@127.0.0.1/hotkey_test",
             firecrawl_enabled=True,
-            job_lease_seconds=34,
+            job_lease_seconds=69,
         )
 
 
@@ -133,6 +141,7 @@ def test_firecrawl_timeout_includes_process_and_finalization_margins() -> None:
     [
         ("keyword.search", 90),
         ("source.comments", 90),
+        ("source.hotlist", 60),
         ("analysis.annotate", 600),
         ("report.daily", 600),
         ("report.weekly", 600),

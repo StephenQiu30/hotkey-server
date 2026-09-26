@@ -51,6 +51,7 @@ from jobs.services import (
 )
 from monitors.services import MonitorTopicService, evaluate_monitor_rules
 from sources.contracts import (
+    HotlistPage,
     SourceCapability,
     SourcePage,
     SourcePageState,
@@ -79,6 +80,8 @@ class KeywordRequestMeter:
         deadline_at: datetime,
         lease_seconds: int,
         clock: Callable[[], datetime] | None = None,
+        capability: SourceCapability = SourceCapability.SEARCH,
+        stage: str = _SEARCH_STAGE,
     ) -> None:
         if not 1 <= max_requests <= 100:
             raise ValueError("search request budget must be between 1 and 100")
@@ -96,6 +99,8 @@ class KeywordRequestMeter:
         self._deadline_at = deadline_at
         self._lease_seconds = lease_seconds
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._capability = capability
+        self._stage = stage
         self._started = 0
         self._pending: list[UUID] = []
 
@@ -123,7 +128,7 @@ class KeywordRequestMeter:
                         owner_id=self._owner_id,
                         operation_id=self._operation_id,
                         component_key=self._component_key,
-                        stage=_SEARCH_STAGE,
+                        stage=self._stage,
                         finished_at=now,
                     )
                 require_source_connection_version(
@@ -138,7 +143,7 @@ class KeywordRequestMeter:
                 ).require_admission_ready_in_transaction(
                     owner_id=self._owner_id,
                     source_key=self._source_key,
-                    capability=SourceCapability.SEARCH,
+                    capability=self._capability,
                     data_class=DataClass.STRUCTURED,
                 )
                 if request_sequence >= self._max_requests:
@@ -146,7 +151,7 @@ class KeywordRequestMeter:
                 attempt_id = resource_attempt_id(
                     operation_id=self._operation_id,
                     component_key=self._component_key,
-                    stage=_SEARCH_STAGE,
+                    stage=self._stage,
                     sequence=request_sequence + 1,
                 )
                 decision = budget.reserve_budget_in_transaction(
@@ -172,7 +177,7 @@ class KeywordRequestMeter:
                         operation_id=self._operation_id,
                         component_key=self._component_key,
                         usage_kind=UsageKind.NETWORK_REQUEST,
-                        stage=_SEARCH_STAGE,
+                        stage=self._stage,
                         started_at=now,
                     ),
                 )
@@ -191,7 +196,7 @@ class KeywordRequestMeter:
     def settle_page_in_transaction(
         self,
         *,
-        page: SourcePage,
+        page: SourcePage | HotlistPage,
         owner_id: UUID,
         lease: ExecutionLease,
         operation_id: UUID,

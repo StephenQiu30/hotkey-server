@@ -212,7 +212,8 @@ class MonitorSchedule(Base):
             name="monitor_schedules_source_key_check",
         ),
         CheckConstraint(
-            "capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content')",
+            "capability IN ('search', 'author_posts', 'comments', 'replies', "
+            "'page_content', 'hotlist')",
             name="monitor_schedules_capability_check",
         ),
         CheckConstraint(

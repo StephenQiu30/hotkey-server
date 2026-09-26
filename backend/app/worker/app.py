@@ -22,6 +22,8 @@ from content.collection import (
 )
 from content.comments_execution import CommentsExecutor
 from content.discovery_execution import KeywordDiscoveryExecutor
+from content.hotlist import recover_hotlist_usage_in_transaction
+from content.hotlist_execution import HotlistExecutor
 from core.config import (
     JOB_PROCESS_STARTUP_TIMEOUT_SECONDS,
     JOB_PROCESS_TERMINATE_GRACE_SECONDS,
@@ -452,6 +454,15 @@ def _defer_after_child_exit(
 ) -> NoReturn:
     if message.kind == "notification.send":
         _mark_interrupted_notification(sessions, message=message, now=_now(clock))
+    if message.kind == "source.hotlist" and message.source_key is not None:
+        with sessions() as session, session.begin():
+            recover_hotlist_usage_in_transaction(
+                session,
+                owner_id=message.owner_id,
+                operation_id=message.operation_id,
+                source_key=message.source_key,
+                finished_at=_now(clock),
+            )
     raise MessageDeferredError(
         _lease_retry_time(
             sessions,
@@ -518,6 +529,14 @@ def _finalize_supervised_result(
                     operation_id=message.operation_id,
                     finished_at=finished_at,
                 )
+            if message.kind == "source.hotlist" and message.source_key is not None:
+                recover_hotlist_usage_in_transaction(
+                    session,
+                    owner_id=message.owner_id,
+                    operation_id=message.operation_id,
+                    source_key=message.source_key,
+                    finished_at=finished_at,
+                )
             execution = JobExecutionService(
                 session,
                 lease_seconds=lease_seconds,
@@ -574,6 +593,11 @@ def _registered_job_handlers(
         lease_seconds=settings.job_lease_seconds,
         clock=clock,
     )
+    hotlist_executor = HotlistExecutor(
+        sessions,
+        lease_seconds=settings.job_lease_seconds,
+        clock=clock,
+    )
     analysis_executor = AnalysisAnnotateExecutor(sessions, settings, clock=clock)
     daily_report_executor = DailyReportExecutor(sessions, clock=clock)
     knowledge_executor = KnowledgeExportExecutor(sessions, settings, clock=clock)
@@ -589,6 +613,10 @@ def _registered_job_handlers(
 
     def collect_comments(context: JobExecutionContext) -> JobCompletion:
         context.lease, completion = comments_executor.execute(context.message, context.lease)
+        return completion
+
+    def collect_hotlist(context: JobExecutionContext) -> JobCompletion:
+        context.lease, completion = hotlist_executor.execute(context.message, context.lease)
         return completion
 
     def annotate_content(context: JobExecutionContext) -> JobCompletion:
@@ -637,6 +665,7 @@ def _registered_job_handlers(
         "notification.send": send_notification,
         "report.daily": generate_daily_report,
         "source.comments": collect_comments,
+        "source.hotlist": collect_hotlist,
         "webpage.collect": collect_webpage,
     }
 

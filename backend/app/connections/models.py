@@ -109,7 +109,8 @@ class SourceConnectionVersion(Base):
             name="source_connection_versions_config_object_check",
         ),
         CheckConstraint(
-            "config - 'feed_url_template' - 'base_url' - 'engines' - 'allowed_hosts' = '{}'::jsonb",
+            "config - 'feed_url' - 'feed_url_template' - 'base_url' - 'engines' "
+            "- 'allowed_hosts' = '{}'::jsonb",
             name="source_connection_versions_config_keys_check",
         ),
         Index(
@@ -151,7 +152,8 @@ class SourceCapabilityEvidence(Base):
             name="source_capability_evidence_connection_version_check",
         ),
         CheckConstraint(
-            "capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content')",
+            "capability IN ('search', 'author_posts', 'comments', 'replies', "
+            "'page_content', 'hotlist')",
             name="source_capability_evidence_capability_check",
         ),
         CheckConstraint(

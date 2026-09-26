@@ -2103,6 +2103,22 @@ class JobService:
         with self._session.begin():
             return self.accept_in_transaction(owner_id=owner_id, command=command)
 
+    def operation_exists_in_transaction(
+        self, *, owner_id: UUID, kind: str, operation_id: UUID
+    ) -> bool:
+        if not self._session.in_transaction():
+            raise RuntimeError("operation lookup requires the caller's transaction")
+        return (
+            self._session.scalar(
+                select(Job.id).where(
+                    Job.owner_id == owner_id,
+                    Job.kind == kind,
+                    Job.operation_id == operation_id,
+                )
+            )
+            is not None
+        )
+
     def accept_in_transaction(
         self,
         *,

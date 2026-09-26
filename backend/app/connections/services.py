@@ -67,6 +67,52 @@ class AppliedSourcePreset:
     capabilities: tuple[SourceCapability, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class AppliedHotlistPreset:
+    owner_id: UUID
+    source_key: str
+    connection_id: UUID
+    connection_version: int
+
+
+def list_applied_hotlist_presets_in_transaction(
+    session: Session, *, owner_id: UUID | None = None
+) -> tuple[AppliedHotlistPreset, ...]:
+    if not session.in_transaction():
+        raise RuntimeError("applied hotlist scan requires the caller's transaction")
+    keys = tuple(
+        key
+        for key, preset in SOURCE_PRESETS.items()
+        if any(item.capability is SourceCapability.HOTLIST for item in preset.capabilities)
+    )
+    statement = (
+        select(SourceConnection.owner_id)
+        .where(
+            SourceConnection.source_key.in_(keys),
+            SourceConnection.status == SourceConnectionStatus.ACTIVE.value,
+        )
+        .distinct()
+    )
+    if owner_id is not None:
+        statement = statement.where(SourceConnection.owner_id == owner_id)
+    result: list[AppliedHotlistPreset] = []
+    for current_owner in tuple(session.scalars(statement)):
+        applied = load_applied_source_presets_in_transaction(
+            session, owner_id=current_owner, source_keys=keys
+        )
+        result.extend(
+            AppliedHotlistPreset(
+                owner_id=current_owner,
+                source_key=key,
+                connection_id=preset.connection_id,
+                connection_version=preset.connection_version,
+            )
+            for key, preset in applied.items()
+            if SourceCapability.HOTLIST in preset.capabilities
+        )
+    return tuple(sorted(result, key=lambda item: (item.owner_id, item.source_key)))
+
+
 def load_applied_source_presets_in_transaction(
     session: Session,
     *,

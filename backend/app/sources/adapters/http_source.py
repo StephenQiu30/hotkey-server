@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from sources.adapters.web_targets import normalize_web_host
 from sources.contracts import (
-    SocialSourceCapability,
+    SourceCapability,
     SourceComment,
     SourcePage,
     SourcePageState,
@@ -72,7 +72,7 @@ class HttpSourceAdapter:
     The executor settles usage per page through `SourcePage.request_count`.
     """
 
-    capabilities: ClassVar[frozenset[SocialSourceCapability]]
+    capabilities: ClassVar[frozenset[SourceCapability]]
     adapter_version: ClassVar[str]
 
     def __init__(

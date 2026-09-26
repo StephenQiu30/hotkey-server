@@ -127,6 +127,61 @@ _WEB_SEARCH_POST_FIELD_PURPOSES = MappingProxyType(
 
 _A_TIER_REVIEWED_AT = datetime(2026, 9, 25, tzinfo=UTC)
 
+_HOTLIST_FIELD_PURPOSES = MappingProxyType(
+    {
+        **_RSS_POST_FIELD_PURPOSES,
+    }
+)
+
+_HOTLIST_ROUTES = MappingProxyType(
+    {
+        "hotlist_weibo": "/weibo/search/hot",
+        "hotlist_baidu": "/baidu/top",
+        "hotlist_zhihu": "/zhihu/hot",
+        "hotlist_bilibili": "/bilibili/popular/all",
+        "hotlist_36kr": "/36kr/hot-list",
+        "hotlist_thepaper": "/thepaper/featured",
+    }
+)
+
+
+def _hotlist_preset(source_key: str, route: str) -> SourcePreset:
+    return SourcePreset(
+        source_key=source_key,
+        config=MappingProxyType(
+            {"feed_url": f"http://127.0.0.1:1200{route}", "allowed_hosts": ("127.0.0.1",)}
+        ),
+        capabilities=(
+            SourceCapabilityPreset(
+                capability=SourceCapability.HOTLIST,
+                processing_purpose="保存公开热榜快照并发现命中已配置主题的条目",
+                field_purposes=_HOTLIST_FIELD_PURPOSES,
+            ),
+        ),
+        retention_days=90,
+        component_name=f"collector.{source_key}",
+        component_version="rsshub-hotlist-v1",
+        component_license="AGPL-3.0",
+        component_cost_class="zero_price",
+        component_terms_reference="https://docs.rsshub.app/",
+        access_terms_reference=f"https://docs.rsshub.app{route}",
+        reviewed_at=_A_TIER_REVIEWED_AT,
+        budget=SourceBudgetPreset(
+            budget_key=f"source.{source_key}.network.daily",
+            metric="network_request",
+            scope_kind="source",
+            scope_reference=source_key,
+            limit_units=500,
+            window_seconds=86_400,
+            window_anchor_at=datetime(2026, 1, 1, tzinfo=UTC),
+        ),
+    )
+
+
+HOTLIST_PRESETS: Mapping[str, SourcePreset] = MappingProxyType(
+    {key: _hotlist_preset(key, route) for key, route in _HOTLIST_ROUTES.items()}
+)
+
 HACKERNEWS_PRESET = SourcePreset(
     source_key="hackernews",
     config=MappingProxyType(
@@ -277,7 +332,8 @@ RSS_36KR_PRESET = SourcePreset(
 
 
 SOURCE_PRESETS: Mapping[str, SourcePreset] = MappingProxyType(
-    {
+    dict(HOTLIST_PRESETS)
+    | {
         preset.source_key: preset
         for preset in (
             HACKERNEWS_PRESET,

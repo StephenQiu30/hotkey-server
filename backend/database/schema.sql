@@ -94,7 +94,7 @@ CREATE TABLE monitor_schedules (
         source_key ~ '^[a-z][a-z0-9_-]{0,63}$'
     ),
     capability VARCHAR(32) NOT NULL CHECK (
-        capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content')
+        capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content', 'hotlist')
     ),
     interval_seconds INTEGER NOT NULL CHECK (
         interval_seconds BETWEEN 600 AND 86400
@@ -197,7 +197,8 @@ CREATE TABLE source_connection_versions (
         jsonb_typeof(config) = 'object'
     ),
     CONSTRAINT source_connection_versions_config_keys_check CHECK (
-        config - 'feed_url_template' - 'base_url' - 'engines' - 'allowed_hosts'
+        config - 'feed_url' - 'feed_url_template' - 'base_url' - 'engines'
+            - 'allowed_hosts'
             = '{}'::jsonb
     ),
     CONSTRAINT source_connection_versions_owner_connection_version_key
@@ -223,7 +224,7 @@ CREATE TABLE source_capability_evidence (
     connection_id UUID NOT NULL,
     connection_version INTEGER NOT NULL CHECK (connection_version >= 1),
     capability VARCHAR(32) NOT NULL CHECK (
-        capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content')
+        capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content', 'hotlist')
     ),
     entry_point VARCHAR(16) NOT NULL CHECK (
         entry_point IN ('manual', 'scheduled')
@@ -284,7 +285,7 @@ CREATE TABLE source_access_policies (
     owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
     source_key VARCHAR(64) NOT NULL CHECK (source_key ~ '^[a-z][a-z0-9_-]{0,63}$'),
     capability VARCHAR(32) NOT NULL CHECK (
-        capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content')
+        capability IN ('search', 'author_posts', 'comments', 'replies', 'page_content', 'hotlist')
     ),
     status VARCHAR(16) NOT NULL CHECK (status IN ('pending', 'approved', 'blocked')),
     enabled BOOLEAN NOT NULL DEFAULT false,
@@ -680,7 +681,7 @@ CREATE TABLE jobs (
             AND source_capability IS NOT NULL
             AND source_key ~ '^[a-z][a-z0-9_-]{0,63}$'
             AND source_capability IN (
-                'search', 'author_posts', 'comments', 'replies', 'page_content'
+                'search', 'author_posts', 'comments', 'replies', 'page_content', 'hotlist'
             )
         )
     ),
@@ -900,6 +901,43 @@ CREATE TABLE content_discoveries (
 
 CREATE INDEX content_discoveries_content_idx
     ON content_discoveries (owner_id, content_id);
+
+CREATE TABLE hotlist_snapshots (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    source_key VARCHAR(64) NOT NULL CHECK (source_key ~ '^[a-z][a-z0-9_-]{0,63}$'),
+    job_id UUID NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL,
+    entry_count INTEGER NOT NULL CHECK (entry_count >= 0 AND entry_count <= 100),
+    CONSTRAINT hotlist_snapshots_owner_id_key UNIQUE (owner_id, id),
+    CONSTRAINT hotlist_snapshots_owner_job_key UNIQUE (owner_id, job_id),
+    CONSTRAINT hotlist_snapshots_owner_job_fkey FOREIGN KEY (owner_id, job_id)
+        REFERENCES jobs (owner_id, id) ON DELETE RESTRICT
+);
+
+CREATE INDEX hotlist_snapshots_latest_idx
+    ON hotlist_snapshots (owner_id, source_key, observed_at DESC, id DESC);
+
+CREATE TABLE hotlist_entries (
+    snapshot_id UUID NOT NULL,
+    owner_id UUID NOT NULL,
+    rank INTEGER NOT NULL CHECK (rank BETWEEN 1 AND 100),
+    title VARCHAR(2000) NOT NULL CHECK (title <> ''),
+    url VARCHAR(2048) NOT NULL CHECK (url ~ '^https?://'),
+    summary TEXT,
+    heat VARCHAR(256),
+    published_at TIMESTAMPTZ,
+    content_id UUID,
+    matched_topic_names JSONB NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(matched_topic_names) = 'array'),
+    matched_topic_ids JSONB NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(matched_topic_ids) = 'array'),
+    CONSTRAINT hotlist_entries_snapshot_rank_key PRIMARY KEY (snapshot_id, rank),
+    CONSTRAINT hotlist_entries_owner_snapshot_fkey FOREIGN KEY (owner_id, snapshot_id)
+        REFERENCES hotlist_snapshots (owner_id, id) ON DELETE CASCADE,
+    CONSTRAINT hotlist_entries_owner_content_fkey FOREIGN KEY (owner_id, content_id)
+        REFERENCES content_records (owner_id, id) ON DELETE SET NULL (content_id)
+);
 
 CREATE TABLE content_versions (
     id UUID PRIMARY KEY,

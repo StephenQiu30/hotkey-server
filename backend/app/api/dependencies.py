@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from connections.services import SourceConnectionService
 from content.collection import WebPageCollectionService
+from content.hotlist import HotlistService
 from content.services import ContentService
 from core.errors import DependencyUnavailableError
 from identity.services import AuthenticatedIdentity, IdentityService
@@ -96,6 +97,13 @@ def get_content_service(session: SessionDependency) -> ContentService:
 
 
 ContentServiceDependency = Annotated[ContentService, Depends(get_content_service)]
+
+
+def get_hotlist_service(session: SessionDependency) -> HotlistService:
+    return HotlistService(session)
+
+
+HotlistServiceDependency = Annotated[HotlistService, Depends(get_hotlist_service)]
 
 
 def get_report_service(session: SessionDependency) -> ReportService:

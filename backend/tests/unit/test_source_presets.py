@@ -46,7 +46,11 @@ def _admission_payload_fields(post: SourcePost) -> set[str]:
 def _assert_config_is_allowlisted_and_host_is_covered(preset: SourcePreset) -> None:
     assert set(preset.config) <= set(SourceConnectionConfig.model_fields)
     config = SourceConnectionConfig.model_validate(dict(preset.config))
-    endpoint = config.feed_url_template or (str(config.base_url) if config.base_url else None)
+    endpoint = (
+        config.feed_url
+        or config.feed_url_template
+        or (str(config.base_url) if config.base_url else None)
+    )
     assert endpoint is not None
     hostname = urlsplit(endpoint).hostname
     assert hostname is not None
@@ -91,6 +95,12 @@ def test_hackernews_preset_matches_catalog_and_config_allowlist() -> None:
 
     assert SOURCE_PRESETS["hackernews"] is HACKERNEWS_PRESET
     assert set(SOURCE_PRESETS) == {
+        "hotlist_weibo",
+        "hotlist_baidu",
+        "hotlist_zhihu",
+        "hotlist_bilibili",
+        "hotlist_36kr",
+        "hotlist_thepaper",
         "hackernews",
         "google_news",
         "news_search",
@@ -252,6 +262,12 @@ def test_source_preset_cli_lists_built_in_presets() -> None:
 
     assert result.exit_code == 0, result.output
     assert result.stdout == (
+        "hotlist_weibo; capabilities: hotlist; allowed hosts: 127.0.0.1\n"
+        "hotlist_baidu; capabilities: hotlist; allowed hosts: 127.0.0.1\n"
+        "hotlist_zhihu; capabilities: hotlist; allowed hosts: 127.0.0.1\n"
+        "hotlist_bilibili; capabilities: hotlist; allowed hosts: 127.0.0.1\n"
+        "hotlist_36kr; capabilities: hotlist; allowed hosts: 127.0.0.1\n"
+        "hotlist_thepaper; capabilities: hotlist; allowed hosts: 127.0.0.1\n"
         "hackernews; capabilities: search,comments; allowed hosts: hn.algolia.com\n"
         "google_news; capabilities: search; allowed hosts: news.google.com\n"
         "news_search; capabilities: search; allowed hosts: 127.0.0.1\n"

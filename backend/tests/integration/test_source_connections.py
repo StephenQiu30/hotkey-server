@@ -44,7 +44,8 @@ from sources.contracts import SourceCapability, SourceStopReason
 _BOOTSTRAP_TOKEN = "source-connection-bootstrap-token"
 _PASSWORD = "correct horse battery staple"
 _TRUNCATE = (
-    "TRUNCATE content_version_relations, content_visibility_observations, "
+    "TRUNCATE hotlist_entries, hotlist_snapshots, "
+    "content_version_relations, content_visibility_observations, "
     "content_observations, content_versions, "
     "content_discoveries, content_threads, content_records, "
     "source_capability_evidence, source_connection_versions, source_connections, "
@@ -185,6 +186,12 @@ def test_capability_catalog_requires_session_and_reports_truthful_defaults(
     assert response.json()["next_cursor"] is None
     platforms = response.json()["items"]
     assert [platform["source_key"] for platform in platforms] == [
+        "hotlist_weibo",
+        "hotlist_baidu",
+        "hotlist_zhihu",
+        "hotlist_bilibili",
+        "hotlist_36kr",
+        "hotlist_thepaper",
         "hackernews",
         "google_news",
         "news_search",

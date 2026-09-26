@@ -21,7 +21,8 @@ from sources.contracts import SourceCapability
 _BOOTSTRAP_TOKEN = "monitor-topics-isolated-bootstrap-token"
 _PASSWORD = "correct horse battery staple"
 _TRUNCATE = (
-    "TRUNCATE content_version_relations, content_visibility_observations, "
+    "TRUNCATE hotlist_entries, hotlist_snapshots, "
+    "content_version_relations, content_visibility_observations, "
     "content_observations, content_versions, "
     "content_discoveries, content_threads, content_records, "
     "source_capability_evidence, source_connection_versions, "
@@ -475,3 +476,18 @@ def test_topic_preview_is_local_explainable_and_side_effect_free(
             session.execute(text("SELECT count(*) FROM monitor_topic_versions")).scalar_one() == 0
         )
         assert session.execute(text("SELECT count(*) FROM jobs")).scalar_one() == 0
+
+
+def test_every_builtin_source_preset_applies_against_the_real_schema(
+    monitor_topic_client: TestClient,
+) -> None:
+    """Preset config keys and capabilities must satisfy the database CHECK constraints."""
+    _initialize(monitor_topic_client)
+    factory = monitor_topic_client.app.state.session_factory
+    for preset in SOURCE_PRESETS.values():
+        with factory.begin() as session:
+            owner_id = session.execute(text("SELECT id FROM identity_users")).scalar_one()
+            applied = SourcePresetService(session).apply_in_transaction(
+                owner_id=owner_id, preset=preset
+            )
+        assert applied.source_key == preset.source_key

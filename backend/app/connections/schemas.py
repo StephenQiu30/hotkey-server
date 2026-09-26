@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 from typing import Self
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from pydantic import Field, HttpUrl, field_validator, model_validator
@@ -37,12 +38,13 @@ class SourceConnectionAuthKind(StrEnum):
 
 
 class SourceConnectionConfig(InputModel):
+    feed_url: str | None = Field(default=None, min_length=1, max_length=2048)
     feed_url_template: str | None = Field(default=None, min_length=1, max_length=2048)
     base_url: HttpUrl | None = None
     engines: tuple[str, ...] = Field(default=(), max_length=16)
     allowed_hosts: tuple[str, ...] = Field(default=(), max_length=32)
 
-    @field_validator("feed_url_template")
+    @field_validator("feed_url", "feed_url_template")
     @classmethod
     def validate_feed_url_template(cls, value: str | None) -> str | None:
         if value is not None and (
@@ -72,6 +74,17 @@ class SourceConnectionConfig(InputModel):
 
     @model_validator(mode="after")
     def validate_non_secret_base_url(self) -> Self:
+        if self.feed_url is not None:
+            parsed_feed = urlsplit(self.feed_url)
+            if (
+                parsed_feed.scheme not in {"http", "https"}
+                or parsed_feed.hostname is None
+                or parsed_feed.username is not None
+                or parsed_feed.password is not None
+                or parsed_feed.fragment
+                or parsed_feed.hostname not in self.allowed_hosts
+            ):
+                raise ValueError("feed_url must use an allowed HTTP host without credentials")
         if self.base_url is None:
             return self
         if self.base_url.username is not None or self.base_url.password is not None:

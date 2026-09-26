@@ -85,6 +85,14 @@ class ActiveTopicScan:
     source_keys: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class ActiveHotlistTopic:
+    owner_id: UUID
+    topic_id: UUID
+    name: str
+    rules: NormalizedMonitorRules
+
+
 def scheduled_collection_queries(rules: NormalizedMonitorRules) -> tuple[str, ...]:
     """Keep upstream searches portable while local rules retain final relevance semantics."""
     if rules.match_any:
@@ -273,6 +281,40 @@ class MonitorScheduleService:
                 source_keys=tuple(source_keys),
             )
             for (owner_id, topic_id), (version, source_keys) in grouped.items()
+        )
+
+    def list_active_hotlist_topics_in_transaction(
+        self, *, owner_id: UUID
+    ) -> tuple[ActiveHotlistTopic, ...]:
+        if not self._session.in_transaction():
+            raise RuntimeError("hotlist topic scan requires the caller's transaction")
+        rows = self._session.execute(
+            select(MonitorTopic, MonitorTopicVersion)
+            .join(
+                MonitorTopicVersion,
+                and_(
+                    MonitorTopicVersion.topic_id == MonitorTopic.id,
+                    MonitorTopicVersion.version == MonitorTopic.current_version,
+                ),
+            )
+            .where(
+                MonitorTopic.owner_id == owner_id,
+                MonitorTopic.status == MonitorTopicStatus.ACTIVE.value,
+            )
+            .order_by(MonitorTopic.id)
+        ).all()
+        return tuple(
+            ActiveHotlistTopic(
+                owner_id=owner_id,
+                topic_id=topic.id,
+                name=topic.name,
+                rules=normalize_monitor_rules(
+                    match_any=version.match_any,
+                    match_all=version.match_all,
+                    exclude=version.exclude,
+                ),
+            )
+            for topic, version in rows
         )
 
     def advance_collection_in_transaction(
