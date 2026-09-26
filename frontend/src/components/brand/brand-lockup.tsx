@@ -1,15 +1,20 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
 
 export function BrandMark() {
   return (
-    <span
+    <Image
+      src="/icon.png?v=2"
+      alt=""
       aria-hidden="true"
-      className="bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-lg text-xl font-bold"
-    >
-      见
-    </span>
+      width={44}
+      height={44}
+      loading="eager"
+      unoptimized
+      className="size-11 shrink-0 mix-blend-multiply"
+    />
   );
 }
 
