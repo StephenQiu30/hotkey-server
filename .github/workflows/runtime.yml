@@ -54,6 +54,9 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Create an isolated crawler secret
+        run: echo "HOTKEY_SEARXNG_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
       - name: Validate and build the unique Compose stack
         run: |
           docker compose --project-name hotkey-ci config --quiet
