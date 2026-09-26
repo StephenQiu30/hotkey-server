@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 私密报告安全漏洞
+    url: https://github.com/StephenQiu30/hotkey-server/security/advisories/new
+    about: 请勿在公开 Issue 中披露漏洞或凭据；若入口不可用，先创建不含细节的 Issue 请求私密联系方式。

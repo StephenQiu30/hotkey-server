@@ -2,7 +2,7 @@
 
 遵循根 [AGENTS.md](AGENTS.md)。本项目用于个人学习，技术栈以根 [PROJECT.md](PROJECT.md) 为准：Python/FastAPI/SQLAlchemy 2/PostgreSQL/Redis/Kafka，Web 使用 pnpm/Next.js/shadcn/ui/Radix UI/Tailwind CSS/Axios/ESLint/Prettier。
 
-当前已有规范、规划文档及 backend/frontend 工程。后续实现前，按 [文档模板](docs/TEMPLATE.md) 建立对应设计、需求和计划，说明本次切片与实际验收范围，再实现和验证。新增来源必须给出搜索/详情/评论/回复的独立能力状态、可维护的测试样本和有界分页；不提交真实账号会话、用户隐私或未经核验的第三方代码。
+当前已有规范、统一需求/设计/计划及 backend/frontend 工程。后续实现前，在 [Plan 001](docs/plans/001-热点舆情监控平台总计划.md) 对应任务下说明切片、文件职责和实际验收范围；架构或数据库变化同步更新 [Design 001](docs/design/001-热点舆情监控平台总体设计.md) 与 [PROJECT.md](PROJECT.md)。文档格式见 [模板](docs/TEMPLATE.md)。新增来源必须给出搜索/详情/评论/回复的独立能力状态、可维护的测试样本和有界分页；不提交真实账号会话、用户隐私或未经核验的第三方代码。
 
 每次变更应执行格式、类型、测试、契约及构建检查。涉及数据库/队列必须执行真实服务集成；涉及 UI 执行 Playwright。测试数据只能写入可丢弃测试库。数据库 DDL 只修改 `backend/database/schema.sql`，并与 SQLAlchemy Model 同批验证；禁止使用 metadata.create_all、应用启动建表或其他结构事实源。
 
