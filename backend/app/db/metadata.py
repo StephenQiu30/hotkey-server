@@ -28,6 +28,7 @@ from evidence.models import (
 )
 from identity.models import IdentitySession, IdentityUser
 from jobs.models import (
+    CollectionDueWindow,
     CoverageWindow,
     Job,
     JobAttempt,
@@ -58,6 +59,7 @@ metadata = Base.metadata
 __all__ = [
     "AiCall",
     "CleanupTarget",
+    "CollectionDueWindow",
     "ContentAnnotation",
     "ContentDiscovery",
     "ContentObservation",

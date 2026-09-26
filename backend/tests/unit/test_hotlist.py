@@ -12,7 +12,7 @@ from main import create_app
 from monitors.services import ActiveHotlistTopic, normalize_monitor_rules
 from reports.services import ReportService
 from sources.adapters.rsshub_hotlist import RsshubHotlistAdapter
-from sources.contracts import HotlistEntry, SourceCapability
+from sources.contracts import HotlistEntry, SourceCapability, SourcePageState, SourceStopReason
 from worker import scheduler
 from worker.scheduler import hotlist_operation_id
 
@@ -56,6 +56,23 @@ def test_rsshub_hotlist_rejects_redirect_outside_local_allowlist() -> None:
     page = adapter.fetch_hotlist()
     assert page.stop_reason.value == "access_denied"
     assert len(requested) == 1
+
+
+def test_empty_hotlist_is_a_real_zero_after_one_request() -> None:
+    adapter = RsshubHotlistAdapter(
+        source_key="hotlist_weibo",
+        feed_url="http://127.0.0.1:1200/weibo/search/hot",
+        allowed_hosts=frozenset({"127.0.0.1"}),
+        before_request=lambda _: True,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, content=b"<rss><channel></channel></rss>")
+        ),
+    )
+    page = adapter.fetch_hotlist()
+    assert page.state is SourcePageState.EMPTY
+    assert page.stop_reason is SourceStopReason.SOURCE_EMPTY
+    assert page.items == ()
+    assert page.request_count == 1
 
 
 def test_hotlist_content_uses_observation_time_even_with_feed_pubdate() -> None:

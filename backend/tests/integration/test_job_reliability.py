@@ -70,7 +70,7 @@ def job_context() -> Iterator[JobTestContext]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE hotlist_entries, hotlist_snapshots, "
+                "TRUNCATE collection_due_windows, hotlist_entries, hotlist_snapshots, "
                 "content_version_relations, content_visibility_observations, "
                 "content_observations, content_versions, "
                 "content_discoveries, content_threads, content_records, "
@@ -104,7 +104,7 @@ def job_context() -> Iterator[JobTestContext]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE hotlist_entries, hotlist_snapshots, "
+                    "TRUNCATE collection_due_windows, hotlist_entries, hotlist_snapshots, "
                     "content_version_relations, content_visibility_observations, "
                     "content_observations, content_versions, "
                     "content_discoveries, content_threads, content_records, "

@@ -20,6 +20,15 @@ class HotlistSourceView(OutputModel):
     latest_observed_at: datetime | None
 
 
+class CollectionContentCountView(OutputModel):
+    job_id: UUID
+    observation_count: int = Field(ge=0)
+    ingested_count: int = Field(ge=0)
+    first_ingested_count: int = Field(ge=0)
+    deduplicated_count: int = Field(ge=0)
+    content_version_ids: tuple[UUID, ...]
+
+
 class HotlistEntryView(OutputModel):
     rank: int
     title: str

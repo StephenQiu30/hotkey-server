@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import MappingProxyType
 
+from connections.schemas import SourceExecutionPolicy, SourceQuietWindow
 from sources.contracts import SourceCapability
 
 
@@ -26,6 +27,20 @@ class SourceBudgetPreset:
     window_anchor_at: datetime
 
 
+def _keyword_execution_policy() -> SourceExecutionPolicy:
+    return SourceExecutionPolicy(
+        min_interval_seconds=0,
+        quiet_windows=(),
+        max_queries=128,
+        max_items_per_query=100,
+        max_requests=3,
+        max_seconds=90,
+        hard_timeout_seconds=90,
+        max_concurrency=1,
+        enabled=True,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SourcePreset:
     source_key: str
@@ -40,6 +55,7 @@ class SourcePreset:
     access_terms_reference: str
     reviewed_at: datetime
     budget: SourceBudgetPreset
+    execution_policy: SourceExecutionPolicy = field(default_factory=_keyword_execution_policy)
 
 
 _POST_FIELD_PURPOSES = MappingProxyType(
@@ -175,6 +191,17 @@ def _hotlist_preset(source_key: str, route: str) -> SourcePreset:
             window_seconds=86_400,
             window_anchor_at=datetime(2026, 1, 1, tzinfo=UTC),
         ),
+        execution_policy=SourceExecutionPolicy(
+            min_interval_seconds=1_800,
+            quiet_windows=(),
+            max_queries=1,
+            max_items_per_query=100,
+            max_requests=1,
+            max_seconds=45,
+            hard_timeout_seconds=60,
+            max_concurrency=1,
+            enabled=True,
+        ),
     )
 
 
@@ -218,6 +245,17 @@ BILIBILI_PRESET = SourcePreset(
         limit_units=60,
         window_seconds=86_400,
         window_anchor_at=datetime(2026, 1, 1, tzinfo=UTC),
+    ),
+    execution_policy=SourceExecutionPolicy(
+        min_interval_seconds=21_600,
+        quiet_windows=(SourceQuietWindow(timezone="Asia/Shanghai", start="00:00", end="08:00"),),
+        max_queries=3,
+        max_items_per_query=5,
+        max_requests=26,
+        max_seconds=220,
+        hard_timeout_seconds=240,
+        max_concurrency=1,
+        enabled=True,
     ),
 )
 

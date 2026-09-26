@@ -19,7 +19,7 @@ from jobs.execution import (
     JobLeaseUnavailableError,
     StaleExecutionLeaseError,
 )
-from jobs.schemas import JobFailureCategory, JobMessage, JobStatus
+from jobs.schemas import JobFailureCategory, JobMessage, JobStatus, UsageOutcome
 from jobs.services import load_job_execution_configuration
 from sources.adapters.rsshub_hotlist import RsshubHotlistAdapter
 from sources.contracts import SourceCapability, SourcePageState, SourceStopReason
@@ -157,7 +157,13 @@ class HotlistExecutor:
                 )
                 page = adapter.fetch_hotlist()
                 if page.state in {SourcePageState.STOPPED, SourcePageState.EMPTY}:
-                    meter.fail_pending()
+                    meter.fail_pending(
+                        outcome=(
+                            UsageOutcome.EMPTY
+                            if page.state is SourcePageState.EMPTY
+                            else UsageOutcome.FAILED
+                        )
+                    )
                     assert page.stop_reason is not None
                     if page.stop_reason is SourceStopReason.CANCELLED:
                         return lease, JobCompletion(status=JobStatus.SUCCEEDED)

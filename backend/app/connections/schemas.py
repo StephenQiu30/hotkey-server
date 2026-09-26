@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from enum import StrEnum
 from typing import Self
 from urllib.parse import urlsplit
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, HttpUrl, field_validator, model_validator
+from pydantic import ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 from core.schemas import InputModel, OutputModel
 from sources.adapters.web_targets import normalize_web_host
@@ -35,6 +36,62 @@ class SourceConnectionAuthKind(StrEnum):
     NONE = "none"
     SERVER_CREDENTIAL = "server_credential"
     BROWSER_STATE = "browser_state"
+
+
+class SourceQuietWindow(InputModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    timezone: str = Field(min_length=1, max_length=64)
+    start: str = Field(pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    end: str = Field(pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ValueError, ZoneInfoNotFoundError) as error:
+            raise ValueError("quiet window requires a known timezone") from error
+        return value
+
+    @model_validator(mode="after")
+    def validate_range(self) -> Self:
+        if self.start == self.end:
+            raise ValueError("quiet window cannot span a whole day")
+        return self
+
+    def contains(self, instant: datetime) -> bool:
+        if instant.tzinfo is None:
+            raise ValueError("quiet window instant must be timezone-aware")
+        local = instant.astimezone(ZoneInfo(self.timezone)).time()
+        start = time.fromisoformat(self.start)
+        end = time.fromisoformat(self.end)
+        if start < end:
+            return start <= local < end
+        return local >= start or local < end
+
+
+class SourceExecutionPolicy(InputModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    min_interval_seconds: int = Field(ge=0, le=86_400)
+    quiet_windows: tuple[SourceQuietWindow, ...] = Field(max_length=8)
+    max_queries: int = Field(gt=0, le=128)
+    max_items_per_query: int = Field(gt=0, le=1_000)
+    max_requests: int = Field(gt=0, le=10_000)
+    max_seconds: int = Field(gt=0, le=86_400)
+    hard_timeout_seconds: int = Field(gt=0, le=86_400)
+    max_concurrency: int = Field(gt=0, le=128)
+    enabled: bool
+
+    @model_validator(mode="after")
+    def validate_timeout(self) -> Self:
+        if self.max_seconds > self.hard_timeout_seconds:
+            raise ValueError("max_seconds cannot exceed hard_timeout_seconds")
+        return self
+
+    def quiet_at(self, instant: datetime) -> bool:
+        return any(window.contains(instant) for window in self.quiet_windows)
 
 
 class SourceConnectionConfig(InputModel):

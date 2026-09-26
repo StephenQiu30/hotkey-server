@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircleIcon, SearchCheckIcon } from "lucide-react";
 
@@ -43,10 +43,12 @@ export function TopicRulePreview({
   const router = useRouter();
   const [sampleTitle, setSampleTitle] = useState("");
   const [state, setState] = useState<PreviewState>({ status: "idle" });
+  const submittingRef = useRef(false);
 
   async function handlePreview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     event.stopPropagation();
+    if (submittingRef.current) return;
     const any = parseKeywordLines(matchAny);
     const all = parseKeywordLines(matchAll);
     if (any.length === 0 && all.length === 0) {
@@ -57,6 +59,7 @@ export function TopicRulePreview({
       return;
     }
 
+    submittingRef.current = true;
     setState({ status: "loading" });
     try {
       const preview = await previewMonitorTopic({
@@ -78,11 +81,15 @@ export function TopicRulePreview({
         status: "error",
         message:
           error instanceof ApiRequestError
-            ? error.message
+            ? error.status === 422 && error.details?.[0]
+              ? error.details[0].message
+              : error.message
             : "规则预览失败，请稍后重试。",
         requestId:
           error instanceof ApiRequestError ? error.requestId : undefined,
       });
+    } finally {
+      submittingRef.current = false;
     }
   }
 

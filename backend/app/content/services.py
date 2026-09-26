@@ -37,6 +37,7 @@ from content.models import (
 from content.schemas import (
     AnalysisCommentContentView,
     AnalysisPostContentView,
+    CollectionContentCountView,
     CommentCollectionRunInput,
     ContentDiscoveryView,
     ContentMetricView,
@@ -391,6 +392,62 @@ class ContentService:
     def __init__(self, session: Session, *, clock: Clock | None = None) -> None:
         self._session = session
         self._clock = clock or (lambda: datetime.now(UTC))
+
+    def collection_counts_in_transaction(
+        self, *, owner_id: UUID, job_ids: tuple[UUID, ...]
+    ) -> tuple[CollectionContentCountView, ...]:
+        """Count committed observations and first ingestion by stable source identity."""
+        if not self._session.in_transaction():
+            raise RuntimeError("collection count reads require the caller's transaction")
+        if not job_ids:
+            return ()
+        observations = self._session.scalars(
+            select(ContentObservation).where(
+                ContentObservation.owner_id == owner_id,
+                ContentObservation.job_id.in_(job_ids),
+            )
+        ).all()
+        candidate_ids = {item.content_id for item in observations}
+        first_by_content: dict[UUID, ContentObservation] = {}
+        if candidate_ids:
+            history = self._session.scalars(
+                select(ContentObservation).where(
+                    ContentObservation.owner_id == owner_id,
+                    ContentObservation.content_id.in_(candidate_ids),
+                )
+            ).all()
+            for item in history:
+                previous = first_by_content.get(item.content_id)
+                if previous is None or (item.received_at, item.id) < (
+                    previous.received_at,
+                    previous.id,
+                ):
+                    first_by_content[item.content_id] = item
+        return tuple(
+            CollectionContentCountView(
+                job_id=job_id,
+                observation_count=sum(item.job_id == job_id for item in observations),
+                ingested_count=len(
+                    {item.content_id for item in observations if item.job_id == job_id}
+                ),
+                first_ingested_count=sum(
+                    item.job_id == job_id for item in first_by_content.values()
+                ),
+                deduplicated_count=sum(item.job_id == job_id for item in observations)
+                - sum(item.job_id == job_id for item in first_by_content.values()),
+                content_version_ids=tuple(
+                    sorted(
+                        {
+                            item.content_version_id
+                            for item in observations
+                            if item.job_id == job_id and item.content_version_id is not None
+                        },
+                        key=str,
+                    )
+                ),
+            )
+            for job_id in job_ids
+        )
 
     def require_persisted_document_result(
         self,

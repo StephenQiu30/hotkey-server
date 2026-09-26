@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event
@@ -17,6 +18,7 @@ from typer.testing import CliRunner
 
 from cli.commands import app as cli_app
 from connections.adapters.local_secrets import BrowserStateError, BrowserStateStore
+from connections.presets import SOURCE_PRESETS
 from connections.schemas import (
     ConnectionEvidenceOutcome,
     PersistedReadEvidenceInput,
@@ -29,6 +31,8 @@ from connections.schemas import (
 from connections.services import (
     SourceCapabilityEvidenceService,
     SourceConnectionService,
+    SourcePresetService,
+    load_execution_policy_in_transaction,
     require_browser_state_execution,
     require_source_connection_enabled,
     require_web_connection_execution,
@@ -36,15 +40,24 @@ from connections.services import (
 )
 from core.config import Settings, get_settings
 from core.errors import ApplicationError
-from jobs.schemas import JobAcceptanceInput, JobObservationContext
-from jobs.services import JobService
+from jobs.schemas import (
+    BudgetContext,
+    BudgetDecisionStatus,
+    BudgetMetric,
+    BudgetPolicyInput,
+    BudgetReservationInput,
+    BudgetScopeKind,
+    JobAcceptanceInput,
+    JobObservationContext,
+)
+from jobs.services import JobService, ResourceBudgetService
 from main import create_app
 from sources.contracts import SourceCapability, SourceStopReason
 
 _BOOTSTRAP_TOKEN = "source-connection-bootstrap-token"
 _PASSWORD = "correct horse battery staple"
 _TRUNCATE = (
-    "TRUNCATE hotlist_entries, hotlist_snapshots, "
+    "TRUNCATE collection_due_windows, hotlist_entries, hotlist_snapshots, "
     "content_version_relations, content_visibility_observations, "
     "content_observations, content_versions, "
     "content_discoveries, content_threads, content_records, "
@@ -98,6 +111,185 @@ def _initialize(client: TestClient) -> str:
     )
     assert response.status_code == 201
     return response.json()["user"]["id"]
+
+
+def test_preset_versions_snapshot_policy_and_rolls_back_partial_apply(
+    source_connection_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner_id = UUID(_initialize(source_connection_client))
+    factory = source_connection_client.app.state.session_factory
+    original = SOURCE_PRESETS["hackernews"]
+    from jobs.services import ResourceBudgetService
+
+    def fail_budget(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("injected budget write failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ResourceBudgetService, "save_budget_policy_in_transaction", fail_budget)
+        with pytest.raises(RuntimeError, match="injected budget"), factory.begin() as session:
+            SourcePresetService(session).apply_in_transaction(owner_id=owner_id, preset=original)
+    with factory() as session:
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM source_connections WHERE owner_id = :owner"),
+                {"owner": owner_id},
+            ).scalar_one()
+            == 0
+        )
+    changed = replace(
+        original,
+        execution_policy=original.execution_policy.model_copy(
+            update={"min_interval_seconds": 1_800}
+        ),
+    )
+    with factory.begin() as session:
+        first = SourcePresetService(session).apply_in_transaction(
+            owner_id=owner_id, preset=original
+        )
+    with factory.begin() as session:
+        repeated = SourcePresetService(session).apply_in_transaction(
+            owner_id=owner_id, preset=original
+        )
+    assert repeated.connection_id == first.connection_id
+    assert repeated.connection_version == 1
+    with factory.begin() as session:
+        second = SourcePresetService(session).apply_in_transaction(
+            owner_id=owner_id, preset=changed
+        )
+        old_policy = load_execution_policy_in_transaction(
+            session,
+            owner_id=owner_id,
+            connection_id=first.connection_id,
+            connection_version=1,
+        )
+        new_policy = load_execution_policy_in_transaction(
+            session,
+            owner_id=owner_id,
+            connection_id=first.connection_id,
+            connection_version=2,
+        )
+    assert second.connection_version == 2
+    assert old_policy.min_interval_seconds == 0
+    assert new_policy.min_interval_seconds == 1_800
+
+    retention_query = text(
+        "SELECT r.source_policy_id, r.data_class, r.requested_days "
+        "FROM evidence_retention_policies AS r "
+        "JOIN source_access_policies AS p "
+        "ON p.id = r.source_policy_id AND p.owner_id = r.owner_id "
+        "WHERE r.owner_id = :owner AND p.source_key = :source "
+        "ORDER BY r.source_policy_id, r.data_class"
+    )
+    retention_params = {"owner": owner_id, "source": original.source_key}
+    with factory() as session:
+        retention_before = [
+            tuple(row) for row in session.execute(retention_query, retention_params)
+        ]
+    assert retention_before
+    assert all(row[2] == original.retention_days for row in retention_before)
+
+    monkeypatch.setattr(ResourceBudgetService, "save_budget_policy_in_transaction", fail_budget)
+    broken = replace(changed, retention_days=45)
+    with pytest.raises(RuntimeError, match="injected budget"), factory.begin() as session:
+        SourcePresetService(session).apply_in_transaction(owner_id=owner_id, preset=broken)
+    with factory() as session:
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM source_connection_versions WHERE connection_id = :id"),
+                {"id": first.connection_id},
+            ).scalar_one()
+            == 2
+        )
+        assert [tuple(row) for row in session.execute(retention_query, retention_params)] == (
+            retention_before
+        )
+
+
+def test_public_preset_cli_twice_then_policy_change_keeps_budget_window(
+    source_connection_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner_id = UUID(_initialize(source_connection_client))
+    settings = source_connection_client.app.state.settings
+    monkeypatch.setattr("cli.commands.get_settings", lambda: settings)
+    runner = CliRunner()
+    first = runner.invoke(cli_app, ["sources", "preset", "apply", "hackernews"])
+    repeated = runner.invoke(cli_app, ["sources", "preset", "apply", "hackernews"])
+    assert first.exit_code == repeated.exit_code == 0
+    assert "version: 1" in first.stdout and "version: 1" in repeated.stdout
+    assert "secret" not in first.stdout.lower()
+
+    factory = source_connection_client.app.state.session_factory
+    with factory() as session:
+        budget = ResourceBudgetService(session)
+        budget.save_budget_policy(
+            owner_id=owner_id,
+            command=BudgetPolicyInput(
+                budget_key="global.network.daily",
+                metric=BudgetMetric.NETWORK_REQUEST,
+                scope_kind=BudgetScopeKind.GLOBAL,
+                scope_reference=None,
+                limit_units=10_000,
+                window_seconds=86_400,
+                window_anchor_at=datetime(2026, 1, 1, tzinfo=UTC),
+                enabled=True,
+            ),
+        )
+        reservation = BudgetReservationInput(
+            reservation_id=uuid4(),
+            operation_id=uuid4(),
+            metric=BudgetMetric.NETWORK_REQUEST,
+            requested_units=1_000,
+            context=BudgetContext(source_ref="hackernews", connection_ref="version1"),
+        )
+        assert (
+            budget.reserve_budget(owner_id=owner_id, command=reservation).status
+            is BudgetDecisionStatus.RESERVED
+        )
+        budget.settle_budget_reservation(
+            owner_id=owner_id, reservation_id=reservation.reservation_id, actual_units=1_000
+        )
+
+    original = SOURCE_PRESETS["hackernews"]
+    changed = replace(
+        original,
+        execution_policy=original.execution_policy.model_copy(
+            update={"min_interval_seconds": 1_800}
+        ),
+    )
+    monkeypatch.setattr("cli.commands.SOURCE_PRESETS", {"hackernews": changed})
+    changed_result = runner.invoke(cli_app, ["sources", "preset", "apply", "hackernews"])
+    assert changed_result.exit_code == 0
+    assert "version: 2" in changed_result.stdout
+    assert "secret" not in changed_result.stdout.lower()
+    with factory() as session:
+        budget = ResourceBudgetService(session)
+        delayed = budget.reserve_budget(
+            owner_id=owner_id,
+            command=BudgetReservationInput(
+                reservation_id=uuid4(),
+                operation_id=uuid4(),
+                metric=BudgetMetric.NETWORK_REQUEST,
+                requested_units=1,
+                context=BudgetContext(source_ref="hackernews", connection_ref="version2"),
+            ),
+        )
+        assert delayed.status is BudgetDecisionStatus.DELAYED
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM resource_budget_windows WHERE owner_id = :owner"),
+                {"owner": owner_id},
+            ).scalar_one()
+            == 2
+        )
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM source_connection_versions WHERE owner_id = :owner"),
+                {"owner": owner_id},
+            ).scalar_one()
+            == 2
+        )
 
 
 def _capability(platform: dict[str, object], name: str) -> dict[str, object]:

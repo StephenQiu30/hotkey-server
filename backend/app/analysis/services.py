@@ -28,6 +28,7 @@ from analysis.schemas import (
     AnnotationOutputItem,
     AnnotationStatus,
     AnnotationWrite,
+    WindowAnnotationCountView,
 )
 from content.schemas import AnalysisPostContentView
 from content.services import (
@@ -36,6 +37,7 @@ from content.services import (
     load_recent_post_versions_for_analysis,
 )
 from core.config import Settings
+from jobs.coverage import CollectionDueWindowService
 from jobs.execution import JobCompletion, JobExecutionFailure
 from jobs.schemas import (
     JobAcceptanceInput,
@@ -245,6 +247,74 @@ def analysis_failure(error: AiCallError, *, now: datetime) -> JobExecutionFailur
 class AnalysisService:
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def window_annotation_counts_in_transaction(
+        self,
+        *,
+        owner_id: UUID,
+        topic_id: UUID,
+        topic_rule_version: int,
+        prompt_version: str,
+        content_version_ids: tuple[UUID, ...],
+    ) -> WindowAnnotationCountView:
+        """Separate missing annotations, failed jobs and malformed model output."""
+        if not self._session.in_transaction():
+            raise RuntimeError("annotation count reads require the caller's transaction")
+        if len(set(content_version_ids)) != len(content_version_ids):
+            raise ValueError("content version identities must be distinct")
+        if not content_version_ids:
+            return WindowAnnotationCountView(
+                total_count=0,
+                annotated_count=0,
+                pending_count=0,
+                failed_count=0,
+                abnormal_count=0,
+            )
+        annotations = self._session.scalars(
+            select(ContentAnnotation).where(
+                ContentAnnotation.owner_id == owner_id,
+                ContentAnnotation.topic_id == topic_id,
+                ContentAnnotation.topic_rule_version == topic_rule_version,
+                ContentAnnotation.prompt_version == prompt_version,
+                ContentAnnotation.content_version_id.in_(content_version_ids),
+            )
+        ).all()
+        annotated = {
+            row.content_version_id
+            for row in annotations
+            if row.status == AnnotationStatus.ANNOTATED.value
+        }
+        abnormal = {
+            row.content_version_id
+            for row in annotations
+            if row.status == AnnotationStatus.UNANALYZED.value
+        }
+        failed: set[UUID] = set()
+        for job in CollectionDueWindowService(self._session).list_analysis_jobs_in_transaction(
+            owner_id=owner_id
+        ):
+            if job.status not in {
+                JobStatus.FAILED,
+                JobStatus.PARTIALLY_SUCCEEDED,
+                JobStatus.CANCELLED,
+            }:
+                continue
+            scope = AnalysisJobScope.from_job_scope(job.scope)
+            if (
+                scope.topic_id == topic_id
+                and scope.topic_rule_version == topic_rule_version
+                and scope.prompt_version == prompt_version
+            ):
+                failed.update(set(scope.content_version_ids) & set(content_version_ids))
+        failed.difference_update(annotated | abnormal)
+        pending = set(content_version_ids) - annotated - abnormal - failed
+        return WindowAnnotationCountView(
+            total_count=len(content_version_ids),
+            annotated_count=len(annotated),
+            pending_count=len(pending),
+            failed_count=len(failed),
+            abnormal_count=len(abnormal),
+        )
 
     def enqueue_due_batches_in_transaction(
         self,

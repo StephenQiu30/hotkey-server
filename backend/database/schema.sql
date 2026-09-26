@@ -80,6 +80,10 @@ CREATE TABLE monitor_topic_versions (
     match_any JSONB NOT NULL CHECK (jsonb_typeof(match_any) = 'array'),
     match_all JSONB NOT NULL CHECK (jsonb_typeof(match_all) = 'array'),
     exclude JSONB NOT NULL CHECK (jsonb_typeof(exclude) = 'array'),
+    source_keys JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(source_keys) = 'array'),
+    collection_interval_seconds INTEGER NOT NULL DEFAULT 1800 CHECK (
+        collection_interval_seconds BETWEEN 600 AND 86400
+    ),
     created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (topic_id, version)
 );
@@ -174,6 +178,7 @@ CREATE TABLE source_connection_versions (
     ),
     secret_ref VARCHAR(256),
     config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    execution_policy JSONB,
     created_by UUID NOT NULL REFERENCES identity_users (id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (connection_id, version),
@@ -200,6 +205,16 @@ CREATE TABLE source_connection_versions (
         config - 'feed_url' - 'feed_url_template' - 'base_url' - 'engines'
             - 'allowed_hosts'
             = '{}'::jsonb
+    ),
+    CONSTRAINT source_connection_versions_execution_policy_object_check CHECK (
+        execution_policy IS NULL OR jsonb_typeof(execution_policy) = 'object'
+    ),
+    CONSTRAINT source_connection_versions_execution_policy_keys_check CHECK (
+        execution_policy IS NULL OR
+        execution_policy - 'min_interval_seconds' - 'quiet_windows'
+            - 'max_queries' - 'max_items_per_query' - 'max_requests'
+            - 'max_seconds' - 'hard_timeout_seconds' - 'max_concurrency'
+            - 'enabled' = '{}'::jsonb
     ),
     CONSTRAINT source_connection_versions_owner_connection_version_key
         UNIQUE (owner_id, connection_id, version),
@@ -491,6 +506,11 @@ CREATE TABLE resource_budget_policies (
     CONSTRAINT resource_budget_policies_x_source_check
         CHECK (metric <> 'x_api_usd_micros' OR scope_kind <> 'source' OR scope_reference = 'x')
 );
+
+CREATE UNIQUE INDEX resource_budget_policies_source_window_key
+    ON resource_budget_policies
+        (owner_id, scope_reference, metric, window_seconds, window_anchor_at)
+    WHERE scope_kind = 'source';
 
 CREATE TABLE resource_budget_windows (
     id UUID PRIMARY KEY,
@@ -819,6 +839,58 @@ CREATE TABLE coverage_windows (
         OR (status <> 'partial' AND stop_reason IS NULL)
     )
 );
+
+CREATE TABLE collection_due_windows (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
+    schedule_key UUID NOT NULL,
+    topic_id UUID,
+    source_key VARCHAR(64) NOT NULL CONSTRAINT collection_due_windows_source_check
+        CHECK (source_key ~ '^[a-z][a-z0-9_-]{0,63}$'),
+    capability VARCHAR(32) NOT NULL CONSTRAINT collection_due_windows_capability_check
+        CHECK (capability IN ('search', 'author_posts', 'comments', 'replies',
+                             'page_content', 'hotlist')),
+    due_at TIMESTAMPTZ NOT NULL,
+    window_start TIMESTAMPTZ NOT NULL,
+    window_end TIMESTAMPTZ NOT NULL,
+    connection_version BIGINT CONSTRAINT collection_due_windows_version_check
+        CHECK (connection_version >= 1),
+    policy_snapshot JSONB CONSTRAINT collection_due_windows_policy_object_check
+        CHECK (policy_snapshot IS NULL OR jsonb_typeof(policy_snapshot) = 'object'),
+    admission_state VARCHAR(16) NOT NULL DEFAULT 'pending'
+        CONSTRAINT collection_due_windows_state_check
+        CHECK (admission_state IN ('pending', 'accepted', 'skipped', 'missed')),
+    reason VARCHAR(64),
+    operation_id UUID,
+    job_id UUID,
+    recorded_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT collection_due_windows_owner_schedule_due_key
+        UNIQUE (owner_id, schedule_key, due_at),
+    CONSTRAINT collection_due_windows_owner_topic_fkey
+        FOREIGN KEY (owner_id, topic_id)
+        REFERENCES monitor_topics (owner_id, id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT collection_due_windows_owner_job_fkey
+        FOREIGN KEY (owner_id, job_id)
+        REFERENCES jobs (owner_id, id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT collection_due_windows_range_check
+        CHECK (window_start < window_end AND window_end <= due_at),
+    CONSTRAINT collection_due_windows_admission_pair_check CHECK (
+        (admission_state = 'pending' AND reason IS NULL AND operation_id IS NULL
+            AND job_id IS NULL)
+        OR (admission_state = 'accepted' AND reason IS NULL AND operation_id IS NOT NULL
+            AND job_id IS NOT NULL)
+        OR (admission_state = 'skipped'
+            AND reason IS NOT NULL
+            AND reason IN ('quiet', 'disabled', 'rate_limited', 'budget')
+            AND operation_id IS NULL AND job_id IS NULL)
+        OR (admission_state = 'missed' AND reason IS NOT NULL
+            AND reason = 'scheduler_interrupted'
+            AND operation_id IS NULL AND job_id IS NULL)
+    )
+);
+
+CREATE INDEX collection_due_windows_owner_due_idx
+    ON collection_due_windows (owner_id, due_at);
 
 CREATE TABLE job_stage_attempts (
     id UUID PRIMARY KEY,

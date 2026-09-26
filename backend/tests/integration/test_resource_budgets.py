@@ -73,7 +73,7 @@ def resource_budget_context() -> Iterator[ResourceBudgetContext]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE hotlist_entries, hotlist_snapshots, "
+                "TRUNCATE collection_due_windows, hotlist_entries, hotlist_snapshots, "
                 "resource_budget_reservations, resource_budget_windows, "
                 "resource_budget_policies, resource_usage_attempts, "
                 "resource_component_policies, "
@@ -108,7 +108,7 @@ def resource_budget_context() -> Iterator[ResourceBudgetContext]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE hotlist_entries, hotlist_snapshots, "
+                    "TRUNCATE collection_due_windows, hotlist_entries, hotlist_snapshots, "
                     "resource_budget_reservations, resource_budget_windows, "
                     "resource_budget_policies, resource_usage_attempts, "
                     "resource_component_policies, "
@@ -201,6 +201,59 @@ def _reservation(
             job_ref=job_ref,
         ),
     )
+
+
+def test_request_reservation_and_attempt_roll_back_together(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime.now(UTC))
+    operation_id, attempt_id = uuid4(), uuid4()
+    with resource_budget_context.sessions() as session:
+        service = ResourceBudgetService(session, clock=clock)
+        service.save_component_policy(owner_id=resource_budget_context.owner_id, command=_policy())
+        service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=_budget_policy(clock=clock),
+        )
+    with (
+        resource_budget_context.sessions() as session,
+        pytest.raises(RuntimeError, match="injected metering rollback"),
+        session.begin(),
+    ):
+        service = ResourceBudgetService(session, clock=clock)
+        service.reserve_budget_in_transaction(
+            owner_id=resource_budget_context.owner_id,
+            command=BudgetReservationInput(
+                reservation_id=attempt_id,
+                operation_id=operation_id,
+                metric=BudgetMetric.NETWORK_REQUEST,
+                requested_units=1,
+                context=BudgetContext(source_ref="source-a"),
+            ),
+        )
+        service.begin_attempt_in_transaction(
+            owner_id=resource_budget_context.owner_id,
+            command=_attempt(operation_id=operation_id, attempt_id=attempt_id),
+        )
+        raise RuntimeError("injected metering rollback")
+    with resource_budget_context.sessions() as session:
+        assert (
+            session.scalar(
+                text(
+                    "SELECT count(*) FROM resource_budget_reservations WHERE reservation_id = :id"
+                ),
+                {"id": attempt_id},
+            )
+            == 0
+        )
+        assert (
+            session.scalar(
+                text("SELECT count(*) FROM resource_usage_attempts WHERE attempt_id = :id"),
+                {"id": attempt_id},
+            )
+            == 0
+        )
+        assert session.scalar(text("SELECT count(*) FROM resource_budget_windows")) == 0
 
 
 def test_attempt_is_recorded_before_outcome_and_replay_is_idempotent(
@@ -1247,6 +1300,57 @@ def test_lower_limit_does_not_reset_current_window_and_structure_is_immutable(
 
     assert updated.policy_version == 2
     assert delayed.status is BudgetDecisionStatus.DELAYED
+
+
+def test_source_daily_window_survives_connection_version_change(
+    resource_budget_context: ResourceBudgetContext,
+) -> None:
+    clock = MutableClock(datetime(2026, 9, 21, 12, 0, 10, tzinfo=UTC))
+    source = _budget_policy(
+        clock=clock,
+        budget_key="source.bilibili.network.daily",
+        scope_kind=BudgetScopeKind.SOURCE,
+        scope_reference="bilibili",
+        limit_units=1,
+        window_seconds=86_400,
+    )
+    global_policy = _budget_policy(clock=clock, limit_units=10)
+    with resource_budget_context.sessions() as session:
+        service = ResourceBudgetService(session, clock=clock)
+        service.save_budget_policy(owner_id=resource_budget_context.owner_id, command=global_policy)
+        first = service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id, command=source
+        )
+        reservation = _reservation(source_ref="bilibili", connection_ref="version-1")
+        assert (
+            service.reserve_budget(
+                owner_id=resource_budget_context.owner_id, command=reservation
+            ).status
+            is BudgetDecisionStatus.RESERVED
+        )
+        service.settle_budget_reservation(
+            owner_id=resource_budget_context.owner_id,
+            reservation_id=reservation.reservation_id,
+            actual_units=1,
+        )
+        updated = service.save_budget_policy(
+            owner_id=resource_budget_context.owner_id,
+            command=source.model_copy(update={"limit_units": 1}),
+        )
+        with pytest.raises(BudgetPolicyConflictError):
+            service.save_budget_policy(
+                owner_id=resource_budget_context.owner_id,
+                command=source.model_copy(
+                    update={"budget_key": "source.bilibili.network.version2"}
+                ),
+            )
+        delayed = service.reserve_budget(
+            owner_id=resource_budget_context.owner_id,
+            command=_reservation(source_ref="bilibili", connection_ref="version-2"),
+        )
+    assert updated.id == first.id
+    assert delayed.status is BudgetDecisionStatus.DELAYED
+    assert source.budget_key in delayed.limiting_budget_keys
 
 
 def test_missing_global_budget_fails_closed(

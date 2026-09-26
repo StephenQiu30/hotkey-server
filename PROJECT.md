@@ -196,7 +196,7 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 
 - 只采集公开或获授权的数据；遵守平台频率限制；凭据和登录态只存服务端，不进前端、日志和代码库。
 - 本轮逐来源验收四个关键词来源（HN Algolia、Google News 搜索 RSS、本机 SearXNG 的 `duckduckgo news`、本机 RSSHub `/36kr/newsflashes`）、六个公开 RSSHub 热榜，以及本人账号 B 站试点。B 站使用宿主机 MediaCrawler 子进程和 `~/Desktop/Docker/mediacrawler-start-local/` 的固定补丁记录、独立 CDP 资料；微博等登录平台后续逐项准入。搜索、帖子、评论、热榜分别验收，不以公开热榜代替登录内容。
-- 来源频次、请求与模型调用经来源预设及 037 预算账本设置硬上限；模型仅经本机 Codex app-server，不发付费模型请求。X 仅用官方 API，凭据与月度上限未确认前禁止真实请求。
+- 来源频次、请求与模型调用经来源预设及 037 预算账本设置硬上限。预设执行策略按连接版本存于 `source_connection_versions.execution_policy` 非秘密 JSONB，来源预算按 owner/source/metric/窗口规则保持稳定身份；升版不返还已用额度。`schema.sql` 的新增列仅用于全新空库，保留库先经 051 恢复。模型仅经本机 Codex app-server，不发付费模型请求。X 仅用官方 API，凭据与月度上限未确认前禁止真实请求。
 - 模型适配器归 `ai/adapters/`，供应商可替换。报告中的数字一律由数据库计算，模型只负责判断和写作，正文的数字与链接须通过校验。
 - 外部正文按不可信内容处理：进入模型时放入分隔的数据区，模型输出只接受结构化字段。
 - 复用现有 MinIO。不更换 PostgreSQL 镜像，不引入向量库或搜索引擎（DEC-001-208）。
@@ -211,6 +211,10 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 按 [Plan 索引](docs/plan/README.md) 的单 Issue 推进：计划评审先固定文件/接口/数据/调度/测试与验收合同 → 核对技术依赖和代码漂移 → 失败测试 → 实现 → 回归 → 阶段验收记录。核心契约未定不得列为实施就绪；真实账号/费用/渠道条件仅阻塞对应步骤。架构或数据库变化同步所属Design/Epic、总Design001与本文。
 
 现行逐Issue计划001—057的持久化/任务细则见Design001 §4、子Design及Plan索引：到期窗口与采集周期归jobs，事件事实归events，报告设置唯一读取/写入`monitor_topics.report_time`、`report_timezone`、`weekly_report_enabled`，冻结和导出归reports，不新增`report_schedules`；原始导出归content，告警/投递审计归notifications，账号归monitors，检索投影/回答归knowledge。055—057仅承接共享底座回归/冻结，均不代表产品验收；不创建额外共享层、服务或存储桶。新增router按目标路径独立注册，现有 `/api/v1/reports` 由Plan018统一到 `/api/reports` 并同步生成客户端。新任务硬截止见Design001，真实依赖和保留库恢复仍按既有门槛验证。
+
+Plan 001 的主题采集版本在 `monitor_topic_versions` 固定关键词组、排序后的来源键和主题请求间隔；`monitor_topics` 与 `monitor_schedules` 保存当前投影，既有 Job 的配置版本不随更新重释。只改显示名称或报告/推送偏好不生成采集版本。来源保存须有已应用搜索预设及当前准入/运行策略；恢复还检查可用来源预算，真实采集可用性仍须逐来源验收。
+
+`collection_due_windows` 属于 jobs 的持久到期事实，唯一键为 `(owner_id, schedule_key, due_at)`，允许未受理窗口没有 Job；`coverage_windows`、内容观察、资源尝试和预算账本仍分别保存执行事实。Plan 033 提供领域只读 DTO，Plan 031 才把调度受理写入同一事务，Plan 004 消费查询。
 
 交付前执行后端 Ruff、mypy、pytest、OpenAPI 漂移与客户端生成检查，以及前端 ESLint、Prettier、类型检查、生产构建和浏览器验证。数据库和消息行为用隔离的真实 PostgreSQL/Redis/Kafka 验证。适配器用固定样本做契约测试，并以一次真实请求冒烟；模拟数据不能算采集成功。
 

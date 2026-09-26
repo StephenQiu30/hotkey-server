@@ -220,7 +220,10 @@ class HotlistService:
             renewed = execution.save_checkpoint_in_transaction(
                 lease,
                 sequence=lease.checkpoint_sequence + 1,
-                checkpoint={"snapshot_id": str(snapshot.id)},
+                checkpoint={
+                    "snapshot_id": str(snapshot.id),
+                    "collection.observed_count": len(page.items),
+                },
                 progress=JobProgress(stage=JobStage.SAVE, items_saved=len(page.items)),
             )
         meter.confirm_page(renewed)

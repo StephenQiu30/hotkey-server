@@ -241,8 +241,10 @@ class KeywordRequestMeter:
         self._lease = lease
         self._pending.clear()
 
-    def fail_pending(self) -> None:
-        """Charge attempts after a transport or persistence error."""
+    def fail_pending(self, *, outcome: UsageOutcome = UsageOutcome.FAILED) -> None:
+        """Charge attempts after a transport error or a rejected empty page."""
+        if outcome not in {UsageOutcome.FAILED, UsageOutcome.EMPTY}:
+            raise ValueError("pending source attempts require a failed or empty outcome")
         self._session.rollback()
         with self._session.begin():
             budget = ResourceBudgetService(self._session, clock=self._clock)
@@ -253,7 +255,7 @@ class KeywordRequestMeter:
                 budget.finish_attempt_in_transaction(
                     owner_id=self._owner_id,
                     attempt_id=attempt_id,
-                    outcome=UsageOutcome.FAILED,
+                    outcome=outcome,
                     finished_at=self._clock(),
                 )
         self._pending.clear()
@@ -545,6 +547,7 @@ class KeywordDiscoveryPageCommitService:
                 next_token=page.next_page_token,
                 stop_reason=page.stop_reason,
                 job_progress=JobProgress(stage=JobStage.SAVE, items_saved=saved_items),
+                observed_items=len(page.items),
             )
             if meter is not None:
                 meter.settle_page_in_transaction(

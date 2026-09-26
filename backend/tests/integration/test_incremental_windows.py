@@ -316,6 +316,67 @@ def test_terminal_page_without_range_evidence_stays_partial(
             )
 
 
+def test_second_request_failure_keeps_first_page_and_replay_does_not_increment(
+    window_context: tuple[sessionmaker[Session], UUID, UUID, datetime],
+) -> None:
+    from jobs.schemas import CoverageWindowInput
+    from jobs.services import CoverageWindowService
+
+    sessions, owner_id, job_id, now = window_context
+    window = CoverageWindowInput(
+        owner_id=owner_id,
+        source_key="x",
+        capability=SourceCapability.SEARCH,
+        target_hash=_TARGET_HASH,
+        sort_key=SourceSort.LATEST,
+        rule_version=1,
+        starts_at=now - timedelta(hours=1),
+        ends_at=now,
+    )
+    with sessions() as session:
+        execution = JobExecutionService(session, lease_seconds=30, clock=lambda: now)
+        lease = execution.acquire(job_id=job_id, worker_id="window-test")
+        coverage = CoverageWindowService(session, execution=execution, clock=lambda: now)
+        with session.begin():
+            coverage.begin_in_transaction(lease=lease, window=window)
+            lease = execution.save_checkpoint_in_transaction(
+                lease, sequence=1, checkpoint={"page": 1}
+            )
+            first = coverage.record_page_in_transaction(
+                lease=lease, window=window, page_state=SourcePageState.MORE
+            )
+            replay = coverage.record_page_in_transaction(
+                lease=lease, window=window, page_state=SourcePageState.MORE
+            )
+            assert first.page_count == replay.page_count == 1
+        with session.begin():
+            stopped = coverage.mark_partial_without_page_in_transaction(
+                lease=lease,
+                window=window,
+                stop_reason=SourceStopReason.UPSTREAM_ERROR,
+            )
+            assert stopped.status == "partial"
+            assert stopped.page_count == 1
+        with session.begin():
+            assert session.execute(
+                text(
+                    "SELECT status, stop_reason, page_count FROM coverage_windows "
+                    "WHERE owner_id = :owner_id"
+                ),
+                {"owner_id": owner_id},
+            ).one() == ("partial", "upstream_error", 1)
+            assert (
+                session.scalar(
+                    text("SELECT checkpoint_sequence FROM jobs WHERE id = :job_id"),
+                    {"job_id": job_id},
+                )
+                == 1
+            )
+            assert coverage.confirmed_through(window=window, from_at=window.starts_at) == (
+                window.starts_at
+            )
+
+
 def test_page_and_checkpoint_roll_back_together(
     window_context: tuple[sessionmaker[Session], UUID, UUID, datetime],
 ) -> None:

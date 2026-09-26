@@ -12,6 +12,7 @@ import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldLegend,
@@ -20,35 +21,50 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { type TopicFieldErrors } from "./topic-validation";
 
 export type TopicSourceOption = {
   sourceKey: string;
   displayName: string;
+  selectable: boolean;
+  reason: string;
 };
 
 export function selectableTopicSources(
   platforms: HotKeyAPI.SourcePlatformView[],
   selectedSourceKeys: string[] = [],
 ): TopicSourceOption[] {
-  const available = platforms
-    .filter(
-      (platform) =>
-        platform.connection_status === "active" &&
-        !platform.has_credentials &&
-        platform.capabilities.some(
-          (capability) => capability.capability === "search",
-        ),
-    )
-    .map((platform) => ({
-      sourceKey: platform.source_key,
-      displayName: platform.display_name,
-    }));
+  const available = platforms.flatMap((platform) => {
+    const search = platform.capabilities.find(
+      (capability) => capability.capability === "search",
+    );
+    if (!search) return [];
+    const status = search.scheduled.status;
+    const selectable =
+      platform.connection_status === "active" &&
+      !platform.has_credentials &&
+      (status === "available" || status === "pending_verification");
+    return [
+      {
+        sourceKey: platform.source_key,
+        displayName: platform.display_name,
+        selectable,
+        reason: selectable
+          ? status === "available"
+            ? "已验证；恢复时还会检查预算。"
+            : "预设已应用，待真实采集验证。"
+          : search.scheduled.next_action,
+      },
+    ];
+  });
   const availableKeys = new Set(available.map((source) => source.sourceKey));
   const unavailableSelections = selectedSourceKeys
     .filter((sourceKey) => !availableKeys.has(sourceKey))
     .map((sourceKey) => ({
       sourceKey,
       displayName: `${sourceKey}（当前不可用）`,
+      selectable: false,
+      reason: "当前来源不在搜索能力列表中，请取消选择。",
     }));
   return [...available, ...unavailableSelections];
 }
@@ -66,6 +82,7 @@ type TopicSettingsFieldsProps = {
   notificationTargets: string;
   onNotificationTargetsChange: (value: string) => void;
   disabled: boolean;
+  fieldErrors?: TopicFieldErrors;
 };
 
 export function parseNotificationTargetNames(value: string): string[] {
@@ -92,6 +109,7 @@ export function TopicSettingsFields({
   notificationTargets,
   onNotificationTargetsChange,
   disabled,
+  fieldErrors = {},
 }: TopicSettingsFieldsProps) {
   function toggleSource(sourceKey: string, selected: boolean) {
     onSourceKeysChange(
@@ -115,6 +133,9 @@ export function TopicSettingsFields({
       <CardContent className="flex flex-col gap-6 px-5 sm:px-7">
         <FieldSet disabled={disabled}>
           <FieldLegend variant="label">采集来源</FieldLegend>
+          {fieldErrors.source_keys ? (
+            <FieldError>{fieldErrors.source_keys}</FieldError>
+          ) : null}
           {sourceOptions.length > 0 ? (
             <FieldGroup className="grid gap-2 sm:grid-cols-2">
               {sourceOptions.map((source) => (
@@ -130,29 +151,39 @@ export function TopicSettingsFields({
                     onCheckedChange={(checked) =>
                       toggleSource(source.sourceKey, checked === true)
                     }
-                    disabled={disabled}
+                    disabled={
+                      disabled ||
+                      (!source.selectable &&
+                        !sourceKeys.includes(source.sourceKey))
+                    }
                   />
-                  <FieldLabel
-                    htmlFor={`source-${source.sourceKey}`}
-                    className="font-normal"
-                  >
-                    {source.displayName}
-                    <span className="text-muted-foreground ml-1 font-mono text-xs">
-                      {source.sourceKey}
-                    </span>
-                  </FieldLabel>
+                  <FieldContent>
+                    <FieldLabel
+                      htmlFor={`source-${source.sourceKey}`}
+                      className="font-normal"
+                    >
+                      {source.displayName}
+                      <span className="text-muted-foreground ml-1 font-mono text-xs">
+                        {source.sourceKey}
+                      </span>
+                    </FieldLabel>
+                    <FieldDescription>{source.reason}</FieldDescription>
+                  </FieldContent>
                 </Field>
               ))}
             </FieldGroup>
           ) : (
             <FieldDescription>
-              尚无可选来源。请先在来源能力页应用支持搜索的来源预设。
+              尚无搜索来源。请先在来源能力页应用获准的搜索来源预设。
             </FieldDescription>
           )}
         </FieldSet>
 
         <FieldGroup className="grid gap-5 sm:grid-cols-2">
-          <Field data-disabled={disabled}>
+          <Field
+            data-disabled={disabled}
+            data-invalid={Boolean(fieldErrors.collection_interval_seconds)}
+          >
             <FieldLabel htmlFor="collection-interval">
               采集频率（秒）
             </FieldLabel>
@@ -168,12 +199,19 @@ export function TopicSettingsFields({
               }
               disabled={disabled}
               required
+              aria-invalid={Boolean(fieldErrors.collection_interval_seconds)}
             />
             <FieldDescription>
               允许 600—86400 秒，默认 1800 秒。
             </FieldDescription>
+            {fieldErrors.collection_interval_seconds ? (
+              <FieldError>{fieldErrors.collection_interval_seconds}</FieldError>
+            ) : null}
           </Field>
-          <Field data-disabled={disabled}>
+          <Field
+            data-disabled={disabled}
+            data-invalid={Boolean(fieldErrors.report_time)}
+          >
             <FieldLabel htmlFor="report-time">每日报告时间</FieldLabel>
             <Input
               id="report-time"
@@ -181,9 +219,14 @@ export function TopicSettingsFields({
               value={reportTime}
               onChange={(event) => onReportTimeChange(event.target.value)}
               disabled={disabled}
-              required
+              aria-invalid={Boolean(fieldErrors.report_time)}
             />
-            <FieldDescription>固定使用 Asia/Shanghai 时区。</FieldDescription>
+            <FieldDescription>
+              固定使用 Asia/Shanghai 时区；留空使用 09:00。
+            </FieldDescription>
+            {fieldErrors.report_time ? (
+              <FieldError>{fieldErrors.report_time}</FieldError>
+            ) : null}
           </Field>
         </FieldGroup>
 
@@ -207,7 +250,10 @@ export function TopicSettingsFields({
           />
         </Field>
 
-        <Field data-disabled={disabled}>
+        <Field
+          data-disabled={disabled}
+          data-invalid={Boolean(fieldErrors.notification_target_names)}
+        >
           <FieldLabel htmlFor="notification-targets">推送目标名称</FieldLabel>
           <Textarea
             id="notification-targets"
@@ -218,10 +264,14 @@ export function TopicSettingsFields({
             disabled={disabled}
             maxLength={2579}
             placeholder={"飞书舆情群\n市场日报邮箱"}
+            aria-invalid={Boolean(fieldErrors.notification_target_names)}
           />
           <FieldDescription>
             每行一个名称，最多 20 个；本阶段暂不校验目标是否已经配置。
           </FieldDescription>
+          {fieldErrors.notification_target_names ? (
+            <FieldError>{fieldErrors.notification_target_names}</FieldError>
+          ) : null}
         </Field>
       </CardContent>
     </Card>

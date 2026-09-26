@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon, ArrowRightIcon, LoaderCircleIcon } from "lucide-react";
 
 import { getIdentityWorkspace } from "@/api/identity";
@@ -19,6 +19,12 @@ import {
   TopicSettingsFields,
   type TopicSourceOption,
 } from "@/components/monitors/topic-settings-fields";
+import {
+  readTopicFieldErrors,
+  topicErrorAction,
+  tryBeginTopicSubmission,
+  type TopicFieldErrors,
+} from "@/components/monitors/topic-validation";
 import { PageState } from "@/components/system/page-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +40,7 @@ import {
 import {
   Field,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
@@ -43,6 +50,7 @@ import { ApiRequestError } from "@/request";
 type SubmissionError = {
   message: string;
   requestId?: string;
+  fields?: TopicFieldErrors;
 };
 
 type AccessState =
@@ -59,20 +67,16 @@ function toSubmissionError(error: unknown): SubmissionError {
       return { message: "至少填写一个“任意命中”或“全部包含”关键词。" };
     }
     if (error.code === "source_preset_not_applied") {
-      return { message: "所选来源尚未应用预设，或不支持关键词搜索。" };
+      return { message: "所选来源缺少已应用搜索预设、准入或启用的执行策略。" };
     }
-    return { message: error.message, requestId: error.requestId };
+    return {
+      message: error.message,
+      requestId: error.requestId,
+      fields: readTopicFieldErrors(error),
+    };
   }
   return { message: "主题保存失败，请稍后重试。" };
 }
-
-type ExpectedTopicSettingsInput = {
-  source_keys: string[];
-  collection_interval_seconds: number;
-  report_time: string;
-  weekly_report_enabled: boolean;
-  notification_target_names: string[];
-};
 
 export function TopicForm() {
   const router = useRouter();
@@ -90,6 +94,7 @@ export function TopicForm() {
   const [weeklyReportEnabled, setWeeklyReportEnabled] = useState(false);
   const [notificationTargets, setNotificationTargets] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [submissionError, setSubmissionError] =
     useState<SubmissionError | null>(null);
 
@@ -108,10 +113,7 @@ export function TopicForm() {
         if (!isCurrent) {
           return;
         }
-        if (
-          error instanceof ApiRequestError &&
-          error.code === "invalid_session"
-        ) {
+        if (topicErrorAction(error) === "login") {
           router.replace("/login");
         } else if (error instanceof ApiRequestError) {
           setAccessState({
@@ -133,7 +135,7 @@ export function TopicForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isSubmitting) {
+    if (!tryBeginTopicSubmission(submittingRef)) {
       return;
     }
     const any = parseKeywordLines(matchAny);
@@ -141,7 +143,9 @@ export function TopicForm() {
     if (any.length === 0 && all.length === 0) {
       setSubmissionError({
         message: "至少填写一个“任意命中”或“全部包含”关键词。",
+        fields: { match_any: "至少填写一个包含关键词。" },
       });
+      submittingRef.current = false;
       return;
     }
     const targetNames = parseNotificationTargetNames(notificationTargets);
@@ -152,7 +156,11 @@ export function TopicForm() {
     ) {
       setSubmissionError({
         message: "采集频率必须是 600—86400 之间的整数秒。",
+        fields: {
+          collection_interval_seconds: "请输入 600—86400 之间的整数秒。",
+        },
       });
+      submittingRef.current = false;
       return;
     }
     if (
@@ -162,21 +170,21 @@ export function TopicForm() {
       setSubmissionError({
         message: "推送目标最多 20 个，每个名称不超过 128 个字符。",
       });
+      submittingRef.current = false;
       return;
     }
 
     setIsSubmitting(true);
     setSubmissionError(null);
     try {
-      const payload: HotKeyAPI.MonitorTopicCreateInput &
-        ExpectedTopicSettingsInput = {
+      const payload: HotKeyAPI.MonitorTopicCreateInput = {
         name,
         match_any: any,
         match_all: all,
         exclude: parseKeywordLines(exclude),
         source_keys: sourceKeys,
         collection_interval_seconds: collectionIntervalSeconds,
-        report_time: reportTime,
+        report_time: reportTime || "09:00",
         weekly_report_enabled: weeklyReportEnabled,
         notification_target_names: targetNames,
       };
@@ -184,15 +192,13 @@ export function TopicForm() {
       router.replace(`/monitors/${topic.id}`);
       router.refresh();
     } catch (error) {
-      if (
-        error instanceof ApiRequestError &&
-        error.code === "invalid_session"
-      ) {
+      if (topicErrorAction(error) === "login") {
         router.replace("/login");
       } else {
         setSubmissionError(toSubmissionError(error));
       }
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -243,7 +249,7 @@ export function TopicForm() {
           新建主题
         </h1>
         <p className="text-muted-foreground mt-3 max-w-2xl text-sm leading-6">
-          先保存可解释的本地规则。来源尚未选择，主题会保持暂停；保存不会发起采集。
+          先保存可解释的本地规则。新主题保持暂停；保存不会发起采集。
         </p>
 
         <form
@@ -253,7 +259,10 @@ export function TopicForm() {
           <div className="flex flex-col gap-8 lg:col-span-2">
             <Card className="bg-muted rounded-2xl py-5 sm:py-7">
               <CardContent className="px-5 sm:px-7">
-                <Field data-disabled={isSubmitting}>
+                <Field
+                  data-disabled={isSubmitting}
+                  data-invalid={Boolean(submissionError?.fields?.name)}
+                >
                   <FieldLabel htmlFor="topic-name">主题名称</FieldLabel>
                   <Input
                     id="topic-name"
@@ -263,12 +272,16 @@ export function TopicForm() {
                     minLength={1}
                     maxLength={80}
                     required
+                    aria-invalid={Boolean(submissionError?.fields?.name)}
                     autoFocus
                     placeholder="例如：品牌召回"
                   />
                   <FieldDescription>
-                    名称用于辨认主题，允许重名；规则变化才会生成新版本。
+                    名称用于辨认主题，允许重名；采集规则或来源设置变化才会生成新版本。
                   </FieldDescription>
+                  {submissionError?.fields?.name ? (
+                    <FieldError>{submissionError.fields.name}</FieldError>
+                  ) : null}
                 </Field>
               </CardContent>
             </Card>
@@ -289,6 +302,7 @@ export function TopicForm() {
                     value={matchAny}
                     onChange={setMatchAny}
                     disabled={isSubmitting}
+                    error={submissionError?.fields?.match_any}
                   />
                   <KeywordGroupField
                     id="match-all"
@@ -297,6 +311,7 @@ export function TopicForm() {
                     value={matchAll}
                     onChange={setMatchAll}
                     disabled={isSubmitting}
+                    error={submissionError?.fields?.match_all}
                   />
                   <KeywordGroupField
                     id="exclude"
@@ -305,6 +320,7 @@ export function TopicForm() {
                     value={exclude}
                     onChange={setExclude}
                     disabled={isSubmitting}
+                    error={submissionError?.fields?.exclude}
                   />
                 </FieldGroup>
               </CardContent>
@@ -323,6 +339,7 @@ export function TopicForm() {
               notificationTargets={notificationTargets}
               onNotificationTargetsChange={setNotificationTargets}
               disabled={isSubmitting}
+              fieldErrors={submissionError?.fields}
             />
           </div>
 

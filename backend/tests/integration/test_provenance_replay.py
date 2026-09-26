@@ -49,7 +49,7 @@ def provenance_context() -> Iterator[ProvenanceContext]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE hotlist_entries, hotlist_snapshots, "
+                "TRUNCATE collection_due_windows, hotlist_entries, hotlist_snapshots, "
                 "content_version_relations, content_visibility_observations, "
                 "content_observations, content_versions, "
                 "content_discoveries, content_threads, content_records, "
@@ -86,12 +86,13 @@ def provenance_context() -> Iterator[ProvenanceContext]:
                 "policy_version, created_at, updated_at) VALUES "
                 "(:policy_id, :owner_id, 'manual', 'search', 'approved', true, "
                 "'manual_import', 'test-fixture', 'provenance test', 'fixture', '1', "
-                "'project-internal', '{\"external_id\": \"stable identity\"}'::jsonb, "
+                "'project-internal', CAST(:field_purposes AS jsonb), "
                 ":now, :review_expires_at, 1, :now, :now)"
             ),
             {
                 "owner_id": owner_id,
                 "policy_id": policy_id,
+                "field_purposes": '{"external_id": "stable identity"}',
                 "now": now,
                 "review_expires_at": now + timedelta(days=31),
             },
@@ -161,7 +162,7 @@ def provenance_context() -> Iterator[ProvenanceContext]:
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE hotlist_entries, hotlist_snapshots, "
+                    "TRUNCATE collection_due_windows, hotlist_entries, hotlist_snapshots, "
                     "content_version_relations, content_visibility_observations, "
                     "content_observations, content_versions, "
                     "content_discoveries, content_threads, content_records, "

@@ -542,6 +542,7 @@ class CommentPageCommitService:
                 stop_reason=page.stop_reason,
                 evidence=terminal_evidence,
                 job_progress=JobProgress(stage=JobStage.SAVE, items_saved=saved_items),
+                observed_items=len(page.items),
             )
             if meter is not None:
                 meter.settle_page_in_transaction(

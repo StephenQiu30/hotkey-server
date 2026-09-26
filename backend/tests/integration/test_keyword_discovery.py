@@ -21,6 +21,7 @@ from content.discovery import (
 from content.discovery_execution import KeywordDiscoveryExecutor
 from content.models import ContentDiscovery, ContentRecord
 from content.schemas import KeywordDiscoveryRunInput
+from content.services import ContentService
 from core.errors import ApplicationError
 from jobs.cursor import plan_cursor_request
 from jobs.execution import (
@@ -814,6 +815,7 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
             )
             assert first.saved_items == 2
             assert first.filtered_items == 4
+            assert first.lease.checkpoint["collection.observed_count"] == 6
             topic_job = session.get(Job, latest_id)
             assert topic_job is not None
             assert topic_job.scope["relevance_filter_position"] == "local"
@@ -1082,6 +1084,16 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
             assert {item.job_id for item in discoveries} == {latest_id, top_id}
             assert session.get(Job, latest_id).items_saved == 3
             assert session.get(Job, top_id).items_saved == 2
+            assert session.get(Job, latest_id).checkpoint["collection.observed_count"] == 10
+            assert session.get(Job, top_id).checkpoint["collection.observed_count"] == 2
+            counts = ContentService(session).collection_counts_in_transaction(
+                owner_id=owner_id, job_ids=(latest_id, top_id)
+            )
+            assert sum(item.first_ingested_count for item in counts) == 4
+            assert (
+                sum(item.deduplicated_count for item in counts)
+                == sum(item.observation_count for item in counts) - 4
+            )
             assert "cursor-1" not in json.dumps(session.get(Job, latest_id).checkpoint)
             top_coverage = session.scalar(
                 select(CoverageWindow).where(

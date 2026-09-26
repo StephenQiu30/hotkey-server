@@ -18,7 +18,7 @@ from main import create_app
 _BOOTSTRAP_TOKEN = "bootstrap-token-used-only-by-the-isolated-test"
 _PASSWORD = "correct horse battery staple"
 _TRUNCATE = (
-    "TRUNCATE hotlist_entries, hotlist_snapshots, "
+    "TRUNCATE collection_due_windows, hotlist_entries, hotlist_snapshots, "
     "content_version_relations, content_visibility_observations, "
     "content_observations, content_versions, "
     "content_discoveries, content_threads, content_records, "

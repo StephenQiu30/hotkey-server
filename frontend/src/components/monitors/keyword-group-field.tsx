@@ -1,8 +1,14 @@
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 
 type KeywordGroupFieldProps = {
   description: string;
+  error?: string;
   disabled?: boolean;
   id: string;
   label: string;
@@ -19,6 +25,7 @@ export function parseKeywordLines(value: string): string[] {
 
 export function KeywordGroupField({
   description,
+  error,
   disabled = false,
   id,
   label,
@@ -28,7 +35,7 @@ export function KeywordGroupField({
   const count = parseKeywordLines(value).length;
 
   return (
-    <Field data-disabled={disabled}>
+    <Field data-disabled={disabled} data-invalid={Boolean(error)}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Textarea
         id={id}
@@ -39,10 +46,12 @@ export function KeywordGroupField({
         maxLength={5_000}
         placeholder="每行一个关键词"
         aria-describedby={`${id}-description`}
+        aria-invalid={Boolean(error)}
       />
       <FieldDescription id={`${id}-description`}>
         {description} 当前 {count}/50 个关键词。
       </FieldDescription>
+      {error ? <FieldError>{error}</FieldError> : null}
     </Field>
   );
 }

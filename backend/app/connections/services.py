@@ -35,6 +35,7 @@ from connections.schemas import (
     SourceConnectionView,
     SourceEntryPoint,
     SourceEntryPointView,
+    SourceExecutionPolicy,
     SourcePlatformStatus,
     SourcePlatformView,
     SourcePresetApplyView,
@@ -156,6 +157,7 @@ def load_applied_source_presets_in_transaction(
             version.auth_kind != SourceConnectionAuthKind.NONE.value
             or version.secret_ref is not None
             or version.config != expected_config
+            or version.execution_policy != preset.execution_policy.model_dump(mode="json")
         ):
             continue
         applied[connection.source_key] = AppliedSourcePreset(
@@ -165,6 +167,27 @@ def load_applied_source_presets_in_transaction(
             capabilities=tuple(item.capability for item in preset.capabilities),
         )
     return applied
+
+
+def load_execution_policy_in_transaction(
+    session: Session, *, owner_id: UUID, connection_id: UUID, connection_version: int
+) -> SourceExecutionPolicy:
+    """Read an immutable policy snapshot; current safety suspension is checked separately."""
+    if not session.in_transaction():
+        raise RuntimeError("execution policy lookup requires the caller's transaction")
+    version = session.scalar(
+        select(SourceConnectionVersion)
+        .join(SourceConnection, SourceConnection.id == SourceConnectionVersion.connection_id)
+        .where(
+            SourceConnection.owner_id == owner_id,
+            SourceConnection.id == connection_id,
+            SourceConnectionVersion.owner_id == owner_id,
+            SourceConnectionVersion.version == connection_version,
+        )
+    )
+    if version is None or version.execution_policy is None:
+        raise ApplicationError("resource_not_found")
+    return SourceExecutionPolicy.model_validate(version.execution_policy)
 
 
 @dataclass(frozen=True, slots=True)
@@ -478,6 +501,8 @@ class SourcePresetService:
         preset: SourcePreset,
     ) -> SourcePresetApplyView:
         """Apply one complete source preset inside the caller's transaction."""
+        if not self._session.in_transaction():
+            raise RuntimeError("source preset apply requires the caller's transaction")
         catalog = next(
             (item for item in SOURCE_CATALOG if item.source_key == preset.source_key), None
         )
@@ -498,6 +523,18 @@ class SourcePresetService:
         )
         if not config.get("allowed_hosts"):
             raise ValueError("source preset requires at least one allowed host")
+        policy = SourceExecutionPolicy.model_validate(preset.execution_policy.model_dump())
+        policy_snapshot = policy.model_dump(mode="json")
+        connection = self._session.scalar(
+            select(SourceConnection)
+            .where(
+                SourceConnection.owner_id == owner_id,
+                SourceConnection.source_key == preset.source_key,
+            )
+            .with_for_update()
+        )
+        if connection is not None and connection.status == SourceConnectionStatus.DISABLED.value:
+            raise ApplicationError("connection_disabled")
 
         preset_changed = False
         access_service = SourceAccessPolicyService(self._session, clock=self._clock)
@@ -569,14 +606,6 @@ class SourcePresetService:
         )
         resources.save_budget_policy_in_transaction(owner_id=owner_id, command=budget_command)
 
-        connection = self._session.scalar(
-            select(SourceConnection)
-            .where(
-                SourceConnection.owner_id == owner_id,
-                SourceConnection.source_key == preset.source_key,
-            )
-            .with_for_update()
-        )
         if connection is None:
             connection = SourceConnection(
                 id=uuid4(),
@@ -596,6 +625,7 @@ class SourcePresetService:
                     auth_kind=SourceConnectionAuthKind.NONE.value,
                     secret_ref=None,
                     config=config,
+                    execution_policy=policy_snapshot,
                     created_by=owner_id,
                     created_at=now,
                 )
@@ -607,10 +637,10 @@ class SourcePresetService:
             if current is None:
                 raise RuntimeError("current connection version is not visible")
             connection_changed = (
-                connection.status != SourceConnectionStatus.ACTIVE.value
-                or current.auth_kind != SourceConnectionAuthKind.NONE.value
+                current.auth_kind != SourceConnectionAuthKind.NONE.value
                 or current.secret_ref is not None
                 or current.config != config
+                or current.execution_policy != policy_snapshot
             )
             if preset_changed or connection_changed:
                 connection.current_version += 1
@@ -624,6 +654,7 @@ class SourcePresetService:
                         auth_kind=SourceConnectionAuthKind.NONE.value,
                         secret_ref=None,
                         config=config,
+                        execution_policy=policy_snapshot,
                         created_by=owner_id,
                         created_at=now,
                     )
@@ -710,6 +741,7 @@ class SourceConnectionService:
                             auth_kind=catalog.auth_kind.value,
                             secret_ref=secret_ref,
                             config=config,
+                            execution_policy=None,
                             created_by=owner_id,
                             created_at=now,
                         )
@@ -775,6 +807,7 @@ class SourceConnectionService:
                         auth_kind=target_auth_kind.value,
                         secret_ref=target_ref,
                         config=target_config,
+                        execution_policy=previous.execution_policy,
                         created_by=owner_id,
                         created_at=now,
                     )
@@ -840,6 +873,7 @@ class SourceConnectionService:
                     auth_kind=SourceConnectionAuthKind.BROWSER_STATE.value,
                     secret_ref=reference,
                     config=dict(previous.config),
+                    execution_policy=previous.execution_policy,
                     created_by=owner_id,
                     created_at=now,
                 )
@@ -874,6 +908,7 @@ class SourceConnectionService:
                     auth_kind=SourceConnectionAuthKind.BROWSER_STATE.value,
                     secret_ref=BrowserStateStore.reference(owner_id, connection_id, new_version),
                     config=dict(previous.config),
+                    execution_policy=previous.execution_policy,
                     created_by=owner_id,
                     created_at=now,
                 )

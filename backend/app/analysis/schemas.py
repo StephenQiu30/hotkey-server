@@ -19,6 +19,16 @@ class AnnotationStatus(StrEnum):
     UNANALYZED = "unanalyzed"
 
 
+class WindowAnnotationCountView(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    total_count: int = Field(ge=0)
+    annotated_count: int = Field(ge=0)
+    pending_count: int = Field(ge=0)
+    failed_count: int = Field(ge=0)
+    abnormal_count: int = Field(ge=0)
+
+
 class AnalysisPromptItem(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

@@ -25,7 +25,7 @@ from sources.contracts import SourceCapability
 _BOOTSTRAP_TOKEN = "monitor-topics-isolated-bootstrap-token"
 _PASSWORD = "correct horse battery staple"
 _TRUNCATE = (
-    "TRUNCATE hotlist_entries, hotlist_snapshots, "
+    "TRUNCATE collection_due_windows, hotlist_entries, hotlist_snapshots, "
     "content_version_relations, content_visibility_observations, "
     "content_observations, content_versions, "
     "content_discoveries, content_threads, content_records, "
@@ -180,6 +180,173 @@ def test_stale_topic_edit_conflicts_without_partial_version(
             ).scalar_one()
             == 2
         )
+
+
+def test_source_and_interval_changes_create_immutable_topic_snapshots(
+    monitor_topic_client: TestClient,
+) -> None:
+    _initialize(monitor_topic_client)
+    factory = monitor_topic_client.app.state.session_factory
+    with factory.begin() as session:
+        owner_id = session.execute(text("SELECT id FROM identity_users")).scalar_one()
+        SourcePresetService(session).apply_in_transaction(
+            owner_id=owner_id, preset=SOURCE_PRESETS["hackernews"]
+        )
+    created = monitor_topic_client.post(
+        "/api/topics", headers=_csrf_headers(monitor_topic_client), json=_topic_payload()
+    )
+    location = created.headers["location"]
+    updated = monitor_topic_client.patch(
+        location,
+        headers=_csrf_headers(monitor_topic_client),
+        json={
+            **_topic_payload(),
+            "expected_version": 1,
+            "source_keys": ["hackernews"],
+            "collection_interval_seconds": 600,
+        },
+    )
+    assert updated.status_code == 200, updated.json()
+    assert updated.json()["current_version"] == 2
+    assert updated.json()["source_keys"] == ["hackernews"]
+    assert updated.json()["collection_interval_seconds"] == 600
+    with factory() as session:
+        versions = session.execute(
+            text(
+                "SELECT version, source_keys, collection_interval_seconds "
+                "FROM monitor_topic_versions WHERE topic_id = :id ORDER BY version"
+            ),
+            {"id": created.json()["id"]},
+        ).all()
+    assert versions == [(1, [], 1800), (2, ["hackernews"], 600)]
+    stale = monitor_topic_client.patch(
+        location,
+        headers=_csrf_headers(monitor_topic_client),
+        json={**_topic_payload(), "expected_version": 1},
+    )
+    assert stale.status_code == 409
+    assert monitor_topic_client.get(location).json() == updated.json()
+
+
+def test_unapplied_search_source_cannot_be_selected_or_resumed(
+    monitor_topic_client: TestClient,
+) -> None:
+    _initialize(monitor_topic_client)
+    rejected = monitor_topic_client.post(
+        "/api/topics",
+        headers=_csrf_headers(monitor_topic_client),
+        json={**_topic_payload(), "source_keys": ["hackernews"]},
+    )
+    assert rejected.status_code == 409
+    assert rejected.json()["code"] == "source_preset_not_applied"
+    with monitor_topic_client.app.state.session_factory() as session:
+        assert session.execute(text("SELECT count(*) FROM monitor_topics")).scalar_one() == 0
+
+
+def test_source_selection_rejects_revoked_access_policy(
+    monitor_topic_client: TestClient,
+) -> None:
+    _initialize(monitor_topic_client)
+    factory = monitor_topic_client.app.state.session_factory
+    with factory.begin() as session:
+        owner_id = session.execute(text("SELECT id FROM identity_users")).scalar_one()
+        SourcePresetService(session).apply_in_transaction(
+            owner_id=owner_id, preset=SOURCE_PRESETS["hackernews"]
+        )
+        session.execute(
+            text(
+                "UPDATE source_access_policies SET enabled = false "
+                "WHERE owner_id = :owner_id AND source_key = 'hackernews' "
+                "AND capability = 'search'"
+            ),
+            {"owner_id": owner_id},
+        )
+    rejected = monitor_topic_client.post(
+        "/api/topics",
+        headers=_csrf_headers(monitor_topic_client),
+        json={**_topic_payload(), "source_keys": ["hackernews"]},
+    )
+    assert rejected.status_code == 409
+    assert rejected.json()["code"] == "source_preset_not_applied"
+
+
+def test_resume_rejects_unavailable_source_budget(
+    monitor_topic_client: TestClient,
+) -> None:
+    _initialize(monitor_topic_client)
+    factory = monitor_topic_client.app.state.session_factory
+    with factory.begin() as session:
+        owner_id = session.execute(text("SELECT id FROM identity_users")).scalar_one()
+        SourcePresetService(session).apply_in_transaction(
+            owner_id=owner_id, preset=SOURCE_PRESETS["hackernews"]
+        )
+    created = monitor_topic_client.post(
+        "/api/topics",
+        headers=_csrf_headers(monitor_topic_client),
+        json={**_topic_payload(), "source_keys": ["hackernews"]},
+    )
+    assert created.status_code == 201, created.json()
+    with factory.begin() as session:
+        session.execute(
+            text(
+                "UPDATE resource_budget_policies SET enabled = false "
+                "WHERE owner_id = :owner_id AND budget_key = 'source.hackernews.network.daily'"
+            ),
+            {"owner_id": owner_id},
+        )
+    rejected = monitor_topic_client.post(
+        f"{created.headers['location']}/resume",
+        headers=_csrf_headers(monitor_topic_client),
+    )
+    assert rejected.status_code == 409
+    assert rejected.json()["code"] == "topic_not_ready"
+    assert monitor_topic_client.get(created.headers["location"]).json()["status"] == "paused"
+
+
+def test_active_topic_cannot_enable_a_new_source_without_budget(
+    monitor_topic_client: TestClient,
+) -> None:
+    _initialize(monitor_topic_client)
+    factory = monitor_topic_client.app.state.session_factory
+    with factory.begin() as session:
+        owner_id = session.execute(text("SELECT id FROM identity_users")).scalar_one()
+        for source_key in ("hackernews", "google_news"):
+            SourcePresetService(session).apply_in_transaction(
+                owner_id=owner_id, preset=SOURCE_PRESETS[source_key]
+            )
+    created = monitor_topic_client.post(
+        "/api/topics",
+        headers=_csrf_headers(monitor_topic_client),
+        json={**_topic_payload(), "source_keys": ["hackernews"]},
+    )
+    assert created.status_code == 201, created.json()
+    location = created.headers["location"]
+    resumed = monitor_topic_client.post(
+        f"{location}/resume", headers=_csrf_headers(monitor_topic_client)
+    )
+    assert resumed.status_code == 200, resumed.json()
+    with factory.begin() as session:
+        session.execute(
+            text(
+                "UPDATE resource_budget_policies SET enabled = false "
+                "WHERE owner_id = :owner_id AND budget_key = 'source.google_news.network.daily'"
+            ),
+            {"owner_id": owner_id},
+        )
+    rejected = monitor_topic_client.patch(
+        location,
+        headers=_csrf_headers(monitor_topic_client),
+        json={
+            **_topic_payload(),
+            "expected_version": 1,
+            "source_keys": ["google_news", "hackernews"],
+        },
+    )
+    assert rejected.status_code == 409
+    assert rejected.json()["code"] == "topic_not_ready"
+    current = monitor_topic_client.get(location)
+    assert current.json()["current_version"] == 1
+    assert current.json()["source_keys"] == ["hackernews"]
 
 
 def test_name_only_edit_keeps_rule_version_and_owner_filter_hides_topic(
@@ -374,10 +541,20 @@ def test_topic_lifecycle_is_idempotent_and_resume_requires_ready_source(
         f"{location}/resume",
         headers=_csrf_headers(monitor_topic_client),
     )
+    with factory() as session:
+        first_schedule_updated_at = session.execute(
+            text("SELECT updated_at FROM monitor_schedules WHERE topic_id = :topic_id"),
+            {"topic_id": created.json()["id"]},
+        ).scalar_one()
     resumed_again = monitor_topic_client.post(
         f"{location}/resume",
         headers=_csrf_headers(monitor_topic_client),
     )
+    with factory() as session:
+        second_schedule_updated_at = session.execute(
+            text("SELECT updated_at FROM monitor_schedules WHERE topic_id = :topic_id"),
+            {"topic_id": created.json()["id"]},
+        ).scalar_one()
     paused_again = monitor_topic_client.post(
         f"{location}/pause",
         headers=_csrf_headers(monitor_topic_client),
@@ -386,6 +563,7 @@ def test_topic_lifecycle_is_idempotent_and_resume_requires_ready_source(
     assert resumed_ready.json()["status"] == "active"
     assert resumed_again.status_code == 200
     assert resumed_again.json()["updated_at"] == resumed_ready.json()["updated_at"]
+    assert second_schedule_updated_at == first_schedule_updated_at
     assert paused_again.status_code == 200
     assert paused_again.json()["status"] == "paused"
     archived = monitor_topic_client.post(
@@ -406,6 +584,11 @@ def test_topic_lifecycle_is_idempotent_and_resume_requires_ready_source(
     assert archived_again.json()["status"] == "archived"
     assert edit_archived.status_code == 409
     assert edit_archived.json()["code"] == "topic_archived"
+    resume_archived = monitor_topic_client.post(
+        f"{location}/resume", headers=_csrf_headers(monitor_topic_client)
+    )
+    assert resume_archived.status_code == 409
+    assert resume_archived.json()["code"] == "topic_archived"
 
 
 def test_topic_preview_is_local_explainable_and_side_effect_free(
@@ -497,7 +680,7 @@ def test_every_builtin_source_preset_applies_against_the_real_schema(
         assert applied.source_key == preset.source_key
 
 
-def test_bilibili_pause_requires_manual_preset_reapply(
+def test_bilibili_pause_is_not_cleared_by_preset_reapply(
     monitor_topic_client: TestClient,
 ) -> None:
     _initialize(monitor_topic_client)
@@ -523,8 +706,15 @@ def test_bilibili_pause_requires_manual_preset_reapply(
             ).scalar_one()
             == "disabled"
         )
-    with factory.begin() as session:
-        restored = SourcePresetService(session).apply_in_transaction(
+    with pytest.raises(ApplicationError, match="connection_disabled"), factory.begin() as session:
+        SourcePresetService(session).apply_in_transaction(
             owner_id=owner_id, preset=SOURCE_PRESETS["bilibili"]
         )
-    assert restored.connection_version == applied.connection_version + 1
+    with factory() as session:
+        assert (
+            session.execute(
+                text("SELECT current_version FROM source_connections WHERE id = :id"),
+                {"id": applied.connection_id},
+            ).scalar_one()
+            == applied.connection_version
+        )

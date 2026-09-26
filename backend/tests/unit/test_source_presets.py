@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
 import httpx
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.dialects.postgresql.psycopg import PGDialect_psycopg
 from typer.testing import CliRunner
 
 from cli.commands import app
 from connections.catalog import SOURCE_CATALOG
+from connections.models import SourceConnectionVersion
 from connections.presets import (
     BILIBILI_PRESET,
     GOOGLE_NEWS_PRESET,
@@ -19,7 +22,7 @@ from connections.presets import (
     SOURCE_PRESETS,
     SourcePreset,
 )
-from connections.schemas import SourceConnectionConfig
+from connections.schemas import SourceConnectionConfig, SourceExecutionPolicy
 from content.discovery import KeywordDiscoveryPageCommitService
 from content.schemas import PersistContentPostInput
 from content.services import _ALLOWED_FIELDS
@@ -34,6 +37,76 @@ _RSS_WITH_AUTHOR = b"""<?xml version="1.0" encoding="UTF-8"?>
 <guid>post-1</guid><pubDate>Fri, 25 Sep 2026 08:00:00 GMT</pubDate>
 <description>Daily update</description><author>Reporter</author>
 </item></channel></rss>"""
+
+
+def test_optional_execution_policy_binds_python_none_as_sql_null() -> None:
+    dialect = PGDialect_psycopg()
+    column = SourceConnectionVersion.__table__.c.execution_policy
+    processor = column.type.dialect_impl(dialect).bind_processor(dialect)
+    assert column.nullable
+    assert not SourceConnectionVersion.__table__.c.config.nullable
+    assert processor is not None
+    assert processor(None) is None
+    assert processor(BILIBILI_PRESET.execution_policy.model_dump(mode="json")) is not None
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"max_queries": 0},
+        {"max_items_per_query": -1},
+        {"max_requests": 0},
+        {"max_seconds": 241},
+        {"hard_timeout_seconds": 0},
+        {"max_concurrency": 0},
+        {"surprise": "value"},
+    ],
+)
+def test_execution_policy_rejects_invalid_limits_and_unknown_fields(
+    change: dict[str, object],
+) -> None:
+    values = BILIBILI_PRESET.execution_policy.model_dump() | change
+    with pytest.raises(ValidationError):
+        SourceExecutionPolicy.model_validate(values)
+
+
+def test_bilibili_execution_policy_is_bounded_and_quiet_in_shanghai() -> None:
+    policy = BILIBILI_PRESET.execution_policy
+    assert (
+        policy.min_interval_seconds,
+        policy.max_queries,
+        policy.max_items_per_query,
+        policy.max_requests,
+        policy.max_seconds,
+        policy.hard_timeout_seconds,
+        policy.max_concurrency,
+        policy.enabled,
+    ) == (21_600, 3, 5, 26, 220, 240, 1, True)
+    assert policy.quiet_windows[0].timezone == "Asia/Shanghai"
+    assert policy.quiet_at(datetime(2026, 9, 25, 16, 0, tzinfo=UTC))
+    assert policy.quiet_at(datetime(2026, 9, 25, 23, 59, tzinfo=UTC))
+    assert not policy.quiet_at(datetime(2026, 9, 26, 0, 0, tzinfo=UTC))
+    crossing = SourceExecutionPolicy.model_validate(
+        policy.model_dump()
+        | {"quiet_windows": [{"timezone": "Asia/Shanghai", "start": "22:00", "end": "02:00"}]}
+    )
+    assert crossing.quiet_at(datetime(2026, 9, 26, 15, 0, tzinfo=UTC))
+    assert crossing.quiet_at(datetime(2026, 9, 25, 17, 0, tzinfo=UTC))
+    assert not crossing.quiet_at(datetime(2026, 9, 25, 18, 0, tzinfo=UTC))
+
+
+def test_keyword_and_hotlist_execution_policy_snapshots() -> None:
+    for key in ("hackernews", "google_news", "news_search", "rss_36kr"):
+        preset = SOURCE_PRESETS[key]
+        assert preset.budget.limit_units == 1_000
+        assert preset.budget.window_seconds == 86_400
+        assert preset.execution_policy.max_items_per_query == 100
+        assert preset.execution_policy.max_requests == 3
+        assert preset.execution_policy.max_seconds == 90
+    for preset in SOURCE_PRESETS.values():
+        if preset.source_key.startswith("hotlist_"):
+            assert preset.execution_policy.min_interval_seconds == 1_800
+            assert preset.budget.limit_units == 500
 
 
 def _search(source_key: str) -> SearchRequest:

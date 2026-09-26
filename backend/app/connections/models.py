@@ -113,6 +113,18 @@ class SourceConnectionVersion(Base):
             "- 'allowed_hosts' = '{}'::jsonb",
             name="source_connection_versions_config_keys_check",
         ),
+        CheckConstraint(
+            "execution_policy IS NULL OR jsonb_typeof(execution_policy) = 'object'",
+            name="source_connection_versions_execution_policy_object_check",
+        ),
+        CheckConstraint(
+            "execution_policy IS NULL OR "
+            "execution_policy - 'min_interval_seconds' - 'quiet_windows' "
+            "- 'max_queries' - 'max_items_per_query' - 'max_requests' "
+            "- 'max_seconds' - 'hard_timeout_seconds' - 'max_concurrency' "
+            "- 'enabled' = '{}'::jsonb",
+            name="source_connection_versions_execution_policy_keys_check",
+        ),
         Index(
             "source_connection_versions_created_by_idx",
             "created_by",
@@ -125,6 +137,7 @@ class SourceConnectionVersion(Base):
     auth_kind: Mapped[str] = mapped_column(String(32), server_default=text("'server_credential'"))
     secret_ref: Mapped[str | None] = mapped_column(String(256))
     config: Mapped[dict[str, object]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    execution_policy: Mapped[dict[str, object] | None] = mapped_column(JSONB(none_as_null=True))
     created_by: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime]
 

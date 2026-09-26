@@ -246,6 +246,7 @@ class CoverageWindowService:
         stop_reason: SourceStopReason | None = None,
         evidence: CoverageTerminalEvidence | None = None,
         job_progress: JobProgress | None = None,
+        observed_items: int | None = None,
     ) -> tuple[ExecutionLease, CoverageWindowView, CursorPageProgress]:
         """Commit a bounded cursor page and range progress in the caller's transaction."""
         expected = plan_cursor_request(
@@ -263,6 +264,13 @@ class CoverageWindowService:
             next_token=next_token,
             stop_reason=stop_reason,
         )
+        if observed_items is not None:
+            if observed_items < 0:
+                raise ValueError("observed item count cannot be negative")
+            previous = lease.checkpoint.get("collection.observed_count", 0)
+            if type(previous) is not int or previous < 0:
+                raise CoverageWindowConflictError("invalid observed item checkpoint")
+            progress.checkpoint["collection.observed_count"] = previous + observed_items
         opened = self.begin_in_transaction(lease=lease, window=window)
         if opened.status == "confirmed":
             raise CoverageWindowConflictError("confirmed window cannot accept another page")
@@ -1021,6 +1029,23 @@ class ResourceBudgetService:
             raise ValueError("x api spend policy requires x source")
         now = self._clock()
         self._require_aware_clock(now)
+        if command.scope_kind is BudgetScopeKind.SOURCE:
+            same_window = self._session.scalar(
+                select(ResourceBudgetPolicy)
+                .where(
+                    ResourceBudgetPolicy.owner_id == owner_id,
+                    ResourceBudgetPolicy.scope_kind == BudgetScopeKind.SOURCE.value,
+                    ResourceBudgetPolicy.scope_reference == command.scope_reference,
+                    ResourceBudgetPolicy.metric == command.metric.value,
+                    ResourceBudgetPolicy.window_seconds == command.window_seconds,
+                    ResourceBudgetPolicy.window_anchor_at == command.window_anchor_at,
+                )
+                .with_for_update()
+            )
+            if same_window is not None and same_window.budget_key != command.budget_key:
+                raise BudgetPolicyConflictError(
+                    "source metric window already has a stable budget key"
+                )
         model = self._session.scalar(
             select(ResourceBudgetPolicy)
             .where(

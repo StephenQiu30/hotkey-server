@@ -34,6 +34,7 @@
 - 业务服务只能直接导入本领域ORM模型；跨领域读取使用所属模块提供的函数/DTO，跨领域原子写显式传入同一Session。禁止为绕过边界建立全局repository或共享models目录。
 - 顶层模块只在当前切片真实创建时登记；architecture测试不得预先白名单未来模块。新增模块必须先以失败测试证明未登记代码会被拒绝。
 - `backend/database/schema.sql` 是唯一数据库 DDL 事实源；SQLAlchemy Model 只负责运行时映射。禁止 Alembic、revision 目录、`metadata.create_all`、应用启动建表和第二份 DDL。
+- Plan 001 的 `monitor_topic_versions` 是关键词组、来源选择和主题请求间隔的不可变采集配置快照；名称与报告/推送偏好不升采集版本。主题恢复前核对已应用搜索预设、当前来源准入/执行策略和预算，旧 Job 不按当前主题投影重释。
 - `schema.sql` 只用于全新空库，文件自身以 `BEGIN`/`COMMIT` 包住完整 DDL；直接 `psql -X --set ON_ERROR_STOP=on -f backend/database/schema.sql`、CI stdin 导入和 Compose 官方 entrypoint 挂载均依赖该文件内事务保证原子性，也可额外使用 `--single-transaction`，但不得以其代替文件内事务。三种入口均须在空库执行并在失败后确认无部分业务表。当前不支持存量库自动就地演进；需要保留数据时先验证备份，再新建数据库、应用完整 Schema 并导入校验后的数据。禁止对旧系统库直接执行。
 - 业务状态与 Outbox 同事务提交。Outbox 发布到 Kafka，消费者在业务事务提交后提交连续完成位置的 offset，允许重投并通过消息 ID、epoch、fencing、租约和唯一约束保证幂等。Kafka 事务不等于与 PostgreSQL 的跨系统原子提交。Redis 只承担缓存、限流及可重建临时状态，不保存唯一业务事实；关键执行权以 PostgreSQL 为准。不再采用 RabbitMQ/Celery，不以 Redis 另建任务队列。
 - HotKey 应用的唯一运行编排为根 `docker-compose.yml`。RSSHub、SearXNG 由同级 `Docker/rsshub-start-local`、`Docker/searxng-start-local` 的 `docker-compose.yml` 管理；Firecrawl 独立编排，`~/Desktop/Docker/mediacrawler-start-local/` 保存 MediaCrawler 固定补丁、独立 CDP 资料与按需容器构建记录，但 HotKey 的 B 站调用固定为宿主机子进程，不走该容器。不得在 HotKey 根编排复制这些服务或删除用户持久卷。生产差异仍通过 `-f` 文件叠加。

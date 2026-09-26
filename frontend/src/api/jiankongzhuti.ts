@@ -19,7 +19,7 @@ export async function listMonitorTopics(
   });
 }
 
-/** 创建监控主题 保存本地匹配规则和主题运行设置; 所选来源必须已应用预设并支持搜索。新主题保持暂停, 来源选择会生成停用的搜索调度行。 POST /api/topics */
+/** 创建监控主题 保存本地匹配规则和采集版本; 所选来源须有已应用搜索预设及当前准入策略。新主题保持暂停, 来源选择会生成停用的搜索调度行。 POST /api/topics */
 export async function createMonitorTopic(
   body: HotKeyAPI.MonitorTopicCreateInput,
   options?: import("@/request").RequestOptions,
@@ -48,7 +48,7 @@ export async function getMonitorTopic(
   });
 }
 
-/** 编辑监控主题 使用 expected_version 防止覆盖并发修改; 规则变化创建新版本; 来源与运行设置直接更新主题和搜索调度行。 PATCH /api/topics/${param0} */
+/** 编辑监控主题 使用 expected_version 防止覆盖并发修改; 规则、来源或主题间隔变化创建采集版本; 名称与报告偏好只更新当前主题, 不改写旧 Job。 PATCH /api/topics/${param0} */
 export async function updateMonitorTopic(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.updateMonitorTopicParams,
@@ -109,7 +109,7 @@ export async function pauseMonitorTopic(
   });
 }
 
-/** 恢复监控主题 仅至少选择一个已应用搜索来源的暂停主题可恢复; 恢复会启用其调度行。 POST /api/topics/${param0}/resume */
+/** 恢复监控主题 仅已准入、启用且预算可用的搜索来源可恢复; 恢复会启用其调度行。 POST /api/topics/${param0}/resume */
 export async function resumeMonitorTopic(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: HotKeyAPI.resumeMonitorTopicParams,

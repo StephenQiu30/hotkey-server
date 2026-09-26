@@ -9,7 +9,7 @@ from sqlalchemy import ForeignKeyConstraint, PrimaryKeyConstraint, Table, Unique
 from sqlalchemy.orm import Session
 
 from core.errors import ApplicationError
-from monitors.models import MonitorSchedule, MonitorTopic
+from monitors.models import MonitorSchedule, MonitorTopic, MonitorTopicVersion
 from monitors.schemas import MonitorTopicCreateInput, MonitorTopicPreviewInput
 from monitors.services import (
     MonitorTopicService,
@@ -218,3 +218,28 @@ def test_latin_exclude_keywords_also_require_word_boundaries() -> None:
 
     assert evaluate_monitor_rules(rules, "大模型 already shipped").matched
     assert not evaluate_monitor_rules(rules, "大模型 ad 推广").matched
+
+
+def test_preview_uses_the_same_chinese_and_ascii_boundaries_as_collection() -> None:
+    command = MonitorTopicPreviewInput(
+        match_any=["AI", "人工智能"],
+        match_all=["发布"],
+        exclude=["广告"],
+        sample_titles=["daily 发布", "人工智能发布", "AI 发布广告"],
+    )
+    with Session() as session:
+        preview = MonitorTopicService(session).preview_topic(command=command)
+
+    rules = normalize_monitor_rules(
+        match_any=command.match_any, match_all=command.match_all, exclude=command.exclude
+    )
+    assert [sample.matched for sample in preview.samples] == [False, True, False]
+    assert [sample.matched for sample in preview.samples] == [
+        evaluate_monitor_rules(rules, title).matched for title in command.sample_titles
+    ]
+
+
+def test_topic_version_has_immutable_collection_selection_columns() -> None:
+    columns = cast(Table, MonitorTopicVersion.__table__).columns
+    assert "source_keys" in columns
+    assert "collection_interval_seconds" in columns

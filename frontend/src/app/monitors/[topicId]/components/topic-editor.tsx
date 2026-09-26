@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowLeftIcon,
   ArchiveIcon,
@@ -36,35 +42,25 @@ import {
   TopicSettingsFields,
   type TopicSourceOption,
 } from "@/components/monitors/topic-settings-fields";
+import {
+  readTopicFieldErrors,
+  topicErrorAction,
+  tryBeginTopicSubmission,
+  type TopicFieldErrors,
+} from "@/components/monitors/topic-validation";
 import { PageState } from "@/components/system/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiRequestError } from "@/request";
 
 type TopicEditorProps = { topicId: string };
 
-type ExpectedTopicSettings = {
-  source_keys: string[];
-  collection_interval_seconds: number;
-  report_time: string;
-  report_timezone: "Asia/Shanghai";
-  weekly_report_enabled: boolean;
-  notification_target_names: string[];
-};
-
-type ExpectedMonitorTopicView = HotKeyAPI.MonitorTopicView &
-  ExpectedTopicSettings;
-
-type ExpectedTopicSettingsInput = Omit<
-  ExpectedTopicSettings,
-  "report_timezone"
->;
-
 type EditorState =
   | { status: "loading" }
-  | { status: "ready"; topic: ExpectedMonitorTopicView }
+  | { status: "ready"; topic: HotKeyAPI.MonitorTopicView }
   | { status: "not-found" }
   | { status: "error"; message: string; requestId?: string };
 
@@ -72,12 +68,13 @@ type ActionFeedback = {
   kind: "error" | "conflict" | "success";
   message: string;
   requestId?: string;
+  fields?: TopicFieldErrors;
 };
 
 type PendingAction = "archive" | "clone" | "pause" | "resume" | "save";
 
 function isInvalidSession(error: unknown): boolean {
-  return error instanceof ApiRequestError && error.code === "invalid_session";
+  return topicErrorAction(error) === "login";
 }
 
 function toActionFeedback(error: unknown): ActionFeedback {
@@ -97,13 +94,20 @@ function toActionFeedback(error: unknown): ActionFeedback {
     if (error.code === "source_preset_not_applied") {
       return {
         kind: "error",
-        message: "所选来源尚未应用预设，或不支持关键词搜索。",
+        message: "所选来源缺少已应用搜索预设、准入或启用的执行策略。",
+      };
+    }
+    if (error.code === "topic_not_ready") {
+      return {
+        kind: "error",
+        message: "来源或预算当前不可用，请在来源能力页核查后恢复。",
       };
     }
     return {
       kind: "error",
       message: error.message,
       requestId: error.requestId,
+      fields: readTopicFieldErrors(error),
     };
   }
   return { kind: "error", message: "主题操作失败，请稍后重试。" };
@@ -126,21 +130,21 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(
     null,
   );
+  const pendingActionRef = useRef(false);
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
   const isBusy = pendingAction !== null;
 
   const applyTopic = useCallback((value: HotKeyAPI.MonitorTopicView) => {
-    const topic = value as ExpectedMonitorTopicView;
-    setState({ status: "ready", topic });
-    setName(topic.name);
-    setMatchAny(topic.rules.match_any.join("\n"));
-    setMatchAll(topic.rules.match_all.join("\n"));
-    setExclude(topic.rules.exclude.join("\n"));
-    setSourceKeys(topic.source_keys);
-    setCollectionIntervalSeconds(topic.collection_interval_seconds);
-    setReportTime(topic.report_time.slice(0, 5));
-    setWeeklyReportEnabled(topic.weekly_report_enabled);
-    setNotificationTargets(topic.notification_target_names.join("\n"));
+    setState({ status: "ready", topic: value });
+    setName(value.name);
+    setMatchAny(value.rules.match_any.join("\n"));
+    setMatchAll(value.rules.match_all.join("\n"));
+    setExclude(value.rules.exclude.join("\n"));
+    setSourceKeys(value.source_keys);
+    setCollectionIntervalSeconds(value.collection_interval_seconds);
+    setReportTime(value.report_time.slice(0, 5));
+    setWeeklyReportEnabled(value.weekly_report_enabled);
+    setNotificationTargets(value.notification_target_names.join("\n"));
   }, []);
 
   const loadTopic = useCallback(async () => {
@@ -150,9 +154,8 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
         getMonitorTopic({ topic_id: topicId }),
         listSourceCapabilities(),
       ]);
-      const expectedTopic = topic as ExpectedMonitorTopicView;
       setSourceOptions(
-        selectableTopicSources(sourcePage.items, expectedTopic.source_keys),
+        selectableTopicSources(sourcePage.items, topic.source_keys),
       );
       applyTopic(topic);
     } catch (error) {
@@ -183,9 +186,8 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
     ])
       .then(([topic, sourcePage]) => {
         if (isCurrent) {
-          const expectedTopic = topic as ExpectedMonitorTopicView;
           setSourceOptions(
-            selectableTopicSources(sourcePage.items, expectedTopic.source_keys),
+            selectableTopicSources(sourcePage.items, topic.source_keys),
           );
           applyTopic(topic);
         }
@@ -221,7 +223,10 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (state.status !== "ready" || isBusy) {
+    if (
+      state.status !== "ready" ||
+      !tryBeginTopicSubmission(pendingActionRef)
+    ) {
       return;
     }
     const any = parseKeywordLines(matchAny);
@@ -231,6 +236,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
         kind: "error",
         message: "至少填写一个“任意命中”或“全部包含”关键词。",
       });
+      pendingActionRef.current = false;
       return;
     }
     const targetNames = parseNotificationTargetNames(notificationTargets);
@@ -243,6 +249,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
         kind: "error",
         message: "采集频率必须是 600—86400 之间的整数秒。",
       });
+      pendingActionRef.current = false;
       return;
     }
     if (
@@ -253,14 +260,14 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
         kind: "error",
         message: "推送目标最多 20 个，每个名称不超过 128 个字符。",
       });
+      pendingActionRef.current = false;
       return;
     }
 
     setPendingAction("save");
     setFeedback(null);
     try {
-      const payload: HotKeyAPI.MonitorTopicUpdateInput &
-        ExpectedTopicSettingsInput = {
+      const payload: HotKeyAPI.MonitorTopicUpdateInput = {
         name,
         match_any: any,
         match_all: all,
@@ -268,7 +275,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
         expected_version: state.topic.current_version,
         source_keys: sourceKeys,
         collection_interval_seconds: collectionIntervalSeconds,
-        report_time: reportTime,
+        report_time: reportTime || "09:00",
         weekly_report_enabled: weeklyReportEnabled,
         notification_target_names: targetNames,
       };
@@ -285,6 +292,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
         setFeedback(toActionFeedback(error));
       }
     } finally {
+      pendingActionRef.current = false;
       setPendingAction(null);
     }
   }
@@ -292,7 +300,10 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
   async function runLifecycleAction(
     action: "archive" | "clone" | "pause" | "resume",
   ) {
-    if (state.status !== "ready" || isBusy) {
+    if (
+      state.status !== "ready" ||
+      !tryBeginTopicSubmission(pendingActionRef)
+    ) {
       return;
     }
     setPendingAction(action);
@@ -327,6 +338,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
         setFeedback(toActionFeedback(error));
       }
     } finally {
+      pendingActionRef.current = false;
       setPendingAction(null);
     }
   }
@@ -401,7 +413,11 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                 : "已暂停"}
           </Badge>
           <Badge variant="outline">
-            {topic.readiness_status === "ready" ? "来源已就绪" : "待选择来源"}
+            {topic.readiness_status === "ready"
+              ? "已选来源，恢复时复核"
+              : topic.readiness_status === "pending_source_selection"
+                ? "待选择来源"
+                : "来源待就绪"}
           </Badge>
           <span className="text-muted-foreground text-sm">
             规则版本 v{topic.current_version}
@@ -411,7 +427,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
           编辑主题
         </h1>
         <p className="text-muted-foreground mt-3 max-w-2xl text-sm leading-6">
-          规则变化会保留新版本；只修改名称不会创建空规则版本。保存仍不会发起采集。
+          规则、来源或采集频率变化会保留新版本；只修改名称不会创建采集版本。保存不会发起采集。
         </p>
 
         <form
@@ -430,7 +446,11 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                   minLength={1}
                   maxLength={80}
                   required
+                  aria-invalid={Boolean(feedback?.fields?.name)}
                 />
+                {feedback?.fields?.name ? (
+                  <FieldError>{feedback.fields.name}</FieldError>
+                ) : null}
               </div>
             </section>
 
@@ -442,6 +462,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                 value={matchAny}
                 onChange={setMatchAny}
                 disabled={isBusy || topic.status === "archived"}
+                error={feedback?.fields?.match_any}
               />
               <KeywordGroupField
                 id="match-all"
@@ -450,6 +471,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                 value={matchAll}
                 onChange={setMatchAll}
                 disabled={isBusy || topic.status === "archived"}
+                error={feedback?.fields?.match_all}
               />
               <KeywordGroupField
                 id="exclude"
@@ -458,6 +480,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
                 value={exclude}
                 onChange={setExclude}
                 disabled={isBusy || topic.status === "archived"}
+                error={feedback?.fields?.exclude}
               />
             </section>
 
@@ -474,6 +497,7 @@ export function TopicEditor({ topicId }: TopicEditorProps) {
               notificationTargets={notificationTargets}
               onNotificationTargetsChange={setNotificationTargets}
               disabled={isBusy || topic.status === "archived"}
+              fieldErrors={feedback?.fields}
             />
           </div>
 
