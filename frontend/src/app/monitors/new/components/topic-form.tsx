@@ -20,10 +20,24 @@ import {
   type TopicSourceOption,
 } from "@/components/monitors/topic-settings-fields";
 import { PageState } from "@/components/system/page-state";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ApiRequestError } from "@/request";
 
 type SubmissionError = {
@@ -233,56 +247,68 @@ export function TopicForm() {
         </p>
 
         <form
-          className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]"
+          className="mt-10 grid gap-8 lg:grid-cols-3"
           onSubmit={handleSubmit}
         >
-          <div className="space-y-8">
-            <section className="bg-muted rounded-2xl p-5 sm:p-7">
-              <div className="space-y-2">
-                <Label htmlFor="topic-name">主题名称</Label>
-                <Input
-                  id="topic-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  disabled={isSubmitting}
-                  minLength={1}
-                  maxLength={80}
-                  required
-                  autoFocus
-                  placeholder="例如：品牌召回"
-                />
-                <p className="text-muted-foreground text-xs leading-5">
-                  名称用于辨认主题，允许重名；规则变化才会生成新版本。
-                </p>
-              </div>
-            </section>
+          <div className="flex flex-col gap-8 lg:col-span-2">
+            <Card className="bg-muted rounded-2xl py-5 sm:py-7">
+              <CardContent className="px-5 sm:px-7">
+                <Field data-disabled={isSubmitting}>
+                  <FieldLabel htmlFor="topic-name">主题名称</FieldLabel>
+                  <Input
+                    id="topic-name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    disabled={isSubmitting}
+                    minLength={1}
+                    maxLength={80}
+                    required
+                    autoFocus
+                    placeholder="例如：品牌召回"
+                  />
+                  <FieldDescription>
+                    名称用于辨认主题，允许重名；规则变化才会生成新版本。
+                  </FieldDescription>
+                </Field>
+              </CardContent>
+            </Card>
 
-            <section className="space-y-6">
-              <KeywordGroupField
-                id="match-any"
-                label="任意命中"
-                description="其中任意一个关键词出现即可；与“全部包含”同时填写时，两组条件都要满足。"
-                value={matchAny}
-                onChange={setMatchAny}
-                disabled={isSubmitting}
-              />
-              <KeywordGroupField
-                id="match-all"
-                label="全部包含"
-                description="这里的每个关键词都必须出现。该组为空时不会额外限制。"
-                value={matchAll}
-                onChange={setMatchAll}
-                disabled={isSubmitting}
-              />
-              <KeywordGroupField
-                id="exclude"
-                label="排除"
-                description="任一排除词命中都会优先剔除结果。不要与包含组填写相同关键词。"
-                value={exclude}
-                onChange={setExclude}
-                disabled={isSubmitting}
-              />
-            </section>
+            <Card className="gap-6 rounded-2xl py-5 sm:py-7">
+              <CardHeader className="px-5 sm:px-7">
+                <CardTitle asChild>
+                  <h2>匹配规则</h2>
+                </CardTitle>
+                <CardDescription>用关键词界定需要关注的讨论。</CardDescription>
+              </CardHeader>
+              <CardContent className="px-5 sm:px-7">
+                <FieldGroup className="gap-6">
+                  <KeywordGroupField
+                    id="match-any"
+                    label="任意命中"
+                    description="其中任意一个关键词出现即可；与“全部包含”同时填写时，两组条件都要满足。"
+                    value={matchAny}
+                    onChange={setMatchAny}
+                    disabled={isSubmitting}
+                  />
+                  <KeywordGroupField
+                    id="match-all"
+                    label="全部包含"
+                    description="这里的每个关键词都必须出现。该组为空时不会额外限制。"
+                    value={matchAll}
+                    onChange={setMatchAll}
+                    disabled={isSubmitting}
+                  />
+                  <KeywordGroupField
+                    id="exclude"
+                    label="排除"
+                    description="任一排除词命中都会优先剔除结果。不要与包含组填写相同关键词。"
+                    value={exclude}
+                    onChange={setExclude}
+                    disabled={isSubmitting}
+                  />
+                </FieldGroup>
+              </CardContent>
+            </Card>
 
             <TopicSettingsFields
               sourceOptions={accessState.sourceOptions}
@@ -301,59 +327,68 @@ export function TopicForm() {
           </div>
 
           <aside className="lg:sticky lg:top-8 lg:self-start">
-            <div className="bg-muted rounded-2xl p-5">
-              <p className="text-sm font-medium">保存后的状态</p>
-              <dl className="text-muted-foreground mt-4 space-y-3 text-sm">
-                <div className="flex justify-between gap-4">
-                  <dt>运行状态</dt>
-                  <dd className="text-foreground">已暂停</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt>来源</dt>
-                  <dd className="text-foreground">
-                    {sourceKeys.length > 0
-                      ? `${sourceKeys.length} 个`
-                      : "待选择"}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt>规则版本</dt>
-                  <dd className="text-foreground">v1</dd>
-                </div>
-              </dl>
-              {submissionError ? (
-                <div
-                  role="alert"
-                  className="bg-destructive/10 text-foreground mt-5 rounded-lg px-3 py-2.5 text-sm leading-5"
-                >
-                  <p>{submissionError.message}</p>
-                  {submissionError.requestId ? (
-                    <p className="mt-1 font-mono text-xs opacity-80">
-                      请求编号：{submissionError.requestId}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-              <div className="mt-5">
-                <TopicRulePreview
-                  matchAny={matchAny}
-                  matchAll={matchAll}
-                  exclude={exclude}
-                  disabled={isSubmitting}
-                />
-              </div>
-              <Button className="mt-5 w-full" size="lg" disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <LoaderCircleIcon
-                    className="animate-spin"
-                    aria-hidden="true"
+            <Card className="bg-muted gap-0 rounded-2xl py-5">
+              <CardHeader className="px-5">
+                <CardTitle asChild>
+                  <h2>保存后的状态</h2>
+                </CardTitle>
+                <CardDescription>新建主题不会立即发起采集。</CardDescription>
+              </CardHeader>
+              <CardContent className="px-5">
+                <dl className="text-muted-foreground mt-4 flex flex-col gap-3 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <dt>运行状态</dt>
+                    <dd className="text-foreground">已暂停</dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt>来源</dt>
+                    <dd className="text-foreground">
+                      {sourceKeys.length > 0
+                        ? `${sourceKeys.length} 个`
+                        : "待选择"}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt>规则版本</dt>
+                    <dd className="text-foreground">v1</dd>
+                  </div>
+                </dl>
+                {submissionError ? (
+                  <Alert variant="destructive" className="mt-5">
+                    <AlertTitle>无法保存主题</AlertTitle>
+                    <AlertDescription>
+                      {submissionError.message}
+                      {submissionError.requestId ? (
+                        <p className="mt-1 font-mono text-xs opacity-80">
+                          请求编号：{submissionError.requestId}
+                        </p>
+                      ) : null}
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+                <div className="mt-5">
+                  <TopicRulePreview
+                    matchAny={matchAny}
+                    matchAll={matchAll}
+                    exclude={exclude}
+                    disabled={isSubmitting}
                   />
-                ) : (
-                  <ArrowRightIcon data-icon="inline-end" />
-                )}
-                {isSubmitting ? "正在保存" : "保存主题"}
-              </Button>
-            </div>
+                </div>
+              </CardContent>
+              <CardFooter className="bg-transparent px-5 pt-5">
+                <Button className="w-full" size="lg" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <LoaderCircleIcon
+                      className="animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <ArrowRightIcon data-icon="inline-end" />
+                  )}
+                  {isSubmitting ? "正在保存" : "保存主题"}
+                </Button>
+              </CardFooter>
+            </Card>
           </aside>
         </form>
       </main>

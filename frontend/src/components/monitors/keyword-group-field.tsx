@@ -1,5 +1,5 @@
-import { Label } from "../ui/label";
-import { Textarea } from "../ui/textarea";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Textarea } from "@/components/ui/textarea";
 
 type KeywordGroupFieldProps = {
   description: string;
@@ -28,11 +28,8 @@ export function KeywordGroupField({
   const count = parseKeywordLines(value).length;
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-end justify-between gap-4">
-        <Label htmlFor={id}>{label}</Label>
-        <span className="text-muted-foreground text-xs">{count}/50</span>
-      </div>
+    <Field data-disabled={disabled}>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Textarea
         id={id}
         value={value}
@@ -43,12 +40,9 @@ export function KeywordGroupField({
         placeholder="每行一个关键词"
         aria-describedby={`${id}-description`}
       />
-      <p
-        id={`${id}-description`}
-        className="text-muted-foreground text-xs leading-5"
-      >
-        {description}
-      </p>
-    </div>
+      <FieldDescription id={`${id}-description`}>
+        {description} 当前 {count}/50 个关键词。
+      </FieldDescription>
+    </Field>
   );
 }

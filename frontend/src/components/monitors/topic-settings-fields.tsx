@@ -1,7 +1,23 @@
 "use client";
 
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -86,113 +102,128 @@ export function TopicSettingsFields({
   }
 
   return (
-    <section className="bg-muted space-y-6 rounded-2xl p-5 sm:p-7">
-      <div>
-        <h2 className="text-base font-medium">运行设置</h2>
-        <p className="text-muted-foreground mt-1 text-sm leading-6">
+    <Card className="bg-muted gap-6 rounded-2xl py-5 sm:py-7">
+      <CardHeader className="px-5 sm:px-7">
+        <CardTitle asChild>
+          <h2>运行设置</h2>
+        </CardTitle>
+        <CardDescription className="leading-6">
           只有已应用预设且支持搜索的来源可被保存。新建主题仍保持暂停。
-        </p>
-      </div>
+        </CardDescription>
+      </CardHeader>
 
-      <fieldset className="space-y-3" disabled={disabled}>
-        <legend className="text-sm font-medium">采集来源</legend>
-        {sourceOptions.length > 0 ? (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {sourceOptions.map((source) => (
-              <label
-                key={source.sourceKey}
-                className="bg-background flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm"
-              >
-                <input
-                  type="checkbox"
-                  className="border-input size-4 rounded"
-                  checked={sourceKeys.includes(source.sourceKey)}
-                  onChange={(event) =>
-                    toggleSource(source.sourceKey, event.target.checked)
-                  }
-                />
-                <span>
-                  {source.displayName}
-                  <span className="text-muted-foreground ml-1 font-mono text-xs">
-                    {source.sourceKey}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </div>
-        ) : (
-          <p className="text-muted-foreground text-sm leading-6">
-            尚无可选来源。请先在来源能力页应用支持搜索的来源预设。
-          </p>
-        )}
-      </fieldset>
+      <CardContent className="flex flex-col gap-6 px-5 sm:px-7">
+        <FieldSet disabled={disabled}>
+          <FieldLegend variant="label">采集来源</FieldLegend>
+          {sourceOptions.length > 0 ? (
+            <FieldGroup className="grid gap-2 sm:grid-cols-2">
+              {sourceOptions.map((source) => (
+                <Field
+                  key={source.sourceKey}
+                  orientation="horizontal"
+                  data-disabled={disabled}
+                  className="bg-background rounded-lg px-3 py-2.5"
+                >
+                  <Checkbox
+                    id={`source-${source.sourceKey}`}
+                    checked={sourceKeys.includes(source.sourceKey)}
+                    onCheckedChange={(checked) =>
+                      toggleSource(source.sourceKey, checked === true)
+                    }
+                    disabled={disabled}
+                  />
+                  <FieldLabel
+                    htmlFor={`source-${source.sourceKey}`}
+                    className="font-normal"
+                  >
+                    {source.displayName}
+                    <span className="text-muted-foreground ml-1 font-mono text-xs">
+                      {source.sourceKey}
+                    </span>
+                  </FieldLabel>
+                </Field>
+              ))}
+            </FieldGroup>
+          ) : (
+            <FieldDescription>
+              尚无可选来源。请先在来源能力页应用支持搜索的来源预设。
+            </FieldDescription>
+          )}
+        </FieldSet>
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="collection-interval">采集频率（秒）</Label>
-          <Input
-            id="collection-interval"
-            type="number"
-            min={600}
-            max={86400}
-            step={60}
-            value={collectionIntervalSeconds}
+        <FieldGroup className="grid gap-5 sm:grid-cols-2">
+          <Field data-disabled={disabled}>
+            <FieldLabel htmlFor="collection-interval">
+              采集频率（秒）
+            </FieldLabel>
+            <Input
+              id="collection-interval"
+              type="number"
+              min={600}
+              max={86400}
+              step={60}
+              value={collectionIntervalSeconds}
+              onChange={(event) =>
+                onCollectionIntervalSecondsChange(event.target.valueAsNumber)
+              }
+              disabled={disabled}
+              required
+            />
+            <FieldDescription>
+              允许 600—86400 秒，默认 1800 秒。
+            </FieldDescription>
+          </Field>
+          <Field data-disabled={disabled}>
+            <FieldLabel htmlFor="report-time">每日报告时间</FieldLabel>
+            <Input
+              id="report-time"
+              type="time"
+              value={reportTime}
+              onChange={(event) => onReportTimeChange(event.target.value)}
+              disabled={disabled}
+              required
+            />
+            <FieldDescription>固定使用 Asia/Shanghai 时区。</FieldDescription>
+          </Field>
+        </FieldGroup>
+
+        <Field
+          orientation="horizontal"
+          data-disabled={disabled}
+          className="justify-between"
+        >
+          <FieldContent>
+            <FieldLabel htmlFor="weekly-report">生成周报</FieldLabel>
+            <FieldDescription>
+              仅保存偏好；周报流水线将在后续任务实现。
+            </FieldDescription>
+          </FieldContent>
+          <Switch
+            id="weekly-report"
+            checked={weeklyReportEnabled}
+            onCheckedChange={onWeeklyReportEnabledChange}
+            disabled={disabled}
+            aria-label="生成周报"
+          />
+        </Field>
+
+        <Field data-disabled={disabled}>
+          <FieldLabel htmlFor="notification-targets">推送目标名称</FieldLabel>
+          <Textarea
+            id="notification-targets"
+            value={notificationTargets}
             onChange={(event) =>
-              onCollectionIntervalSecondsChange(event.target.valueAsNumber)
+              onNotificationTargetsChange(event.target.value)
             }
             disabled={disabled}
-            required
+            maxLength={2579}
+            placeholder={"飞书舆情群\n市场日报邮箱"}
           />
-          <p className="text-muted-foreground text-xs leading-5">
-            允许 600—86400 秒，默认 1800 秒。
-          </p>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="report-time">每日报告时间</Label>
-          <Input
-            id="report-time"
-            type="time"
-            value={reportTime}
-            onChange={(event) => onReportTimeChange(event.target.value)}
-            disabled={disabled}
-            required
-          />
-          <p className="text-muted-foreground text-xs leading-5">
-            固定使用 Asia/Shanghai 时区。
-          </p>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <Label htmlFor="weekly-report">生成周报</Label>
-          <p className="text-muted-foreground mt-1 text-xs leading-5">
-            仅保存偏好；周报流水线将在后续任务实现。
-          </p>
-        </div>
-        <Switch
-          id="weekly-report"
-          checked={weeklyReportEnabled}
-          onCheckedChange={onWeeklyReportEnabledChange}
-          disabled={disabled}
-          aria-label="生成周报"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="notification-targets">推送目标名称</Label>
-        <Textarea
-          id="notification-targets"
-          value={notificationTargets}
-          onChange={(event) => onNotificationTargetsChange(event.target.value)}
-          disabled={disabled}
-          maxLength={2579}
-          placeholder={"飞书舆情群\n市场日报邮箱"}
-        />
-        <p className="text-muted-foreground text-xs leading-5">
-          每行一个名称，最多 20 个；本阶段暂不校验目标是否已经配置。
-        </p>
-      </div>
-    </section>
+          <FieldDescription>
+            每行一个名称，最多 20 个；本阶段暂不校验目标是否已经配置。
+          </FieldDescription>
+        </Field>
+      </CardContent>
+    </Card>
   );
 }
