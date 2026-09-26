@@ -7,12 +7,12 @@
 | 文档 | 作用 | 状态 |
 |---|---|---|
 | [PRD 001 热点舆情监控平台总需求](prd/001-热点舆情监控平台需求.md) | 跨里程碑原则、来源/时间、共享 NFR、产品 DEC/OPEN 与原 ID 全局映射 | approved v5.0 |
-| [PRD 002 M1 信息获取主链路](prd/002-信息获取主链路需求.md) | 四关键词来源、六榜、Codex 相关性与覆盖查询；[Plan 002](plan/002-信息获取主链路计划.md) | approved v1.0 |
-| [PRD 003 M2 本人账号 B 站试点](prd/003-本人账号B站试点需求.md) | 宿主机 MediaCrawler、独立 CDP、风控停用、72 小时运行及 M2 时效；[Plan 003](plan/003-本人账号B站试点计划.md) | approved v1.0 |
-| [PRD 004 M3 事件与热度](prd/004-事件与热度需求.md) | 跨平台归并、人工修订、热度与升温；[Plan 004](plan/004-事件与热度计划.md) | approved v1.0 |
-| [PRD 005 M4 报告与知识库](prd/005-报告与知识库需求.md) | 分析质量、日报/周报、Obsidian 与问答；[Plan 005](plan/005-报告与知识库计划.md) | approved v1.0 |
-| [PRD 006 M5 推送](prd/006-推送需求.md) | SMTP 与暂缓的飞书分渠道验收；[Plan 006](plan/006-推送计划.md) | approved v1.0 |
-| [PRD 007 M6 扩展能力](prd/007-扩展能力需求.md) | 导出、告警、指定账号与后续来源；[Plan 007](plan/007-扩展能力计划.md) | approved v1.0 |
+| [PRD 002 M1 信息获取主链路](prd/002-信息获取主链路需求.md) | 四关键词来源、六榜、Codex 相关性与覆盖查询；Issue Plan 001—009 见[计划索引](plan/README.md) | approved v1.0 |
+| [PRD 003 M2 本人账号 B 站试点](prd/003-本人账号B站试点需求.md) | 宿主机 MediaCrawler、独立 CDP、风控停用、72 小时运行及 M2 时效；Plan 010—013 | approved v1.0 |
+| [PRD 004 M3 事件与热度](prd/004-事件与热度需求.md) | 跨平台归并、人工修订、热度与升温；Plan 014—016 | approved v1.0 |
+| [PRD 005 M4 报告与知识库](prd/005-报告与知识库需求.md) | 分析质量、日报/周报、Obsidian 与问答；Plan 017—023 | approved v1.0 |
+| [PRD 006 M5 推送](prd/006-推送需求.md) | SMTP 与暂缓的飞书分渠道验收；Plan 024—026 | approved v1.0 |
+| [PRD 007 M6 扩展能力](prd/007-扩展能力需求.md) | 导出、告警、指定账号与后续来源；Plan 027—030 | approved v1.0 |
 | [Design 001 热点舆情监控平台总设计](design/001-热点舆情监控平台总体设计.md) | 架构、跨里程碑约束、共享决策与风险 | accepted v4.0 |
 | [Design 002 M1 信息获取主链路](design/002-信息获取主链路设计.md) | M1 的架构、状态、失败与验收设计 | accepted v1.0 |
 | [Design 003 M2 本人账号B站试点](design/003-本人账号B站试点设计.md) | M2 的架构、状态、失败与验收设计 | accepted v1.0 |
@@ -20,18 +20,13 @@
 | [Design 005 M4 报告与知识库](design/005-报告与知识库设计.md) | M4 的架构、状态、失败与验收设计 | accepted v1.0 |
 | [Design 006 M5 推送](design/006-推送设计.md) | M5 的架构、状态、失败与验收设计 | accepted v1.0 |
 | [Design 007 M6 扩展能力](design/007-扩展能力设计.md) | M6 的架构、状态、失败与验收设计 | accepted v1.0 |
-| [Plan 001 热点舆情监控平台总计划](plan/001-热点舆情监控平台总计划.md) | 里程碑总览、分工、全局 AC 索引、旧卡映射与历史记录 | planned v6.0；实现暂停 |
-| [Plan 002 M1 信息获取主链路](plan/002-信息获取主链路计划.md) | M1 TASK、AC → 任务 → 证据映射及退出门槛 | planned v1.0；实现暂停 |
-| [Plan 003 M2 本人账号B站试点](plan/003-本人账号B站试点计划.md) | M2 TASK、AC → 任务 → 证据映射及退出门槛 | planned v1.0；实现暂停 |
-| [Plan 004 M3 事件与热度](plan/004-事件与热度计划.md) | M3 TASK、AC → 任务 → 证据映射及退出门槛 | planned v1.0；实现暂停 |
-| [Plan 005 M4 报告与知识库](plan/005-报告与知识库计划.md) | M4 TASK、AC → 任务 → 证据映射及退出门槛 | planned v1.0；实现暂停 |
-| [Plan 006 M5 推送](plan/006-推送计划.md) | M5 TASK、AC → 任务 → 证据映射及退出门槛 | blocked v1.0；飞书暂缓、SMTP 启用条件未定 |
-| [Plan 007 M6 扩展能力](plan/007-扩展能力计划.md) | M6 TASK、AC → 任务 → 证据映射及退出门槛 | planned v1.0；实现暂停 |
+| [执行 Plan 索引 001—030](plan/README.md) | 一个 Issue 一份 Plan；按 PRD 追踪 SPEC、Checklist、证据和旧卡去向 | planned；M5 启用条件阻断 |
+| 旧 Plan 001—007 | 拆分前基线与历史证据，原文从 Git 历史查阅 | historical |
 | [BACKLOG](../BACKLOG.md) | 阶段与任务状态看板 | — |
 | [HANDOVER](../HANDOVER.md) | 当前实现快照 | — |
 | [PROJECT](../PROJECT.md) | 技术栈、目录、架构约束 | — |
 
-阅读顺序：Design 001 → 对应 M1—M6 Design 002—007 → PRD 001—007 → Plan 001—007。三层同号；现行计划统一在 `docs/plan/`，Design/PRD 的 `plan` 元数据均指向同号现行文件。
+阅读顺序：总 Design 001 → 对应 M1—M6 Design/Epic 002—007 → PRD 001—007 → [Plan 索引](plan/README.md) → 对应单 Issue Plan。需求/设计编号与执行 Plan 编号独立；旧计划原文从 Git 历史查阅。
 
 ## 2. 历史编号
 
@@ -72,12 +67,12 @@
 
 | 历史编号/层 | 现行编号与路径 | 关系 |
 |---|---|---|
-| 048 / PRD | [002 信息获取主链路需求](prd/002-信息获取主链路需求.md) | 同一文档改号，非归档；对应 Design/Plan 002 |
-| 049 / PRD | [003 本人账号B站试点需求](prd/003-本人账号B站试点需求.md) | 同一文档改号，非归档；对应 Design/Plan 003 |
-| 050 / PRD | [004 事件与热度需求](prd/004-事件与热度需求.md) | 同一文档改号，非归档；对应 Design/Plan 004 |
-| 051 / PRD | [005 报告与知识库需求](prd/005-报告与知识库需求.md) | 同一文档改号，非归档；对应 Design/Plan 005 |
-| 052 / PRD | [006 推送需求](prd/006-推送需求.md) | 同一文档改号，非归档；对应 Design/Plan 006 |
-| 053 / PRD | [007 扩展能力需求](prd/007-扩展能力需求.md) | 同一文档改号，非归档；对应 Design/Plan 007 |
+| 048 / PRD | [002 信息获取主链路需求](prd/002-信息获取主链路需求.md) | 同一 PRD 改号，非归档；对应 Design/Epic 002，Plan 001—009 |
+| 049 / PRD | [003 本人账号B站试点需求](prd/003-本人账号B站试点需求.md) | 同一 PRD 改号，非归档；对应 Design/Epic 003，Plan 010—013 |
+| 050 / PRD | [004 事件与热度需求](prd/004-事件与热度需求.md) | 同一 PRD 改号，非归档；对应 Design/Epic 004，Plan 014—016 |
+| 051 / PRD | [005 报告与知识库需求](prd/005-报告与知识库需求.md) | 同一 PRD 改号，非归档；对应 Design/Epic 005，Plan 017—023 |
+| 052 / PRD | [006 推送需求](prd/006-推送需求.md) | 同一 PRD 改号，非归档；对应 Design/Epic 006，Plan 024—026 |
+| 053 / PRD | [007 扩展能力需求](prd/007-扩展能力需求.md) | 同一 PRD 改号，非归档；对应 Design/Epic 007，Plan 027—030 |
 
 ### 2.2 历史 Plan 里程碑编号与目录迁移
 
@@ -86,12 +81,12 @@ Plan 048—053 在阶段 3 与同主题 Design/PRD 对齐，原 `Sxx-Txx`、验�
 | 历史编号/层 | 现行编号与路径 | 关系 |
 |---|---|---|
 | 目录 | 旧 `docs/plans/` → 现行 `docs/plan/` | 目录迁移，非归档 |
-| 048 / Plan | [002 信息获取主链路计划](plan/002-信息获取主链路计划.md) | 同文档改号；TASK 前缀 048 → 002 |
-| 049 / Plan | [003 本人账号B站试点计划](plan/003-本人账号B站试点计划.md) | 同文档改号；TASK 前缀 049 → 003 |
-| 050 / Plan | [004 事件与热度计划](plan/004-事件与热度计划.md) | 同文档改号；TASK 前缀 050 → 004 |
-| 051 / Plan | [005 报告与知识库计划](plan/005-报告与知识库计划.md) | 同文档改号；TASK 前缀 051 → 005 |
-| 052 / Plan | [006 推送计划](plan/006-推送计划.md) | 同文档改号；TASK 前缀 052 → 006 |
-| 053 / Plan | [007 扩展能力计划](plan/007-扩展能力计划.md) | 同文档改号；TASK 前缀 053 → 007 |
+| 048 / Plan | 旧 M1 里程碑计划 | 阶段 3 旧 TASK 前缀 048 → 002；现按 [新 Plan 001—009](plan/README.md) 拆分，旧原文见 Git |
+| 049 / Plan | 旧 M2 里程碑计划 | 阶段 3 旧 TASK 前缀 049 → 003；现按新 Plan 010—013 拆分，旧原文见 Git |
+| 050 / Plan | 旧 M3 里程碑计划 | 阶段 3 旧 TASK 前缀 050 → 004；现按新 Plan 014—016 拆分，旧原文见 Git |
+| 051 / Plan | 旧 M4 里程碑计划 | 阶段 3 旧 TASK 前缀 051 → 005；现按新 Plan 017—023 拆分，旧原文见 Git |
+| 052 / Plan | 旧 M5 里程碑计划 | 阶段 3 旧 TASK 前缀 052 → 006；现按新 Plan 024—026 拆分，旧原文见 Git |
+| 053 / Plan | 旧 M6 里程碑计划 | 阶段 3 旧 TASK 前缀 053 → 007；现按新 Plan 027—030 拆分，旧原文见 Git |
 
 [Research 001 热点事件监控平台调研](research/001-热点事件监控平台调研.md) 与总主题同号，保留原位。旧 Design 046 全局异常与响应契约及其 S03 验收记录已删除，可从 Git 历史查阅；现行约束和门禁见 Design 001、PROJECT.md 与 AGENTS.md。
 
@@ -100,12 +95,12 @@ Plan 048—053 在阶段 3 与同主题 Design/PRD 对齐，原 `Sxx-Txx`、验�
 | 移除内容 | 数量 | 去向 |
 |---|---|---|
 | 逐项 PRD 003—045 与 PRD 索引 | 44 | 历史需求先合并入 PRD 001；v3.0 的里程碑需求当时拆至 048—053，阶段 2 同文档改号为 002—007，对应关系见总需求第 7—8、10 节 |
-| 逐项 Plan 002—045、047 与 Plan 索引 | 46 | 合并入 Plan 001 v2.0 |
+| 逐项 Plan 002—045、047 与 Plan 索引 | 46 | 历史阶段曾合并入旧总 Plan 001 v2.0；当前执行入口见本次拆分索引 |
 | Design 040、043、044、045 | 4 | 040 未实现；043 由 Design 001 第 5 节共享模型约束承接；044/045 移出范围 |
 | Research 044、045 | 2 | 移出范围 |
 
 ## 4. 编号与阶段迁移
 
-- 格式仍按 [TEMPLATE.md](TEMPLATE.md)。现行 Design/PRD/Plan 均为 001—007：001 为总文档，002—007 分别为 M1—M6。001 中保留原 `NFR-001-101—112`、DEC/OPEN 及旧 FR/AC 去向；里程碑 BR/FR/AC/TASK/EV/CHK 均按同号编号。Plan 001 v6.0 保留旧卡与旧 AC 映射作为历史。
+- 格式仍按 [TEMPLATE.md](TEMPLATE.md)。现行 Design/Epic 与 PRD 为 001—007，执行 Plan 为独立的 001—030；Plan 001 是主题规则 Issue，不再表示平台总计划。旧 Plan 001—007 已由新 Plan 替代，历史卡与提交从 Git 追溯。源 PRD 的 BR/FR/NFR/AC 编号和产品含义未重编号。
 - PRD 048—053 在阶段 2、Plan 048—053 在阶段 3 分别与同主题 002—007 对齐；后续新里程碑或独立专项依本台账续编号。
-- 里程碑验收记录放 `acceptance/`，预留路径按同号 Plan 的 `002-…验收.md`—`007-…验收.md` 命名；未形成记录的产品 AC 保持待验收。
+- 里程碑验收记录放 `acceptance/`，按源 PRD/Design 的 002—007 编号命名，不按单 Issue Plan 编号；未形成记录的产品 AC 保持待验收。

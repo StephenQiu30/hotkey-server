@@ -1,6 +1,6 @@
 # HotKey Server 交接
 
-更新日期：2026-09-26。本文件只记录当前实现快照（≤5 KB）；需求见 [PRD 001 v5.0](docs/prd/001-热点舆情监控平台需求.md)，设计见 [Design 001 v4.0](docs/design/001-热点舆情监控平台总体设计.md)，任务与证据见 [Plan 001 v6.0](docs/plan/001-热点舆情监控平台总计划.md) 和 [BACKLOG](BACKLOG.md)。状态为**文档修订完成，实现暂停，待用户确认恢复**。本次文档工作未授权代码实施、提交或推送。
+更新日期：2026-09-26。本文件只记录当前实现快照（≤5 KB）；需求见 [PRD 001 v5.0](docs/prd/001-热点舆情监控平台需求.md)，Epic 设计见 [Design 001 v4.0](docs/design/001-热点舆情监控平台总体设计.md) 及对应 Design，任务与证据见 [逐 Issue Plan 索引](docs/plan/README.md) 和 [BACKLOG](BACKLOG.md)。本次仅重构计划文档，代码实现和产品验收状态未改变。
 
 ## 当前边界
 

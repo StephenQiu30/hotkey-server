@@ -1,6 +1,6 @@
 # HotKey Server 项目与技术选型
 
-更新日期：2026-09-26。本文固定仓库边界、技术栈、后端目录、API 契约和运行约束。产品需求、总体设计和计划分别以 [PRD 001 v5.0](docs/prd/001-热点舆情监控平台需求.md)、[Design 001 v4.0](docs/design/001-热点舆情监控平台总体设计.md)、[Plan 001 v6.0](docs/plan/001-热点舆情监控平台总计划.md) 为准。
+更新日期：2026-09-26。本文固定仓库边界、技术栈、后端目录、API 契约和运行约束。产品需求见 [PRD 001 v5.0](docs/prd/001-热点舆情监控平台需求.md) 和各里程碑 PRD，Epic 设计见 [Design 001 v4.0](docs/design/001-热点舆情监控平台总体设计.md) 及 Design 002—007，逐 Issue 执行计划见 [Plan 索引](docs/plan/README.md)。
 
 ## 1. 定位与仓库边界
 
@@ -15,7 +15,7 @@ HotKey/
 │   ├── HANDOVER.md       # 当前实现快照（≤ 5 KB）
 │   ├── backend/          # Python API、Worker、CLI
 │   ├── frontend/         # Next.js Web 工作台
-│   └── docs/             # PRD/Design/Plan 001、现有实现参考、验收记录
+│   └── docs/             # PRD、Design/Epic、逐 Issue Plan、验收记录
 └── hotkey-app/            # Flutter 客户端（暂停）
 ```
 
@@ -40,7 +40,7 @@ HotKey/
 
 已实现并可复用：单 owner 身份与会话、主题与关键词规则、来源连接、持久任务执行（Outbox/Kafka/Worker、重试、取消、租约、恢复）、内容身份/版本/指标观察、来源契约、网页正文采集、隔离浏览器服务、预算账本、备份恢复、统一错误契约和 Web 工作台框架。
 
-宿主机 Worker 已注册 `webpage.collect`、`keyword.search`、`source.comments`、`source.hotlist`、`analysis.annotate`、`report.daily`、`notification.send`、`knowledge.export`；独立调度、四关键词来源、六榜、Codex 调用/标注、日报、Obsidian 日报导出和飞书发送均有代码与受控测试。开发库约 4 小时运行仅证明有限真实范围，M1 连续 72 小时及各产品 AC 未通过。B 站适配器有离线回放，修复后真实采集未做且开关关闭；SMTP 与事件尚未实现。现状和证据等级见 Design 001 第 2 节、Plan 001 第 3/8 节。
+宿主机 Worker 已注册 `webpage.collect`、`keyword.search`、`source.comments`、`source.hotlist`、`analysis.annotate`、`report.daily`、`notification.send`、`knowledge.export`；独立调度、四关键词来源、六榜、Codex 调用/标注、日报、Obsidian 日报导出和飞书发送均有代码与受控测试。开发库约 4 小时运行仅证明有限真实范围，M1 连续 72 小时及各产品 AC 未通过。B 站适配器有离线回放，修复后真实采集未做且开关关闭；SMTP 与事件尚未实现。现状和证据等级见 Design 001 第 2 节及对应逐 Issue Plan；旧总 Plan 001 的历史证据从 Git 历史查阅。
 
 
 ## 2. 固定技术栈
@@ -208,10 +208,10 @@ FastAPI 路由装饰器、类型注解和 Pydantic 模型是唯一可编辑的 A
 
 ## 5. 实施与验证
 
-按 Plan 001 的任务推进：开工前在任务下补一段说明（做什么、改哪些文件、怎么验收）→ 失败测试 → 实现 → 回归 → 阶段验收记录。架构或数据库结构变化同步更新 Design 001 与本文。
+按 [Plan 索引](docs/plan/README.md) 的单 Issue 推进：开工前在对应 Plan 补精确文件、SPEC、Checklist 与验收说明 → 失败测试 → 实现 → 回归 → 阶段验收记录。架构或数据库结构变化同步更新所属 Design/Epic、总 Design 001 与本文。
 
 交付前执行后端 Ruff、mypy、pytest、OpenAPI 漂移与客户端生成检查，以及前端 ESLint、Prettier、类型检查、生产构建和浏览器验证。数据库和消息行为用隔离的真实 PostgreSQL/Redis/Kafka 验证。适配器用固定样本做契约测试，并以一次真实请求冒烟；模拟数据不能算采集成功。
 
 ## 6. 维护
 
-PROJECT.md 是技术、架构、目录、API 契约和数据库约束的事实源；AGENTS.md 只补充实现门禁和命令，两者不得冲突。产品需求只在 PRD 001 维护，任务只在 Plan 001 维护；BACKLOG 是唯一进度看板（≤ 10 KB），HANDOVER 保持 ≤ 5 KB，均不追加流水账。
+PROJECT.md 是技术、架构、目录、API 契约和数据库约束的事实源；AGENTS.md 只补充实现门禁和命令，两者不得冲突。产品需求以总 PRD 001 和对应里程碑 PRD 为准；Epic 边界在 Design，任务实施规格在单 Issue Plan；BACKLOG 是唯一进度看板（≤ 10 KB），HANDOVER 保持 ≤ 5 KB，均不追加流水账。
