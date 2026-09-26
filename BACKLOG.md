@@ -32,14 +32,17 @@
 
 ## 2. 当前迭代
 
-**状态：2026-09-26 重心转为真实信息获取（用户要求，飞书暂缓）。** 本机 `hotkey_p1` 库真实跑通：4 个来源定时采集 → 入库 → 评论 → Codex 标注。首轮真实运行修复 5 个问题（调度进程未注册 ORM、缺全局预算、Codex 0.157 需 experimentalApi、10 分钟窗口漏采、组件版本含 `/` 导致 RSS/SearXNG 入库全败），36Kr 改走 RSSHub。修复未提交。
+**状态：2026-09-26 暂停派发（用户要求）。重心为真实信息获取（飞书暂缓）。** 本机 `hotkey_p1` 库真实跑通：4 个来源定时采集 → 入库 → 评论 → Codex 标注。首轮真实运行修复 5 个问题（调度进程未注册 ORM、缺全局预算、Codex 0.157 需 experimentalApi、10 分钟窗口漏采、组件版本含 `/` 导致 RSS/SearXNG 入库全败），36Kr 改走 RSSHub。修复未提交。
 
 | 顺序 | 卡 | 内容 | 执行方 | 状态 | 备注 |
 |---|---|---|---|---|---|
 | 1 | A5 | HN 竖切真实验收 | Claude | doing | 已跑通搜索、评论、标注；待验 Worker 重启重放 |
 | 2 | P2-3 | RSSHub 热榜采集（微博、百度、知乎、B 站、36Kr、澎湃） | Codex | review | 真实运行 6 榜 180 条、命中 12 条、Codex 判相关 7 条；修复预设配置键 CHECK、拉丁关键词误命中；未提交 |
-| 3 | P2-1 | MediaCrawler 本机部署（安全补丁、独立资料扫码） | Claude | doing | B 站已登录并试采；微博、小红书、抖音待扫码；需核实条数上限 |
-| 1 | A7 | 首轮真实运行发现的问题 | Claude | todo | ①手动重试时 90 秒预算按首次启动计，重试必然零采集；②子进程内确定性异常要等 ~79 秒硬截止才被发现并重试 3 次；③RSSHub 健康检查用了镜像里没有的 wget；④CI runtime 缺 `HOTKEY_SEARXNG_SECRET` |
+| 3 | P2-1 | MediaCrawler 本机部署（安全补丁、独立资料扫码） | Claude | done | B 站已登录；条数上限补丁实测 2 条视频 40 条评论、无验证码；开发阶段只用 B 站 |
+| 3 | P2-2a | B 站经 MediaCrawler 接入（Plan 第 19 节） | Codex | review | 代码与离线回放通过（730 passed）；修复后真实 B 站采集待运行（开关暂关）；记录迁至 `~/Desktop/Docker/mediacrawler-start-local/` |
+| 4 | P2-2b | 来源节奏改为预设字段（最短间隔、夜间静默、每轮词数/条数、长截止），去掉调度器中的 `bilibili` 硬编码，供微博等复用 | Codex | todo | P2-2a 审查发现 |
+| 3 | A7a | 任务子进程异常快速失败（Plan 第 20 节） | Codex | done | 全量测试通过；真实运行已正确报出 B 站失败类型 |
+| 1 | A7 | 首轮真实运行发现的问题 | Claude | todo | ①手动重试时 90 秒预算按首次启动计（待 P2-2a 后派发，同改 discovery_execution）；②已拆为 A7a；③RSSHub 健康检查（另一会话处理中）；④已由 `14b0b673` 修复 |
 | 2 | D2 | 真实 Codex 调用生成模型版日报 | Claude | todo | 代码 `f67c623d` |
 | 2 | D3 | 真实 vault 写入与“我的笔记”保留 | Claude | todo | 代码 `8c9ac156` |
 | 3 | D4 | 浏览器桌面/窄屏检查 | Claude | todo | 代码 `8feeb69e` |
