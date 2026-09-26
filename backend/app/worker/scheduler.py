@@ -189,9 +189,7 @@ def enqueue_due_collections_in_transaction(session: Session, now: datetime) -> i
     for schedule in schedules:
         try:
             with session.begin_nested():
-                accepted_ids = _accept_collection_schedule(
-                    session, schedule=schedule, now=now_utc
-                )
+                accepted_ids = _accept_collection_schedule(session, schedule=schedule, now=now_utc)
         except Exception as error:
             logger.warning(
                 "scheduler_collection_row_failed",

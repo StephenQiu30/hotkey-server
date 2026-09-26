@@ -267,9 +267,7 @@ class AnalysisService:
             since=now - timedelta(hours=72),
         )
         matched = tuple(
-            item
-            for item in candidates
-            if evaluate_monitor_rules(rules, _post_text(item)).matched
+            item for item in candidates if evaluate_monitor_rules(rules, _post_text(item)).matched
         )
         due = self._missing_posts(
             owner_id=owner_id,
@@ -285,9 +283,7 @@ class AnalysisService:
         prompt_items = tuple(
             _prompt_item(
                 item,
-                comments=tuple(
-                    comment.text for comment in comments.get(item.content_id, ())
-                ),
+                comments=tuple(comment.text for comment in comments.get(item.content_id, ())),
             )
             for item in due
         )
@@ -481,9 +477,7 @@ class AnalysisAnnotateExecutor:
                     results=results,
                     created_at=self._clock(),
                 )
-            invalid_count = sum(
-                result.status is AnnotationStatus.UNANALYZED for result in results
-            )
+            invalid_count = sum(result.status is AnnotationStatus.UNANALYZED for result in results)
             job_completion = (
                 JobCompletion(status=JobStatus.SUCCEEDED)
                 if invalid_count == 0

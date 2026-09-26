@@ -1836,41 +1836,35 @@ class CommentScanService:
     ) -> tuple[CommentScanPost, ...]:
         if not owners or not source_keys:
             return ()
-        latest_versions = (
-            select(
-                ContentVersion.owner_id.label("owner_id"),
-                ContentVersion.content_id.label("content_id"),
-                ContentVersion.title.label("title"),
-                ContentVersion.body.label("body"),
-                func.row_number()
-                .over(
-                    partition_by=(ContentVersion.owner_id, ContentVersion.content_id),
-                    order_by=(ContentVersion.created_at.desc(), ContentVersion.id.desc()),
-                )
-                .label("position"),
+        latest_versions = select(
+            ContentVersion.owner_id.label("owner_id"),
+            ContentVersion.content_id.label("content_id"),
+            ContentVersion.title.label("title"),
+            ContentVersion.body.label("body"),
+            func.row_number()
+            .over(
+                partition_by=(ContentVersion.owner_id, ContentVersion.content_id),
+                order_by=(ContentVersion.created_at.desc(), ContentVersion.id.desc()),
             )
-            .subquery()
-        )
-        latest_observations = (
-            select(
-                ContentObservation.owner_id.label("owner_id"),
-                ContentObservation.content_id.label("content_id"),
-                ContentObservation.like_count.label("like_count"),
-                ContentObservation.comment_count.label("comment_count"),
-                ContentObservation.repost_count.label("repost_count"),
-                func.row_number()
-                .over(
-                    partition_by=(ContentObservation.owner_id, ContentObservation.content_id),
-                    order_by=(
-                        ContentObservation.observed_at.desc(),
-                        ContentObservation.received_at.desc(),
-                        ContentObservation.id.desc(),
-                    ),
-                )
-                .label("position"),
+            .label("position"),
+        ).subquery()
+        latest_observations = select(
+            ContentObservation.owner_id.label("owner_id"),
+            ContentObservation.content_id.label("content_id"),
+            ContentObservation.like_count.label("like_count"),
+            ContentObservation.comment_count.label("comment_count"),
+            ContentObservation.repost_count.label("repost_count"),
+            func.row_number()
+            .over(
+                partition_by=(ContentObservation.owner_id, ContentObservation.content_id),
+                order_by=(
+                    ContentObservation.observed_at.desc(),
+                    ContentObservation.received_at.desc(),
+                    ContentObservation.id.desc(),
+                ),
             )
-            .subquery()
-        )
+            .label("position"),
+        ).subquery()
         rows = self._session.execute(
             select(
                 ContentRecord.owner_id,

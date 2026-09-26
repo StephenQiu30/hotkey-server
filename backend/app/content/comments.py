@@ -423,8 +423,7 @@ class CommentPageCommitService:
             or configuration.scope.get("ends_at") != window.ends_at.isoformat()
             or configuration.scope.get("max_pages") != request.max_pages
             or configuration.scope.get("first_level_limit") != _FIRST_LEVEL_LIMIT
-            or configuration.scope.get("replies_per_thread_limit")
-            != _REPLIES_PER_THREAD_LIMIT
+            or configuration.scope.get("replies_per_thread_limit") != _REPLIES_PER_THREAD_LIMIT
             or window.owner_id != owner_id
             or window.capability is not SourceCapability.COMMENTS
             or page.source_key != window.source_key

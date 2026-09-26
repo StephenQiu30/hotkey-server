@@ -697,9 +697,7 @@ class ResourceBudgetService:
     ) -> ComponentPolicyView:
         self._session.rollback()
         with self._session.begin():
-            return self.save_component_policy_in_transaction(
-                owner_id=owner_id, command=command
-            )
+            return self.save_component_policy_in_transaction(owner_id=owner_id, command=command)
 
     def save_component_policy_in_transaction(
         self,
@@ -738,10 +736,8 @@ class ResourceBudgetService:
                     ResourceComponentPolicy.component_version
                     != statement.excluded.component_version,
                     ResourceComponentPolicy.cost_class != statement.excluded.cost_class,
-                    ResourceComponentPolicy.enabled_for_core
-                    != statement.excluded.enabled_for_core,
-                    ResourceComponentPolicy.terms_reference
-                    != statement.excluded.terms_reference,
+                    ResourceComponentPolicy.enabled_for_core != statement.excluded.enabled_for_core,
+                    ResourceComponentPolicy.terms_reference != statement.excluded.terms_reference,
                     ResourceComponentPolicy.reviewed_at != statement.excluded.reviewed_at,
                 ),
             ).returning(ResourceComponentPolicy.id)

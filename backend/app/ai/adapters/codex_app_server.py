@@ -264,9 +264,7 @@ class CodexAppServerClient:
             return {}
         return message
 
-    def _request(
-        self, method: str, params: Mapping[str, Any], deadline: float
-    ) -> dict[str, Any]:
+    def _request(self, method: str, params: Mapping[str, Any], deadline: float) -> dict[str, Any]:
         self._next_id += 1
         request_id = self._next_id
         self._send({"id": request_id, "method": method, "params": dict(params)})

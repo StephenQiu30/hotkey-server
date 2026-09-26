@@ -56,9 +56,8 @@ class SourceConnectionConfig(InputModel):
     @classmethod
     def validate_engines(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         normalized = tuple(item.strip() for item in value)
-        if (
-            any(not item or len(item) > 64 for item in normalized)
-            or len(set(normalized)) != len(normalized)
+        if any(not item or len(item) > 64 for item in normalized) or len(set(normalized)) != len(
+            normalized
         ):
             raise ValueError("engines must contain unique non-empty names")
         return normalized

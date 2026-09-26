@@ -444,12 +444,9 @@ class KeywordDiscoveryPageCommitService:
                 self._session.rollback()
                 raise ValueError("keyword search page can contain only posts")
             if (
-                (
-                    item.published_at is not None
-                    and not window.starts_at <= item.published_at < window.ends_at
-                )
-                or item.external_id in seen
-            ):
+                item.published_at is not None
+                and not window.starts_at <= item.published_at < window.ends_at
+            ) or item.external_id in seen:
                 filtered_items += 1
                 continue
             seen.add(item.external_id)

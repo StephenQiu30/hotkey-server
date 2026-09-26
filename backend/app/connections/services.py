@@ -474,9 +474,7 @@ class SourcePresetService:
             preset_changed |= not access_service.matches_in_transaction(
                 owner_id=owner_id, command=access_command
             )
-            access = access_service.save_in_transaction(
-                owner_id=owner_id, command=access_command
-            )
+            access = access_service.save_in_transaction(owner_id=owner_id, command=access_command)
             retention_command = RetentionPolicyInput(
                 source_policy_id=access.id,
                 data_class=DataClass.STRUCTURED,
@@ -486,9 +484,7 @@ class SourcePresetService:
             preset_changed |= not retention_service.matches_in_transaction(
                 owner_id=owner_id, command=retention_command
             )
-            retention_service.save_in_transaction(
-                owner_id=owner_id, command=retention_command
-            )
+            retention_service.save_in_transaction(owner_id=owner_id, command=retention_command)
 
         from jobs.schemas import (
             BudgetMetric,
@@ -521,9 +517,7 @@ class SourcePresetService:
         preset_changed |= not resources.component_policy_matches_in_transaction(
             owner_id=owner_id, command=component_command
         )
-        resources.save_component_policy_in_transaction(
-            owner_id=owner_id, command=component_command
-        )
+        resources.save_component_policy_in_transaction(owner_id=owner_id, command=component_command)
         preset_changed |= not resources.budget_policy_matches_in_transaction(
             owner_id=owner_id, command=budget_command
         )

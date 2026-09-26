@@ -254,8 +254,7 @@ class SourceAccessPolicyService:
                     SourceAccessPolicy.terms_reference.is_distinct_from(
                         statement.excluded.terms_reference
                     ),
-                    SourceAccessPolicy.processing_purpose
-                    != statement.excluded.processing_purpose,
+                    SourceAccessPolicy.processing_purpose != statement.excluded.processing_purpose,
                     SourceAccessPolicy.component_name.is_distinct_from(
                         statement.excluded.component_name
                     ),
@@ -268,15 +267,12 @@ class SourceAccessPolicyService:
                     SourceAccessPolicy.field_purposes.is_distinct_from(
                         statement.excluded.field_purposes
                     ),
-                    SourceAccessPolicy.reviewed_at.is_distinct_from(
-                        statement.excluded.reviewed_at
-                    ),
+                    SourceAccessPolicy.reviewed_at.is_distinct_from(statement.excluded.reviewed_at),
                     SourceAccessPolicy.review_expires_at.is_distinct_from(
                         statement.excluded.review_expires_at
                     ),
                 ),
-            )
-            .returning(SourceAccessPolicy.id)
+            ).returning(SourceAccessPolicy.id)
         )
         model = (
             self._session.get(SourceAccessPolicy, policy_id)
@@ -467,14 +463,11 @@ class SourceAccessPolicyService:
         )
 
     @staticmethod
-    def _matches_command(
-        model: SourceAccessPolicy, command: SourceAccessPolicyInput
-    ) -> bool:
+    def _matches_command(model: SourceAccessPolicy, command: SourceAccessPolicyInput) -> bool:
         return (
             model.status == command.status.value
             and model.enabled == command.enabled
-            and model.access_basis
-            == (command.access_basis.value if command.access_basis else None)
+            and model.access_basis == (command.access_basis.value if command.access_basis else None)
             and model.terms_reference == command.terms_reference
             and model.processing_purpose == command.processing_purpose
             and model.component_name == command.component_name
