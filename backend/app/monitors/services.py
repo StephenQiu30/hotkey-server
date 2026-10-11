@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, select, true
+from sqlalchemy import and_, func, select, true
 from sqlalchemy.orm import Session
 
 from connections.services import (
@@ -91,6 +91,34 @@ def current_topic_rule_matches_in_transaction(
     if require_active:
         statement = statement.where(MonitorTopic.status == MonitorTopicStatus.ACTIVE.value)
     return session.scalar(statement) is not None
+
+
+def active_collection_sequence_in_transaction(
+    session: Session, *, owner_id: UUID, topic_id: UUID
+) -> int | None:
+    """Read active state and its monotonic sequence in one MVCC snapshot.
+
+    Do not lock the topic here: callers may already hold a Job or Schedule lock,
+    while topic writes lock Topic before Schedule. A changed sequence fences any
+    acceptance racing with pause, including pause/resume at the same timestamp.
+    """
+    if not session.in_transaction():
+        raise RuntimeError("collection topic reads require caller transaction")
+    sequence = (
+        select(func.coalesce(func.max(MonitorTopicStatusEvent.event_sequence), 0))
+        .where(
+            MonitorTopicStatusEvent.owner_id == owner_id,
+            MonitorTopicStatusEvent.topic_id == topic_id,
+        )
+        .scalar_subquery()
+    )
+    return session.scalar(
+        select(sequence).where(
+            MonitorTopic.owner_id == owner_id,
+            MonitorTopic.id == topic_id,
+            MonitorTopic.status == MonitorTopicStatus.ACTIVE.value,
+        )
+    )
 
 
 def _latest_timestamp(current: datetime, observed: datetime) -> datetime:

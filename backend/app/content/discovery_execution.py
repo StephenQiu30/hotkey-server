@@ -17,6 +17,7 @@ from core.config import get_settings
 from core.errors import ApplicationError
 from events.heat import record_source_fetch_success_in_transaction
 from evidence.services import RetentionPolicyUnavailableError, SourceAccessUnavailableError
+from jobs.collection_topics import TOPIC_COLLECTION_SEQUENCE
 from jobs.cursor import CursorBudgetExhaustedError, plan_cursor_request
 from jobs.execution import (
     ExecutionLease,
@@ -38,7 +39,6 @@ from sources.adapters.bilibili_chrome import VERSION as CHROME_VERSION
 from sources.adapters.bilibili_chrome import BilibiliChromeAdapter
 from sources.adapters.hackernews import HackerNewsAdapter
 from sources.adapters.mediacrawler import (
-    MediaCrawlerAdapter,
     MediaCrawlerExecutionError,
     MediaCrawlerPreflightError,
     validate_job_version_evidence,
@@ -58,6 +58,10 @@ from sources.contracts import (
 type SearchAdapterFactory = Callable[
     [Callable[[int], bool], Callable[[], bool], int, float], SourceAdapter
 ]
+
+
+class SearchRequestGuardUnavailableError(ValueError):
+    """A subprocess bridge cannot guard each outbound request before sending."""
 
 
 class UnsupportedSearchSourceError(ValueError):
@@ -89,15 +93,9 @@ def build_search_adapter_factory(
             )
         if not settings.mediacrawler_enabled or owner_id is None:
             raise ValueError("MediaCrawler requires enabled host configuration and owner")
-        return lambda before_request, cancelled, max_requests, max_seconds: MediaCrawlerAdapter(
-            crawler_dir=settings.mediacrawler_dir,
-            output_dir=settings.mediacrawler_output_dir,
-            owner_key=owner_id.hex,
-            before_request=before_request,
-            cancelled=cancelled,
-            max_requests=max_requests,
-            max_seconds=min(max_seconds, settings.mediacrawler_timeout_seconds),
-        )
+        # A prepaid request upper bound plus process polling cannot enforce a
+        # topic pause between the crawler's individual HTTP calls.
+        raise SearchRequestGuardUnavailableError("mediacrawler_request_guard_unavailable")
     if source_key == "hackernews":
         if (
             config.base_url is None
@@ -181,7 +179,7 @@ class KeywordDiscoveryExecutor:
         scope = {
             key: value
             for key, value in configuration.scope.items()
-            if key != "source_adapter_version"
+            if key not in {"source_adapter_version", TOPIC_COLLECTION_SEQUENCE}
         }
         try:
             source_key = configuration.observation.source_key
@@ -341,6 +339,13 @@ class KeywordDiscoveryExecutor:
                 connection_id=connection_id,
                 connection_version=connection_version,
             )
+        except SearchRequestGuardUnavailableError as error:
+            raise self._failure(
+                "search_request_guard_unavailable",
+                JobFailureCategory.CONFIGURATION_UNAVAILABLE,
+                "补齐MediaCrawler搜索的逐请求准入后重新提交或改用Chrome方式",
+                manual_retry_allowed=False,
+            ) from error
         except UnsupportedSearchSourceError as error:
             raise self._failure(
                 "search_source_key_unsupported",

@@ -20,6 +20,7 @@ from core.config import get_settings
 from core.errors import ApplicationError
 from events.heat import record_source_fetch_success_in_transaction
 from evidence.services import RetentionPolicyUnavailableError, SourceAccessUnavailableError
+from jobs.collection_topics import TOPIC_COLLECTION_SEQUENCE
 from jobs.cursor import CursorBudgetExhaustedError, plan_cursor_request
 from jobs.execution import (
     ExecutionLease,
@@ -140,7 +141,7 @@ class CommentsExecutor:
         scope = {
             key: value
             for key, value in configuration.scope.items()
-            if key != "source_adapter_version"
+            if key not in {"source_adapter_version", TOPIC_COLLECTION_SEQUENCE}
         }
         try:
             source_key = configuration.observation.source_key

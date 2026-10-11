@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from uuid import uuid4
 
 import httpx
 import pytest
 from sqlalchemy.orm import sessionmaker
 
+import content.discovery_execution as discovery_execution
 from connections.schemas import SourceConnectionConfig
 from content.discovery_execution import (
+    SearchRequestGuardUnavailableError,
     UnsupportedSearchSourceError,
     build_search_adapter_factory,
 )
@@ -782,3 +786,54 @@ def test_worker_registers_keyword_search_handler() -> None:
     handlers = _registered_job_handlers(sessionmaker(), settings)
 
     assert "keyword.search" in handlers
+
+
+def test_mediacrawler_live_search_without_per_request_guard_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        discovery_execution, "get_settings", lambda: SimpleNamespace(mediacrawler_enabled=True)
+    )
+    with pytest.raises(
+        SearchRequestGuardUnavailableError, match="mediacrawler_request_guard_unavailable"
+    ):
+        build_search_adapter_factory(
+            "bilibili",
+            SourceConnectionConfig(
+                base_url="https://www.bilibili.com",
+                allowed_hosts=("www.bilibili.com",),
+            ),
+            owner_id=uuid4(),
+        )
+
+
+def test_bilibili_chrome_keeps_its_per_request_guard_when_mediacrawler_is_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = uuid4()
+    monkeypatch.setattr(
+        discovery_execution,
+        "get_settings",
+        lambda: SimpleNamespace(
+            bilibili_chrome_owner_id=owner,
+            bilibili_chrome_identity_env="CONTROLLED_IDENTITY",
+        ),
+    )
+    factory = build_search_adapter_factory(
+        "bilibili",
+        SourceConnectionConfig(
+            base_url="https://api.bilibili.com",
+            allowed_hosts=("api.bilibili.com",),
+        ),
+        owner_id=owner,
+    )
+
+    def before(_attempt: int) -> bool:
+        return False
+
+    def cancelled() -> bool:
+        return True
+
+    adapter = factory(before, cancelled, 1, 5)
+    assert adapter._before_request is before
+    assert adapter._cancelled is cancelled

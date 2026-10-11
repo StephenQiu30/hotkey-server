@@ -10,6 +10,7 @@ from uuid import UUID, uuid4, uuid5
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from jobs.collection_topics import collection_topic_matches_in_transaction
 from jobs.models import Job, JobAttempt, OutboxMessage, ProcessedMessage
 from jobs.schemas import JobFailureCategory, JobStage, JobStatus
 
@@ -292,6 +293,7 @@ class JobExecutionService:
             model.defer_reason = None
             model.next_run_at = None
             model.updated_at = now
+            self._cancel_stale_topic_collection(model, now=now)
             self._session.add(
                 JobAttempt(
                     id=uuid4(),
@@ -465,6 +467,7 @@ class JobExecutionService:
         expires_at = now + self._lease_duration
         model = self._lock_job(lease.job_id)
         self._require_current_lease(model, lease, now)
+        self._cancel_stale_topic_collection(model, now=now)
         if model.cancel_requested_at is not None:
             return self._lease(model), False
 
@@ -486,12 +489,17 @@ class JobExecutionService:
         return self._lease(model), True
 
     def cancellation_requested(self, lease: ExecutionLease) -> bool:
-        now = self._clock()
         self._session.rollback()
         with self._session.begin():
-            model = self._lock_job(lease.job_id)
-            self._require_current_lease(model, lease, now)
-            return model.cancel_requested_at is not None
+            return self.cancellation_requested_in_transaction(lease)
+
+    def cancellation_requested_in_transaction(self, lease: ExecutionLease) -> bool:
+        """Fence topic lifecycle before reserving any outbound request budget."""
+        now = self._clock()
+        model = self._lock_job(lease.job_id)
+        self._require_current_lease(model, lease, now)
+        self._cancel_stale_topic_collection(model, now=now)
+        return model.cancel_requested_at is not None
 
     def heartbeat(self, lease: ExecutionLease) -> tuple[ExecutionLease, bool]:
         """Renew the current epoch without changing checkpoints or request counts."""
@@ -500,6 +508,7 @@ class JobExecutionService:
         with self._session.begin():
             model = self._lock_job(lease.job_id)
             self._require_current_lease(model, lease, now)
+            self._cancel_stale_topic_collection(model, now=now)
             if model.cancel_requested_at is not None:
                 return self._lease(model), True
             model.lease_expires_at = now + self._lease_duration
@@ -514,6 +523,15 @@ class JobExecutionService:
                 .values(lease_expires_at=model.lease_expires_at)
             )
             return self._lease(model), False
+
+    def _cancel_stale_topic_collection(self, model: Job, *, now: datetime) -> None:
+        if model.cancel_requested_at is not None or collection_topic_matches_in_transaction(
+            self._session, job=model
+        ):
+            return
+        model.cancel_requested_at = now
+        model.cancel_deadline_at = model.lease_expires_at
+        model.updated_at = now
 
     def acknowledge_cancelled(
         self,

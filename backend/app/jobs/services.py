@@ -18,6 +18,12 @@ from connections.services import (
     require_source_connection_version,
 )
 from core.errors import ApplicationError
+from jobs.collection_topics import (
+    TOPIC_COLLECTION_SEQUENCE,
+    collection_sequence_in_transaction,
+    collection_topic_matches_in_transaction,
+    is_topic_collection,
+)
 from jobs.cursor import (
     CursorPageProgress,
     CursorPageRequest,
@@ -2493,6 +2499,21 @@ class JobService:
         adapter_version = None
         accepted_scope = dict(command.scope)
         accepted_scope.pop("source_adapter_version", None)
+        accepted_scope.pop(TOPIC_COLLECTION_SEQUENCE, None)
+        topic_collection = is_topic_collection(
+            kind=command.kind, configuration_ref=command.observation.configuration_ref
+        )
+        topic_sequence = (
+            collection_sequence_in_transaction(
+                self._session,
+                owner_id=owner_id,
+                configuration_ref=command.observation.configuration_ref,
+            )
+            if topic_collection
+            else None
+        )
+        if topic_sequence is not None:
+            accepted_scope[TOPIC_COLLECTION_SEQUENCE] = topic_sequence
         if (
             version_policy is not None
             and version_policy.upstream_revision is not None
@@ -2537,6 +2558,8 @@ class JobService:
         )
 
         if inserted_id is not None:
+            if topic_collection and topic_sequence is None:
+                raise ApplicationError("topic_not_ready")
             require_source_connection_enabled(
                 self._session,
                 owner_id=owner_id,
@@ -2819,6 +2842,8 @@ class JobService:
             if model is None:
                 raise ApplicationError("resource_not_found")
 
+            if not collection_topic_matches_in_transaction(self._session, job=model):
+                raise ApplicationError("job_not_retryable")
             if (
                 model.status == JobStatus.QUEUED.value
                 and model.defer_reason == "manual_retry"
@@ -3047,8 +3072,7 @@ class JobService:
             delay_duration_us=delay_duration_us,
         )
 
-    @staticmethod
-    def _failure_view(model: Job) -> JobFailureView | None:
+    def _failure_view(self, model: Job) -> JobFailureView | None:
         if model.last_error_code is None:
             return None
         if (
@@ -3062,7 +3086,8 @@ class JobService:
             category=JobFailureCategory(model.last_error_category),
             occurred_at=model.last_error_at.astimezone(UTC),
             next_action=model.next_action,
-            manual_retry_allowed=model.manual_retry_allowed,
+            manual_retry_allowed=model.manual_retry_allowed
+            and collection_topic_matches_in_transaction(self._session, job=model),
         )
 
     def _status_view(self, model: Job, *, now: datetime) -> JobStatusView:

@@ -414,6 +414,8 @@ class CommentRequestMeter:
         self._session.rollback()
         try:
             with self._session.begin():
+                if execution.cancellation_requested_in_transaction(self._lease):
+                    return False
                 request_counts = execution.current_request_counts_in_transaction(
                     self._lease,
                     owner_id=self._owner_id,

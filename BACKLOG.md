@@ -2,15 +2,15 @@
 
 需求、设计和计划按 [00–58 同编号目录](docs/index.md) 维护。本文记录当前实现依据、缺口、待办和验收边界，不记录完成流水。
 
-本次核对基于本地 `main` / `b8795786` 及现有工作区文件，逐项对照59组编号文档并只读源码。“已实现”指已找到服务/接口/页面实现路径，**不代表本轮工程检查通过或能力可用**。“待补齐”是已确认的合同或行为差距；“待核对”是尚不能下结论的全路径范围；“待验收”需要独立环境、真实数据、自然时间或浏览器证据。
+实现核对基于本地 `main` / `b8795786` 及现有工作区文件，覆盖59组编号文档；本轮另按REQ-06 MON-01修复暂停保护。“已实现”指已找到服务/接口/页面实现路径，**不代表本轮工程检查通过或能力可用**。“待补齐”是已确认的合同或行为差距；“待核对”是尚不能下结论的全路径范围；“待验收”需要独立环境、真实数据、自然时间或浏览器证据。
 
-本轮只更新本文件；未调用平台、模型、通知或业务库，未运行后端/Web测试与业务服务。下列现有测试仅是后续验证入口，不是本轮通过记录。未出现新的确证缺口的条目仍保留待验收，不能据此关闭需求。
+暂停保护改动包含主题采集保护、对应固定样本测试、旧MediaCrawler搜索安全拒绝及PROJECT/06设计/计划与本文件；未调用真实平台、模型、通知或业务库，未启动/改动业务服务。后端测试仅连接独立测试库，两份本轮测试库均已删除；工程检查与独立审查结果见06。其余条目的源码依据不等于需求验收通过。
 
 ## P0 当前执行队列
 
 按保护 → 配置与采集 → 相关性与事件 → 持续监测 → 提醒的依赖推进；可并行准备无需外部请求的样本和合同。
 
-- [ ] **06/10/47 暂停保护**：补主题级排队/执行任务的新请求栅栏及停止回执；先受控验证，再允许真实采集验收。保留已有任务取消、连接风控、预算与租约。
+- [x] **06/10/47 暂停保护（代码与固定样本）**：搜索/评论任务冻结主题状态序号，领取、逐请求、取消探测、心跳及重试复核；暂停恢复不复活旧任务。父进程补取消覆盖和在途用量结算，保留已提交材料/已确认窗口。独立审查已完成；工程检查与真实验收边界见06。
 - [ ] **01/02/33/44 查询合同**：补主题语言、窗口、上限与版本读回；逐词列出上游支持、本地精筛、不支持和因上限未执行的条件，保留三组词与本地预览。
 - [ ] **03/36/46 增量与覆盖**：复用身份/版本/观察/窗口回执，补新增、完全重复、旧帖更新的互斥计数与分母；明确B站根评论/回复及单页上限，不宣称全量。
 - [ ] **09/04 核心分析解耦**：解除普通关键词相关性对情感输出的强制依赖；明确逐评论结合原帖/父链的独立相关性执行范围，保留未知/错误/限流延后。
@@ -30,13 +30,13 @@
 
 ### [01 关键词配置](docs/requirement/01-关键词配置.md) · [设计](docs/design/01-关键词配置.md) · [计划](docs/plan/01-关键词配置.md)
 
-- **已实现（源码核对）**：任一词/必含词/排除词、NFKC 与大小写归一、稳定去重、跨组冲突校验、词边界精筛、规则版本、草稿预览已有实现。[services.py](backend/app/monitors/services.py#L326)；[topic-rule-preview.tsx](frontend/src/components/monitors/topic-rule-preview.tsx#L52)
+- **已实现（源码核对）**：任一词/必含词/排除词、NFKC 与大小写归一、稳定去重、跨组冲突校验、词边界精筛、规则版本、草稿预览已有实现。[services.py](backend/app/monitors/services.py)；[topic-rule-preview.tsx](frontend/src/components/monitors/topic-rule-preview.tsx#L52)
 - **待补齐/待核对**：主题输入没有语言、搜索窗口和主题级采集上限。现有来源策略有上限，但查询直接按 max_queries 截断，未逐词解释未执行项；补配置读写、冻结版本及逐查询回执，不重写三组词。[schemas.py](backend/app/monitors/schemas.py#L41)；[runs.py](backend/app/monitors/runs.py#L163)
 - **待验收**：上游可支持条件、本地精筛条件和不支持条件逐平台对照；检验中英文、短词、同形词、规则切换和冲突。已有本地预览不证明真实搜索覆盖。
 
 ### [02 关键词采集](docs/requirement/02-关键词采集.md) · [设计](docs/design/02-关键词采集.md) · [计划](docs/plan/02-关键词采集.md)
 
-- **已实现（源码核对）**：搜索适配、采集执行、预算/游标合同和原生身份归档可复用；现有关键词工厂有 B 站 Chrome 与 HN 路径。[discovery_execution.py](backend/app/content/discovery_execution.py#L67)。B 站受限单页搜索与根评论；HN 评论树可保留父链并分页读取。[bilibili_chrome.py](backend/app/sources/adapters/bilibili_chrome.py#L225)；[hackernews.py](backend/app/sources/adapters/hackernews.py#L59)
+- **已实现（源码核对）**：搜索适配、采集执行、预算/游标合同和原生身份归档可复用；现有关键词工厂有 B 站 Chrome 与 HN 路径。[discovery_execution.py](backend/app/content/discovery_execution.py)。B 站受限单页搜索与根评论；HN 评论树可保留父链并分页读取。[bilibili_chrome.py](backend/app/sources/adapters/bilibili_chrome.py#L225)；[hackernews.py](backend/app/sources/adapters/hackernews.py#L59)
 - **待补齐/待核对**：B 站搜索、评论有明确小样本上限，回复请求不支持，不能标全量；需要按来源补足需求范围或明确部分/不支持的回执。X/Instagram 关键词路径尚不满足目标，见08。先核对原帖、根评论、回复各自受理与归档的完整链路。
 - **待验收**：选择一个已准入免费来源，按同账号/查询/排序/窗口做至少两轮真实对照；原生 ID、发布时间、父链、返回数、预算和终止证据可追溯。本轮没有发出平台请求。
 
@@ -60,9 +60,11 @@
 
 ### [06 持续监测与恢复](docs/requirement/06-持续监测与恢复.md) · [设计](docs/design/06-持续监测与恢复.md) · [计划](docs/plan/06-持续监测与恢复.md)
 
-- **已实现（源码核对）**：低频调度、应执行窗口、稳定操作 ID、租约/outbox、预算与准入、任务取消、连接版本检查、有限补轮和失败恢复已有实现；页面刷新只是读取。[scheduler.py](backend/app/worker/scheduler.py#L90)；[execution.py](backend/app/jobs/execution.py#L228)；[discovery.py](backend/app/content/discovery.py#L108)
-- **待补齐/待核对**：**P0 阻塞：主题暂停仅禁用后续 schedule，未取消已受理任务；每次请求检查连接/许可/预算/任务取消，未检查主题状态。**[services.py](backend/app/monitors/services.py#L1271)；[discovery.py](backend/app/content/discovery.py#L108)。补已排队/执行中任务的新请求栅栏与停止回执；不能把已有任务取消能力当作主题暂停已经生效。
-- **待验收**：先受控验证暂停、取消、到期、验证码/限流、超时未知、重启与模型积压；再连续至少七个自然日观察，至少两轮自然成功并有事件更新。逐应执行窗口解释成功/部分/失败/漏轮、延迟和人工干预。
+- **已实现（源码核对）**：低频调度、应执行窗口、稳定操作 ID、租约/outbox、预算与准入、任务取消、连接版本检查、有限补轮和失败恢复已有实现；页面刷新只是读取。[scheduler.py](backend/app/worker/scheduler.py#L90)；[execution.py](backend/app/jobs/execution.py)；[discovery.py](backend/app/content/discovery.py)
+- **已修复（暂停保护）**：关键词搜索与评论受理时服务端冻结主题状态事件序号；同 owner 的 active 状态与序号在一个数据库快照中读取，领取/预算前/逐请求/取消探测/心跳/手动重试复核。暂停、归档或自动暂停后旧任务安全取消；同一时间暂停后恢复不会复活旧任务，缺少序号的历史任务拒绝执行，幂等重放不重绑。[collection_topics.py](backend/app/jobs/collection_topics.py)；[execution.py](backend/app/jobs/execution.py)；[services.py](backend/app/monitors/services.py)。父进程在终止子进程后记录 partial/cancelled 覆盖并保守结算 STARTED 请求，重投不重复扣量；已提交材料、checkpoint 和 confirmed 窗口保留，损坏 scope 不造覆盖。[collection_cancellation.py](backend/app/content/collection_cancellation.py)；[app.py](backend/app/worker/app.py)。
+- **停止边界**：暂停提交后进入请求准入检查的新请求被拒绝；暂停前已获准的请求按在途处理，可能结束或被父进程终止，尚未提交的响应不承诺入库。排队旧任务在领取时、运行旧任务在下一次检查时落取消回执；暂停接口不批量改写全部历史任务，也不自动补发旧操作。非主题热榜和其他主题/账号不受该主题暂停影响。旧 MediaCrawler 搜索桥只有整批预扣与子进程轮询，不能保证逐HTTP暂停，线上工厂已在启动前拒绝并返回不可重试的 `search_request_guard_unavailable`；Chrome逐请求方式、本地样本及缓存评论保留。
+- **受控验证与工程检查**：`ruff check`、`ruff format --check`、`mypy`（439份源码）与185份Markdown文档检查通过；最终补充回归142通过/1跳过（Kafka未配置），其中暂停专项28项全通过。后端全量回归2550通过/33跳过（Kafka、Redis、MinIO未配置）；后续新增保护与测试已由上述补充回归覆盖。跳过项未记作通过；未改变API/数据库结构/UI，Web构建与浏览器验收不属于本次变更。专项覆盖搜索/评论排队与执行、同时间暂停恢复、无新预算/请求、在途与分页材料保留、旧失败重试/幂等重放、归档/自动暂停、跨 owner/其他主题/热榜、主题行锁不阻塞准入，以及实际 dispatcher + 受控 supervisor 的取消、在途结算、损坏旧 scope、checkpoint/confirmed 保留和已受理MediaCrawler任务在计费/子进程前拒绝。[test_topic_collection_pause.py](backend/tests/integration/test_topic_collection_pause.py)。只读独立审查提出的父进程收尾和损坏旧 scope 问题已修复并复核，无剩余阻断项。
+- **待补齐/待验收**：如需恢复MediaCrawler线上搜索，先补逐实际HTTP请求的准入桥和受控验证，不能靠轮询宣称停止保证。暂停代码与固定样本结果不代替真实平台；到期、验证码/限流、超时未知、重启与模型积压仍需各自核验，再连续至少七个自然日观察，至少两轮自然成功并有事件更新。逐应执行窗口解释成功/部分/失败/漏轮、延迟和人工干预。
 
 ### [07 趋势与告警](docs/requirement/07-趋势与告警.md) · [设计](docs/design/07-趋势与告警.md) · [计划](docs/plan/07-趋势与告警.md)
 
@@ -85,7 +87,7 @@
 ### [10 权限与数据生命周期](docs/requirement/10-权限与数据生命周期.md) · [设计](docs/design/10-权限与数据生命周期.md) · [计划](docs/plan/10-权限与数据生命周期.md)
 
 - **已实现（源码核对）**：会话 owner、CSRF、独立运营令牌、当前公开许可、精确 observation/version 输入及关联删除已有实现；HTML 渲染有清洗。[dependencies.py](backend/app/api/dependencies.py#L527)；[lifecycle.py](backend/app/content/lifecycle.py#L19)；[content.ts](frontend/src/components/editor/content.ts#L37)
-- **待补齐/待核对**：已确认的主题暂停栅栏缺口见06。其余权限与生命周期尚不能仅凭入口断言全通过：逐 API/公开投影/媒体/报告导出/通知复核当前许可，个人来源即使属于发布账号也不得自动公开。退役/物理删表须先核对消费者及独立库恢复。
+- **待补齐/待核对**：主题暂停保护已补并受控验证，证据与边界见06；不据此认定其他权限路径通过。其余权限与生命周期尚不能仅凭入口断言全通过：逐 API/公开投影/媒体/报告导出/通知复核当前许可，个人来源即使属于发布账号也不得自动公开。退役/物理删表须先核对消费者及独立库恢复。
 - **待验收**：跨owner、会话过期、撤许可/撤材料、旧revision、派生删除、恶意HTML与导出失效在独立环境验证；实际配置、浏览器及备份恢复未在本轮验收。不能用权限依赖存在代替全路径隔离通过。
 
 ### [11 质量评测与验收](docs/requirement/11-质量评测与验收.md) · [设计](docs/design/11-质量评测与验收.md) · [计划](docs/plan/11-质量评测与验收.md)
@@ -142,7 +144,7 @@
 | [44 来源连接与采集覆盖](docs/requirement/44-来源连接与采集覆盖.md) · [设计](docs/design/44-来源连接与采集覆盖.md) · [计划](docs/plan/44-来源连接与采集覆盖.md) | 来源能力/连接、Chrome、预算、覆盖窗口与详情/下一步操作。 [sources-workspace.tsx](frontend/src/app/sources/components/sources-workspace.tsx#L12) | 逐词未执行、增量口径、主题暂停保护见01/03/06；目录可见不等于准入或已采集。 | 真实连接版本、到期/风控、应执行分母/漏轮与来源失败隔离。 |
 | [45 编辑来源配置](docs/requirement/45-编辑来源配置.md) · [设计](docs/design/45-编辑来源配置.md) · [计划](docs/plan/45-编辑来源配置.md) | 运营令牌内存持有、来源表单/CAS/操作ID、材料/运行读取与显式预览。 [editorial-source-manager.tsx](frontend/src/app/sources/editorial/components/editorial-source-manager.tsx#L95) | 首个来源所需配置先P0；其他编辑来源扩展后置，不默认启用外部预览。 | 准入/预算、草稿冲突、未知写入读回与显式请求边界。 |
 | [46 任务记录](docs/requirement/46-任务记录.md) · [设计](docs/design/46-任务记录.md) · [计划](docs/plan/46-任务记录.md) | 20条任务游标、独立连续失败汇总、真实阶段/数量。 [job-history.tsx](frontend/src/app/jobs/components/job-history.tsx#L81) | 逐查询与更新计数见01/03；不能把active主题当执行中任务。 | 真实排队/执行/失败/取消、漏轮汇总及只读不发请求。 |
-| [47 任务详情与恢复](docs/requirement/47-任务详情与恢复.md) · [设计](docs/design/47-任务详情与恢复.md) · [计划](docs/plan/47-任务详情与恢复.md) | 任务详情/刷新、持久取消与按资格手动重试，冻结任务输入和幂等恢复。 [job-detail.tsx](frontend/src/app/jobs/[jobId]/components/job-detail.tsx#L150) | 主题暂停不等于任务取消，补06栅栏；各类未知结果仍需按原操作ID核对。 | 排队立即取消、执行中停止新请求、lease失效、原job重试与冻结配置。 |
+| [47 任务详情与恢复](docs/requirement/47-任务详情与恢复.md) · [设计](docs/design/47-任务详情与恢复.md) · [计划](docs/plan/47-任务详情与恢复.md) | 任务详情/刷新、持久取消与按资格手动重试，冻结任务输入和幂等恢复。 [job-detail.tsx](frontend/src/app/jobs/[jobId]/components/job-detail.tsx#L150) | 主题暂停已按06复核旧采集任务并拒绝旧任务重试；新代次使用新操作，各类未知结果仍需按原操作ID核对。 | 排队立即取消、执行中停止新请求、lease失效、原job重试与冻结配置。 |
 | [48 公开许可与发布管理](docs/requirement/48-公开许可与发布管理.md) · [设计](docs/design/48-公开许可与发布管理.md) · [计划](docs/plan/48-公开许可与发布管理.md) | 运营令牌+会话、来源许可/CAS/理由、覆盖发布与媒体任务/纠错入口。 [publication-manager.tsx](frontend/src/app/publication/manage/components/publication-manager.tsx#L41) | 本轮未确认新的必补功能；全投影当前许可与撤回待逐链验证。 | 许可收紧、旧修订/媒体/导出失效、公开账号与个人源隔离。 |
 | [49 运营工作区](docs/requirement/49-运营工作区.md) · [设计](docs/design/49-运营工作区.md) · [计划](docs/plan/49-运营工作区.md) | 健康/预算/维护、反馈/审计/字典、通知与评测面板已有实现。 [operations-workspace.tsx](frontend/src/app/operations/components/operations-workspace.tsx#L917) | 关键词/事件/自然运行评测覆盖缺口见11；不能以健康绿灯认定核心可用。 | 实际权限、持久读写、并发版本/操作ID及故障恢复。 |
 | [50 模型配置与成本](docs/requirement/50-模型配置与成本.md) · [设计](docs/design/50-模型配置与成本.md) · [计划](docs/plan/50-模型配置与成本.md) | 模型能力配置/CAS/审计、原币种账本、失败/未知和熔断确认。 [model-manager.tsx](frontend/src/app/operations/models/components/model-manager.tsx#L265) | 本机实际模型名/会话未验收；兼容/付费默认禁用不代表没有相关源码，也不代表OpenRouter已启用。 | 获授权本机模型、切换只影响新任务、限流延后与费用未知不补零。 |
@@ -162,11 +164,11 @@
 
 ## 可复用的验证入口与当前边界
 
-这些测试文件已有对应断言，可在后续改动时按影响范围复用与补充；本轮只读，不报告它们当前通过。
+这些测试文件可按影响范围复用；本轮暂停专项与后端工程检查结果见06。未设置的外部测试依赖、真实平台与自然时间分别报告，不能把跳过记作通过。
 
 | 范围 | 已有测试入口 | 仍须补证 |
 |---|---|---|
-| 关键词/采集/覆盖 | [test_monitor_topics.py](backend/tests/integration/test_monitor_topics.py#L32)、[test_keyword_discovery.py](backend/tests/integration/test_keyword_discovery.py#L76)、[test_content_collection_facts.py](backend/tests/integration/test_content_collection_facts.py#L16)、[test_coverage_metrics.py](backend/tests/integration/test_coverage_metrics.py#L23) | 主题暂停栅栏、逐词未执行、互斥增量分类及两轮真实对照 |
+| 关键词/采集/覆盖 | [test_monitor_topics.py](backend/tests/integration/test_monitor_topics.py#L32)、[test_keyword_discovery.py](backend/tests/integration/test_keyword_discovery.py)、[test_content_collection_facts.py](backend/tests/integration/test_content_collection_facts.py#L16)、[test_coverage_metrics.py](backend/tests/integration/test_coverage_metrics.py#L23) | 暂停专项已补见06；逐词未执行、互斥增量分类及两轮真实对照仍待补证 |
 | 事件/事实 | [test_event_signals.py](backend/tests/integration/test_event_signals.py#L41)、[test_event_clustering.py](backend/tests/integration/test_event_clustering.py#L34)、[test_event_fact_writer.py](backend/tests/integration/test_event_fact_writer.py#L20)、[test_event_corrections.py](backend/tests/integration/test_event_corrections.py#L29) | 独立质量评测、候选解释、本轮事实差分；不把单材料已有路径列为缺失 |
 | 调度/恢复/通知 | [test_job_reliability.py](backend/tests/integration/test_job_reliability.py#L58)、[test_collection_jobs.py](backend/tests/integration/test_collection_jobs.py#L23)、[test_notifications_pipeline.py](backend/tests/integration/test_notifications_pipeline.py#L31) | 七日自然窗口、首次热点去重及本人实际接收 |
 | 权限/清理/模型 | [test_resource_isolation.py](backend/tests/integration/test_resource_isolation.py#L41)、[test_content_dependency_cleanup.py](backend/tests/integration/test_content_dependency_cleanup.py#L18)、[test_ai_capability_routing.py](backend/tests/integration/test_ai_capability_routing.py#L44) | 全公开/媒体/导出/通知许可、独立库恢复、相关性与情感解耦及真实本机模型 |
@@ -185,4 +187,4 @@
 
 准入、预算、owner隔离、证据可读、身份去重、停止与恢复是硬门槛；停止后出现新请求等失败必须修复并重验受影响阶段。受控时间推进不替代七日自然观察，手动触发不替代自然调度；自然期未出现的异常由受控验证单独补证，不伪造自然故障。至少两轮自然成功、有事件更新且提醒本人实际收到；无自然提醒则继续观察，七日最低长度不是已达到长期SLA。
 
-源码核对、工程检查、固定样本、独立环境、真实平台、自然时间、用户体验和独立审查分别报告。后续有实现改动时按AGENTS执行对应检查；本次文档检查与只读独立审查仅覆盖文档及结论边界，不能据此认定业务代码完成。
+源码核对、工程检查、固定样本、独立环境、真实平台、自然时间、用户体验和独立审查分别报告。实现改动按AGENTS执行对应检查；本轮代码与固定样本结论仅覆盖06暂停保护及受影响链路，不能据此关闭01–58其他缺口或真实业务验收。

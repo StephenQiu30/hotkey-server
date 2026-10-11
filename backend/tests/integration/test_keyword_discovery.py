@@ -182,7 +182,7 @@ def test_bilibili_saved_search_output_commits_posts_and_cached_comments(
                 text(
                     "INSERT INTO monitor_topics (id, owner_id, name, status, readiness_status, "
                     "current_version, created_at, updated_at) VALUES "
-                    "(:id, :owner_id, 'Bilibili replay', 'paused', 'pending_source_selection', "
+                    "(:id, :owner_id, 'Bilibili replay', 'active', 'pending_source_selection', "
                     "1, :now, :now)"
                 ),
                 {"id": topic_id, "owner_id": owner_id, "now": now},
@@ -382,10 +382,10 @@ def test_query_plan_persists_independent_jobs_without_leaking_query_to_outbox() 
         pytest.skip("HOTKEY_TEST_DATABASE_URL is required for PostgreSQL integration tests")
 
     engine = create_engine(database_url)
-    owner_id = uuid4()
+    owner_id, topic_id = uuid4(), uuid4()
     run = KeywordDiscoveryRunInput(
         run_id=uuid4(),
-        configuration_ref="topic:fixture",
+        configuration_ref=f"topic:{topic_id}",
         configuration_version=3,
         source_key="x",
         connection_id=uuid4(),
@@ -403,6 +403,23 @@ def test_query_plan_persists_independent_jobs_without_leaking_query_to_outbox() 
     commands = plan_keyword_discovery(run)
     try:
         with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO monitor_topics "
+                    "(id, owner_id, name, status, readiness_status, current_version, "
+                    "created_at, updated_at) VALUES "
+                    "(:id, :owner_id, 'Query plan', 'active', 'ready', 3, :now, :now)"
+                ),
+                {"id": topic_id, "owner_id": owner_id, "now": run.ends_at},
+            )
+            session.execute(
+                text(
+                    "INSERT INTO monitor_topic_versions "
+                    "(topic_id, version, created_by, match_any, match_all, exclude, created_at) "
+                    "VALUES (:id, 3, :owner_id, '[\"product fault\"]', '[]', '[]', :now)"
+                ),
+                {"id": topic_id, "owner_id": owner_id, "now": run.ends_at},
+            )
             accepted = [
                 JobService(session).accept_in_transaction(owner_id=owner_id, command=command)
                 for command in commands
@@ -547,7 +564,7 @@ def test_36kr_feed_replay_keeps_source_time_and_separate_budget() -> None:
                     "INSERT INTO monitor_topics "
                     "(id, owner_id, name, status, readiness_status, current_version, "
                     "created_at, updated_at) VALUES "
-                    "(:id, :owner_id, '36Kr controlled feed', 'paused', "
+                    "(:id, :owner_id, '36Kr controlled feed', 'active', "
                     "'pending_source_selection', 1, :now, :now)"
                 ),
                 {"id": topic_id, "owner_id": owner_id, "now": now},
@@ -843,7 +860,7 @@ def test_36kr_kafka_redelivery_does_not_repeat_collection() -> None:
                     "INSERT INTO monitor_topics "
                     "(id, owner_id, name, status, readiness_status, current_version, "
                     "created_at, updated_at) VALUES "
-                    "(:id, :owner_id, '36Kr Kafka replay', 'paused', "
+                    "(:id, :owner_id, '36Kr Kafka replay', 'active', "
                     "'pending_source_selection', 1, :now, :now)"
                 ),
                 {"id": topic_id, "owner_id": owner_id, "now": now},
@@ -1042,7 +1059,7 @@ def test_pages_atomically_save_distinct_channel_discoveries_and_unverified_gap()
                     "INSERT INTO monitor_topics "
                     "(id, owner_id, name, status, readiness_status, current_version, "
                     "created_at, updated_at) VALUES "
-                    "(:id, :owner_id, 'Controlled topic', 'paused', "
+                    "(:id, :owner_id, 'Controlled topic', 'active', "
                     "'pending_source_selection', 4, :now, :now)"
                 ),
                 {"id": topic_id, "owner_id": owner_id, "now": now},

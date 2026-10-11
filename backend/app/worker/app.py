@@ -25,6 +25,7 @@ from content.collection import (
     WebPageCollectionExecutor,
     recover_webpage_collection_usage_in_transaction,
 )
+from content.collection_cancellation import recover_interrupted_collection_in_transaction
 from content.comments_execution import CommentsExecutor
 from content.discovery_execution import KeywordDiscoveryExecutor
 from content.hotlist import recover_hotlist_usage_in_transaction
@@ -699,6 +700,10 @@ def _finalize_supervised_result(
                 lease_seconds=lease_seconds,
                 clock=lambda: finished_at,
             )
+            if message.kind in {"keyword.search", "source.comments"}:
+                recover_interrupted_collection_in_transaction(
+                    session, execution=execution, lease=report.lease, finished_at=finished_at
+                )
             if report.failure is not None:
                 execution.record_failure_in_transaction(
                     report.lease,
