@@ -7,9 +7,9 @@ GitHub 仓库：[StephenQiu30/Ripplesight](https://github.com/StephenQiu30/Rippl
 - 不登录：阅读有出处、经过去重的公开资讯、事件、日报周报，以及 AI 模型榜。
 - 登录后：配置关键词和来源，查看已采集的帖子、评论与任务状态。来源、情感分析、报告与告警的可用范围以实际配置和验收为准，不代表各平台已全部接通。
 
-当前需求与实现取舍集中在 [PRD](docs/prd/PRD.md)，视觉和交互规范见 [DESIGN](docs/design/DESIGN.md)。
+原始需求按编号逐项整理在 [requirement 目录](docs/index.md#需求目录)，视觉和交互按同编号、同名称的 [设计文档](docs/index.md#设计主题) 维护。
 
-页面与功能需求见 [Requirement](docs/requirement/REQUIREMENT.md)，执行顺序见 [Plan](docs/plan/PLAN.md)，未完成事项见 [BACKLOG](BACKLOG.md)。
+页面与功能需求见 [编号需求](docs/index.md#需求目录)，执行顺序见 [编号计划](docs/index.md#开发阶段)，未完成事项见 [BACKLOG](BACKLOG.md)。
 
 ## 快速开始
 
@@ -72,15 +72,15 @@ API 和 Web 只绑定 localhost，需要通过反向代理对外提供访问。
 
 ## 文档
 
-项目文档在 [docs](docs/index.md) 下使用 Markdown/Git 管理，Obsidian 直接打开 `docs/`。只维护当前四类核心文档、可选模板、文档视图与共享配置，不保留历史文档或归档副本。业务报告的 Obsidian 导出独立于项目文档。
+项目文档在 [docs](docs/index.md) 下使用 Markdown/Git 管理，Obsidian 直接打开 `docs/`。按编号维护需求、设计、产品与计划，以及可选模板、文档视图与共享配置，不保留历史文档或归档副本。业务报告的 Obsidian 导出独立于项目文档。
 
 | 文档 | 内容 |
 |---|---|
-| [PRD](docs/prd/PRD.md) | 产品目标、边界与验收标准 |
-| [Requirement](docs/requirement/REQUIREMENT.md) | 页面与功能需求 |
-| [DESIGN](docs/design/DESIGN.md) | 视觉、组件、布局与交互规范 |
-| [Plan](docs/plan/PLAN.md) | 当前执行顺序与交付门槛 |
-| [文档工作区](docs/index.md) | PRD、Design、Obsidian 使用与链接检查 |
+| [产品定位](docs/prd/00-产品定位.md) | 用户与产品价值 |
+| [编号需求](docs/index.md#需求目录) | 页面与功能需求 |
+| [编号设计](docs/index.md#设计主题) | 视觉、组件、布局与交互规范 |
+| [编号计划](docs/index.md#开发阶段) | 当前执行顺序与交付门槛 |
+| [文档工作区](docs/index.md) | 编号目录、Obsidian 使用与链接检查 |
 | [BACKLOG](BACKLOG.md) | 优先级与进度 |
 | [PROJECT](PROJECT.md) | 技术架构与约定 |
 | [AGENTS](AGENTS.md) | 工程规范与检查 |

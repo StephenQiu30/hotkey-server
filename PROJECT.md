@@ -126,7 +126,7 @@ Web 外壳使用 `BasicLayout → PageContainer`：前者管理侧栏、移动�
 - RSSHub/SearXNG 聚合服务只连接本机实例，主机只能是 `127.0.0.1`（宿主机）或 `host.docker.internal`（Compose）。平台直连和聚合服务是不同路径；各 HTTP 适配器均强制目标主机白名单，并校验每一次重定向。
 - MediaCrawler 作为宿主机子进程运行，使用独立的浏览器和本人账号；浏览器资料目录权限为 700、文件权限为 600；遇到验证码、登录失效或限流就停用。
 - 模型只走本机 Codex app-server：每个分析任务启动一个子进程，只读、不需要审批、只传最小环境变量、使用空的工作目录。模型输入一律视为不可信文本，输出必须是结构化结果并经过校验；数字、排序和引用由程序计算。
-- 费用、账号、许可等产品边界见 [产品边界](docs/prd/PRD.md#产品边界)。
+- 费用、账号、许可等产品边界见 [产品边界](docs/requirement/00-产品目标与边界.md#已确认边界)。
 
 ## 9. API 与身份
 
@@ -138,7 +138,7 @@ Web 外壳使用 `BasicLayout → PageContainer`：前者管理侧栏、移动�
 
 ## 10. 配置与部署
 
-- **项目文档**：docs/ 是 Markdown 唯一原文和 Obsidian vault；文档按 requirement、design、prd、plan 四个目录维护，进度和技术约定仍在根目录 BACKLOG、PROJECT、AGENTS。链接与锚点检查复用 frontend/tests/docs/ 的 pnpm docs:check，不强制编号、元数据或生成索引。业务报告的 Obsidian 导出继续使用 knowledge/obsidian.py。
+- **项目文档**：docs/ 是 Markdown 唯一原文和 Obsidian vault；文档按 requirement、design、prd、plan 四个目录维护，进度和技术约定仍在根目录 BACKLOG、PROJECT、AGENTS。链接与锚点检查复用 frontend/tests/docs/ 的 pnpm docs:check，需求、设计和计划同编号同名称，不强制元数据或生成索引。业务报告的 Obsidian 导出继续使用 knowledge/obsidian.py。
 - 环境文件只放在仓库根目录：本机用 `.env`，生产用 `.env.prod`，模板是 `.env.example`。所有进程都读这一份，进程注入的环境变量优先。
 - `docker-compose.yml` 定义应用（API、Web，以及按需启用的 Worker / Scheduler / CLI）；`docker-compose-env.yml` 只在需要全新的 PostgreSQL/Redis/Kafka 时使用；`docker-compose-prod.yml` 通过 include 复用应用定义。
 - 浏览器采集由宿主机来源适配器执行；报告导出使用 Playwright，不部署独立的远程 browser 服务。
@@ -146,7 +146,7 @@ Web 外壳使用 `BasicLayout → PageContainer`：前者管理侧栏、移动�
 
 ## 11. 项目文档
 
-[文档入口](docs/index.md) 连接四类原文：requirement 说明页面和功能需要什么；design 说明视觉和交互；prd 说明产品目标、范围与验收；plan 说明执行顺序和交付门槛。每类先维护一份文档，确有独立主题时再拆分，不强制编号、frontmatter 或相互配套的任务卡。
+[文档入口](docs/index.md) 连接四类编号文档：requirement 逐项维护原始需求、功能约束与验收；design 与 plan 按 requirement 逐项对应，使用相同编号和文件名，分别维护结构、交互及实施步骤与门槛；prd 维护产品定位与研究依据。目录从 00 开始连续编号，不保留统一正文；新增或调整需求同步维护三目录与引用，不强制 frontmatter 或额外任务卡。
 
 Obsidian 直接打开 docs，共享配置、Templates 与文档视图保留；进度仅在根目录 BACKLOG，工程约定仅在 PROJECT 和 AGENTS。API 与数据库直接查代码和唯一 schema。当前文档只维护有效要求与使用说明，不保存历史文档、归档副本或已完成事项流水。业务报告的 Obsidian 导出独立于项目文档。
 
@@ -168,7 +168,7 @@ B 站 Chrome 来源使用 `bilibili` 来源键与固定 API 地址 `https://api.
 
 ## 13. 页面与服务的边界
 
-页面需求与视觉规范集中在 [PRD](docs/prd/PRD.md) 和 [DESIGN](docs/design/DESIGN.md)。页面需要的字段由现有客户端和后端合同核对；查询派生值、本机状态与持久业务事实分开。每个新增结构必须有实际读写方，不能为路由、卡片或计数复制一套数据。
+页面需求与视觉规范分别在 [编号需求](docs/index.md#需求目录) 和 [编号设计](docs/index.md#设计主题) 中逐项维护。页面需要的字段由现有客户端和后端合同核对；查询派生值、本机状态与持久业务事实分开。每个新增结构必须有实际读写方，不能为路由、卡片或计数复制一套数据。
 
 `/topics`、`/monitors/[topicId]` 和 `/workspace` 共用 TopicsWorkspace。权限、公开许可、版本、任务租约与 outbox 等现有运行职责保留；物理删表须先核对消费者、历史数据和外键，再按 §6 在独立库完成恢复与迁移验证。
 

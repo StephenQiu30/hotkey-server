@@ -1,6 +1,6 @@
 # Ripplesight Web
 
-架构见 [PROJECT](../PROJECT.md)，视觉与组件规范见 [DESIGN](../docs/design/DESIGN.md)，工程规范见 [AGENTS](../AGENTS.md)。
+架构见 [PROJECT](../PROJECT.md)，视觉与组件规范见 [编号设计](../docs/index.md#设计主题)，工程规范见 [AGENTS](../AGENTS.md)。
 
 ## 本地运行
 
@@ -67,4 +67,4 @@ pnpm build
 
 浏览器翻译扩展可能在 React 接管前给 `<html>` 注入 `data-immersive-translate-page-theme`。如果报错差异仅有该根属性，而同一URL的服务端HTML没有该属性，原因是扩展修改了DOM，不是数据接口失效。根布局仅在 DocumentRoot 使用 `suppressHydrationWarning`；这是单层例外，正文差异仍必须报错。不要全局过滤console、对body/全部组件加抑制，或关闭SSR来隐藏真实问题。参见 [Next.js说明](https://nextjs.org/docs/messages/react-hydration-error)，回归在 `tests/app/layout.test.tsx`。
 
-当前页面需要的字段、读取数量和存储取舍见[页面需求](../docs/requirement/REQUIREMENT.md)。新增接口/表应先证明当前具体控件无法用既有数据满足。
+当前页面需要的字段、读取数量和存储取舍见[页面需求](../docs/index.md#需求目录)。新增接口/表应先证明当前具体控件无法用既有数据满足。
